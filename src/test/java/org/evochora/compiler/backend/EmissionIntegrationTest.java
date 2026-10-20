@@ -31,7 +31,7 @@ import org.evochora.compiler.features.place.PlaceNode;
 import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.features.importdir.RequireNode;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -97,7 +97,7 @@ public class EmissionIntegrationTest {
         );
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(src, diags, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(src, diags, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         // KORREKTUR: basePath hinzufügen
         Parser parser = new Parser(tokens, diags, allHandlers());

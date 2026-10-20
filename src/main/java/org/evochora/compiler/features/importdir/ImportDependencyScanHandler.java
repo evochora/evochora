@@ -1,39 +1,40 @@
 package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.frontend.module.IDependencyScanContext;
-import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.List;
 
 /**
- * Phase 0 scan handler for .IMPORT directives. Detects import declarations, reads the path and
- * the alias, and triggers recursive module scanning.
+ * Lexer-phase handler for {@code .IMPORT "path" AS ALIAS …}: reads the module file as a
+ * placement of its own, under the importing placement's chain followed by the alias, and
+ * records the dependency.
+ * <p>
+ * Every line that names a module file is followed, whatever comes after the path, so the file is
+ * loaded even when the directive is malformed and the parser can report the malformation. An
+ * {@code EXPORT} before the word is accepted so that the line is read as an import; whether the
+ * import is passed on is taken from the parser's node, not from here. A directive without an
+ * alias names no dependency; its tokens are still needed so the phase that reads the directive
+ * can report what is wrong with it.
  */
 public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
-    // Every line that names a module file is matched, whatever follows the path, so the file is
-    // loaded even when the directive is malformed and the parser can report the malformation.
-    // An EXPORT prefix is accepted so that the line is read as an import; whether the import is
-    // passed on is taken from the parser's node, not from here.
-    // The scan knows the address of a file, path and alias, and nothing after it: the clauses
-    // that follow the alias are the parser's to read.
-    private static final Pattern IMPORT_PATTERN = Pattern.compile(
-            "(?i)^(?:EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"(.*)$");
-    // The alias as the preprocessor reads it; the rest of the line is not read.
-    private static final Pattern ALIAS_PATTERN = Pattern.compile("(?i)^\\s+AS\\s+(\\w+)");
-
     @Override
-    public Pattern pattern() {
-        return IMPORT_PATTERN;
-    }
-
-    @Override
-    public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
-        String path = matcher.group(1);
-
+    public void handle(DirectiveLine line, IDependencyScanContext ctx) {
+        Token before = line.before();
+        if (before != null && !(before.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(before.text()))) {
+            return;
+        }
+        List<Token> operands = line.operands();
+        if (operands.isEmpty() || operands.get(0).type() != TokenType.STRING) {
+            return;
+        }
+        String path = (String) operands.get(0).value();
         String resolvedPath;
         try {
             resolvedPath = ctx.resolve(path);
@@ -41,21 +42,19 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
             ctx.reportError(e.getMessage());
             return;
         }
-
         // The placement's chain is formed as the preprocessor forms it: the importing placement's
-        // chain followed by the alias. A directive without an alias names no dependency; its
-        // tokens are still needed so the phase that reads the directive can report what is wrong
-        // with it.
-        Matcher alias = ALIAS_PATTERN.matcher(matcher.group(2));
+        // chain followed by the alias.
         String aliasChain = ctx.placementChain();
-        if (alias.find()) {
-            aliasChain = childChain(ctx.placementChain(), alias.group(1));
-            ctx.addDependency(new ImportDependencyInfo(path, alias.group(1), resolvedPath, aliasChain));
+        if (operands.size() >= 3 && operands.get(1).type() == TokenType.IDENTIFIER
+                && "AS".equalsIgnoreCase(operands.get(1).text())
+                && operands.get(2).type() == TokenType.IDENTIFIER) {
+            String alias = operands.get(2).text();
+            aliasChain = childChain(ctx.placementChain(), alias);
+            ctx.addDependency(new ImportDependencyInfo(path, alias, resolvedPath, aliasChain));
         }
-
         try {
-            String content = ctx.loadContent(resolvedPath);
-            ctx.scanNestedModule(resolvedPath, content, aliasChain);
+            ctx.loadTokens(resolvedPath);
+            ctx.scanNestedModule(resolvedPath, aliasChain);
         } catch (IOException e) {
             ctx.reportError("Module file not found: " + path);
         }

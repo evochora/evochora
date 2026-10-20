@@ -5,7 +5,7 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -42,7 +42,7 @@ public class SemanticAnalyzerTest {
         // Initialize instruction set for the parser
         org.evochora.runtime.isa.Instruction.init();
         
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, allHandlers());
         return parser.parse();

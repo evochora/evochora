@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * Supplies the lexer symbols of the standard features to tests that build a
- * {@link org.evochora.compiler.frontend.lexer.Lexer} directly, mirroring what {@link Compiler}
+ * {@link org.evochora.compiler.frontend.lexer.Tokenizer} directly, mirroring what {@link Compiler}
  * passes. Uses {@link StandardFeatures#all()} as the feature source.
  */
 public final class TestLexers {

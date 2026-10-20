@@ -2,7 +2,7 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
@@ -56,7 +56,7 @@ public class ProcedureDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -96,7 +96,7 @@ public class ProcedureDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry()); // KORREKTUR
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -131,7 +131,7 @@ public class ProcedureDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -159,7 +159,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc REF rA rB\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -180,7 +180,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc VAL v1 v2\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -201,7 +201,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc REF rA VAL v1\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -222,7 +222,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc VAL v1 REF rA\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -243,7 +243,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -273,7 +273,7 @@ public class ProcedureDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();

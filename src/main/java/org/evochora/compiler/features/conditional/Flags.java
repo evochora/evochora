@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
-import org.evochora.compiler.frontend.module.IDependencyScanContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 

@@ -5,7 +5,7 @@ import org.evochora.compiler.api.SourceInfo;
 import java.util.List;
 
 /**
- * Represents a single token extracted from the source code by the Lexer.
+ * Represents a single token extracted from the source code by the Tokenizer.
  *
  * @param type     The type of the token (e.g., Opcode, Register, Number).
  * @param text     The exact text of the token from the source code.

@@ -6,8 +6,8 @@ import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
-import org.evochora.compiler.frontend.module.IDependencyInfo;
-import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
@@ -45,21 +45,24 @@ public interface IFeatureRegistrationContext {
 	 */
 	IInstructionSet isa();
 
-	// Phase 0: Dependency Scanning
+	// Phase 1: Lexer, which finds the files
 
 	/**
-	 * Registers a dependency scan handler for Phase 0.
+	 * Registers a handler the Lexer phase calls for every line that holds the given directive
+	 * word, wherever the word stands in the line. A second registration for the same word,
+	 * compared case-insensitively, is rejected when it happens.
 	 *
-	 * @param handler The handler that matches and processes dependency directives.
+	 * @param directive The directive word, with its leading dot.
+	 * @param handler   The handler that reads the line and says what it means for the files.
 	 */
-	void dependencyScanHandler(IDependencyScanHandler handler);
+	void dependencyScanHandler(String directive, IDependencyScanHandler handler);
 
 	/**
 	 * Registers a module setup handler for Phase 4 (module relationship setup).
 	 *
 	 * @param type    The IDependencyInfo subclass this handler processes.
 	 * @param handler The handler that sets up module relationships for this dependency type.
-	 * @param <T>     The dependency information type produced in Phase 0 that this handler consumes;
+	 * @param <T>     The dependency information type produced in the Lexer phase that this handler consumes;
 	 *                it ties the handler to the class object passed as {@code type}.
 	 */
 	<T extends IDependencyInfo> void dependencySetupHandler(Class<T> type, IDependencySetupHandler<T> handler);

@@ -8,7 +8,7 @@ import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.frontend.BlockReader;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -210,7 +210,7 @@ class PreProcessorBlockTest {
     }
 
     private static List<Token> lex(String... lines) {
-        return new Lexer(String.join("\n", lines) + "\n", new DiagnosticsEngine(), TestLexers.symbols()).scanTokens();
+        return new Tokenizer(String.join("\n", lines) + "\n", new DiagnosticsEngine(), TestLexers.symbols()).scanTokens();
     }
 
     private static List<String> texts(List<Token> tokens) {

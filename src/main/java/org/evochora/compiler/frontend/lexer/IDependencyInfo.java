@@ -1,8 +1,8 @@
-package org.evochora.compiler.frontend.module;
+package org.evochora.compiler.frontend.lexer;
 
 
 /**
- * Marker interface for feature-specific dependency data discovered during Phase 0 scanning.
+ * Marker interface for feature-specific dependency data the Lexer phase discovers while it reads the files.
  * Implemented by feature-specific records (ImportDependencyInfo, RequireDependencyInfo, etc.).
  */
 public interface IDependencyInfo {

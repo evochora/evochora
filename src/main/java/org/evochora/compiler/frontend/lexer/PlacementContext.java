@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.module;
+package org.evochora.compiler.frontend.lexer;
 
 /**
  * Carried by PUSH_CTX tokens to propagate module placement information through the token stream.

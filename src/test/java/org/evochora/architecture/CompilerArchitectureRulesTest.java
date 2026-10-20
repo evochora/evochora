@@ -62,7 +62,6 @@ class CompilerArchitectureRulesTest {
 
     /** The classes that run the phases of the pipeline, in pipeline order. */
     private static final String[] PHASE_CLASSES = {
-            COMPILER + ".frontend.module.DependencyScanner",
             COMPILER + ".frontend.lexer.Lexer",
             COMPILER + ".frontend.preprocessor.PreProcessor",
             COMPILER + ".frontend.parser.Parser",
@@ -78,7 +77,6 @@ class CompilerArchitectureRulesTest {
 
     /** The packages holding the phases of the pipeline, in pipeline order. */
     private static final String[] PHASE_PACKAGES = {
-            COMPILER + ".frontend.module..",
             COMPILER + ".frontend.lexer..",
             COMPILER + ".frontend.preprocessor..",
             COMPILER + ".frontend.parser..",

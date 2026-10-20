@@ -9,9 +9,9 @@ import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.module.DependencyGraph;
-import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for USING clauses on {@code .IMPORT} directives.
- * Exercises the full pipeline: DependencyScanner -> Lexer -> PreProcessor -> Parser -> SemanticAnalyzer.
+ * Exercises the full pipeline: Lexer -> PreProcessor -> Parser -> SemanticAnalyzer.
  */
 class UsingClauseIntegrationTest {
 
@@ -300,25 +300,26 @@ class UsingClauseIntegrationTest {
 
     /**
      * Runs the full compilation pipeline through semantic analysis.
-     * Mirrors the phases in Compiler.java (Phase 0 through Phase 4).
+     * Mirrors the phases in Compiler.java (Phase 1 through Phase 4).
      */
     private SemanticsResult compileThroughSemanticsWithSymbols(String mainSource, String mainPath) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         String rootAliasChain = "";
 
-        // Phase 0: Dependency scanning
+        // Phase 1: Lexer, which finds the files and tokenizes each of them once
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
+        Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults(),
+                new RuntimeInstructionSetAdapter(), featureRegistry.lexerSymbols());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
-        // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
+        // The main file as the stream
+        Map<String, List<Token>> fileTokens = graph.tokens();
+        List<Token> mainTokens = new ArrayList<>(new Tokenizer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
@@ -378,7 +379,7 @@ class UsingClauseIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends org.evochora.compiler.frontend.module.IDependencyInfo> void registerSetupHandler(
+    private static <T extends org.evochora.compiler.frontend.lexer.IDependencyInfo> void registerSetupHandler(
             ModuleSetupRegistry registry, Class<T> type, IDependencySetupHandler<?> handler) {
         registry.register(type, (IDependencySetupHandler<T>) handler);
     }

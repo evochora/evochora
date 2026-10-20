@@ -12,9 +12,9 @@ import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.module.DependencyGraph;
-import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -61,7 +61,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for {@code .SOURCE} + {@code .CONST} in multi-module compilation.
- * Exercises the full pipeline from Phase 0 (dependency scanning) through Phase 6 (AST post-processing).
+ * Exercises the full pipeline from Phase 1 (Lexer) through Phase 6 (AST post-processing).
  */
 class ModuleSourceConstIntegrationTest {
 
@@ -249,7 +249,7 @@ class ModuleSourceConstIntegrationTest {
     @Tag("integration")
     void circularSourceDetected() throws Exception {
         // a.evo sources b.evo, b.evo sources a.evo
-        // Test at preprocessor level directly (DependencyScanner doesn't handle .SOURCE cycles)
+        // Test at preprocessor level directly (the Lexer phase does not detect .SOURCE cycles)
         Files.writeString(tempDir.resolve("a.evo"),
                 ".SOURCE \"b.evo\"\n.CONST A_VAL DATA:1\n");
         Files.writeString(tempDir.resolve("b.evo"),
@@ -259,7 +259,7 @@ class ModuleSourceConstIntegrationTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(mainSource, diagnostics, mainPath, TestLexers.symbols());
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -269,9 +269,9 @@ class ModuleSourceConstIntegrationTest {
             String resolvedPath = circularResolver.resolve(fileName, mainPath);
             String content = Files.readString(Path.of(resolvedPath));
             if (!content.endsWith("\n")) content += "\n";
-            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath, TestLexers.symbols());
+            Tokenizer srcLexer = new Tokenizer(content, diagnostics, resolvedPath, TestLexers.symbols());
             List<Token> srcTokens = srcLexer.scanTokens();
-            Lexer.stripEofToken(srcTokens);
+            Tokenizer.stripEofToken(srcTokens);
             circularSourceTokens.put(resolvedPath, srcTokens);
         }
 
@@ -328,18 +328,19 @@ class ModuleSourceConstIntegrationTest {
 
         String rootAliasChain = "";
 
-        // Phase 0: Dependency scanning
+        // Phase 1: Lexer, which finds the files and tokenizes each of them once
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
+        Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults(),
+                new RuntimeInstructionSetAdapter(), featureRegistry.lexerSymbols());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
-        // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
+        // The main file as the stream
+        Map<String, List<Token>> fileTokens = graph.tokens();
+        List<Token> mainTokens = new ArrayList<>(new Tokenizer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
@@ -405,7 +406,7 @@ class ModuleSourceConstIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends org.evochora.compiler.frontend.module.IDependencyInfo> void registerSetupHandler(
+    private static <T extends org.evochora.compiler.frontend.lexer.IDependencyInfo> void registerSetupHandler(
             ModuleSetupRegistry registry, Class<T> type, IDependencySetupHandler<?> handler) {
         registry.register(type, (IDependencySetupHandler<T>) handler);
     }

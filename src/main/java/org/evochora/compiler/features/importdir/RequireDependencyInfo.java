@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.frontend.module.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 
 /**
  * A {@code .REQUIRE} line found by the dependency scan. It carries nothing but the directive's

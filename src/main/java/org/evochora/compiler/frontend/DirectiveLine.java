@@ -19,6 +19,7 @@ import java.util.function.Predicate;
  * from another position never break the rule. Tokens directly before the directive that the
  * caller passes over, such as a keyword that belongs to the directive, do not break it either.
  *
+ * @param word      The directive token.
  * @param directive The index of the directive token.
  * @param end       The index of the token that ends the operands: the next statement end, the
  *                  end-of-file token, or the size of the stream.
@@ -31,7 +32,7 @@ import java.util.function.Predicate;
  *                  statement after them; {@code null} if the operands end at a line break, at the
  *                  end of the file, or at a statement end of another line.
  */
-public record DirectiveLine(int directive, int end, int next, List<Token> operands, Token before, Token separator) {
+public record DirectiveLine(Token word, int directive, int end, int next, List<Token> operands, Token before, Token separator) {
 
     /**
      * Creates the line, with an immutable copy of the operands.
@@ -79,7 +80,7 @@ public record DirectiveLine(int directive, int end, int next, List<Token> operan
                 separator = terminator;
             }
         }
-        return new DirectiveLine(directive, end, next, tokens.subList(directive + 1, end),
+        return new DirectiveLine(word, directive, end, next, tokens.subList(directive + 1, end),
                 tokenBefore(tokens, directive, passedOver), separator);
     }
 

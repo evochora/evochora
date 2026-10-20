@@ -1,9 +1,9 @@
 package org.evochora.compiler.features.source;
 
-import org.evochora.compiler.frontend.module.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 
 /**
- * Dependency data for a .SOURCE directive discovered during Phase 0 scanning.
+ * Dependency data for a .SOURCE directive the Lexer phase discovers while it reads the files.
  *
  * @param path The source file path as written in source.
  * @param resolvedPath The resolved absolute path of the source file.

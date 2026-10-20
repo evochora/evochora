@@ -1,377 +1,420 @@
 package org.evochora.compiler.frontend;
 
-import org.evochora.compiler.FeatureRegistry;
-import org.evochora.compiler.TestLexers;
-import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.StandardFeatures;
+import org.evochora.compiler.api.SourceRoot;
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
+import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.ModulePlacement;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * Contains unit tests for the {@link Lexer}.
- * These tests verify that the lexer correctly converts source code strings into a stream of tokens,
- * identifying different token types and handling features like comments.
- * These are unit tests and do not require external resources.
+ * Tests the Lexer phase, which finds the files of a compilation and tokenizes each once: the
+ * module placements it builds from the directives that name files, the tokens and lines it keeps
+ * of every file, and the context it offers the scan handlers.
  */
 public class LexerTest {
 
+    @TempDir
+    Path tempDir;
+
     @BeforeAll
-    static void init() {
+    static void initInstructionSet() {
         Instruction.init();
     }
 
-    /**
-     * A configured value is lexed on its own: its tokens stand under the name of the value, on
-     * line 0, in the root placement, with the end of file kept.
-     */
-    @Test
-    @Tag("unit")
-    void lexValuesPutsTheTokensOfAValueUnderItsNameInTheRootPlacement() {
-        Map<String, List<Token>> tokens = Lexer.lexValues(Map.of("STEPS", "DATA:20"), "ROOT",
-                new RuntimeInstructionSetAdapter(), TestLexers.symbols());
-
-        assertThat(tokens.get("STEPS")).extracting(Token::type)
-                .containsExactly(TokenType.IDENTIFIER, TokenType.COLON, TokenType.NUMBER, TokenType.END_OF_FILE);
-        assertThat(tokens.get("STEPS")).extracting(t -> t.source().fileName()).containsOnly("<value STEPS>");
-        assertThat(tokens.get("STEPS")).extracting(t -> t.source().lineNumber()).containsOnly(0);
-        assertThat(tokens.get("STEPS")).extracting(t -> t.source().placement()).containsOnly("ROOT");
+    private SourceRootResolver defaultResolver(Path root) {
+        return new SourceRootResolver(List.of(new SourceRoot(".", null)), root);
     }
 
-    /**
-     * A text the lexer rejects yields no tokens and reports nothing here; the parser's reader of
-     * the requirement reports it in its own words.
-     */
-    @Test
-    @Tag("unit")
-    void lexValuesGivesNoTokensForATextTheLexerRejects() {
-        Map<String, List<Token>> tokens = Lexer.lexValues(Map.of("STEPS", "DATA:2\"0"), "ROOT",
-                new RuntimeInstructionSetAdapter(), TestLexers.symbols());
-
-        assertThat(tokens.get("STEPS")).isEmpty();
+    private static FeatureRegistry standardRegistry() {
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        return featureRegistry;
     }
 
-    /**
-     * Verifies that the relative marker is one symbol token carrying its sign, so that the number
-     * after it is read as an unsigned number.
-     * This is a unit test for the lexer.
-     */
+    /** The scan handlers of the standard features, in a map a test can add its own handlers to. */
+    private static Map<String, IDependencyScanHandler> defaultHandlers() {
+        return new LinkedHashMap<>(standardRegistry().dependencyScanHandlers());
+    }
+
+    private static Lexer lexer(DiagnosticsEngine diagnostics, SourceRootResolver resolver,
+                               Map<String, IDependencyScanHandler> handlers, CompilerOptions options) {
+        return new Lexer(diagnostics, resolver, handlers, options, new RuntimeInstructionSetAdapter(),
+                standardRegistry().lexerSymbols());
+    }
+
     @Test
     @Tag("unit")
-    void testRelativeMarkerIsOneTokenWithItsSign() {
-        // Arrange
+    void singleFileProducesSingleModuleGraph() {
+        String source = "NOP\nSETI %DR0 42\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(".ORG @+2|@-3", diagnostics, TestLexers.symbols());
+        SourceRootResolver resolver = defaultResolver(Path.of("/test"));
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
 
-        // Act
-        List<Token> tokens = lexer.scanTokens();
+        DependencyGraph graph = lexer.read(source, "/test/main.evo", "");
 
-        // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@+");
-        assertThat(tokens.get(2)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 2L);
-        assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.PIPE);
-        assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@-");
-        assertThat(tokens.get(5)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 3L);
+        assertThat(graph.placements()).hasSize(1);
+        assertThat(graph.placements().get(0).sourcePath()).isEqualTo("/test/main.evo");
     }
 
-    /**
-     * Verifies that the marker character without a sign is rejected and that the message names
-     * the registered symbols beginning with it.
-     * This is a unit test for the lexer.
-     */
     @Test
-    @Tag("unit")
-    void testMarkerWithoutSignNamesTheSymbolsBeginningWithIt() {
-        // Arrange
+    @Tag("integration")
+    void importProducesTwoPlacements_theImportedOneFirst() throws Exception {
+        Path libFile = tempDir.resolve("lib.evo");
+        Files.writeString(libFile, "NOP\n");
+
+        String mainSource = ".IMPORT \"lib.evo\" AS LIB\nNOP\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(".ORG 0|@2", diagnostics, TestLexers.symbols());
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, "");
 
-        // Act
-        lexer.scanTokens();
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(graph.placements()).hasSize(2);
 
-        // Assert
+        // A placement comes after the placements it imports
+        ModulePlacement first = graph.placements().get(0);
+        ModulePlacement second = graph.placements().get(1);
+        assertThat(first.sourcePath()).contains("lib.evo");
+        assertThat(first.aliasChain()).isEqualTo("LIB");
+        assertThat(second.sourcePath()).contains("main.evo");
+        assertThat(second.aliasChain()).isEmpty();
+    }
+
+    @Test
+    @Tag("integration")
+    void fileImportedTwice_isPlacedAtEveryImport_andItsTokensKeptOnce() throws Exception {
+        Files.writeString(tempDir.resolve("lib.evo"), "NOP\n");
+        String mainSource = ".IMPORT \"lib.evo\" AS FIRST\n.IMPORT \"lib.evo\" AS SECOND\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = lexer(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, "MAIN");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
+                .containsExactly("MAIN.FIRST", "MAIN.SECOND", "MAIN");
+        assertThat(graph.tokens()).containsOnlyKeys(mainPath, resolved("lib.evo"));
+    }
+
+    @Test
+    @Tag("integration")
+    void diamond_placesTheSharedModuleUnderEachImporter_eachBeforeItsImporter() throws Exception {
+        Files.writeString(tempDir.resolve("m.evo"), "NOP\n");
+        Files.writeString(tempDir.resolve("a.evo"), ".IMPORT \"m.evo\" AS M\n");
+        Files.writeString(tempDir.resolve("b.evo"), ".IMPORT \"m.evo\" AS M\n");
+        String mainSource = ".IMPORT \"a.evo\" AS A\n.IMPORT \"b.evo\" AS B\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = lexer(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
+                .containsExactly("A.M", "A", "B.M", "B", "");
+        assertThat(graph.placements().getLast().dependencies())
+                .extracting(d -> ((org.evochora.compiler.features.importdir.ImportDependencyInfo) d).aliasChain())
+                .containsExactly("A", "B");
+    }
+
+    @Test
+    @Tag("integration")
+    void lines_holdEveryFileReadOnce_theMainFileIncluded() throws Exception {
+        Files.writeString(tempDir.resolve("m.evo"), ".SOURCE \"inc.evo\"\nNOP\n");
+        Files.writeString(tempDir.resolve("inc.evo"), "NOP\n");
+        String mainSource = ".IMPORT \"m.evo\" AS A\n.SOURCE \"inc.evo\"\n.IMPORT \"m.evo\" AS B\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = lexer(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        String module = resolved("m.evo");
+        String inc = resolved("inc.evo");
+        assertThat(graph.lines()).containsOnlyKeys(mainPath, module, inc);
+        assertThat(graph.lines().get(mainPath))
+                .containsExactly(".IMPORT \"m.evo\" AS A", ".SOURCE \"inc.evo\"", ".IMPORT \"m.evo\" AS B");
+        assertThat(graph.lines().get(module)).containsExactly(".SOURCE \"inc.evo\"", "NOP");
+        assertThat(graph.lines().get(inc)).containsExactly("NOP");
+    }
+
+    @Test
+    @Tag("integration")
+    void circularDependencyReportsError() throws Exception {
+        Path aFile = tempDir.resolve("a.evo");
+        Path bFile = tempDir.resolve("b.evo");
+        Files.writeString(aFile, ".IMPORT \"b.evo\" AS B\n");
+        Files.writeString(bFile, ".IMPORT \"a.evo\" AS A\n");
+
+        String aSource = Files.readString(aFile);
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        lexer.read(aSource, aFile.toString(), "");
+
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary())
-                .contains("Unexpected character '@'; symbols beginning with it are '@+' and '@-'");
+        assertThat(diagnostics.summary()).containsIgnoringCase("circular");
     }
 
-    /**
-     * Verifies that a character no symbol begins with keeps the plain message.
-     * This is a unit test for the lexer.
-     */
     @Test
-    @Tag("unit")
-    void testCharacterWithoutSymbolKeepsThePlainMessage() {
-        // Arrange
+    @Tag("integration")
+    void sourceFileContainingImportReportsError() throws Exception {
+        Path incFile = tempDir.resolve("inc.evo");
+        Files.writeString(incFile, ".IMPORT \"other.evo\" AS OTHER\n");
+
+        String mainSource = ".SOURCE \"inc.evo\"\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer("NOP ?", diagnostics, TestLexers.symbols());
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        lexer.read(mainSource, mainPath, "");
 
-        // Act
-        lexer.scanTokens();
-
-        // Assert
-        assertThat(diagnostics.summary()).contains("Unexpected character: ?");
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains(".IMPORT");
     }
 
-    /**
-     * Verifies that the symbols of the standard features are lexed as symbol tokens with their
-     * text.
-     * This is a unit test for the lexer.
-     */
     @Test
-    @Tag("unit")
-    void testStandardSymbolsAreSymbolTokens() {
-        // Arrange
+    @Tag("integration")
+    void usingClausesAreParsed() throws Exception {
+        Path libFile = tempDir.resolve("lib.evo");
+        Files.writeString(libFile, ".REQUIRE MODULE \"dep.evo\" AS DEP\n");
+
+        Path depFile = tempDir.resolve("dep.evo");
+        Files.writeString(depFile, "NOP\n");
+
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS DEP\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer("* , @+ @- ^ ..", diagnostics, TestLexers.symbols());
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, "");
 
-        // Act
-        List<Token> tokens = lexer.scanTokens();
-
-        // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
-                tuple(TokenType.SYMBOL, "*"),
-                tuple(TokenType.SYMBOL, ","),
-                tuple(TokenType.SYMBOL, "@+"),
-                tuple(TokenType.SYMBOL, "@-"),
-                tuple(TokenType.SYMBOL, "^"),
-                tuple(TokenType.SYMBOL, ".."),
-                tuple(TokenType.END_OF_FILE, "")
-        );
+
+        // The main module's placement is the last
+        ModulePlacement mainModule = graph.placements().getLast();
+        List<org.evochora.compiler.features.importdir.ImportDependencyInfo> imports = mainModule.dependencies().stream()
+                .filter(d -> d instanceof org.evochora.compiler.features.importdir.ImportDependencyInfo)
+                .map(d -> (org.evochora.compiler.features.importdir.ImportDependencyInfo) d)
+                .toList();
+        assertThat(imports).hasSize(2);
+
+        org.evochora.compiler.features.importdir.ImportDependencyInfo libImport = imports.stream()
+                .filter(imp -> imp.alias().equalsIgnoreCase("LIB"))
+                .findFirst().orElseThrow();
+        assertThat(libImport.path()).isEqualTo("lib.evo");
+        assertThat(libImport.alias()).isEqualToIgnoringCase("LIB");
     }
 
-    /**
-     * Verifies that the longest registered symbol wins, and that a symbol is not assembled across
-     * whitespace.
-     * This is a unit test for the lexer.
-     */
     @Test
-    @Tag("unit")
-    void testLongestSymbolWins() {
-        // Arrange
-        FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
-        registry.lexerSymbol("<");
-        registry.lexerSymbol("<=");
-        registry.lexerSymbol("=");
+    @Tag("integration")
+    void requireDeclarationsAreCaptured() throws Exception {
+        String source = ".REQUIRE MODULE \"dependency.evo\" AS DEP\nNOP\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = lexer.read(source, mainPath, "");
 
-        // Act
-        List<Token> joined = new Lexer("<=", diagnostics, registry.lexerSymbols()).scanTokens();
-        List<Token> apart = new Lexer("< =", diagnostics, registry.lexerSymbols()).scanTokens();
-
-        // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(joined).extracting(Token::type, Token::text).containsExactly(
-                tuple(TokenType.SYMBOL, "<="),
-                tuple(TokenType.END_OF_FILE, ""));
-        assertThat(apart).extracting(Token::type, Token::text).containsExactly(
-                tuple(TokenType.SYMBOL, "<"),
-                tuple(TokenType.SYMBOL, "="),
-                tuple(TokenType.END_OF_FILE, ""));
+        assertThat(graph.placements()).hasSize(1);
+
+        ModulePlacement module = graph.placements().get(0);
+        List<org.evochora.compiler.features.importdir.RequireDependencyInfo> requires = module.dependencies().stream()
+                .filter(d -> d instanceof org.evochora.compiler.features.importdir.RequireDependencyInfo)
+                .map(d -> (org.evochora.compiler.features.importdir.RequireDependencyInfo) d)
+                .toList();
+        assertThat(requires).hasSize(1);
     }
 
-    /**
-     * Verifies that the message names a single symbol beginning with the unexpected character in
-     * the singular.
-     * This is a unit test for the lexer.
-     */
     @Test
-    @Tag("unit")
-    void testMessageNamesTheOneSymbolBeginningWithTheCharacter() {
-        // Arrange
-        FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
-        registry.lexerSymbol("<=");
+    @Tag("integration")
+    void threeModuleCycle_isDetected() throws Exception {
+        Files.writeString(tempDir.resolve("a.evo"), ".IMPORT \"b.evo\" AS B\nNOP\n");
+        Files.writeString(tempDir.resolve("b.evo"), ".IMPORT \"c.evo\" AS C\nNOP\n");
+        Files.writeString(tempDir.resolve("c.evo"), ".IMPORT \"a.evo\" AS A\nNOP\n");
+
+        String mainSource = ".IMPORT \"a.evo\" AS A\nNOP\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        lexer.read(mainSource, mainPath, "");
 
-        // Act
-        new Lexer("< 1", diagnostics, registry.lexerSymbols()).scanTokens();
-
-        // Assert
-        assertThat(diagnostics.summary())
-                .contains("Unexpected character '<'; the symbol beginning with it is '<='");
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().toLowerCase().contains("circular")))
+                .as("Expected circular dependency error")
+                .isTrue();
     }
 
-    /**
-     * Verifies that two dots between numbers are the range symbol while a dot before a word
-     * still opens a directive.
-     * This is a unit test for the lexer.
-     */
+    /** A scan handler that hands the line of its directive word and the context to an action. */
+    private static IDependencyScanHandler handler(BiConsumer<DirectiveLine, IDependencyScanContext> action) {
+        return action::accept;
+    }
+
+    /** The texts of a line's tokens, joined by single spaces; {@code null} for no line. */
+    private static String text(List<Token> line) {
+        return line == null ? null : line.stream().map(Token::text).collect(Collectors.joining(" "));
+    }
+
+    /** Feature state kept in the scan slot by the tests below. */
+    private static final class SeenFiles {
+        final List<String> paths = new ArrayList<>();
+    }
+
     @Test
-    @Tag("unit")
-    void testRangeSymbolAgainstDirective() {
-        // Arrange
+    @Tag("integration")
+    void stateSlot_spansTheFilesOfOneScan_andIsCreatedOnce() throws Exception {
+        Files.writeString(tempDir.resolve("inc.evo"), ".MARK\n");
+        String mainSource = ".MARK\n.SOURCE \"inc.evo\"\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        AtomicInteger created = new AtomicInteger();
+        List<SeenFiles> instances = new ArrayList<>();
+        Map<String, IDependencyScanHandler> handlers = defaultHandlers();
+        handlers.put(".MARK", handler((line, ctx) -> {
+            SeenFiles seen = ctx.getOrCreate(SeenFiles.class, () -> {
+                created.incrementAndGet();
+                return new SeenFiles();
+            });
+            seen.paths.add(ctx.sourcePath());
+            instances.add(seen);
+        }));
+
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer("1..10 .X", diagnostics, TestLexers.symbols());
+        Lexer lexer = lexer(diagnostics, defaultResolver(tempDir), handlers, CompilerOptions.defaults());
+        lexer.read(mainSource, mainPath, "");
 
-        // Act
-        List<Token> tokens = lexer.scanTokens();
-
-        // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
-                tuple(TokenType.NUMBER, "1"),
-                tuple(TokenType.SYMBOL, ".."),
-                tuple(TokenType.NUMBER, "10"),
-                tuple(TokenType.DIRECTIVE, ".X"),
-                tuple(TokenType.END_OF_FILE, "")
-        );
+        assertThat(created).hasValue(1);
+        assertThat(instances).hasSize(2);
+        assertThat(instances.get(1)).isSameAs(instances.get(0));
+        assertThat(instances.get(0).paths).containsExactly(mainPath, resolved("inc.evo"));
+
+        lexer.read(mainSource, mainPath, "");
+        assertThat(created).as("a second scan starts with an empty slot").hasValue(2);
     }
 
-    /**
-     * Verifies that hexadecimal and binary literals are read as one number token, with and
-     * without a leading minus.
-     * This is a unit test for the lexer.
-     */
     @Test
     @Tag("unit")
-    void testHexAndBinaryLiteralsWithAndWithoutSign() {
-        // Arrange
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer("-0x10 -0b11 0x10 0b11", diagnostics, TestLexers.symbols());
+    void stateSlot_keepsDifferentKeysApart() {
+        List<Object> results = new ArrayList<>();
+        Map<String, IDependencyScanHandler> handlers = Map.of(".MARK", handler((line, ctx) -> {
+            results.add(ctx.getOrCreate(SeenFiles.class, SeenFiles::new));
+            results.add(ctx.getOrCreate(AtomicInteger.class, AtomicInteger::new));
+        }));
 
-        // Act
-        List<Token> tokens = lexer.scanTokens();
+        Lexer lexer = lexer(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
+        lexer.read(".MARK\n.MARK\n", "/test/main.evo", "");
 
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens).extracting(Token::type, Token::value).containsExactly(
-                tuple(TokenType.NUMBER, -16L),
-                tuple(TokenType.NUMBER, -3L),
-                tuple(TokenType.NUMBER, 16L),
-                tuple(TokenType.NUMBER, 3L),
-                tuple(TokenType.END_OF_FILE, null)
-        );
+        assertThat(results).hasSize(4);
+        assertThat(results.get(0)).isInstanceOf(SeenFiles.class).isSameAs(results.get(2));
+        assertThat(results.get(1)).isInstanceOf(AtomicInteger.class).isSameAs(results.get(3));
     }
 
-    /**
-     * Verifies that the lexer correctly tokenizes a source string containing various language elements,
-     * including directives, identifiers, numbers, labels, opcodes, registers, and comments.
-     * The test asserts that the resulting token stream has the correct types and values.
-     * This is a unit test for the lexer.
-     */
     @Test
     @Tag("unit")
-    void testLexerTokenization() {
-        // Arrange
+    void nextLine_returnsTheTokensOfTheFollowingStatementLines_andIsNotDispatchedAgain() {
+        List<String> taken = new ArrayList<>();
+        List<Integer> lineNumbers = new ArrayList<>();
+        List<String> marked = new ArrayList<>();
+        Map<String, IDependencyScanHandler> handlers = new LinkedHashMap<>();
+        handlers.put(".TAKE2", handler((line, ctx) -> {
+            lineNumbers.add(ctx.lineNumber());
+            taken.add(text(ctx.nextLine()));
+            taken.add(text(ctx.nextLine()));
+            lineNumbers.add(ctx.lineNumber());
+        }));
+        handlers.put(".MARK", handler((line, ctx) ->
+                marked.add(line.operands().get(0).text() + "@" + ctx.lineNumber())));
+
         String source = String.join("\n",
-                ".CONST HELLO 42",
-                "L1: SETI %DR0 HELLO # Lade 42"
-        );
+                ".TAKE2",
+                "   .MARK A   # a comment",
+                "# a line with nothing but a comment",
+                "",
+                ".MARK B",
+                ".MARK C");
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Lexer lexer = lexer(diagnostics, defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
+        lexer.read(source, "/test/main.evo", "");
 
-        // Act
-        List<Token> tokens = lexer.scanTokens();
-
-        // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens).hasSize(10);
-        assertThat(tokens.get(0)).extracting(Token::type, Token::text).containsExactly(TokenType.DIRECTIVE, ".CONST");
-        assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "HELLO");
-        assertThat(tokens.get(2)).extracting(Token::type, Token::text, Token::value).containsExactly(TokenType.NUMBER, "42", 42L);
-        assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.NEWLINE);
-        assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "L1");
-        assertThat(tokens.get(5)).extracting(Token::type, Token::text).containsExactly(TokenType.COLON, ":");
-        assertThat(tokens.get(6)).extracting(Token::type, Token::text).containsExactly(TokenType.OPCODE, "SETI");
-        assertThat(tokens.get(7)).extracting(Token::type, Token::text).containsExactly(TokenType.REGISTER, "%DR0");
-        assertThat(tokens.get(8)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "HELLO");
-        assertThat(tokens.get(9)).extracting(Token::type).isEqualTo(TokenType.END_OF_FILE);
+        assertThat(taken).containsExactly(".MARK A", ".MARK B");
+        assertThat(lineNumbers).containsExactly(1, 5);
+        assertThat(marked).containsExactly("C@6");
+    }
+
+    @Test
+    @Tag("unit")
+    void nextLine_returnsNullAtTheEndOfTheFile() {
+        List<String> taken = new ArrayList<>();
+        Map<String, IDependencyScanHandler> handlers = Map.of(".TAKEALL", handler((line, ctx) -> {
+            for (int i = 0; i < 4; i++) {
+                taken.add(text(ctx.nextLine()));
+            }
+        }));
+
+        Lexer lexer = lexer(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
+        lexer.read(".TAKEALL\nX\n\nY\n", "/test/main.evo", "");
+
+        assertThat(taken).containsExactly("X", "Y", null, null);
+    }
+
+    @Test
+    @Tag("unit")
+    void options_areThoseTheLexerWasCreatedWith() {
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalLong.empty()), Map.of());
+        List<CompilerOptions> seen = new ArrayList<>();
+        Map<String, IDependencyScanHandler> handlers = Map.of(".MARK", handler((line, ctx) -> seen.add(ctx.options())));
+
+        Lexer lexer = lexer(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, options);
+        lexer.read(".MARK\n", "/test/main.evo", "");
+
+        assertThat(seen).containsExactly(options);
     }
 
     /**
-     * Specifically verifies that the lexer correctly identifies an instruction mnemonic like "SETI"
-     * as a token of type {@link TokenType#OPCODE}.
-     * This is a unit test for the lexer.
+     * Returns the path of a file in the source root as the compiler writes a resolved path, with
+     * forward slashes on every platform.
      */
-    @Test
-    @Tag("unit")
-    void testSETIAsOpcode() {
-        // Arrange
-        String source = "SETI %DR0 DATA:42";
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-
-        // Act
-        List<Token> tokens = lexer.scanTokens();
-
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        
-        // Find SETI token
-        Token setiToken = tokens.stream()
-            .filter(t -> t.text().equals("SETI"))
-            .findFirst()
-            .orElse(null);
-        
-        assertThat(setiToken).isNotNull();
-        assertThat(setiToken.type()).isEqualTo(TokenType.OPCODE);
-        assertThat(setiToken.text()).isEqualTo("SETI");
-    }
-
-    /**
-     * Verifies that semicolons are tokenized as NEWLINE tokens, enabling multiple instructions per line.
-     * This allows syntax like "NOP; SETI %DR0 1; NOP" to be parsed as three separate instructions.
-     */
-    @Test
-    @Tag("unit")
-    void testSemicolonAsStatementSeparator() {
-        // Arrange
-        String source = "NOP; SETI %DR0 1; NOP";
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-
-        // Act
-        List<Token> tokens = lexer.scanTokens();
-
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens).extracting(Token::type).containsExactly(
-                TokenType.OPCODE,    // NOP
-                TokenType.NEWLINE,   // ;
-                TokenType.OPCODE,    // SETI
-                TokenType.REGISTER,  // %DR0
-                TokenType.NUMBER,    // 1
-                TokenType.NEWLINE,   // ;
-                TokenType.OPCODE,    // NOP
-                TokenType.END_OF_FILE
-        );
-    }
-
-    /**
-     * Verifies that semicolons and newlines can be mixed freely, allowing flexible formatting.
-     */
-    @Test
-    @Tag("unit")
-    void testMixedSemicolonsAndNewlines() {
-        // Arrange
-        String source = "NOP; NOP\nNOP";
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-
-        // Act
-        List<Token> tokens = lexer.scanTokens();
-
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens).extracting(Token::type).containsExactly(
-                TokenType.OPCODE,    // NOP
-                TokenType.NEWLINE,   // ;
-                TokenType.OPCODE,    // NOP
-                TokenType.NEWLINE,   // \n
-                TokenType.OPCODE,    // NOP
-                TokenType.END_OF_FILE
-        );
+    private String resolved(String fileName) {
+        return tempDir.resolve(fileName).toString().replace('\\', '/');
     }
 }

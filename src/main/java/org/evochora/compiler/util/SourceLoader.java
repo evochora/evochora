@@ -15,8 +15,8 @@ import java.util.stream.Collectors;
 
 /**
  * Centralizes file loading for the compiler: supports local filesystem paths,
- * classpath resources, and HTTP/HTTPS URLs. Used by {@code .SOURCE} and Phase 0
- * dependency scanning.
+ * classpath resources, and HTTP/HTTPS URLs. Used by the Lexer phase, which reads every file
+ * of a compilation.
  */
 public final class SourceLoader {
 

@@ -1,392 +1,263 @@
 package org.evochora.compiler.frontend.lexer;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.api.IntegerLiteral;
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.util.SourceLoader;
+import org.evochora.compiler.util.SourceRootResolver;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalLong;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
- * The Lexer (also known as Tokenizer or Scanner) is responsible for converting
- * a sequence of characters (source code) into a sequence of tokens.
- *
- * <p>Besides its fixed cases the lexer knows the symbols the features registered through
- * {@link org.evochora.compiler.IFeatureRegistrationContext#lexerSymbol(String)}. At the start of
- * every token it tries them first, longest first, and emits a match as one
- * {@link TokenType#SYMBOL} token whose text is the symbol.</p>
+ * The Lexer phase: finds the files of a compilation and turns each of them into tokens, once.
+ * It tokenizes the main file with the {@link Tokenizer}, walks its statement lines, and hands a
+ * line that holds a directive word a scan handler is registered under to that handler, wherever
+ * the word stands in the line. A handler that finds a file to include asks the context to read
+ * it, which tokenizes it if it has not been, and to read it as a placement of its own; so the
+ * files are found while they are read, as every assembler does. The phase knows no directive:
+ * which words name a file, and what the line around them has to look like, is the handlers'.
+ * <p>
+ * The result is the dependency graph with the tokens and the lines of every file, from which
+ * the preprocessor builds the one token stream of the program.
  */
-public class Lexer {
+public final class Lexer {
 
-    private final String source;
     private final DiagnosticsEngine diagnostics;
-    private final List<Token> tokens = new ArrayList<>();
-    private final String logicalFileName;
+    private final SourceRootResolver resolver;
+    private final Map<String, IDependencyScanHandler> handlers;
+    private final CompilerOptions options;
     private final IInstructionSet isa;
-    private final List<String> symbolsLongestFirst;
-    private int start = 0;
-    private int startLine = 1;   // line of the first character of the token being scanned
-    private int startColumn = 1; // 1-based column of that character
-    private int current = 0;
-    private int line = 1;
-    private int column = 1;
+    private final Set<String> symbols;
 
     /**
-     * Creates a new Lexer for the runtime's instruction set.
-     * @param source The source code as a single string.
-     * @param diagnostics The engine for reporting errors.
-     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
+     * Creates a lexer whose entire directive knowledge comes from the supplied handlers.
+     *
+     * @param diagnostics The engine errors are reported to.
+     * @param resolver    Resolves the paths written in directives.
+     * @param handlers    The scan handlers by the directive word they are registered under, in
+     *                    upper case.
+     * @param options     The options of the compilation, offered to the handlers through the
+     *                    context.
+     * @param isa         The instruction set the tokenizer tells opcodes and registers with.
+     * @param symbols     The registered lexer symbols the tokenizer emits as symbol tokens.
      */
-    public Lexer(String source, DiagnosticsEngine diagnostics, Set<String> symbols) {
-        this(source, diagnostics, "<memory>", symbols);
-    }
-
-    /**
-     * Creates a new Lexer with an explicit logical file name, for the runtime's instruction set.
-     * @param source The source code as a single string.
-     * @param diagnostics The engine for reporting errors.
-     * @param logicalFileName The name of the file being parsed, for error reporting.
-     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
-     */
-    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, Set<String> symbols) {
-        this(source, diagnostics, logicalFileName, new RuntimeInstructionSetAdapter(), symbols);
-    }
-
-    /**
-     * Creates a new Lexer for the given instruction set, which decides what is an opcode and
-     * what is a register. Its tokens carry an empty placement; the preprocessor gives them the
-     * placement they stand in.
-     * @param source The source code as a single string.
-     * @param diagnostics The engine for reporting errors.
-     * @param logicalFileName The name of the file being parsed, for error reporting.
-     * @param isa The instruction set the source is written for.
-     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens. They are
-     *                taken as checked by {@link org.evochora.compiler.FeatureRegistry}.
-     */
-    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa,
-                 Set<String> symbols) {
-        this.source = source;
+    public Lexer(DiagnosticsEngine diagnostics, SourceRootResolver resolver,
+                 Map<String, IDependencyScanHandler> handlers, CompilerOptions options,
+                 IInstructionSet isa, Set<String> symbols) {
         this.diagnostics = diagnostics;
-        this.logicalFileName = logicalFileName;
+        this.resolver = resolver;
+        this.handlers = handlers;
+        this.options = Objects.requireNonNull(options, "options");
         this.isa = isa;
-        // Longest first, so that a symbol is never cut short by one of its prefixes; equal
-        // lengths in a fixed order, so that the order of the set does not matter.
-        this.symbolsLongestFirst = symbols.stream()
-                .sorted(Comparator.comparingInt(String::length).reversed().thenComparing(Comparator.naturalOrder()))
-                .toList();
+        this.symbols = symbols;
     }
 
     /**
-     * Performs the tokenization of the entire source code.
-     * @return A list of the recognized tokens.
+     * Reads the main file and every file it leads to. A module file is read as a placement at
+     * every import, under the alias chain the import gives it, after the placements it imports
+     * itself; the main file is the last placement.
+     *
+     * @param mainContent    The text of the main file.
+     * @param mainPath       The resolved path of the main file.
+     * @param rootAliasChain The alias chain of the main module; empty without a prefix.
+     * @return The placements and the tokens and lines of every file; without placements when an
+     *         error was reported.
      */
-    public List<Token> scanTokens() {
-        while (!isAtEnd()) {
-            start = current;
-            startLine = line;
-            startColumn = column;
-            scanToken();
+    public DependencyGraph read(String mainContent, String mainPath, String rootAliasChain) {
+        State state = new State();
+        state.tokens.put(mainPath, tokenize(mainPath, mainContent, state));
+        readModule(state, rootAliasChain, mainPath);
+        if (diagnostics.hasErrors()) {
+            return new DependencyGraph(List.of(), Map.of(), Map.of(), mainPath);
         }
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null,
-                new SourceInfo(logicalFileName, line, column, "", 0)));
+        return new DependencyGraph(List.copyOf(state.placements), Collections.unmodifiableMap(state.tokens),
+                Collections.unmodifiableMap(state.lines), mainPath);
+    }
+
+    /**
+     * What the reading has found so far: the placements, the tokens and lines of every file
+     * read, the files on the way to the one being read, and the state of the features.
+     */
+    private static final class State {
+        final List<ModulePlacement> placements = new ArrayList<>();
+        final Map<String, List<Token>> tokens = new LinkedHashMap<>();
+        final Map<String, List<String>> lines = new LinkedHashMap<>();
+        final Set<String> importPath = new HashSet<>();
+        final Map<Class<?>, Object> featureState = new HashMap<>();
+    }
+
+    private List<Token> tokenize(String path, String content, State state) {
+        state.lines.putIfAbsent(path, List.of(content.split("\\r?\\n")));
+        String text = content.endsWith("\n") ? content : content + "\n";
+        List<Token> tokens = new Tokenizer(text, diagnostics, path, isa, symbols).scanTokens();
+        Tokenizer.stripEofToken(tokens);
         return tokens;
     }
 
-    /**
-     * Lexes a set of files that are going to be included into another token stream. Each file
-     * is lexed under its own path so its tokens carry that path as their file name, and its
-     * trailing EOF token is dropped because the stream it is included into has its own. A file
-     * whose text does not end in a newline is lexed as if it did, so its last line ends where
-     * the inclusion ends.
-     *
-     * @param contents    The text of every file, keyed by the path the tokens are to be filed under.
-     * @param diagnostics The engine for reporting errors.
-     * @param isa         The instruction set the files are written for.
-     * @param symbols     The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
-     * @return The tokens of every file under the same key, in the iteration order of the input.
-     */
-    public static Map<String, List<Token>> lexFiles(Map<String, String> contents, DiagnosticsEngine diagnostics,
-                                                    IInstructionSet isa, Set<String> symbols) {
-        Map<String, List<Token>> tokensByFile = new LinkedHashMap<>();
-        for (Map.Entry<String, String> file : contents.entrySet()) {
-            String text = file.getValue();
-            if (!text.endsWith("\n")) text += "\n";
-            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa, symbols).scanTokens();
-            stripEofToken(tokens);
-            tokensByFile.put(file.getKey(), tokens);
-        }
-        return tokensByFile;
-    }
-
-    /**
-     * Lexes the text of every value of the compilation's options, each on its own, so that the
-     * parser can read it where the main program requires the value. A text is lexed with a
-     * diagnostics engine of its own: what the lexer rejects is no operand, which the parser's
-     * reader of the requirement reports in its own words, and a text whose lexing reported an
-     * error yields no tokens. The tokens are kept as the lexer gives them, the end of file among
-     * them, and stand under the file name {@code <value NAME>}, line 0, in the root placement, so
-     * that a name among them is looked up in the main program. They never enter the token stream.
-     *
-     * @param values         The text of every value, keyed by its name as the options normalise it.
-     * @param rootAliasChain The placement of the compilation root.
-     * @param isa            The instruction set the texts are written for.
-     * @param symbols        The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
-     * @return The tokens of every value by its name; an empty list for a text the lexer rejected.
-     */
-    public static Map<String, List<Token>> lexValues(Map<String, String> values, String rootAliasChain,
-                                                     IInstructionSet isa, Set<String> symbols) {
-        Map<String, List<Token>> valueTokens = new HashMap<>();
-        for (Map.Entry<String, String> value : values.entrySet()) {
-            String fileName = "<value " + value.getKey() + ">";
-            DiagnosticsEngine own = new DiagnosticsEngine();
-            List<Token> tokens = new Lexer(value.getValue(), own, fileName, isa, symbols).scanTokens();
-            valueTokens.put(value.getKey(), own.hasErrors() ? List.of() : tokens.stream()
-                    .map(token -> token.with(new SourceInfo(fileName, 0, token.source().columnNumber(), rootAliasChain, 0)))
-                    .toList());
-        }
-        return valueTokens;
-    }
-
-    /**
-     * Removes the trailing EOF token from a token list, if present.
-     * Used when pre-lexed tokens are injected into another token stream
-     * that already has its own EOF.
-     * @param tokens The token list, trimmed in place and therefore required to be mutable.
-     *               An empty list or one not ending in an EOF token is left untouched.
-     */
-    public static void stripEofToken(List<Token> tokens) {
-        if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
-            tokens.removeLast();
-        }
-    }
-
-    private void scanToken() {
-        if (registeredSymbol()) return;
-        char c = advance();
-        switch (c) {
-            case '"': string(); break;
-            case '|': addToken(TokenType.PIPE); break;
-            case ':': addToken(TokenType.COLON); break;
-            case ';':
-                // Semicolon acts as a statement terminator, allowing multiple instructions per line.
-                addToken(TokenType.NEWLINE);
-                break;
-            case '.': identifier(); break;
-            case '#':
-                // A comment goes until the end of the line.
-                while (peek() != '\n' && !isAtEnd()) advance();
-                break;
-            case '-':
-                // If a minus is followed by a digit, it's a negative number.
-                if (isDigit(peek())) {
-                    number();
-                } else {
-                    reportUnexpected(c);
-                }
-                break;
-            // Ignore whitespace
-            case ' ', '\r', '\t':
-                break;
-            case '\n':
-                addToken(TokenType.NEWLINE);
-                line++;
-                column = 1;
-                break;
-            default:
-                if (isDigit(c)) {
-                    number();
-                } else if (isAlpha(c)) {
-                    identifier();
-                } else {
-                    reportUnexpected(c);
-                }
-                break;
-        }
-    }
-
-    /**
-     * Emits the longest registered symbol that begins at the start of the token, if any.
-     * @return true if a symbol was emitted.
-     */
-    private boolean registeredSymbol() {
-        for (String symbol : symbolsLongestFirst) {
-            if (source.startsWith(symbol, start)) {
-                // A symbol holds no line break, so the column moves with the position.
-                current += symbol.length();
-                column += symbol.length();
-                addToken(TokenType.SYMBOL);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Reports a character no case and no symbol accepts, naming the registered symbols that
-     * begin with it, as the writer most likely meant one of them.
-     * @param c The character.
-     */
-    private void reportUnexpected(char c) {
-        List<String> candidates = new ArrayList<>();
-        for (String symbol : symbolsLongestFirst) {
-            if (symbol.charAt(0) == c) candidates.add("'" + symbol + "'");
-        }
-        Collections.sort(candidates);
-        String message;
-        if (candidates.isEmpty()) {
-            message = "Unexpected character: " + c;
-        } else if (candidates.size() == 1) {
-            message = "Unexpected character '" + c + "'; the symbol beginning with it is " + candidates.getFirst();
-        } else {
-            message = "Unexpected character '" + c + "'; symbols beginning with it are "
-                    + String.join(", ", candidates.subList(0, candidates.size() - 1))
-                    + " and " + candidates.getLast();
-        }
-        diagnostics.reportError(message, logicalFileName, line);
-    }
-
-    private void identifier() {
-        while (isAlphaNumeric(peek())) advance();
-        String text = source.substring(start, current);
-        TokenType type = TokenType.IDENTIFIER;
-
-        // A word shaped like a register is one, and this is the one place that checks whether
-        // source may name it: every later phase takes a REGISTER token as valid.
-        Optional<IInstructionSet.RegisterRef> register = text.startsWith("%")
-                ? isa.parseRegister(text) : Optional.empty();
-        if (register.isPresent()) {
-            type = TokenType.REGISTER;
-            IInstructionSet.RegisterRef ref = register.get();
-            if (!ref.inBounds()) {
-                diagnostics.reportError(String.format("Register '%s' is out of bounds. Valid range: %s0-%s%d.",
-                        text, ref.bank().prefix(), ref.bank().prefix(), ref.bank().count() - 1), logicalFileName, line);
-            } else if (ref.bank().forbidden()) {
-                diagnostics.reportError(String.format(
-                        "Register '%s' is reserved for procedure parameters. Use the parameter's name instead.", text),
-                        logicalFileName, line);
-            }
-        }
-        // Is it a directive?
-        else if (text.startsWith(".")) {
-            type = TokenType.DIRECTIVE;
-        }
-
-        // Is it a known opcode? We check this by trying to get an ID for it.
-        else if (isa.getInstructionIdByName(text).isPresent()) {
-            type = TokenType.OPCODE;
-        }
-
-        addToken(type);
-    }
-    
-
-    private void number() {
-        // After a leading minus the first digit is not yet consumed; consuming it here makes
-        // previous() the first digit for signed and unsigned numbers alike.
-        if (previous() == '-') advance();
-        // Recognize hex/binary prefixes right at the first digit
-        if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'b' || peek() == 'B')) {
-            advance(); // consume 'x' or 'b'
-            while (isAlphaNumeric(peek())) advance(); // Hex digits (A-F) are also alphanumeric
-        } else {
-            // Normal decimal or floating-point numbers
-            while (isDigit(peek())) advance();
-            if (peek() == '.' && isDigit(peekNext())) {
-                advance(); // consume the '.'
-                while (isDigit(peek())) advance();
-            }
-        }
-
-        String numberString = source.substring(start, current);
-        OptionalLong value = IntegerLiteral.parse(numberString);
-        if (value.isPresent()) {
-            addToken(TokenType.NUMBER, value.getAsLong());
-        } else {
-            diagnostics.reportError("Invalid number format: " + numberString, logicalFileName, line);
-        }
-    }
-
-    private char advance() {
-        column++;
-        return source.charAt(current++);
-    }
-
-    private void string() {
-        while (peek() != '"' && !isAtEnd()) {
-            if (advance() == '\n') {
-                line++;
-                column = 1;
-            }
-        }
-
-        if (isAtEnd()) {
-            diagnostics.reportError("Unterminated string.", logicalFileName, line);
+    private void readModule(State state, String aliasChain, String path) {
+        if (!state.importPath.add(path)) {
+            diagnostics.reportError("Circular dependency detected: " + path, path, 0);
             return;
         }
-
-        // The closing "
-        advance();
-
-        // Extract the value of the string without the quotes.
-        String value = source.substring(start + 1, current - 1);
-        // The text of the token is the string *with* quotes, the value is the content.
-        addToken(TokenType.STRING, value, source.substring(start, current));
-    }
-    private void addToken(TokenType type) {
-        addToken(type, null);
+        List<IDependencyInfo> dependencies = readLines(state, aliasChain, path, false);
+        state.placements.add(new ModulePlacement(aliasChain, path, dependencies));
+        state.importPath.remove(path);
     }
 
-    private void addToken(TokenType type, Object literal) {
-        String text = source.substring(start, current);
-        addToken(type, literal, text);
+    private void readSourceFile(State state, String aliasChain, String path) {
+        readLines(state, aliasChain, path, true);
     }
 
-    private void addToken(TokenType type, Object literal, String text) {
-        tokens.add(new Token(type, text, literal,
-                new SourceInfo(logicalFileName, startLine, startColumn, "", 0)));
+    /**
+     * Walks the statement lines of a file. A line that holds a registered directive word goes to
+     * that word's handler, with the line; a line a handler takes through the context is not
+     * offered again.
+     */
+    private List<IDependencyInfo> readLines(State state, String aliasChain, String path, boolean sourceFileMode) {
+        Context ctx = new Context(state, aliasChain, path, sourceFileMode, state.tokens.get(path));
+        List<Token> line;
+        while ((line = ctx.nextLine()) != null) {
+            for (int i = 0; i < line.size(); i++) {
+                Token token = line.get(i);
+                if (token.type() != TokenType.DIRECTIVE) continue;
+                IDependencyScanHandler handler = handlers.get(token.text().toUpperCase(Locale.ROOT));
+                if (handler != null) {
+                    handler.handle(DirectiveLine.of(line, i), ctx);
+                    break;
+                }
+            }
+        }
+        return ctx.collected;
     }
 
-    private boolean isAtEnd() {
-        return current >= source.length();
+    private String loadContent(String resolvedPath) throws IOException {
+        if (SourceLoader.isHttpUrl(resolvedPath)) {
+            return SourceLoader.loadHttp(resolvedPath).content();
+        }
+        Path filePath = Path.of(resolvedPath);
+        if (Files.exists(filePath)) {
+            return SourceLoader.loadFile(filePath).content();
+        }
+        throw new IOException("File not found: " + resolvedPath);
     }
 
-    private char peek() {
-        if (isAtEnd()) return '\0';
-        return source.charAt(current);
-    }
+    /**
+     * The context of one file being read: a cursor over its statement lines, and the way to the
+     * files and the state.
+     */
+    private final class Context implements IDependencyScanContext {
+        private final State state;
+        private final String aliasChain;
+        private final String sourcePath;
+        private final boolean sourceFileMode;
+        private final List<Token> tokens;
+        private int next;
+        private int lineNumber;
+        private final List<IDependencyInfo> collected = new ArrayList<>();
 
-    private char peekNext() {
-        if (current + 1 >= source.length()) return '\0';
-        return source.charAt(current + 1);
-    }
+        Context(State state, String aliasChain, String sourcePath, boolean sourceFileMode, List<Token> tokens) {
+            this.state = state;
+            this.aliasChain = aliasChain;
+            this.sourcePath = sourcePath;
+            this.sourceFileMode = sourceFileMode;
+            this.tokens = tokens;
+        }
 
-    private boolean isDigit(char c) {
-        return c >= '0' && c <= '9';
-    }
+        @Override
+        public String resolve(String path) throws SourceRootResolver.UnknownPrefixException {
+            return resolver.resolve(path, sourcePath);
+        }
 
-    private boolean isAlpha(char c) {
-        return (c >= 'a' && c <= 'z') ||
-                (c >= 'A' && c <= 'Z') ||
-                c == '_' || c == '%' || c == '.' || c == '$';
-    }
+        @Override
+        public List<Token> loadTokens(String resolvedPath) throws IOException {
+            List<Token> loaded = state.tokens.get(resolvedPath);
+            if (loaded == null) {
+                loaded = tokenize(resolvedPath, loadContent(resolvedPath), state);
+                state.tokens.put(resolvedPath, loaded);
+            }
+            return loaded;
+        }
 
-    private boolean isAlphaNumeric(char c) {
-        return isAlpha(c) || isDigit(c);
-    }
+        @Override
+        public void reportError(String message) {
+            diagnostics.reportError(message, sourcePath, lineNumber);
+        }
 
-    private char previous() {
-        return source.charAt(current - 1);
+        @Override
+        public void scanNestedModule(String resolvedPath, String placementChain) {
+            readModule(state, placementChain, resolvedPath);
+        }
+
+        @Override
+        public void scanNestedSourceFile(String resolvedPath) {
+            readSourceFile(state, aliasChain, resolvedPath);
+        }
+
+        @Override
+        public String placementChain() {
+            return aliasChain;
+        }
+
+        @Override
+        public void addDependency(IDependencyInfo info) {
+            if (sourceFileMode && !info.allowedInSourceFile()) {
+                reportError(info.directiveName() + " not allowed in a .SOURCE file");
+                return;
+            }
+            collected.add(info);
+        }
+
+        @Override
+        public String sourcePath() {
+            return sourcePath;
+        }
+
+        @Override
+        public int lineNumber() {
+            return lineNumber;
+        }
+
+        @Override
+        public List<Token> nextLine() {
+            while (next < tokens.size()) {
+                int start = next;
+                int end = start;
+                while (end < tokens.size() && tokens.get(end).type() != TokenType.NEWLINE) {
+                    end++;
+                }
+                next = Math.min(end + 1, tokens.size());
+                if (end > start) {
+                    lineNumber = tokens.get(start).source().lineNumber();
+                    return tokens.subList(start, end);
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public CompilerOptions options() {
+            return options;
+        }
+
+        @Override
+        public <T> T getOrCreate(Class<T> key, Supplier<T> factory) {
+            return key.cast(state.featureState.computeIfAbsent(key, k -> factory.get()));
+        }
     }
 }

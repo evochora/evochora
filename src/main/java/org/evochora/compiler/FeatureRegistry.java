@@ -6,8 +6,8 @@ import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
-import org.evochora.compiler.frontend.module.IDependencyInfo;
-import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.BlockKind;
@@ -25,7 +25,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -65,9 +67,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private final Map<String, ILayoutDirectiveHandler> layoutHandlers = new HashMap<>();
 	private final Map<String, ILinkingDirectiveHandler> linkingDirectiveHandlers = new HashMap<>();
 
-	// List-based registrations preserve registration order. Within a feature, the feature
-	// controls handler ordering. No guardDuplicate — ordered sequential execution is intended.
-	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
+	// The scan handlers of the Lexer phase, by the directive word each one reads; one per word
+	private final Map<String, IDependencyScanHandler> dependencyScanHandlers = new LinkedHashMap<>();
 	private final List<IRewriteRule> rewriteRules = new ArrayList<>();
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
@@ -117,8 +118,10 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	@Override
-	public void dependencyScanHandler(IDependencyScanHandler handler) {
-		dependencyScanHandlers.add(handler);
+	public void dependencyScanHandler(String directive, IDependencyScanHandler handler) {
+		String word = directive.toUpperCase(Locale.ROOT);
+		guardDuplicate(dependencyScanHandlers, word, "dependency scan handler");
+		dependencyScanHandlers.put(word, handler);
 	}
 
 	@Override
@@ -239,16 +242,15 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	/**
-	 * Returns the Phase 0 dependency scan handlers in registration order. The dependency scanner
-	 * offers every source line to them in this order and the first handler whose pattern matches
-	 * consumes the line, so registration order decides precedence between overlapping patterns.
-	 * Repeated registration is not rejected here: a feature may contribute several handlers on purpose.
+	 * Returns the scan handlers of the Lexer phase by the directive word they were registered
+	 * under, upper-cased. The phase hands a line to the handler of the first registered word it
+	 * holds. A second registration for the same word is rejected when it happens.
 	 *
-	 * @return An unmodifiable view of the live list, so handlers registered afterwards also become
+	 * @return An unmodifiable view of the live map, so handlers registered afterwards also become
 	 *         visible through a view handed out earlier.
 	 */
-	public List<IDependencyScanHandler> dependencyScanHandlers() {
-		return Collections.unmodifiableList(dependencyScanHandlers);
+	public Map<String, IDependencyScanHandler> dependencyScanHandlers() {
+		return Collections.unmodifiableMap(dependencyScanHandlers);
 	}
 
 	/**

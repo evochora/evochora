@@ -1,32 +1,29 @@
 package org.evochora.compiler.features.source;
 
-import org.evochora.compiler.frontend.module.IDependencyScanContext;
-import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Phase 0 scan handler for .SOURCE directives. Detects source file inclusions,
- * loads content for Phase 1 pre-lexing, and triggers recursive scanning for
- * nested .SOURCE directives.
+ * Lexer-phase handler for {@code .SOURCE "path"}: reads the file so that its own directives are
+ * followed, and records the dependency. A line that is not exactly the directive and one path
+ * names no file here; the preprocessor reports what is wrong with it.
  */
 public class SourceDependencyScanHandler implements IDependencyScanHandler {
 
-    private static final Pattern SOURCE_PATTERN = Pattern.compile(
-            "(?i)^\\.SOURCE\\s+\"([^\"]+)\"\\s*$");
-
     @Override
-    public Pattern pattern() {
-        return SOURCE_PATTERN;
-    }
-
-    @Override
-    public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
-        String path = matcher.group(1);
-
+    public void handle(DirectiveLine line, IDependencyScanContext ctx) {
+        if (!line.standsAlone() || line.operands().size() != 1
+                || line.operands().get(0).type() != TokenType.STRING) {
+            return;
+        }
+        Token pathToken = line.operands().get(0);
+        String path = (String) pathToken.value();
         String resolvedPath;
         try {
             resolvedPath = ctx.resolve(path);
@@ -34,12 +31,10 @@ public class SourceDependencyScanHandler implements IDependencyScanHandler {
             ctx.reportError(e.getMessage());
             return;
         }
-
         try {
-            String content = ctx.loadContent(resolvedPath);
-            ctx.registerSourceContent(resolvedPath, content);
+            ctx.loadTokens(resolvedPath);
             ctx.addDependency(new SourceDependencyInfo(path, resolvedPath));
-            ctx.scanNestedSourceFile(resolvedPath, content);
+            ctx.scanNestedSourceFile(resolvedPath);
         } catch (IOException e) {
             ctx.reportError("Source file not found: " + path);
         }

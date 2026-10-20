@@ -19,7 +19,7 @@ public class SourceFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.dependencyScanHandler(new SourceDependencyScanHandler());
+        ctx.dependencyScanHandler(".SOURCE", new SourceDependencyScanHandler());
         ctx.preprocessorTopLevelOnly(".SOURCE");
         ctx.preprocessor(".SOURCE", new SourceDirectiveHandler());
     }

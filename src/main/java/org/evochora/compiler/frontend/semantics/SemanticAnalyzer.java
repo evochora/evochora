@@ -1,9 +1,9 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.module.DependencyGraph;
-import org.evochora.compiler.frontend.module.IDependencyInfo;
-import org.evochora.compiler.frontend.module.ModulePlacement;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.ModulePlacement;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.ScopeTracker;
@@ -39,7 +39,7 @@ public class SemanticAnalyzer {
      *
      * @param diagnostics    The diagnostics engine for reporting errors.
      * @param symbolTable    The symbol table to use for analysis.
-     * @param graph          The dependency graph from Phase 0. Null for single-file compilation.
+     * @param graph          The dependency graph from the Lexer phase. Null for single-file compilation.
      * @param rootAliasChain The alias chain for the root module (e.g., "MAIN"). Null when graph is null.
      * @param registry       The pre-built analysis handler registry.
      * @param setupRegistry  The registry of handlers that turn the graph's dependency data

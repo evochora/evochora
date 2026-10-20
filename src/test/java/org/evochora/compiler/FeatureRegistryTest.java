@@ -1,8 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.frontend.module.IDependencyScanHandler;
-import org.evochora.compiler.frontend.module.IDependencyScanContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupContext;
@@ -16,11 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 
 /**
  * Unit tests for {@link FeatureRegistry}.
@@ -62,20 +59,15 @@ class FeatureRegistryTest {
 
     @Test
     void gettersReturnUnmodifiableCollections() {
-        IDependencyScanHandler scanHandler = new IDependencyScanHandler() {
-            @Override
-            public Pattern pattern() { return Pattern.compile(".*"); }
-            @Override
-            public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {}
-        };
-        registry.dependencyScanHandler(scanHandler);
+        IDependencyScanHandler scanHandler = (line, ctx) -> {};
+        registry.dependencyScanHandler(".TEST", scanHandler);
         registry.analysisHandler(IdentifierNode.class, (node, st, diag) -> {});
 
         assertThatThrownBy(() -> registry.parserStatementHandlers().put("X", ctx -> null))
                 .isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> registry.analysisHandlers().put(IdentifierNode.class, (n, s, d) -> {}))
                 .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> registry.dependencyScanHandlers().add(scanHandler))
+        assertThatThrownBy(() -> registry.dependencyScanHandlers().put(".OTHER", scanHandler))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -89,15 +81,19 @@ class FeatureRegistryTest {
 
     @Test
     void dependencyScanHandlers() {
-        IDependencyScanHandler handler = new IDependencyScanHandler() {
-            @Override
-            public Pattern pattern() { return Pattern.compile(".*"); }
-            @Override
-            public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {}
-        };
-        registry.dependencyScanHandler(handler);
+        IDependencyScanHandler handler = (line, ctx) -> {};
+        registry.dependencyScanHandler(".test", handler);
 
-        assertThat(registry.dependencyScanHandlers()).containsExactly(handler);
+        assertThat(registry.dependencyScanHandlers()).containsExactly(entry(".TEST", handler));
+    }
+
+    @Test
+    void dependencyScanHandlerRegisteredTwiceUnderOneWordIsRejected() {
+        registry.dependencyScanHandler(".TEST", (line, ctx) -> {});
+
+        assertThatThrownBy(() -> registry.dependencyScanHandler(".test", (line, ctx) -> {}))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".TEST");
     }
 
     @Test

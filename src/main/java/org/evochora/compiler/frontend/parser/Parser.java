@@ -22,7 +22,7 @@ import java.util.function.Predicate;
 
 /**
  * The main parser for the assembly language. It consumes a list of tokens
- * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
+ * from the {@link org.evochora.compiler.frontend.lexer.Tokenizer} and produces an Abstract Syntax Tree (AST).
  * All statement dispatch goes through the {@link ParserStatementRegistry}. A statement that
  * opens a registered kind of block is read as a block first, by the rules of
  * {@link BlockReader}, and its handler is called with the block only when the block is whole.

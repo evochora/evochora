@@ -17,7 +17,7 @@ import java.util.Set;
  * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING {MODULE source AS target ... | VALUE name value ...} ...]}
  *
  * <p>This handler produces an {@link ImportNode} AST node. The actual module loading
- * is handled by Phase 0 (DependencyScanner) and preprocessing (ImportSourceHandler).
+ * is handled by the Lexer phase (ImportDependencyScanHandler) and preprocessing (ImportSourceHandler).
  *
  * <p>{@code USING} stands once on an import and opens the clause. Each kind word in it opens a
  * list, and the groups that follow it, up to the next kind word, belong to that list; a kind

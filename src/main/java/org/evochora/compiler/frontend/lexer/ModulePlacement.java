@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.module;
+package org.evochora.compiler.frontend.lexer;
 
 
 import java.util.List;

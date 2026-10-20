@@ -22,7 +22,7 @@ public class ImportFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.dependencyScanHandler(new ImportDependencyScanHandler());
+        ctx.dependencyScanHandler(".IMPORT", new ImportDependencyScanHandler());
         ctx.dependencySetupHandler(ImportDependencyInfo.class, new ImportModuleSetupHandler());
         ctx.preprocessorTopLevelOnly(".IMPORT");
         ctx.preprocessor(".IMPORT", new ImportSourceHandler());
@@ -30,7 +30,7 @@ public class ImportFeature implements ICompilerFeature {
         ctx.symbolCollector(ImportNode.class, new ImportSymbolCollector());
         ctx.analysisHandler(ImportNode.class, new ImportAnalysisHandler());
         ctx.irConverter(ImportNode.class, new ImportNodeConverter());
-        ctx.dependencyScanHandler(new RequireDependencyScanHandler());
+        ctx.dependencyScanHandler(".REQUIRE", new RequireDependencyScanHandler());
         ctx.preprocessorTopLevelOnly(".REQUIRE");
         ctx.parserStatement(".REQUIRE", new RequireDirectiveHandler());
         ctx.symbolCollector(RequireNode.class, new RequireSymbolCollector());

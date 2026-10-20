@@ -7,7 +7,7 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.repeat.CaretDirectiveHandler;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -53,7 +53,7 @@ public class RepeatDirectiveTest {
         // Arrange: semicolons become NEWLINEs in the lexer
         String source = ".REPEAT 2; JMPI LOOP; NOP; .ENDREPEAT";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -94,7 +94,7 @@ public class RepeatDirectiveTest {
                 ""
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -131,7 +131,7 @@ public class RepeatDirectiveTest {
                 ".ENDREPEAT"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -169,7 +169,7 @@ public class RepeatDirectiveTest {
                 ".ENDREPEAT"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
@@ -188,7 +188,7 @@ public class RepeatDirectiveTest {
     void testRepeatCountBeyondAnIntIsReported() {
         String source = String.join("\n", ".REPEAT 4294967296", "  NOP", ".ENDREPEAT");
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         preProcessor.expand();
@@ -207,7 +207,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "JMPI START; .REPEAT 3 NOP; .ENDREPEAT; JMPI END";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
@@ -231,7 +231,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "JMPI START; .REPEAT 3 NOP; JMPI END";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
@@ -252,7 +252,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "NOP\n.ENDREPEAT\nJMPI END\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
@@ -279,7 +279,7 @@ public class RepeatDirectiveTest {
                 ".ENDREPEAT"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
@@ -305,7 +305,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "NOP^3";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -334,7 +334,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "JMPI LOOP^2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -363,7 +363,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "JMPI START; NOP^3; JMPI END";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -398,7 +398,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "NOP^0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -419,11 +419,11 @@ public class RepeatDirectiveTest {
     void testCaretAndBlockExpandAlike() {
         DiagnosticsEngine caretDiagnostics = new DiagnosticsEngine();
         List<Token> caret = createPreProcessor(
-                new Lexer("NOP^3\nJMPI END\n", caretDiagnostics, TestLexers.symbols()).scanTokens(),
+                new Tokenizer("NOP^3\nJMPI END\n", caretDiagnostics, TestLexers.symbols()).scanTokens(),
                 caretDiagnostics).expand().tokens();
         DiagnosticsEngine blockDiagnostics = new DiagnosticsEngine();
         List<Token> block = createPreProcessor(
-                new Lexer(".REPEAT 3\nNOP\n.ENDREPEAT\nJMPI END\n", blockDiagnostics, TestLexers.symbols()).scanTokens(),
+                new Tokenizer(".REPEAT 3\nNOP\n.ENDREPEAT\nJMPI END\n", blockDiagnostics, TestLexers.symbols()).scanTokens(),
                 blockDiagnostics).expand().tokens();
 
         assertThat(caretDiagnostics.hasErrors()).isFalse();
@@ -444,7 +444,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = ".REQUIRE MODULE \"lib.evo\" AS LIB^2\nNOP\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
@@ -469,7 +469,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "LOOP: NOP^2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
@@ -501,7 +501,7 @@ public class RepeatDirectiveTest {
         // Arrange
         String source = "LOOP: JMPI START^2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 

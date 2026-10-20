@@ -9,7 +9,7 @@ import org.evochora.compiler.api.SourceFile.Note;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
@@ -142,7 +142,7 @@ class PreProcessorRecordsTest {
      * Preprocesses as {@link #run(Consumer)} does, reporting to the given diagnostics.
      */
     private static PreProcessorResult run(DiagnosticsEngine diagnostics, Consumer<PreProcessor> records) {
-        List<Token> tokens = new Lexer("REC\nNOP\nNOP\n", diagnostics, MAIN, TestLexers.symbols()).scanTokens();
+        List<Token> tokens = new Tokenizer("REC\nNOP\nNOP\n", diagnostics, MAIN, TestLexers.symbols()).scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(MAIN, MAIN_LINES, LIB, LIB_LINES),
                 "main.evo", MAIN, CompilerOptions.defaults());
         context.handlers().register("REC", (pp, ctx) -> {

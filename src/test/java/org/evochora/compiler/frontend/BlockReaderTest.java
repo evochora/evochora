@@ -4,7 +4,7 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.Tag;
@@ -278,7 +278,7 @@ class BlockReaderTest {
     }
 
     private static List<Token> lex(String... lines) {
-        return new Lexer(String.join("\n", lines) + "\n", new DiagnosticsEngine(), TestLexers.symbols()).scanTokens();
+        return new Tokenizer(String.join("\n", lines) + "\n", new DiagnosticsEngine(), TestLexers.symbols()).scanTokens();
     }
 
     private static List<Token> line(String file, int line, String word) {

@@ -8,10 +8,11 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.frontend.module.DependencyGraph;
-import org.evochora.compiler.frontend.module.DependencyScanner;
+import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
+import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -27,7 +28,7 @@ import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
-import org.evochora.compiler.frontend.module.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
@@ -151,7 +152,7 @@ public class Compiler implements ICompiler {
     }
 
     /**
-     * Runs the twelve phases in order and returns what the last one emits. A mistake in the
+     * Runs the eleven phases in order and returns what the last one emits. A mistake in the
      * program surfaces as a {@link CompilationException} from {@link #failOnErrors()} or from
      * a backend phase; anything else that is thrown is a defect of the compiler.
      */
@@ -170,21 +171,20 @@ public class Compiler implements ICompiler {
         FeatureRegistry featureRegistry = new FeatureRegistry(isa);
         features.forEach(f -> f.register(featureRegistry));
 
-        // Phase 0: Dependency Scanning (load imported modules)
-        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions);
-        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
+        // Phase 1: Lexer — finds the files and tokenizes each of them once; the main file's tokens
+        // become the stream, and the text of every value of the options is tokenized on its own
+        Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions,
+                isa, featureRegistry.lexerSymbols());
+        DependencyGraph graph = lexer.read(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
-
-        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream,
-        // and the text of every value of the options on its own
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
-        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa,
-                featureRegistry.lexerSymbols()).scanTokens());
-        Map<String, List<Token>> valueTokens = Lexer.lexValues(effectiveOptions.values(), rootAliasChain, isa,
+        List<Token> initialTokens = new ArrayList<>(graph.tokens().get(mainFilePath));
+        initialTokens.add(new Token(TokenType.END_OF_FILE, "", null,
+                new SourceInfo(mainFilePath, graph.lines().get(mainFilePath).size() + 1, 1, "", 0)));
+        Map<String, List<Token>> valueTokens = Tokenizer.lexValues(effectiveOptions.values(), rootAliasChain, isa,
                 featureRegistry.lexerSymbols());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(),
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, graph.tokens(), graph.lines(),
                 programName, mainFilePath, effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(block ->

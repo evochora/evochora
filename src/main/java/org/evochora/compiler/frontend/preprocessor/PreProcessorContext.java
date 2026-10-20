@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceFile;
-import org.evochora.compiler.frontend.module.PlacementContext;
+import org.evochora.compiler.frontend.lexer.PlacementContext;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;

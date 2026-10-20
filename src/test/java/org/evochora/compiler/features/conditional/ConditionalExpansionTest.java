@@ -7,7 +7,7 @@ import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -863,10 +863,10 @@ class ConditionalExpansionTest {
      */
     private static Expansion expandWith(Map<String, OptionalLong> defines, List<String> library, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> libraryTokens = new ArrayList<>(new Lexer(String.join("\n", library) + "\n",
+        List<Token> libraryTokens = new ArrayList<>(new Tokenizer(String.join("\n", library) + "\n",
                 diagnostics, LIBRARY, TestLexers.symbols()).scanTokens());
-        Lexer.stripEofToken(libraryTokens);
-        List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
+        Tokenizer.stripEofToken(libraryTokens);
+        List<Token> tokens = new Tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
                 .scanTokens();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
         PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), MAIN, options);

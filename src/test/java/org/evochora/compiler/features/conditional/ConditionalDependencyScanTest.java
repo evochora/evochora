@@ -5,11 +5,13 @@ import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.module.DependencyGraph;
-import org.evochora.compiler.frontend.module.DependencyScanner;
-import org.evochora.compiler.frontend.module.ModulePlacement;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
+import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.ModulePlacement;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.util.SourceRootResolver;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,7 +25,7 @@ import java.util.OptionalLong;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The dependency scan follows the branches of conditional blocks with the flags it has met, so
+ * The Lexer phase follows the branches of conditional blocks with the flags it has met, so
  * that the module graph holds exactly the modules of the branches the preprocessor keeps. A file
  * named in a branch that is not taken does not exist here, so loading it would be an error.
  */
@@ -32,6 +34,11 @@ class ConditionalDependencyScanTest {
 
     @TempDir
     Path root;
+
+    @BeforeAll
+    static void initInstructionSet() {
+        Instruction.init();
+    }
 
     @Test
     void theModuleOfATakenBranchIsInTheGraphAndThatOfASkippedOneIsNot() throws Exception {
@@ -285,11 +292,11 @@ class ConditionalDependencyScanTest {
         StandardFeatures.all().forEach(f -> f.register(features));
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
-        DependencyScanner scanner = new DependencyScanner(diagnostics,
+        Lexer lexer = new Lexer(diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), root),
-                features.dependencyScanHandlers(), options);
+                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols());
         String mainPath = root.resolve("main.evo").toString();
-        DependencyGraph graph = scanner.scan(mainSource + "\n", mainPath, "");
+        DependencyGraph graph = lexer.read(mainSource + "\n", mainPath, "");
         return new Scan(graph, diagnostics);
     }
 }
