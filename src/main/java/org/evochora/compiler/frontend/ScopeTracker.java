@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.SymbolTable;

@@ -2,7 +2,7 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.frontend.semantics.ScopeTracker;
+import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -14,7 +14,7 @@ import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.TestRegistries;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;

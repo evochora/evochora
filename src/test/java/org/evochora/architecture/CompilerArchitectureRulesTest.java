@@ -9,6 +9,8 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
@@ -367,6 +369,62 @@ class CompilerArchitectureRulesTest {
                     : layers.whereLayer(PHASE_PACKAGES[i]).mayOnlyAccessLayers(earlier);
         }
         layers.check(compilerClasses);
+    }
+
+    /**
+     * A phase uses only its own logic: from another phase it takes results, which are data.
+     * <p>
+     * A phase receives the results of earlier phases as its input. A class with behaviour that
+     * two phases used would tie the later phase to the decisions of the earlier one, and a change
+     * there would break at a place nobody connects with it. Logic that phases share lives outside
+     * the phases, in the {@code frontend} root or in a phase-free package. So a class of a phase
+     * package that another phase references is a record or an interface, and a class of a
+     * feature, which serves one phase, references classes with behaviour of at most one phase
+     * package: the one whose handler it is.
+     */
+    @Test
+    void phasesShareOnlyData() {
+        for (String phasePackage : PHASE_PACKAGES) {
+            String[] others = java.util.Arrays.stream(PHASE_PACKAGES)
+                    .filter(other -> !other.equals(phasePackage)).toArray(String[]::new);
+            noClasses().that().resideInAnyPackage(others)
+                    .should().dependOnClassesThat(resideInAPackage(phasePackage).and(not(recordOrInterface())))
+                    .check(compilerClasses);
+        }
+        classes().that().resideInAPackage(FEATURES + "..")
+                .should(useTheLogicOfAtMostOnePhase())
+                .check(compilerClasses);
+    }
+
+    private static DescribedPredicate<JavaClass> recordOrInterface() {
+        return new DescribedPredicate<>("records or interfaces") {
+            @Override
+            public boolean test(JavaClass clazz) {
+                return clazz.isInterface() || clazz.isRecord();
+            }
+        };
+    }
+
+    private static ArchCondition<JavaClass> useTheLogicOfAtMostOnePhase() {
+        return new ArchCondition<>("use the logic of at most one phase") {
+            @Override
+            public void check(JavaClass clazz, ConditionEvents events) {
+                java.util.Set<String> phases = new java.util.TreeSet<>();
+                for (Dependency dependency : clazz.getDirectDependenciesFromSelf()) {
+                    JavaClass target = dependency.getTargetClass();
+                    if (target.isInterface() || target.isRecord()) continue;
+                    for (String phasePackage : PHASE_PACKAGES) {
+                        if (target.getPackageName().startsWith(phasePackage.substring(0, phasePackage.length() - 2))) {
+                            phases.add(phasePackage);
+                        }
+                    }
+                }
+                if (phases.size() > 1) {
+                    events.add(SimpleConditionEvent.violated(clazz,
+                            clazz.getName() + " uses the logic of " + phases));
+                }
+            }
+        };
     }
 
     private static String otherPhasesThan(String phase) {

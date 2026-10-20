@@ -5,7 +5,8 @@ import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.frontend.module.ModulePlacement;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
+import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.List;

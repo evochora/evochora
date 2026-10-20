@@ -21,8 +21,8 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
-import org.evochora.compiler.frontend.semantics.ScopeTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
+import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -45,7 +45,7 @@ import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.Linker;
-import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.backend.link.LinkingResult;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
 import org.evochora.compiler.backend.emit.EmissionContributorRegistry;
@@ -268,15 +268,13 @@ public class Compiler implements ICompiler {
         });
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
-        LinkingContext linkContext = new LinkingContext(isa);
-        IrProgram linkedIr = linker.link(layout, linkContext, programName, rewrittenIr.debugInfo());
-        linkContext.freeze();
+        LinkingResult linked = linker.link(layout, isa, programName, rewrittenIr.debugInfo());
 
         // Phase 11: Emission (generate final binary)
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
         featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
-        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry);
+        ProgramArtifact artifact = emitter.emit(linked, layout, isa, emissionContributorRegistry);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;
