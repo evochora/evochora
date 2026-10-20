@@ -2,7 +2,6 @@ package org.evochora.compiler.module;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.CompilerOptions;
-import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
