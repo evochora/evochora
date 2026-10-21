@@ -431,17 +431,17 @@ class ModuleValuesTest {
 
     @Test
     void aConfiguredValueOfTwoOperandsIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:1 DATA:2");
+        assertConfiguredValueIsNoOperand("DATA:1 DATA:2", "Configured value 'STEPS' = DATA:1 DATA:2: not an operand.");
     }
 
     @Test
     void aConfiguredValueWithASemicolonIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:1; NOP");
+        assertConfiguredValueIsNoOperand("DATA:1; NOP", "Configured value 'STEPS' = DATA:1; NOP: not an operand.");
     }
 
     @Test
     void aConfiguredValueTheLexerRejectsIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:2\"0");
+        assertConfiguredValueIsNoOperand("DATA:2\"0", "Configured value 'STEPS': not an operand.");
     }
 
     /**
@@ -461,7 +461,7 @@ class ModuleValuesTest {
         assertThat(compile(Map.of("STEPS", "DATA:20")).constantValues()).containsEntry("WALK.STEPS", "DATA:10");
     }
 
-    private void assertConfiguredValueIsNoOperand(String text) throws Exception {
+    private void assertConfiguredValueIsNoOperand(String text, String message) throws Exception {
         write("main.evo",
                 "START:",
                 ".REQUIRE VALUE STEPS DATA:10",
@@ -469,9 +469,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(() -> compile(Map.of("STEPS", text)))
                 .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":2: Configured value 'STEPS' is not an operand; a value is written as a .CONST takes it: a literal, a vector or a name."));
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly("[ERROR] :0: " + message));
     }
 
     /**

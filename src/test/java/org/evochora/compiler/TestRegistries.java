@@ -8,6 +8,9 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Builds fully-populated registries for tests, mirroring what {@link Compiler} does.
  * Uses {@link StandardFeatures#all()} as the feature source.
@@ -64,5 +67,15 @@ public final class TestRegistries {
         featureRegistry.preprocessorBlocks().forEach(block ->
                 registry.registerBlock(block.kind(), block.handler(), block.stored()));
         featureRegistry.preprocessorTopLevelOnly().forEach(registry::registerTopLevelOnly);
+    }
+
+    /**
+     * Builds a compiler with the standard features and one feature of the test after them, as a
+     * test that looks into a compilation needs it from outside this package.
+     */
+    public static Compiler compilerWith(ICompilerFeature feature) {
+        List<ICompilerFeature> features = new ArrayList<>(StandardFeatures.all());
+        features.add(feature);
+        return new Compiler(features);
     }
 }

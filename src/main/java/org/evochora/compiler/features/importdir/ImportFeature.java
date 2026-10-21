@@ -12,7 +12,8 @@ import org.evochora.compiler.IFeatureRegistrationContext;
  * <p>Registers {@code .IMPORT} and {@code .REQUIRE} as directives that may stand only at the top
  * level, and handlers for dependency scanning, module setup, preprocessing (module token inlining),
  * parsing, symbol collection, semantic analysis (USING clause validation, the constants of value
- * requirements), IR conversion, and emission (the values of value requirements).
+ * requirements, the computations among the values), post-processing (the recorded values of
+ * value requirements), IR conversion, and emission (the values of value requirements).
  */
 public class ImportFeature implements ICompilerFeature {
     @Override
@@ -28,16 +29,17 @@ public class ImportFeature implements ICompilerFeature {
         ctx.preprocessor(".IMPORT", new ImportSourceHandler());
         ctx.parserStatement(".IMPORT", new ImportDirectiveHandler());
         ctx.symbolCollector(ImportNode.class, new ImportSymbolCollector());
-        ctx.analysisHandler(ImportNode.class, new ImportAnalysisHandler());
+        ctx.analysisHandler(ImportNode.class, new ImportAnalysisHandler(ctx.operations()));
         ctx.irConverter(ImportNode.class, new ImportNodeConverter());
         ctx.dependencyScanHandler(".REQUIRE", new RequireDependencyScanHandler());
         ctx.preprocessorTopLevelOnly(".REQUIRE");
         ctx.parserStatement(".REQUIRE", new RequireDirectiveHandler());
         ctx.symbolCollector(RequireNode.class, new RequireSymbolCollector());
-        ctx.analysisHandler(RequireNode.class, new RequireAnalysisHandler());
+        ctx.analysisHandler(RequireNode.class, new RequireAnalysisHandler(ctx.operations()));
         ctx.irConverter(RequireNode.class, new RequireNodeConverter());
         ctx.symbolCollector(ValueRequirementNode.class, new RequireSymbolCollector());
-        ctx.analysisHandler(ValueRequirementNode.class, new RequireAnalysisHandler());
+        ctx.analysisHandler(ValueRequirementNode.class, new RequireAnalysisHandler(ctx.operations()));
+        ctx.postProcessHandler(ValueRequirementNode.class, new ValueRequirementPostProcessHandler());
         ctx.irConverter(ValueRequirementNode.class, new ValueRequirementNodeConverter());
         ctx.emissionContributor(new ValueEmissionContributor());
     }

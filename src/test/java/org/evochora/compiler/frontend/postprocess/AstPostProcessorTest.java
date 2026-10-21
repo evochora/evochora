@@ -17,6 +17,8 @@ import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.features.constdir.ConstNode;
+import org.evochora.compiler.features.importdir.ValueBindingNode;
+import org.evochora.compiler.features.importdir.ValueRequirementNode;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -460,6 +462,39 @@ class AstPostProcessorTest {
         AstNode result = processor.process(new IdentifierNode("HERE", createSourceInfo()));
 
         assertThat(result).isEqualTo(new IdentifierNode("TEST.HERE", createSourceInfo()));
+    }
+
+    /**
+     * A value requirement whose bound value only the layout computes names itself: the whole node
+     * is replaced, so the phase's own replacement of the identifier in the value slot, the
+     * qualified name, does not take the place of the computation.
+     */
+    @Test
+    void aValueRequirementWithARecordedValueIsReplacedAsAWhole() {
+        ExpressionNode binding = new ExpressionNode(new NameExpression("@", createSourceInfo()),
+                createSourceInfo(), createSourceInfo());
+        ValueBindingNode definition = new ValueBindingNode(binding);
+        symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
+        NameExpression self = new NameExpression("TEST.P", createSourceInfo());
+        symbolTable.recordDefinitionValue(definition, ExpressionOutcome.later(self, Kind.POSITION));
+        ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
+                null, null, null, false, createSourceInfo());
+
+        ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
+
+        assertThat(result.value()).isEqualTo(new ExpressionNode(self, createSourceInfo(), createSourceInfo()));
+    }
+
+    @Test
+    void aValueRequirementWithoutARecordedValueKeepsTheReplacementOfItsName() {
+        ValueBindingNode definition = new ValueBindingNode(new LiteralNode(new Value.Typed("DATA", 3), createSourceInfo()));
+        symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
+        ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
+                null, null, null, false, createSourceInfo());
+
+        ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
+
+        assertThat(result.value()).isEqualTo(new LiteralNode(new Value.Typed("DATA", 3), createSourceInfo()));
     }
 
     private SourceInfo createSourceInfo() {

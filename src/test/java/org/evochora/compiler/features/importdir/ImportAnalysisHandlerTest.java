@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -36,7 +37,7 @@ class ImportAnalysisHandlerTest {
     void setUp() {
         diagnostics = new DiagnosticsEngine();
         symbolTable = new SymbolTable(diagnostics);
-        handler = new ImportAnalysisHandler();
+        handler = new ImportAnalysisHandler(TestRegistries.operations());
 
         symbolTable.registerModule(MAIN_CHAIN, MAIN_FILE);
         symbolTable.registerModule(LIB_CHAIN, LIB_FILE);

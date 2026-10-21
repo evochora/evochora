@@ -27,4 +27,12 @@ public record OrgNode(
         // The child of an .ORG node is the vector that defines the origin.
         return List.of(originVector);
     }
+
+    /**
+     * Phase 6 puts the vector it resolved into the node through this.
+     */
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        return new OrgNode((LiteralNode) newChildren.getFirst(), relative, sourceInfo);
+    }
 }

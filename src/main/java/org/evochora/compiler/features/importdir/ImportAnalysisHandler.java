@@ -1,9 +1,17 @@
 package org.evochora.compiler.features.importdir;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.Evaluator;
+import org.evochora.compiler.expression.IEvaluationContext;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.symbols.SymbolTableResolution;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -27,8 +35,24 @@ import java.util.Map;
  *   <li>A bound value that is a name must be defined in the current placement at this line; it
  *       is resolved here as a use.</li>
  * </ul>
+ * <p>A bound value that is a computation is evaluated here, in the importer's placement, with the
+ * names defined above the import line; {@code @} is the importer's cursor. Its outcome is recorded
+ * for the computation, where {@link RequireAnalysisHandler} finds it through the binding the
+ * module's {@link Requirements} carry: a value, or the tree only the layout computes. A
+ * computation that fails is reported here.
  */
 public class ImportAnalysisHandler implements IAnalysisHandler {
+
+    private final Evaluator evaluator;
+
+    /**
+     * Creates the handler.
+     *
+     * @param operations The operations of computations, read when the phase runs.
+     */
+    public ImportAnalysisHandler(OperationRegistry operations) {
+        this.evaluator = new Evaluator(operations);
+    }
 
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
@@ -117,6 +141,9 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                         importNode.sourceInfo().fileName(),
                         importNode.sourceInfo().lineNumber());
             }
+            if (binding.value() instanceof ExpressionNode expression) {
+                evaluate(expression, symbolTable, diagnostics);
+            }
         }
 
         // Every value requirement without a default must be bound
@@ -130,6 +157,27 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                         importNode.sourceInfo().fileName(),
                         importNode.sourceInfo().lineNumber());
             }
+        }
+    }
+
+    /**
+     * Evaluates a bound computation and records its outcome for it; reports the error of a
+     * computation that fails.
+     */
+    private void evaluate(ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        ExpressionOutcome outcome = switch (evaluator.evaluate(expression.expression(),
+                new SymbolTableResolution(symbolTable), IEvaluationContext.none())) {
+            case EvaluationResult.Value value -> ExpressionOutcome.of(value.value());
+            case EvaluationResult.Partial partial -> ExpressionOutcome.later(partial.expression(), partial.kind());
+            case EvaluationResult.Error error -> {
+                SourceInfo at = error.at() != null ? error.at() : expression.sourceInfo();
+                diagnostics.reportError(error.reason(), at.fileName(), at.lineNumber());
+                yield null;
+            }
+            case EvaluationResult.Reported reported -> null;
+        };
+        if (outcome != null) {
+            symbolTable.recordResult(expression, outcome);
         }
     }
 }

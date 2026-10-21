@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.postprocess;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ExpressionNode;
@@ -9,12 +10,14 @@ import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.ScopeTracker;
+import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A dedicated compiler phase that transforms the AST after semantic analysis.
@@ -115,6 +118,27 @@ public class AstPostProcessor implements IPostProcessContext {
             collectPass(child);
         }
         scopeTracker.leaveNode(savedScope);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<ExpressionOutcome> definitionValue(String name, SourceInfo at) {
+        return symbolTable.resolve(name, at) instanceof ResolvedSymbol resolved
+                ? symbolTable.definitionValueOf(resolved.symbol().node())
+                : Optional.empty();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The tree walker that applies the replacements takes the replacement of a node before it
+     * descends into the node, so what was collected for the nodes inside it is not applied.
+     */
+    @Override
+    public void replace(AstNode node, AstNode replacement) {
+        replacements.put(node, replacement);
     }
 
     /**

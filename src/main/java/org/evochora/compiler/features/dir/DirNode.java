@@ -48,4 +48,15 @@ public record DirNode(
         // A written-out direction has the vector as its child; a rotation names no node of its own.
         return mode instanceof Mode.Absolute absolute ? List.of(absolute.vector()) : List.of();
     }
+
+    /**
+     * Phase 6 puts the vector of a written-out direction it resolved into the node through this;
+     * a rotation has no child and stays as it is.
+     */
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        return mode instanceof Mode.Absolute
+                ? new DirNode(new Mode.Absolute((LiteralNode) newChildren.getFirst()), sourceInfo)
+                : this;
+    }
 }

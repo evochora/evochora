@@ -13,7 +13,9 @@ import org.evochora.compiler.model.ir.IrValue;
  *
  * <p>The {@code value} directive of {@code importdir} is emitted by
  * {@link ValueRequirementNodeConverter} in phase 7, one per value requirement and placement, with
- * the path of the value and the value as text; the value is filed under the path.</p>
+ * the path of the value and the value as text; the value is filed under the path. A value only
+ * the layout computes carries its tree instead of a text and is not filed, nor is the
+ * {@code bound_value} directive of an import.</p>
  */
 public final class ValueEmissionContributor implements IEmissionContributor {
 

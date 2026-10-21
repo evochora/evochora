@@ -30,4 +30,15 @@ public record PlaceNode(
                 placements.stream().map(p -> (AstNode) p)
         ).collect(Collectors.toList());
     }
+
+    /**
+     * Phase 6 puts the literal and the placement arguments it resolved into the node through
+     * this, in the order of {@link #getChildren()}.
+     */
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        return new PlaceNode((LiteralNode) newChildren.getFirst(),
+                newChildren.subList(1, newChildren.size()).stream().map(p -> (IPlacementArgumentNode) p).toList(),
+                sourceInfo);
+    }
 }
