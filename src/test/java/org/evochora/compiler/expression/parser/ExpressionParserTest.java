@@ -121,6 +121,31 @@ class ExpressionParserTest {
         assertThat(((OperationExpression) sign).operands().get(1).sourceInfo().columnNumber()).isEqualTo(5);
     }
 
+    @ParameterizedTest(name = "{0} ends at column {1}")
+    @CsvSource(delimiter = ';', value = {
+            "A + 1; 6",
+            "(A + B); 8",
+            "((5)); 6",
+            "MIN(A, 4); 10",
+            "V[0]; 5",
+            "-(A); 5",
+            "1|2|3; 6",
+    })
+    void aNodeEndsAfterTheLastTokenReadForIt(String source, int column) {
+        assertThat(fixture.expression(source).end().columnNumber()).isEqualTo(column);
+    }
+
+    @Test
+    void anOperandEndsAfterItsOwnLastTokenItsParenthesisIncluded() {
+        OperationExpression product = (OperationExpression) fixture.expression("(A + B) * 2");
+        assertThat(product.end().columnNumber()).isEqualTo(12);
+        assertThat(product.operands().get(0).sourceInfo().columnNumber()).isEqualTo(2);
+        assertThat(product.operands().get(0).end().columnNumber()).isEqualTo(8);
+        OperationExpression typing = (OperationExpression) fixture.expression("DATA:(W - 1)");
+        assertThat(typing.operands().get(0).end().columnNumber()).isEqualTo(5);
+        assertThat(typing.operands().get(1).end().columnNumber()).isEqualTo(13);
+    }
+
     @Test
     void aWordOperatorMayArriveAsAnOpcode() {
         // NOT is a mnemonic of the instruction set as well

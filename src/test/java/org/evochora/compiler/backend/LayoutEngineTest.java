@@ -412,13 +412,14 @@ public class LayoutEngineTest {
     @Test
     void aComputationReadsTheCursorOfItsLine() throws Exception {
         org.evochora.compiler.model.expression.Expression twoRowsDown = new org.evochora.compiler.model.expression.OperationExpression("+",
-                List.of(new org.evochora.compiler.model.expression.NameExpression("@", src("main.s", 3)),
-                        new org.evochora.compiler.model.expression.LiteralExpression(new Value.Vector(List.of(0L, 2L)), src("main.s", 3))),
-                src("main.s", 3));
+                List.of(new org.evochora.compiler.model.expression.NameExpression("@", src("main.s", 3), src("main.s", 3).plusColumns(1)),
+                        new org.evochora.compiler.model.expression.LiteralExpression(new Value.Vector(List.of(0L, 2L)), src("main.s", 3),
+                                src("main.s", 3).plusColumns(5))),
+                src("main.s", 3), src("main.s", 3).plusColumns(5));
         LayoutResult res = layout(List.of(
                 org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
                 seti(2),
-                orgTo(new IrValue.Expression(twoRowsDown, src("main.s", 3)), src("main.s", 3)),
+                orgTo(new IrValue.Expression(twoRowsDown), src("main.s", 3)),
                 seti(4)));
 
         // The instruction took the cells 0|0 to 2|0, so the cursor stood at 3|0.

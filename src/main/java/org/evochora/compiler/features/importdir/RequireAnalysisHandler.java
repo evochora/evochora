@@ -101,7 +101,8 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
                 : valueNode.configured() != null ? valueNode.configured()
                 : valueNode.defaultValue() instanceof OperandNode defaultValue ? defaultValue : null;
         ExpressionOutcome outcome = bound != null
-                ? boundOutcome(bound, QualifiedNames.join(symbolTable.getCurrentAliasChain(), valueNode.name()), at, symbolTable)
+                ? boundOutcome(bound, QualifiedNames.join(symbolTable.getCurrentAliasChain(), valueNode.name()), at,
+                        at.plusColumns(valueNode.name().length()), symbolTable)
                 : valueNode.configured() != null ? configuredOutcome : defaultOutcome;
         ValueBindingNode definition = new ValueBindingNode(value);
         if (outcome != null) {
@@ -123,16 +124,17 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
     /**
      * Returns the value a bound computation gives the constant: the value the import line
      * computed, or, for a tree only the layout computes, the constant's own qualified name with
-     * the kind of that tree. A binding that is no computation, or whose computation failed, gives
-     * no recorded value.
+     * the kind of that tree, standing from {@code at} to {@code end}, the written name. A binding
+     * that is no computation, or whose computation failed, gives no recorded value.
      */
-    private static ExpressionOutcome boundOutcome(OperandNode bound, String qualifiedName, SourceInfo at, SymbolTable symbolTable) {
+    private static ExpressionOutcome boundOutcome(OperandNode bound, String qualifiedName, SourceInfo at, SourceInfo end,
+                                                  SymbolTable symbolTable) {
         if (!(bound instanceof ExpressionNode expression)) {
             return null;
         }
         return symbolTable.resultOf(expression)
                 .map(result -> result.value() != null ? result
-                        : ExpressionOutcome.later(new NameExpression(qualifiedName, at), result.kind()))
+                        : ExpressionOutcome.later(new NameExpression(qualifiedName, at, end), result.kind()))
                 .orElse(null);
     }
 

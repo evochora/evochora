@@ -112,7 +112,8 @@ public final class LayoutArguments {
                 }
                 yield kindOf(result);
             }
-            case IdentifierNode name -> kindOf(evaluator.evaluate(new NameExpression(name.text(), name.sourceInfo()),
+            case IdentifierNode name -> kindOf(evaluator.evaluate(new NameExpression(name.text(), name.sourceInfo(),
+                    name.sourceInfo().plusColumns(name.text().length())),
                     new SymbolTableResolution(symbols), IEvaluationContext.none()), name.sourceInfo(), diagnostics);
             case RegisterNode register -> {
                 report("Register '" + register.name() + "' cannot be used in an expression.", register.sourceInfo(), diagnostics);

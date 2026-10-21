@@ -213,7 +213,7 @@ public final class IrGenContext {
 		return switch (node) {
 			case LiteralNode literal -> new IrValue.Literal(literal.value());
 			case IdentifierNode id -> new IrValue.Str(id.text());
-			case ExpressionNode expression -> new IrValue.Expression(expression.expression(), expression.end());
+			case ExpressionNode expression -> new IrValue.Expression(expression.expression());
 			case RegisterNode register -> throw new IllegalArgumentException(
 					"A register is no value: " + register.name());
 		};

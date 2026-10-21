@@ -61,7 +61,7 @@ class SymbolTableResolutionTest {
     }
 
     private NameAnswer resolve(String name) {
-        return resolution.resolve(new NameExpression(name, at(9)));
+        return resolution.resolve(new NameExpression(name, at(9), at(9).plusColumns(name.length())));
     }
 
     @BeforeEach
@@ -135,7 +135,8 @@ class SymbolTableResolutionTest {
         table.define(new Symbol("LOCAL", inLib, Symbol.Type.CONSTANT,
                 new Binding(new IdentifierNode("TARGET", new SourceInfo("/p/lib.evo", 2, 14, "LIB", 0)))));
 
-        assertThat(resolution.resolve(new NameExpression("LOCAL", new SourceInfo("/p/lib.evo", 3, 1, "LIB", 0))))
+        SourceInfo local = new SourceInfo("/p/lib.evo", 3, 1, "LIB", 0);
+        assertThat(resolution.resolve(new NameExpression("LOCAL", local, local.plusColumns(5))))
                 .isEqualTo(new NameAnswer.Later(Kind.POSITION, "LIB.TARGET"));
     }
 

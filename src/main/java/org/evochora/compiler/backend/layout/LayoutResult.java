@@ -22,8 +22,9 @@ import java.util.Map;
  * @param placedItems The items in the order the layout walked them, each with the address it was given.
  * @param namedValues The named layout values by qualified name: the position of every label's
  *                    cell and the value of every definition only the layout computes.
- * @param notes The note {@code [=value]} after the last token of every computation the layout
- *              computed, each distinct note once, in the order they were computed.
+ * @param notes The notes {@code [=value]} of every computation the layout computed, each at the
+ *              end of the expression it belongs to, each distinct note once, in the order they
+ *              were computed.
  */
 public record LayoutResult(
         Map<Integer, int[]> linearAddressToCoord,

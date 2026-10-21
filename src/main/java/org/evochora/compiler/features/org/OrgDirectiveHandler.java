@@ -91,15 +91,15 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
     /**
      * The operand of a component the marker {@code @-} counts backwards: a number negated, and
      * any other operand under the sign operator, which the analysis and the layout compute. The
-     * computation ends right after the operand's last token.
+     * computation ends where the operand ends, right after its last token.
      */
     private static OperandNode negated(OperandNode operand, Token last) {
         if (operand instanceof LiteralNode literal && literal.value() instanceof Value.Number number) {
             return new LiteralNode(new Value.Number(-number.value()), literal.sourceInfo());
         }
         Expression inner = switch (operand) {
-            case LiteralNode literal -> new LiteralExpression(literal.value(), literal.sourceInfo());
-            case IdentifierNode name -> new NameExpression(name.text(), name.sourceInfo());
+            case LiteralNode literal -> new LiteralExpression(literal.value(), literal.sourceInfo(), last.after());
+            case IdentifierNode name -> new NameExpression(name.text(), name.sourceInfo(), last.after());
             case ExpressionNode expression -> expression.expression();
             default -> null;
         };
@@ -107,8 +107,8 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
             // A register stays as it is, for the analysis to report
             return operand;
         }
-        return new ExpressionNode(new OperationExpression("-", List.of(inner), operand.sourceInfo()),
-                operand.sourceInfo(), last.after());
+        return new ExpressionNode(new OperationExpression("-", List.of(inner), operand.sourceInfo(), inner.end()),
+                operand.sourceInfo());
     }
 
     private static boolean isCursor(Token token) {

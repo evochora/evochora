@@ -15,8 +15,12 @@ import java.util.stream.Collectors;
  * @param operands   The operands, in order; copied, so that the record is immutable.
  * @param sourceInfo The position of the node's first token: the operator's for a prefix, the
  *                   first operand's for an infix, an index or a chain, the name's for a call.
+ * @param end        The position right after the last token read for the node: the closing
+ *                   {@code )} or {@code ]} for a call or an index, the end of the last operand
+ *                   for any other operation, or the closing parenthesis around the node
+ *                   (see {@link Expression#end()}).
  */
-public record OperationExpression(String operation, List<Expression> operands, SourceInfo sourceInfo)
+public record OperationExpression(String operation, List<Expression> operands, SourceInfo sourceInfo, SourceInfo end)
         implements Expression {
 
     /** The name of the index access, {@code a[i]}. */

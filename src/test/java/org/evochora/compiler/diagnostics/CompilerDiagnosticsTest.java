@@ -825,16 +825,30 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void anUnknownMoleculeTypeInAPlacementNamesTheTypeAndTheLine() throws Exception {
+    void anUndefinedNameBeforeTheColonOfAPlacementNamesTheNameAndTheLine() throws Exception {
         write("main.evo",
                 "START:",
                 "  NOP",
-                ".PLACE FOO:1 5|5");
+                ".PLACE FOOD:1 5|5");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unknown molecule type 'FOO' in .PLACE.")
+                .hasMessageContaining("'FOOD' is not defined.")
                 .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aNumberBeforeTheColonOfAPlacementNamesTheOperandsAndTheLine() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".CONST FOOD 5",
+                ".PLACE FOOD:1 5|5");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Invalid operands for ':': number and number.")
+                .hasMessageContaining("main.evo:4");
     }
 
     @Test

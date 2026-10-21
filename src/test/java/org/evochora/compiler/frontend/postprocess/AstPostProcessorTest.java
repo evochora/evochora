@@ -423,8 +423,8 @@ class AstPostProcessorTest {
 
     @Test
     void aComputationWithAValueBecomesALiteral() {
-        ExpressionNode computation = new ExpressionNode(new NameExpression("WIDTH", createSourceInfo()),
-                createSourceInfo(), createSourceInfo());
+        ExpressionNode computation = new ExpressionNode(new NameExpression("WIDTH", createSourceInfo(),
+                createSourceInfo().plusColumns(5)), createSourceInfo());
         symbolTable.recordResult(computation, ExpressionOutcome.of(new Value.Typed("DATA", 100)));
         InstructionNode instr = new InstructionNode("SETI",
                 List.of(new RegisterNode("%DR0", createSourceInfo()), computation), createSourceInfo());
@@ -438,26 +438,29 @@ class AstPostProcessorTest {
     void aComputationOnlyTheLayoutKnowsKeepsItsTreeWithQualifiedNames() {
         SourceInfo end = new SourceInfo("test.s", 10, 20, "TEST", 0);
         ExpressionNode computation = new ExpressionNode(
-                new OperationExpression("+", List.of(new NameExpression("TARGET", createSourceInfo()),
-                        new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo())), createSourceInfo()),
-                createSourceInfo(), end);
-        OperationExpression remaining = new OperationExpression("+", List.of(new NameExpression("TEST.TARGET", createSourceInfo()),
-                new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo())), createSourceInfo());
+                new OperationExpression("+", List.of(new NameExpression("TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
+                        new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo(), end)), createSourceInfo(), end),
+                createSourceInfo());
+        OperationExpression remaining = new OperationExpression("+", List.of(
+                new NameExpression("TEST.TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
+                new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo(), end)), createSourceInfo(), end);
         symbolTable.recordResult(computation, ExpressionOutcome.later(remaining, Kind.POSITION));
         ConstNode constant = new ConstNode("X", createSourceInfo(), computation);
 
         ConstNode result = (ConstNode) processor.process(constant);
 
-        assertThat(result.value()).isEqualTo(new ExpressionNode(remaining, createSourceInfo(), end));
+        assertThat(result.value()).isEqualTo(new ExpressionNode(remaining, createSourceInfo()));
+        assertThat(((ExpressionNode) result.value()).end()).isEqualTo(end);
     }
 
     @Test
     void aNameOfALayoutValuedConstantBecomesItsQualifiedName() {
-        ExpressionNode computation = new ExpressionNode(new NameExpression("@", createSourceInfo()),
-                createSourceInfo(), createSourceInfo());
+        ExpressionNode computation = new ExpressionNode(new NameExpression("@", createSourceInfo(),
+                createSourceInfo().plusColumns(1)), createSourceInfo());
         ConstNode constant = new ConstNode("HERE", createSourceInfo(), computation);
         symbolTable.define(new Symbol("HERE", createSourceInfo(), Symbol.Type.CONSTANT, constant));
-        symbolTable.recordDefinitionValue(constant, ExpressionOutcome.later(new NameExpression("@", createSourceInfo()), Kind.POSITION));
+        symbolTable.recordDefinitionValue(constant, ExpressionOutcome.later(new NameExpression("@", createSourceInfo(),
+                createSourceInfo().plusColumns(1)), Kind.POSITION));
 
         AstNode result = processor.process(new IdentifierNode("HERE", createSourceInfo()));
 
@@ -472,18 +475,19 @@ class AstPostProcessorTest {
      */
     @Test
     void aValueRequirementWithARecordedValueIsReplacedAsAWhole() {
-        ExpressionNode binding = new ExpressionNode(new NameExpression("@", createSourceInfo()),
-                createSourceInfo(), createSourceInfo());
+        ExpressionNode binding = new ExpressionNode(new NameExpression("@", createSourceInfo(),
+                createSourceInfo().plusColumns(1)), createSourceInfo());
         ValueBindingNode definition = new ValueBindingNode(binding);
         symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
-        NameExpression self = new NameExpression("TEST.P", createSourceInfo());
+        NameExpression self = new NameExpression("TEST.P", createSourceInfo(), createSourceInfo().plusColumns(1));
         symbolTable.recordDefinitionValue(definition, ExpressionOutcome.later(self, Kind.POSITION));
         ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
                 null, null, null, false, createSourceInfo());
 
         ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
 
-        assertThat(result.value()).isEqualTo(new ExpressionNode(self, createSourceInfo(), createSourceInfo().plusColumns(1)));
+        assertThat(result.value()).isEqualTo(new ExpressionNode(self, createSourceInfo()));
+        assertThat(((ExpressionNode) result.value()).end()).isEqualTo(createSourceInfo().plusColumns(1));
     }
 
     @Test

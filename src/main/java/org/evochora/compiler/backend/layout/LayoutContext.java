@@ -10,7 +10,9 @@ import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.INameResolution;
 import org.evochora.compiler.expression.NameAnswer;
 import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.ValueNotes;
 import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.NameExpression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ir.IrLiteral;
@@ -49,8 +51,8 @@ import java.util.stream.Collectors;
  * recorded by the layout handler of its feature through {@link #record}. A computation resolves
  * a name from them; a name not yet recorded is a forward reference.</p>
  *
- * <p>Every computation it computes in a file is noted with {@code [=value]} after its last token,
- * for the source view to show.</p>
+ * <p>Every computation it computes in a file is noted with {@code [=value]} as
+ * {@link ValueNotes} places it, for the source view to show.</p>
  */
 public final class LayoutContext {
 
@@ -100,7 +102,7 @@ public final class LayoutContext {
      * value; a qualified name and a computation are evaluated with the cursor {@code @} and the
      * origin the line counts its vectors from, the base position of the enclosing module, both as
      * positions of the program, and with the names the layout knows at this line. The value of
-     * a computation in a file is noted right after its last token; an equal note is kept once.
+     * a computation is noted as {@link ValueNotes} places it; an equal note is kept once.
      *
      * @param value The argument, as the IR carries it.
      * @param at    The position of the directive, for an error.
@@ -112,24 +114,22 @@ public final class LayoutContext {
     public Value evaluate(IrValue value, SourceInfo at) throws CompilationException {
         return switch (value) {
             case IrValue.Literal literal -> literal.value();
-            case IrValue.Expression expression -> noted(result(evaluator.evaluate(expression.expression(),
-                    this::resolve, evaluationContext()), at), expression.end());
-            case IrValue.Str name -> result(evaluator.evaluate(new NameExpression(name.value(), at),
+            case IrValue.Expression expression -> noted(expression.expression(), result(evaluator.evaluate(expression.expression(),
+                    this::resolve, evaluationContext()), at));
+            case IrValue.Str name -> result(evaluator.evaluate(new NameExpression(name.value(), at, at.plusColumns(name.value().length())),
                     this::resolve, evaluationContext()), at);
             default -> throw new IllegalStateException("A directive argument is no value: " + value);
         };
     }
 
-    private Value noted(Value value, SourceInfo end) {
-        if (end.inAFile()) {
-            notes.add(new PositionedNote(end, "[=" + value.text() + "]"));
-        }
+    private Value noted(Expression expression, Value value) {
+        notes.addAll(ValueNotes.of(expression, value));
         return value;
     }
 
     /**
-     * Returns the notes of the computations computed so far: {@code [=value]} after the last token
-     * of each, in the order they were computed.
+     * Returns the notes of the computations computed so far, as {@link ValueNotes} places them,
+     * in the order they were computed.
      *
      * @return The notes, each distinct note once.
      */

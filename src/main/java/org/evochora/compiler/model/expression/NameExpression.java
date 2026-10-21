@@ -8,8 +8,9 @@ import org.evochora.compiler.api.SourceInfo;
  * @param name       The name as written, or the qualified name a phase put in its place once it
  *                   resolved it; {@code @} is never qualified.
  * @param sourceInfo The position of the name's token.
+ * @param end        The position right after the last token read for the node.
  */
-public record NameExpression(String name, SourceInfo sourceInfo) implements Expression {
+public record NameExpression(String name, SourceInfo sourceInfo, SourceInfo end) implements Expression {
 
     @Override
     public String text() {

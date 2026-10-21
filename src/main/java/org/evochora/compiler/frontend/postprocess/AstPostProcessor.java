@@ -151,7 +151,7 @@ public class AstPostProcessor implements IPostProcessContext {
     private static AstNode recorded(ExpressionNode expression, ExpressionOutcome outcome) {
         return outcome.value() != null
                 ? new LiteralNode(outcome.value(), expression.sourceInfo())
-                : new ExpressionNode(outcome.remaining(), expression.sourceInfo(), expression.end());
+                : new ExpressionNode(outcome.remaining(), expression.sourceInfo());
     }
 
     /**

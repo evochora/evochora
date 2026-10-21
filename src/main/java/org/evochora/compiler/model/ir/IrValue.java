@@ -1,6 +1,5 @@
 package org.evochora.compiler.model.ir;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.expression.Value;
 
 import java.util.List;
@@ -20,9 +19,8 @@ public sealed interface IrValue permits IrValue.Literal, IrValue.Expression, IrV
 	/**
 	 * A computation only the layout can compute, every name in it qualified.
 	 * @param expression The tree that remains.
-	 * @param end        The position right after the last token of the computation as written.
 	 */
-	record Expression(org.evochora.compiler.model.expression.Expression expression, SourceInfo end) implements IrValue {}
+	record Expression(org.evochora.compiler.model.expression.Expression expression) implements IrValue {}
 
 	/**
 	 * Represents a string value.

@@ -112,8 +112,10 @@ positions as a value kind, `@` as the cursor, the lexer as the phase that finds 
 
 **A computation stands in parentheses.** Outside parentheses the language is the one of today: a
 number (with its sign), a name, a register, a vector of numbers `3|5`, a typed literal `DATA:5`, and
-two new forms that end visibly, a call `NAME(…)` and an index `V[…]`; a typed literal may also carry
-a call, an index or a parenthesis as its value, `DATA:(WIDTH-1)`, `DATA:MIN(ROWS, 8)`, `DATA:V[0]`.
+two new forms that end visibly, a call `NAME(…)` and an index `V[…]`; a typing with a name on either
+side computes like a call does, `DATA:MASKED`, `WALL_TYPE:7`, `WALL_TYPE:WALL_NUMBER`, and so does
+a typed literal whose value is a call, an index or a parenthesis, `DATA:(WIDTH-1)`, `DATA:MIN(ROWS, 8)`,
+`DATA:V[0]`; only a molecule type with a number, `DATA:5`, `DATA:-5`, is the literal of today.
 Inside parentheses, inside the parentheses of a call and inside the brackets of an index, spaces are
 free and everything computes:
 
@@ -152,7 +154,7 @@ argument, and nowhere else.
 | Level, tight to wide | Operators | Reads |
 |---|---|---|
 | index | `a[i]` | component `i` of a vector, or of a position relative to the origin the line counts from, counting from 0 |
-| typing | `T:n` | the typed value; `T` a molecule type, `n` a number with its sign, so `DATA:-5` |
+| typing | `T:n` | the typed value; `T` a molecule type, written or named, `n` a number with its sign, so `DATA:-5` |
 | prefix | `-a`, `NOT a` | sign per component for a vector; bitwise not for a number |
 | multiplicative | `*`, `/`, `MOD` | left to right |
 | additive | `+`, `-` | left to right |
@@ -261,11 +263,14 @@ cannot be defined.` · at start-up: `Operation '^' is a preprocessor directive.`
 **The visualizer** shows the source as written and, behind each computation, its result as a yellow
 note `[=99|69]`, the way it shows a flag's state behind its name wherever a directive reads the flag;
 a constant keeps the value behind its name, inside a computation and a layout-valued one included.
+The typing `T:n` shows no note of its own; a part of it that computes shows its result at its end, a
+name its value as every constant.
 
 ### The architecture
 
 **Data: `model/expression`.** `Expression` is a sealed interface with three records, each carrying
-the `SourceInfo` of its first token: `LiteralExpression` (a `Value`), `NameExpression` (the text as
+the `SourceInfo` of its first token and the position right after the last token read for it, the
+closing parentheses around it included: `LiteralExpression` (a `Value`), `NameExpression` (the text as
 written, qualified by the phase that resolves it; `@` is never qualified) and `OperationExpression`
 (the name of an operation and its operands, in order). `Value` is sealed with five records: number
 (`long`), typed (type and number), vector (an immutable list of numbers), type (the name the
@@ -385,8 +390,8 @@ rewritten.
 - *Phase 3:* `Parser.expression()` stays the one place operands are read. Register, literal and
   name are read as today; a call, an index, a parenthesis, a typed literal whose value is one of
   these, and a bare `@` become the fourth operand form, `ExpressionNode(Expression, SourceInfo of the
-  operand, position after its last token)`, the bracketed part cut to the matching bracket and handed to
-  the expression parser. `.PLACE` reads its literal with `expression()` first, as today, and then
+  operand)`, which ends where its tree ends, as the tree's nodes carry their end; the bracketed part
+  cut to the matching bracket and handed to the expression parser. `.PLACE` reads its literal with `expression()` first, as today, and then
   cuts its placements at its separators (`,`, `|`, `..`, `:`), outside brackets, with a method of
   `DirectiveLine`; `.ORG` and `.DIR` cut at `|`; each piece is read with a reporting form of
   `operandOf`, which reports through the parser's diagnostics and ends the piece with an end-of-file
@@ -408,8 +413,8 @@ rewritten.
   rejected expression.
 - *Phase 5:* `TokenMapGenerator.visit` gets a branch for `ExpressionNode` next to its branch for
   `IdentifierNode`: every `NameExpression` of the tree is classified as an `IdentifierNode` is, at the
-  `SourceInfo` the node carries, and the note `[=value]` is written right after the expression's
-  last token from the result phase 4 recorded. The rule that nobody but the token map reads the kind of a
+  `SourceInfo` the node carries, and the notes `[=value]` are written at the ends of the expressions
+  from the result phase 4 recorded, as the note rule in `compiler/expression` names them. The rule that nobody but the token map reads the kind of a
   symbol holds without a service, and the visualizer shows the value behind `WIDTH` inside
   `(WIDTH-1)` as it does behind a bare `WIDTH`.
 - *Phase 6:* `AstPostProcessor.collectPass` replaces each `ExpressionNode` by its recorded result,
@@ -452,8 +457,8 @@ rewritten.
 - *Emission and notes:* the emitter hands the named layout values of the `LayoutResult`,
   undeciphered, to the `EmissionContext`; the contributors of `constdir` and `importdir`, meeting a
   directive whose value is an `IrValue.Expression`, read the value under the definition's name there
-  and write `constantValues` as they do today. The token-map generator writing `[=value]` right after the
-  last token of each expression from the recorded results, `DebugInfo` carrying the notes; `LayoutContext.evaluate` writing a note for every
+  and write `constantValues` as they do today. The token-map generator writing `[=value]` at the ends
+  the note rule names from the recorded results, `DebugInfo` carrying the notes; `LayoutContext.evaluate` writing a note for every
   value it computes, `LayoutResult` carrying them; the emitter merging the notes into the
   `SourceFile`s and, for a note inside a macro instance, into the `Expansion` its number names,
   equal notes kept once. Copies a `.REPEAT` makes carry no instance, so the notes of a repeated body

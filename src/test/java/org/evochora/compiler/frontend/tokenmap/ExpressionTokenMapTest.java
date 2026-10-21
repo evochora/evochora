@@ -63,7 +63,7 @@ class ExpressionTokenMapTest {
                 ".CONST WIDTH 99",
                 "SETI %DR0 DATA:(WIDTH+1)"), "expression_note.evo", new EnvironmentProperties(new int[]{100, 100}, true));
 
-        assertThat(artifact.sources().get(0).notes()).containsExactly(new SourceFile.Note(0, 2, 25, "[=DATA:100]"));
+        assertThat(artifact.sources().get(0).notes()).containsExactly(new SourceFile.Note(0, 2, 25, "[=100]"));
     }
 
     private static TokenInfo entryAt(Map<SourceInfo, TokenInfo> tokenMap, int line, int column) {

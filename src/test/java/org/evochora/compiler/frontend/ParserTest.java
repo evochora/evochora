@@ -421,6 +421,28 @@ public class ParserTest {
     }
 
     /**
+     * A typing with a name or a computation on either side is a computation, outside parentheses
+     * as inside: the value a name, the word before the colon no molecule type of the instruction
+     * set, or a call before the colon.
+     */
+    @Test
+    @Tag("unit")
+    void aTypingWithANameOnEitherSideIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations(
+                "SETI %DR0 DATA:MASKED\nSETI %DR1 WALL_TYPE:7\nSETI %DR2 WALL_TYPE:-7\nSETI %DR3 DATA:V[0]\nSETI %DR4 TYPE(V):7",
+                diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        for (int i = 0; i < 5; i++) {
+            AstNode argument = ((InstructionNode) ast.get(i)).arguments().get(1);
+            assertThat(argument).isInstanceOf(ExpressionNode.class);
+            assertThat(((OperationExpression) ((ExpressionNode) argument).expression()).operation()).isEqualTo(":");
+        }
+        assertThat(((ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1)).end().columnNumber()).isEqualTo(22);
+    }
+
+    /**
      * The cursor alone is a computation, a name the layout knows; a typed literal with a number
      * stays a literal.
      */
@@ -432,7 +454,7 @@ public class ParserTest {
 
         assertThat(diagnostics.hasErrors()).isFalse();
         ExpressionNode cursor = (ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1);
-        assertThat(cursor.expression()).isEqualTo(new NameExpression("@", cursor.sourceInfo()));
+        assertThat(cursor.expression()).isEqualTo(new NameExpression("@", cursor.sourceInfo(), cursor.sourceInfo().plusColumns(1)));
         assertThat(((InstructionNode) ast.get(1)).arguments().get(1)).isInstanceOfSatisfying(LiteralNode.class,
                 literal -> assertThat(literal.value()).isEqualTo(new Value.Typed("DATA", -5)));
     }

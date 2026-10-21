@@ -246,14 +246,15 @@ public final class ExpressionParser {
             switch (token.type()) {
                 case NUMBER -> {
                     advance();
-                    return Parsed.atom(new LiteralExpression(new Value.Number((Long) token.value()), token.source()), token.source());
+                    return Parsed.atom(new LiteralExpression(new Value.Number((Long) token.value()), token.source(), token.after()),
+                            token.source());
                 }
                 case REGISTER -> throw new Failure("Register '" + token.text() + "' cannot be used in an expression.", token.source());
                 case OPEN_PARENTHESIS, CALL_PARENTHESIS -> {
                     advance();
                     Parsed inside = operand(token, Level.UNORDERED);
                     close(TokenType.CLOSE_PARENTHESIS, ")");
-                    return Parsed.atom(inside.expression(), token.source());
+                    return Parsed.atom(endingAt(inside.expression(), readEnd()), token.source());
                 }
                 case IDENTIFIER, OPCODE -> {
                     return word(token);
@@ -270,7 +271,7 @@ public final class ExpressionParser {
             TokenType next = typeAt(current + 1);
             if (next == TokenType.COLON && isa.moleculeType(word).isPresent()) {
                 advance();
-                return Parsed.atom(new LiteralExpression(new Value.Type(word), token.source()), token.source());
+                return Parsed.atom(new LiteralExpression(new Value.Type(word), token.source(), token.after()), token.source());
             }
             if (next == TokenType.CALL_PARENTHESIS) {
                 Optional<IOperation> function = operations.find(word, Notation.FUNCTION);
@@ -299,7 +300,7 @@ public final class ExpressionParser {
                 throw unexpected(token);
             }
             advance();
-            return Parsed.atom(new NameExpression(token.text(), token.source()), token.source());
+            return Parsed.atom(new NameExpression(token.text(), token.source(), token.after()), token.source());
         }
 
         /**
@@ -381,6 +382,20 @@ public final class ExpressionParser {
         }
 
         /**
+         * The position right after the last token read, where a node read up to here ends.
+         */
+        private SourceInfo readEnd() {
+            return tokens.get(current - 1).after();
+        }
+
+        /**
+         * The operation on the given operands, ending after the last token read.
+         */
+        private OperationExpression operation(IOperation operator, List<Expression> operands, SourceInfo at) {
+            return new OperationExpression(operator.name(), operands, at, readEnd());
+        }
+
+        /**
          * The position errors at the end of the computation are reported at: the end-of-file
          * token's, or the last token's.
          */
@@ -392,8 +407,17 @@ public final class ExpressionParser {
         }
     }
 
-    private static OperationExpression operation(IOperation operator, List<Expression> operands, SourceInfo at) {
-        return new OperationExpression(operator.name(), operands, at);
+    /**
+     * Puts the end of a node to the given position, for a node read inside a parenthesis, which
+     * ends after the {@code )}.
+     */
+    private static Expression endingAt(Expression expression, SourceInfo end) {
+        return switch (expression) {
+            case LiteralExpression literal -> new LiteralExpression(literal.value(), literal.sourceInfo(), end);
+            case NameExpression name -> new NameExpression(name.name(), name.sourceInfo(), end);
+            case OperationExpression operation ->
+                    new OperationExpression(operation.operation(), operation.operands(), operation.sourceInfo(), end);
+        };
     }
 
     private static Level tighter(Level level) {

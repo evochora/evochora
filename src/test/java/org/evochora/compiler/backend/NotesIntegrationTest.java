@@ -24,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * The artifact shows the result of every computation as a note {@code [=value]} behind its last
  * token, in the source entry or the macro instance the token stands in, whichever phase computed
- * it: the semantic analysis, the layout or the preprocessor at read time.
+ * it: the semantic analysis, the layout or the preprocessor at read time. A typing {@code T:n}
+ * shows no note of its own; each of its parts that computes shows its part of the typed value.
  */
 @Tag("integration")
 class NotesIntegrationTest {
@@ -57,13 +58,47 @@ class NotesIntegrationTest {
         ProgramArtifact artifact = compile();
 
         SourceFile main = artifact.sources().get(0);
-        assertThat(main.notes()).containsExactly(new Note(0, 7, 22, "[=DATA:98]"));
+        assertThat(main.notes()).containsExactly(new Note(0, 7, 22, "[=98]"));
         assertThat(artifact.expansions()).hasSize(1);
         Expansion.Binding binding = artifact.expansions().values().iterator().next().bindings().get(0);
         assertThat(binding.argument()).isEqualTo("DATA:(WIDTH-1)");
         int instance = artifact.expansions().keySet().iterator().next();
         assertThat(artifact.expansions().get(instance).notes())
-                .containsExactly(new Note(instance, 3, 27, "[=DATA:100]"));
+                .containsExactly(new Note(instance, 3, 27, "[=100]"));
+    }
+
+    /**
+     * A typing shows no note of its own: a part of it that computes shows its part of the typed
+     * value behind its last token, the type part before the colon, the number part after its
+     * closing parenthesis; a part that is a name or a literal shows nothing from the compiler. A
+     * typing inside a bigger computation is a part like any other: the computation shows its
+     * whole value.
+     */
+    @Test
+    void aTypingIsNotedOnlyAtThePartsThatCompute() throws Exception {
+        write("main.evo",
+                ".CONST MASKED 240",
+                ".CONST WALL STRUCTURE:100",
+                ".CONST WALL_TYPE TYPE(WALL)",
+                "SETI %DR0 DATA:MASKED",
+                "SETI %DR1 WALL_TYPE:7",
+                "SETI %DR2 DATA:(MASKED+1)",
+                "SETI %DR3 (TYPE(WALL):7)",
+                "SETI %DR4 DATA:5",
+                "SETI %DR5 (DATA:5 + DATA:(MASKED))",
+                "SETI %DR6 DATA:(-5)",
+                "SETI %DR7 DATA:(MASKED)",
+                "SETI %DR0 TYPE(WALL):7");
+
+        ProgramArtifact artifact = compile();
+
+        assertThat(artifact.sources().get(0).notes()).containsExactly(
+                new Note(0, 3, 28, "[=STRUCTURE]"),
+                new Note(0, 6, 26, "[=241]"),
+                new Note(0, 7, 22, "[=STRUCTURE]"),
+                new Note(0, 9, 35, "[=DATA:245]"),
+                new Note(0, 10, 20, "[=-5]"),
+                new Note(0, 12, 21, "[=STRUCTURE]"));
     }
 
     /**
@@ -181,7 +216,7 @@ class NotesIntegrationTest {
         ProgramArtifact artifact = compile();
 
         assertThat(artifact.sources().get(0).notes()).containsExactlyInAnyOrder(
-                new Note(0, 4, 25, "[=DATA:100]"),
+                new Note(0, 4, 25, "[=100]"),
                 new Note(0, 5, 17, "[=4|2]"),
                 new Note(0, 5, 17, "[=8|4]"));
     }

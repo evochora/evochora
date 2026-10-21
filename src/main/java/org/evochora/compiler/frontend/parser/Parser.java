@@ -47,6 +47,7 @@ public class Parser implements IParsingContext {
     private final OperationRegistry operations;
     private final IInstructionSet isa;
     private final ExpressionParser expressionParser;
+    private final Computation computation;
     private int current = 0;
 
     private final ParserState parserState = new ParserState();
@@ -104,6 +105,7 @@ public class Parser implements IParsingContext {
         this.operations = operations;
         this.isa = isa;
         this.expressionParser = new ExpressionParser(operations, isa);
+        this.computation = new Computation(isa);
     }
 
     /**
@@ -251,7 +253,7 @@ public class Parser implements IParsingContext {
      */
     @Override
     public OperandNode expression() {
-        int computationLength = Computation.lengthAt(tokens, current);
+        int computationLength = computation.lengthAt(tokens, current);
         if (computationLength > 0) {
             return computation(computationLength);
         }
@@ -305,7 +307,7 @@ public class Parser implements IParsingContext {
         current += length;
         Token first = operand.getFirst();
         return switch (expressionParser.parse(operand)) {
-            case ParseResult.Parsed parsed -> new ExpressionNode(parsed.expression(), first.source(), operand.getLast().after());
+            case ParseResult.Parsed parsed -> new ExpressionNode(parsed.expression(), first.source());
             case ParseResult.Failed failed -> {
                 SourceInfo at = failed.at() != null ? failed.at() : first.source();
                 diagnostics.reportError(failed.message(), at.fileName(), at.lineNumber());

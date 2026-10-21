@@ -14,12 +14,20 @@ import org.evochora.compiler.model.expression.Expression;
  *
  * @param expression The computation.
  * @param sourceInfo The position of the operand's first token.
- * @param end        The position right after the operand's last token.
  */
 public record ExpressionNode(
         Expression expression,
-        SourceInfo sourceInfo,
-        SourceInfo end
+        SourceInfo sourceInfo
 ) implements OperandNode {
     // This node has no children and inherits the empty list from getChildren().
+
+    /**
+     * Returns the position right after the operand's last token, which is where its computation
+     * ends.
+     *
+     * @return The end of {@link #expression()}.
+     */
+    public SourceInfo end() {
+        return expression.end();
+    }
 }

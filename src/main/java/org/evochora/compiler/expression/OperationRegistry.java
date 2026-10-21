@@ -40,10 +40,10 @@ public final class OperationRegistry {
     public static final String INDEX = "[]";
 
     /**
-     * The name of the typing operator, which the preprocessor reads as a label colon at the start
-     * of a statement only and so may share with it.
+     * The name of the typing operator, {@code T:n}, which the preprocessor reads as a label colon
+     * at the start of a statement only and so may share with it.
      */
-    private static final String TYPING = ":";
+    public static final String TYPING = ":";
 
     private final Map<Key, Overloads> operations = new LinkedHashMap<>();
 

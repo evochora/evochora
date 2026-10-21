@@ -49,14 +49,16 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
 
     /**
      * The molecule the directive places: its value computed at this line, a typed value whose
-     * type the instruction set has to know and whose number has to fit a cell of that type.
+     * number has to fit a cell of its type. The layout never meets a typed value whose type the
+     * instruction set does not know, because the typing operation only produces known types; the
+     * check of the type is a safety net and reports an internal error.
      */
     private PlacedMolecule createMolecule(IrDirective directive, LayoutContext context) throws CompilationException {
         if (!(context.evaluate(directive.args().get("value"), directive.source()) instanceof Value.Typed typed)) {
             throw new CompilationException(SourceInfo.locate(directive.source(), "Expected a typed literal (e.g. DATA:5) for .PLACE."));
         }
         int type = isa.moleculeType(typed.type()).orElseThrow(() ->
-                new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + typed.type() + "' in .PLACE.")));
+                new CompilationException(SourceInfo.locate(directive.source(), "Internal error: Unknown molecule type '" + typed.type() + "' in .PLACE.")));
         isa.valueRange(type).require(typed.number(), directive.source());
         return new PlacedMolecule(type, (int) typed.number(), 0);
     }

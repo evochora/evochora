@@ -132,11 +132,21 @@ public class PlaceDirectiveExtensionTest {
 
     @Test
     @Tag("unit")
-    void testPlaceWithUnknownType() {
+    void testPlaceWithAnUndefinedNameBeforeTheColon() {
         String source = ".PLACE FOOD:1 5|5";
         Compiler compiler = new Compiler();
         assertThatThrownBy(() -> compiler.compile(List.of(source), "test.s", testEnvProps))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("Unknown molecule type 'FOOD' in .PLACE.");
+            .hasMessageContaining("'FOOD' is not defined.");
+    }
+
+    @Test
+    @Tag("unit")
+    void testPlaceWithANumberBeforeTheColon() {
+        List<String> source = List.of(".CONST FOOD 5", ".PLACE FOOD:1 5|5");
+        Compiler compiler = new Compiler();
+        assertThatThrownBy(() -> compiler.compile(source, "test.s", testEnvProps))
+            .isInstanceOf(CompilationException.class)
+            .hasMessageContaining("Invalid operands for ':': number and number.");
     }
 }

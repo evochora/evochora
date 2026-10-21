@@ -216,7 +216,8 @@ class EvaluatorTest {
     @Test
     void aLiteralIsItsValue() {
         Evaluator evaluator = new Evaluator(fixture.operations());
-        LiteralExpression literal = new LiteralExpression(new Value.Typed("DATA", 3), new SourceInfo("main.evo", 1, 1, "", 0));
+        SourceInfo at = new SourceInfo("main.evo", 1, 1, "", 0);
+        LiteralExpression literal = new LiteralExpression(new Value.Typed("DATA", 3), at, at.plusColumns(6));
         assertThat(evaluator.evaluate(literal, name -> new NameAnswer.Reported(), IEvaluationContext.none()))
                 .isEqualTo(new EvaluationResult.Value(new Value.Typed("DATA", 3)));
     }
@@ -225,7 +226,7 @@ class EvaluatorTest {
     void anOperationTheRegistryDoesNotKnowIsAnError() {
         Evaluator evaluator = new Evaluator(new OperationRegistry());
         OperationExpression unknown = new OperationExpression("+", List.of(
-                new LiteralExpression(new Value.Number(1), null), new LiteralExpression(new Value.Number(2), null)), null);
+                new LiteralExpression(new Value.Number(1), null, null), new LiteralExpression(new Value.Number(2), null, null)), null, null);
         assertThat(evaluator.evaluate(unknown, name -> new NameAnswer.Reported(), IEvaluationContext.none()))
                 .isEqualTo(new EvaluationResult.Error("Unknown operation '+'.", null));
     }

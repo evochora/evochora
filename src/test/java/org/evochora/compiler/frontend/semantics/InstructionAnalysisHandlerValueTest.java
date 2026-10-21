@@ -76,7 +76,7 @@ class InstructionAnalysisHandlerValueTest {
     @Test
     void aComputationIsRecordedWithItsValue() {
         defineComputed("W", new Value.Typed("DATA", 7));
-        ExpressionNode computation = new ExpressionNode(new NameExpression("W", SRC), SRC, SRC);
+        ExpressionNode computation = new ExpressionNode(new NameExpression("W", SRC, SRC.plusColumns(1)), SRC);
 
         handler.analyze(seti(computation), symbolTable, diagnostics);
 
@@ -85,7 +85,7 @@ class InstructionAnalysisHandlerValueTest {
     }
 
     private void defineComputed(String name, Value value) {
-        ConstNode constant = new ConstNode(name, SRC, new ExpressionNode(new NameExpression("X", SRC), SRC, SRC));
+        ConstNode constant = new ConstNode(name, SRC, new ExpressionNode(new NameExpression("X", SRC, SRC.plusColumns(1)), SRC));
         symbolTable.define(new Symbol(name, SRC, Symbol.Type.CONSTANT, constant));
         symbolTable.recordDefinitionValue(constant, ExpressionOutcome.of(value));
     }

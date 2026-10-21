@@ -34,6 +34,7 @@ public final class ReadTimeValues {
 
     private final Flags flags;
     private final ExpressionParser parser;
+    private final Computation computation;
     private final Evaluator evaluator;
 
     /**
@@ -47,6 +48,7 @@ public final class ReadTimeValues {
     public ReadTimeValues(Flags flags, OperationRegistry operations, IInstructionSet isa) {
         this.flags = flags;
         this.parser = new ExpressionParser(operations, isa);
+        this.computation = new Computation(isa);
         this.evaluator = new Evaluator(operations);
     }
 
@@ -124,8 +126,8 @@ public final class ReadTimeValues {
      * Tells what the tokens of a value are: a computation when the forms of the language say so,
      * else a name or a number, whichever the tree the parser made of them is.
      */
-    private static Reading.Form formOf(List<Token> tokens, Expression expression) {
-        if (Computation.lengthAt(tokens, 0) == tokens.size()) {
+    private Reading.Form formOf(List<Token> tokens, Expression expression) {
+        if (computation.lengthAt(tokens, 0) == tokens.size()) {
             return Reading.Form.COMPUTATION;
         }
         return expression instanceof NameExpression ? Reading.Form.NAME : Reading.Form.NUMBER;
