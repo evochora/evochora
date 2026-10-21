@@ -53,7 +53,7 @@ public class Emitter {
                                 IInstructionSet isa,
                                 EmissionContributorRegistry contributorRegistry) throws CompilationException {
         IrProgram program = linked.program();
-        EmissionContext emissionContext = new EmissionContext();
+        EmissionContext emissionContext = new EmissionContext(layout.namedValues());
         List<IEmissionContributor> contributors = contributorRegistry.contributors();
         for (IrItem item : program.items()) {
             for (IEmissionContributor contributor : contributors) {

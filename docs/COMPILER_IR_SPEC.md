@@ -81,7 +81,7 @@ This is a sealed interface for typed values used in directive arguments. It allo
 
 -   **`IrValue` Subtypes**:
     -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
-    -   `Expression(Expression, SourceInfo)`: a computation only the layout can compute, every name in it qualified, with the position of its last token; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line
+    -   `Expression(Expression, SourceInfo)`: a computation only the layout can compute, every name in it qualified, with the position of its last token; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line. The layout computes it where the directive stands: a `const_value` (`constdir`) and an `importdir` `value` record the result in the layout's named values under the directive's `name`, and an `importdir` `bound_value`, emitted at an import line for a `USING VALUE` binding that is a computation, records it under the qualified name of the requirement it binds; a `value` whose expression is only the requirement's own name records nothing, because the import line recorded the value already. The emitter hands the named values to the emission contributors, which write `constantValues` from them
     -   `Str(String)`
     -   `Bool(boolean)`
     -   `ListVal(List<IrValue>)`

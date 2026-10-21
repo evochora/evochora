@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.model.expression.Value;
 
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,8 @@ import java.util.Map;
  * @param sourceMap A map from linear address to source information.
  * @param initialWorldObjects A map from relative coordinates to molecules that should be placed in the world initially.
  * @param placedItems The items in the order the layout walked them, each with the address it was given.
+ * @param namedValues The named layout values by qualified name: the position of every label's
+ *                    cell and the value of every definition only the layout computes.
  */
 public record LayoutResult(
         Map<Integer, int[]> linearAddressToCoord,
@@ -26,5 +29,6 @@ public record LayoutResult(
         Map<String, Integer> labelToValue,
         Map<Integer, SourceInfo> sourceMap,
         Map<int[], PlacedMolecule> initialWorldObjects,
-        List<PlacedItem> placedItems
+        List<PlacedItem> placedItems,
+        Map<String, Value> namedValues
 ) {}

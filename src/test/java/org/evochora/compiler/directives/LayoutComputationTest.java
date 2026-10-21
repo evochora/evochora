@@ -160,8 +160,8 @@ class LayoutComputationTest {
     }
 
     /**
-     * A label reaches the layout by its name; the layout does not know the names yet, so every
-     * name there is a forward reference.
+     * A label reaches the layout by its name and is known from the line where it is placed; a
+     * label below the line that uses it is a forward reference.
      */
     @Test
     void aLabelInAnOriginIsAForwardReference() {

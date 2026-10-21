@@ -50,7 +50,8 @@ class LabelRefLinkingRuleTest {
                 valuesOf(Map.of("TEST.FOO", 10)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyList()
+                Collections.emptyList(),
+                Collections.emptyMap()
         );
 
         // And: An instruction referring to the label under its qualified name
@@ -91,7 +92,8 @@ class LabelRefLinkingRuleTest {
                     valuesOf(Map.of(qualifiedName, 0)),
                     Collections.emptyMap(),
                     Collections.emptyMap(),
-                    Collections.emptyList()
+                    Collections.emptyList(),
+                    Collections.emptyMap()
             );
 
             IrInstruction input = new IrInstruction(
@@ -129,7 +131,8 @@ class LabelRefLinkingRuleTest {
                 valuesOf(Map.of("_safe_call_0", 3)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyList()
+                Collections.emptyList(),
+                Collections.emptyMap()
         );
 
         IrInstruction input = new IrInstruction(
@@ -156,7 +159,8 @@ class LabelRefLinkingRuleTest {
                 valuesOf(Collections.emptyMap()),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyList()
+                Collections.emptyList(),
+                Collections.emptyMap()
         );
 
         // Given: An instruction without IrLabelRef
@@ -183,7 +187,8 @@ class LabelRefLinkingRuleTest {
                 valuesOf(Map.of("TEST.OTHER_LABEL", 5)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyList()
+                Collections.emptyList(),
+                Collections.emptyMap()
         );
 
         IrInstruction input = new IrInstruction(

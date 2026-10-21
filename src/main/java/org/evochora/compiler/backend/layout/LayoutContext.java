@@ -37,6 +37,11 @@ import java.util.stream.Collectors;
  *
  * <p>A directive handler computes its arguments through {@link #evaluate}, with the operations
  * the features registered, the cursor and the origin of the line.</p>
+ *
+ * <p>The context keeps the named layout values: the position of every label's cell, recorded
+ * when the label is placed, and the value of every definition only the layout computes,
+ * recorded by the layout handler of its feature through {@link #record}. A computation resolves
+ * a name from them; a name not yet recorded is a forward reference.</p>
  */
 public final class LayoutContext {
 
@@ -54,6 +59,7 @@ public final class LayoutContext {
     private final Map<Integer, SourceInfo> sourceMap = new HashMap<>();
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private final Map<String, Occupant> occupied = new HashMap<>();
+    private final Map<String, Value> namedValues = new HashMap<>();
     private int linearAddress = 0;
 
     /**
@@ -108,14 +114,44 @@ public final class LayoutContext {
     }
 
     /**
-     * Answers a name of a computation: the cursor {@code @} with its position; a label or a
-     * definition the layout computes is not yet known here and is a forward reference.
+     * Answers a name of a computation: the cursor {@code @} with its position, a label or a
+     * definition the layout computes with the value recorded under its qualified name; a name
+     * not recorded yet stands below the line that uses it and is a forward reference.
      */
     private NameAnswer resolve(NameExpression name) {
         if (INameResolution.CURSOR.equals(name.name())) {
             return new NameAnswer.Value(position(currentPos));
         }
+        Value recorded = namedValues.get(name.name());
+        if (recorded != null) {
+            return new NameAnswer.Value(recorded);
+        }
         return new NameAnswer.NotUsable("Forward reference to '" + name.name() + "'.");
+    }
+
+    /**
+     * Records the value of a definition only the layout computes, so that a computation further
+     * down the layout resolves its name to it.
+     *
+     * @param qualifiedName The qualified name of the definition.
+     * @param value         Its value, computed where its directive stands.
+     * @param at            The position of the directive, for an error.
+     * @throws CompilationException if a value is recorded under that name already.
+     */
+    public void record(String qualifiedName, Value value, SourceInfo at) throws CompilationException {
+        if (namedValues.putIfAbsent(qualifiedName, value) != null) {
+            throw new CompilationException(SourceInfo.locate(at, "'" + qualifiedName + "' is already recorded in the layout."));
+        }
+    }
+
+    /**
+     * Returns the named layout values: the position of every placed label's cell and the value of
+     * every recorded definition, by qualified name.
+     *
+     * @return an unmodifiable view of the context's map
+     */
+    public Map<String, Value> namedValues() {
+        return Collections.unmodifiableMap(namedValues);
     }
 
     private static Value result(EvaluationResult result, SourceInfo at) throws CompilationException {
@@ -317,15 +353,19 @@ public final class LayoutContext {
     }
 
     /**
-     * Places a label at the current position.
-     * Labels occupy space in the grid, like Tierra and Avida templates do.
+     * Places a label at the current position and records the position of its cell under the
+     * label's name. Labels occupy space in the grid, like Tierra and Avida templates do.
      *
-     * @param src The source information for error reporting.
-     * @throws CompilationException if the position is already occupied.
+     * @param name The qualified name of the label.
+     * @param src  The source information for error reporting.
+     * @throws CompilationException if the position is already occupied, or a value is recorded
+     *         under the name already.
      */
-    public void placeLabel(SourceInfo src) throws CompilationException {
+    public void placeLabel(String name, SourceInfo src) throws CompilationException {
         initialize();
+        Value.Position cell = position(currentPos);
         placeAtCurrent("a label", src);
+        record(name, cell, src);
     }
 
     private void placeAtCurrent(String description, SourceInfo src) throws CompilationException {

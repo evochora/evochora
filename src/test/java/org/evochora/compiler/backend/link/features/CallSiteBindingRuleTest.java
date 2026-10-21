@@ -44,7 +44,8 @@ class CallSiteBindingRuleTest {
         layout = new LayoutResult(
                 Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
-                Collections.emptyList()
+                Collections.emptyList(),
+                Collections.emptyMap()
         );
         dummySource = new SourceInfo("test.s", 1, 0, "", 0);
     }

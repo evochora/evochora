@@ -13,7 +13,8 @@ import org.evochora.compiler.IFeatureRegistrationContext;
  * level, and handlers for dependency scanning, module setup, preprocessing (module token inlining),
  * parsing, symbol collection, semantic analysis (USING clause validation, the constants of value
  * requirements, the computations among the values), post-processing (the recorded values of
- * value requirements), IR conversion, and emission (the values of value requirements).
+ * value requirements), IR conversion, layout (the values of value requirements only the layout computes, at the import
+ * line or at the requirement's line), and emission (the values of value requirements).
  */
 public class ImportFeature implements ICompilerFeature {
     @Override
@@ -41,6 +42,8 @@ public class ImportFeature implements ICompilerFeature {
         ctx.analysisHandler(ValueRequirementNode.class, new RequireAnalysisHandler(ctx.operations()));
         ctx.postProcessHandler(ValueRequirementNode.class, new ValueRequirementPostProcessHandler());
         ctx.irConverter(ValueRequirementNode.class, new ValueRequirementNodeConverter());
+        ctx.layoutHandler("importdir", "bound_value", new BoundValueLayoutHandler());
+        ctx.layoutHandler("importdir", "value", new ValueLayoutHandler());
         ctx.emissionContributor(new ValueEmissionContributor());
     }
 }

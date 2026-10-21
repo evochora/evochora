@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.emit;
 
 import org.evochora.compiler.api.ParamInfo;
+import org.evochora.compiler.model.expression.Value;
 
 import java.util.HashMap;
 import java.util.List;
@@ -18,6 +19,34 @@ public final class EmissionContext {
     private final Map<String, List<ParamInfo>> procNameToParamNames = new HashMap<>();
     private final Map<String, Integer> registerAliasMap = new HashMap<>();
     private final Map<String, String> constantValues = new HashMap<>();
+    private final Map<String, Value> namedValues;
+
+    /**
+     * Creates a context without named layout values, for a program the layout computed no name of.
+     */
+    public EmissionContext() {
+        this(Map.of());
+    }
+
+    /**
+     * Creates a context that offers the named layout values to the contributors.
+     *
+     * @param namedValues The named layout values of the layout result, by qualified name: the
+     *                    position of every label's cell and the value of every definition only
+     *                    the layout computes.
+     */
+    public EmissionContext(Map<String, Value> namedValues) {
+        this.namedValues = namedValues;
+    }
+
+    /**
+     * Returns the named layout values, as the layout recorded them.
+     *
+     * @return the map handed to the constructor
+     */
+    public Map<String, Value> namedValues() {
+        return namedValues;
+    }
 
     /**
      * Registers a procedure's parameter metadata.
