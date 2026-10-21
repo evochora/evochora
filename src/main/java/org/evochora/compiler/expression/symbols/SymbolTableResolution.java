@@ -10,6 +10,7 @@ import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -24,7 +25,9 @@ import java.util.Optional;
  * <ul>
  *   <li>at a jump target, a label, a procedure or a control block: "later", a position, under the
  *       qualified name;</li>
- *   <li>at a literal: its value;</li>
+ *   <li>at a definition whose recorded value only a later phase knows: "later", with the kind
+ *       recorded, under the definition's qualified name;</li>
+ *   <li>at a literal, written or the recorded value of a definition: its value;</li>
  *   <li>at a register: not usable;</li>
  *   <li>at a definition without a value, which its definition has reported: "reported";</li>
  *   <li>at anything else: not usable as a value.</li>
@@ -74,8 +77,12 @@ public final class SymbolTableResolution implements INameResolution {
             return new NameAnswer.Reported();
         }
         if (end.get().symbol() != null) {
-            return end.get().node() instanceof IJumpTarget
-                    ? new NameAnswer.Later(Kind.POSITION, end.get().qualifiedName())
+            if (end.get().node() instanceof IJumpTarget) {
+                return new NameAnswer.Later(Kind.POSITION, end.get().qualifiedName());
+            }
+            Optional<ExpressionOutcome> recorded = symbols.definitionValueOf(end.get().node());
+            return recorded.isPresent() && recorded.get().remaining() != null
+                    ? new NameAnswer.Later(recorded.get().kind(), end.get().qualifiedName())
                     : notAValue(name);
         }
         return switch (end.get().node()) {

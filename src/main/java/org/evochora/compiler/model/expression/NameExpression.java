@@ -10,4 +10,9 @@ import org.evochora.compiler.api.SourceInfo;
  * @param sourceInfo The position of the name's token.
  */
 public record NameExpression(String name, SourceInfo sourceInfo) implements Expression {
+
+    @Override
+    public String text() {
+        return name;
+    }
 }

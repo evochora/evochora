@@ -8,8 +8,10 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -17,7 +19,7 @@ import java.util.function.Supplier;
  * Contains the state that handlers read and modify while the token stream is expanded: the
  * handlers the preprocessor dispatches to, the pre-lexed token streams and the lines of the files
  * that may be included, the entry of the main file, the inclusions currently open, the options of the compilation, the numbers of the instances of injected
- * tokens, and a slot in which features keep state of their own types.
+ * tokens, the names nothing may define, and a slot in which features keep state of their own types.
  */
 public class PreProcessorContext {
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
@@ -27,6 +29,7 @@ public class PreProcessorContext {
     private final Map<String, List<String>> fileLines;
     private final SourceFile mainFile;
     private final CompilerOptions options;
+    private final Map<String, String> reservedNames;
     private final Map<Class<?>, Object> featureState = new HashMap<>();
     private int lastInstance;
 
@@ -53,12 +56,48 @@ public class PreProcessorContext {
     public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
                                Map<String, List<String>> fileLines, String mainName, String mainPath,
                                CompilerOptions options) {
+        this(rootAliasChain, fileTokens, fileLines, mainName, mainPath, options, Map.of());
+    }
+
+    /**
+     * Creates a context as {@link #PreProcessorContext(String, Map, Map, String, String, CompilerOptions)}
+     * does, which also offers the names nothing in a program may define.
+     *
+     * @param rootAliasChain The alias chain for the compilation root module.
+     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
+     *                       resolved absolute path.
+     * @param fileLines      The lines of every file read, keyed by resolved absolute path.
+     * @param mainName       The name the main file was given to the compiler under.
+     * @param mainPath       The resolved path of the main file; must not be null.
+     * @param options        The options of the compilation; must not be null.
+     * @param reservedNames  The names nothing may define, as the symbol table takes them: each
+     *                       with what it is, "an operator" or "a function", or the empty text for
+     *                       a name reserved as it is, such as {@code @}, the cursor.
+     */
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
+                               Map<String, List<String>> fileLines, String mainName, String mainPath,
+                               CompilerOptions options, Map<String, String> reservedNames) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
         this.fileLines = fileLines != null ? fileLines : Map.of();
         this.mainFile = new SourceFile(this.rootAliasChain, mainName,
                 Objects.requireNonNull(mainPath, "mainPath"), linesOf(mainPath));
         this.options = Objects.requireNonNull(options, "options");
+        Map<String, String> reserved = new HashMap<>();
+        reservedNames.forEach((name, what) -> reserved.put(name.toUpperCase(Locale.ROOT), what));
+        this.reservedNames = Map.copyOf(reserved);
+    }
+
+    /**
+     * Returns what a name is if nothing in a program may define it, compared without regard to
+     * letter case, so that a handler that defines a name, as {@code .MACRO} does, can reject it.
+     *
+     * @param name The name, in any letter case.
+     * @return What the name is, "an operator" or "a function", or the empty text for a name
+     *         reserved as it is; empty if the name is not reserved.
+     */
+    public Optional<String> reservedName(String name) {
+        return Optional.ofNullable(reservedNames.get(name.toUpperCase(Locale.ROOT)));
     }
 
     /**

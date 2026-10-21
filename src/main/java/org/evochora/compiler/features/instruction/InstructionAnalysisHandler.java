@@ -1,5 +1,12 @@
 package org.evochora.compiler.features.instruction;
 
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.Evaluator;
+import org.evochora.compiler.expression.IEvaluationContext;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
@@ -11,6 +18,7 @@ import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -22,18 +30,29 @@ import java.util.Optional;
 /**
  * Handles the semantic analysis of {@link InstructionNode}s.
  * This involves checking the instruction's arity, argument types, and other constraints.
+ * <p>
+ * A computation in an operand is evaluated here and its outcome recorded in the symbol table.
+ * Its value is checked against the slot as a written literal is; a value only the layout knows,
+ * a position or a molecule type is no operand, and a name that stands for a value only the
+ * layout knows is none either, at a label slot too: a computed position is never a jump target.
  */
 public class InstructionAnalysisHandler implements IAnalysisHandler {
 
+    /** The message for a value only the layout knows, where an operand is expected. */
+    private static final String LAYOUT_VALUE = "A layout value cannot be used as an operand.";
+
     private final IInstructionSet isa;
+    private final Evaluator evaluator;
 
     /**
      * Creates the handler for an instruction set.
      *
-     * @param isa The instruction set the instructions are checked against.
+     * @param isa        The instruction set the instructions are checked against.
+     * @param operations The operations of computations, read when the phase runs.
      */
-    public InstructionAnalysisHandler(IInstructionSet isa) {
+    public InstructionAnalysisHandler(IInstructionSet isa, OperationRegistry operations) {
         this.isa = isa;
+        this.evaluator = new Evaluator(operations);
     }
 
     /**
@@ -73,79 +92,141 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             for (int i = 0; i < expectedArity; i++) {
                 AstNode argumentNode = instructionNode.arguments().get(i);
                 ArgKind expectedType = signature.argumentTypes().get(i);
+                Slot slot = new Slot(i, expectedType, instructionNode);
 
-                // An identifier is checked by what it stands for
-                if (argumentNode instanceof IdentifierNode idNode) {
-                    switch (symbolTable.resolve(idNode.text(), idNode.sourceInfo())) {
-                        case ResolvedSymbol resolved -> {
-                            // What the identifier stands for is asked of the node that defined it:
-                            // a binding is checked as the argument it binds to, a jump target is a
-                            // label, anything else is no argument at all.
-                            AstNode definition = resolved.symbol().node();
-                            if (definition instanceof IIdentifierBinding || definition instanceof IJumpTarget) {
-                                // The symbol table follows the definitions; a circle it reports itself
-                                Optional<AstNode> bound = symbolTable.bindingOf(idNode);
-                                if (bound.isPresent()) {
-                                    ArgKind actualType = getArgumentTypeFromNode(bound.get());
-                                    if (expectedType != actualType) {
-                                        diagnostics.reportError(
-                                                String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
-                                                        i + 1, instructionName, expectedType, actualType),
-                                                instructionNode.sourceInfo().fileName(),
-                                                instructionNode.sourceInfo().lineNumber()
-                                        );
-                                    }
-                                    // A constant is held to the same rule as a written literal
-                                    reportUntypedLiteral(expectedType, bound.get(), i, instructionName, instructionNode, diagnostics);
-                                }
-                            } else {
-                                diagnostics.reportError(
-                                        String.format("'%s' is not a value, a register or a label and cannot be an instruction argument.",
-                                                idNode.text()),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
-                            }
-                        }
-                        case Resolution.Missing missing -> diagnostics.reportError(
-                                "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
-                                idNode.sourceInfo().fileName(),
-                                idNode.sourceInfo().lineNumber()
-                        );
-                    }
+                if (argumentNode instanceof ExpressionNode expression) {
+                    checkComputation(expression, slot, symbolTable, diagnostics);
+                } else if (argumentNode instanceof IdentifierNode idNode) {
+                    // An identifier is checked by what it stands for
+                    checkIdentifier(idNode, slot, symbolTable, diagnostics);
                 } else {
-                    // Normal type checking for non-identifiers
-                    ArgKind actualType = getArgumentTypeFromNode(argumentNode);
-                    if (expectedType != actualType) {
-                        diagnostics.reportError(
-                                String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
-                                        i + 1, instructionName, expectedType, actualType),
-                                instructionNode.sourceInfo().fileName(),
-                                instructionNode.sourceInfo().lineNumber()
-                        );
-                    }
-
-                    reportUntypedLiteral(expectedType, argumentNode, i, instructionName, instructionNode, diagnostics);
+                    checkOperand(argumentNode, slot, diagnostics);
                 }
             }
         }
     }
 
     /**
-     * A literal operand has to carry a molecule type: a bare number is rejected, written in the
-     * instruction or reached through a constant alike.
+     * The slot an operand stands in: its index, the kind of argument it expects, and the
+     * instruction, whose line the type errors are reported at.
      */
-    private static void reportUntypedLiteral(ArgKind expectedType, AstNode argument, int index, String instructionName,
-                                             InstructionNode instructionNode, DiagnosticsEngine diagnostics) {
-        if (expectedType == ArgKind.LITERAL && argument instanceof LiteralNode literal
-                && literal.value() instanceof Value.Number) {
-            diagnostics.reportError(
-                    String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
-                            index + 1, instructionName),
-                    instructionNode.sourceInfo().fileName(),
-                    instructionNode.sourceInfo().lineNumber()
+    private record Slot(int index, ArgKind expected, InstructionNode instruction) {
+    }
+
+    /**
+     * Evaluates a computation, records its outcome, and checks its value against the slot.
+     */
+    private void checkComputation(ExpressionNode expression, Slot slot, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        EvaluationResult result = evaluator.evaluate(expression.expression(),
+                new SymbolTableResolution(symbolTable), IEvaluationContext.none());
+        switch (result) {
+            case EvaluationResult.Value value -> {
+                symbolTable.recordResult(expression, ExpressionOutcome.of(value.value()));
+                checkValue(value.value(), expression.sourceInfo(), slot, diagnostics);
+            }
+            case EvaluationResult.Partial partial -> {
+                symbolTable.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
+                report(LAYOUT_VALUE, expression.sourceInfo(), diagnostics);
+            }
+            case EvaluationResult.Error error ->
+                    report(error.reason(), error.at() != null ? error.at() : expression.sourceInfo(), diagnostics);
+            case EvaluationResult.Reported reported -> {
+                // The error stands at the definition the computation uses
+            }
+        }
+    }
+
+    /**
+     * Checks an identifier by what the node that defined it says it stands for: a binding as
+     * the argument it binds to, a jump target as a label, a definition whose value only the
+     * layout knows not at all; anything else is no argument.
+     */
+    private void checkIdentifier(IdentifierNode idNode, Slot slot, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        switch (symbolTable.resolve(idNode.text(), idNode.sourceInfo())) {
+            case ResolvedSymbol resolved -> {
+                AstNode definition = resolved.symbol().node();
+                if (definition instanceof IIdentifierBinding || definition instanceof IJumpTarget) {
+                    // The symbol table follows the definitions; a circle it reports itself
+                    Optional<SymbolTable.ChainEnd> end = symbolTable.chainEndOf(idNode);
+                    if (end.isEmpty()) {
+                        return;
+                    }
+                    if (end.get().symbol() != null && symbolTable.definitionValueOf(end.get().node())
+                            .map(outcome -> outcome.remaining() != null).orElse(false)) {
+                        report(LAYOUT_VALUE, idNode.sourceInfo(), diagnostics);
+                        return;
+                    }
+                    AstNode bound = end.get().symbol() != null
+                            ? new IdentifierNode(end.get().qualifiedName(), end.get().sourceInfo())
+                            : end.get().node();
+                    // A constant is held to the same rules as a written operand
+                    checkOperand(bound, slot, diagnostics);
+                } else {
+                    diagnostics.reportError(
+                            String.format("'%s' is not a value, a register or a label and cannot be an instruction argument.",
+                                    idNode.text()),
+                            slot.instruction().sourceInfo().fileName(),
+                            slot.instruction().sourceInfo().lineNumber()
+                    );
+                }
+            }
+            case Resolution.Missing missing -> diagnostics.reportError(
+                    "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
+                    idNode.sourceInfo().fileName(),
+                    idNode.sourceInfo().lineNumber()
             );
         }
+    }
+
+    /**
+     * Checks a register, a literal or a label reference against the slot.
+     */
+    private void checkOperand(AstNode argument, Slot slot, DiagnosticsEngine diagnostics) {
+        if (argument instanceof LiteralNode literal) {
+            checkValue(literal.value(), literal.sourceInfo(), slot, diagnostics);
+            return;
+        }
+        reportWrongType(slot, getArgumentTypeFromNode(argument), diagnostics);
+    }
+
+    /**
+     * Checks a value against the slot: a vector is a vector argument, a number or a typed value a
+     * literal argument, which has to carry a molecule type, written or reached through a constant
+     * or a computation alike; a molecule type and a position are no argument at all.
+     */
+    private static void checkValue(Value value, SourceInfo at, Slot slot, DiagnosticsEngine diagnostics) {
+        switch (value) {
+            case Value.Type type -> report("A molecule type cannot be used as an operand.", at, diagnostics);
+            case Value.Position position -> report("A position cannot be used as an operand.", at, diagnostics);
+            case Value.Vector vector -> reportWrongType(slot, ArgKind.VECTOR, diagnostics);
+            case Value.Typed typed -> reportWrongType(slot, ArgKind.LITERAL, diagnostics);
+            case Value.Number number -> {
+                reportWrongType(slot, ArgKind.LITERAL, diagnostics);
+                if (slot.expected() == ArgKind.LITERAL) {
+                    diagnostics.reportError(
+                            String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
+                                    slot.index() + 1, slot.instruction().opcode()),
+                            slot.instruction().sourceInfo().fileName(),
+                            slot.instruction().sourceInfo().lineNumber()
+                    );
+                }
+            }
+        }
+    }
+
+    private static void reportWrongType(Slot slot, ArgKind actualType, DiagnosticsEngine diagnostics) {
+        if (slot.expected() != actualType) {
+            diagnostics.reportError(
+                    String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
+                            slot.index() + 1, slot.instruction().opcode(), slot.expected(), actualType),
+                    slot.instruction().sourceInfo().fileName(),
+                    slot.instruction().sourceInfo().lineNumber()
+            );
+        }
+    }
+
+    private static void report(String message, SourceInfo at, DiagnosticsEngine diagnostics) {
+        diagnostics.reportError(message, at.fileName(), at.lineNumber());
     }
 
     private ArgKind getArgumentTypeFromNode(AstNode node) {

@@ -7,6 +7,12 @@ import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.expression.Kind;
+import org.evochora.compiler.model.expression.LiteralExpression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
@@ -411,6 +417,49 @@ class AstPostProcessorTest {
         assertThat(resultInstr).isInstanceOf(InstructionNode.class);
         assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(LiteralNode.class);
         assertThat(((LiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 99));
+    }
+
+    @Test
+    void aComputationWithAValueBecomesALiteral() {
+        ExpressionNode computation = new ExpressionNode(new NameExpression("WIDTH", createSourceInfo()),
+                createSourceInfo(), createSourceInfo());
+        symbolTable.recordResult(computation, ExpressionOutcome.of(new Value.Typed("DATA", 100)));
+        InstructionNode instr = new InstructionNode("SETI",
+                List.of(new RegisterNode("%DR0", createSourceInfo()), computation), createSourceInfo());
+
+        InstructionNode result = (InstructionNode) processor.process(instr);
+
+        assertThat(result.arguments().get(1)).isEqualTo(new LiteralNode(new Value.Typed("DATA", 100), createSourceInfo()));
+    }
+
+    @Test
+    void aComputationOnlyTheLayoutKnowsKeepsItsTreeWithQualifiedNames() {
+        SourceInfo end = new SourceInfo("test.s", 10, 20, "TEST", 0);
+        ExpressionNode computation = new ExpressionNode(
+                new OperationExpression("+", List.of(new NameExpression("TARGET", createSourceInfo()),
+                        new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo())), createSourceInfo()),
+                createSourceInfo(), end);
+        OperationExpression remaining = new OperationExpression("+", List.of(new NameExpression("TEST.TARGET", createSourceInfo()),
+                new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo())), createSourceInfo());
+        symbolTable.recordResult(computation, ExpressionOutcome.later(remaining, Kind.POSITION));
+        ConstNode constant = new ConstNode("X", createSourceInfo(), computation);
+
+        ConstNode result = (ConstNode) processor.process(constant);
+
+        assertThat(result.value()).isEqualTo(new ExpressionNode(remaining, createSourceInfo(), end));
+    }
+
+    @Test
+    void aNameOfALayoutValuedConstantBecomesItsQualifiedName() {
+        ExpressionNode computation = new ExpressionNode(new NameExpression("@", createSourceInfo()),
+                createSourceInfo(), createSourceInfo());
+        ConstNode constant = new ConstNode("HERE", createSourceInfo(), computation);
+        symbolTable.define(new Symbol("HERE", createSourceInfo(), Symbol.Type.CONSTANT, constant));
+        symbolTable.recordDefinitionValue(constant, ExpressionOutcome.later(new NameExpression("@", createSourceInfo()), Kind.POSITION));
+
+        AstNode result = processor.process(new IdentifierNode("HERE", createSourceInfo()));
+
+        assertThat(result).isEqualTo(new IdentifierNode("TEST.HERE", createSourceInfo()));
     }
 
     private SourceInfo createSourceInfo() {

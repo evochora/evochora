@@ -9,4 +9,9 @@ import org.evochora.compiler.api.SourceInfo;
  * @param sourceInfo The position of the node's first token.
  */
 public record LiteralExpression(Value value, SourceInfo sourceInfo) implements Expression {
+
+    @Override
+    public String text() {
+        return value.text();
+    }
 }

@@ -1,7 +1,15 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.Evaluator;
+import org.evochora.compiler.expression.IEvaluationContext;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -21,18 +29,29 @@ import java.util.Set;
 /**
  * Semantic analysis handler for CALL instructions.
  * Validates procedure references, REF/VAL/LREF/LVAL argument types and counts.
+ * <p>
+ * A computation is evaluated here and its outcome recorded in the symbol table: as the target
+ * of a CALL without arguments, where it stands for a literal, and as a VAL argument, where its
+ * value is a number, a typed value or a vector. A REF, LREF or LVAL argument takes no
+ * computation, and nowhere does a value only the layout knows stand, written or through a name.
  */
 public class CallAnalysisHandler implements IAnalysisHandler {
 
+    /** The message for a value only the layout knows, where an argument is expected. */
+    private static final String LAYOUT_VALUE = "A layout value cannot be used as an operand.";
+
     private final IInstructionSet isa;
+    private final Evaluator evaluator;
 
     /**
      * Creates the handler for an instruction set.
      *
-     * @param isa The instruction set, which tells a location register from a data register.
+     * @param isa        The instruction set, which tells a location register from a data register.
+     * @param operations The operations of computations, read when the phase runs.
      */
-    public CallAnalysisHandler(IInstructionSet isa) {
+    public CallAnalysisHandler(IInstructionSet isa, OperationRegistry operations) {
         this.isa = isa;
+        this.evaluator = new Evaluator(operations);
     }
 
     @Override
@@ -41,6 +60,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
         boolean hasArguments = !callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
                 || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty();
+        if (callNode.procedureName() instanceof ExpressionNode target
+                && !(evaluate(target, symbolTable, diagnostics) instanceof EvaluationResult.Value)) {
+            return;
+        }
         if (!(callNode.procedureName() instanceof IdentifierNode procIdentifier)) {
             if (hasArguments) {
                 diagnostics.reportError("CALL with REF/VAL requires a procedure name.",
@@ -96,6 +119,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         for (AstNode valArg : callNode.valArguments()) {
             if (valArg instanceof RegisterNode) continue;
             if (valArg instanceof LiteralNode) continue;
+            if (valArg instanceof ExpressionNode expression) {
+                evaluate(expression, symbolTable, diagnostics);
+                continue;
+            }
             if (valArg instanceof IdentifierNode idNode) {
                 validateDataIdentifierOrLiteral(idNode, "VAL", symbolTable, diagnostics);
                 continue;
@@ -148,7 +175,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     /**
      * What an identifier stands for in a CALL argument, asked of the node that defined it.
      */
-    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, NONE, UNRESOLVED }
+    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, LAYOUT_VALUE, NONE, UNRESOLVED }
 
     private static final String A_DATA_REGISTER = "a data register";
     private static final String A_LOCATION_REGISTER = "a location register";
@@ -163,8 +190,12 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             return Meaning.NONE;
         }
         // The symbol table follows the definitions; a circle it reports itself
-        AstNode bound = st.bindingOf(idNode).orElse(null);
-        if (bound == null) return Meaning.UNRESOLVED;
+        SymbolTable.ChainEnd end = st.chainEndOf(idNode).orElse(null);
+        if (end == null) return Meaning.UNRESOLVED;
+        if (end.symbol() != null && st.definitionValueOf(end.node()).map(outcome -> outcome.remaining() != null).orElse(false)) {
+            return Meaning.LAYOUT_VALUE;
+        }
+        AstNode bound = end.symbol() != null ? new IdentifierNode(end.qualifiedName(), end.sourceInfo()) : end.node();
         if (bound instanceof RegisterNode reg) {
             return isLocationRegister(reg.name()) ? Meaning.LOCATION_REGISTER : Meaning.DATA_REGISTER;
         }
@@ -178,6 +209,9 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         if (argument instanceof LiteralNode literal) {
             return literal.value() instanceof Value.Vector ? "a vector" : "a literal";
         }
+        if (argument instanceof ExpressionNode) {
+            return "a computation";
+        }
         return "this argument";
     }
 
@@ -187,7 +221,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             case LOCATION_REGISTER -> A_LOCATION_REGISTER;
             case LITERAL -> "a literal";
             case LABEL -> "a label";
-            case NONE, UNRESOLVED -> "";
+            case LAYOUT_VALUE, NONE, UNRESOLVED -> "";
         };
     }
 
@@ -209,7 +243,9 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         }
         Meaning meaning = meaningOf(resolved.symbol().node(), idNode, st);
         if (accepted.contains(meaning) || meaning == Meaning.UNRESOLVED) return;
-        if (meaning == Meaning.NONE) {
+        if (meaning == Meaning.LAYOUT_VALUE) {
+            report(LAYOUT_VALUE, idNode.sourceInfo(), diag);
+        } else if (meaning == Meaning.NONE) {
             diag.reportError("'" + idNode.text() + "' is not a register or a label and cannot be a CALL argument.",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
@@ -238,6 +274,42 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                                                    SymbolTable st, DiagnosticsEngine diag) {
         validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LABEL),
                 "a location register or a label", st, diag);
+    }
+
+    /**
+     * Evaluates a computation that stands for a literal, records its outcome, and reports what
+     * keeps it from being one: a molecule type, a position, a value only the layout knows, or the
+     * error of the computation.
+     *
+     * @return The result of the evaluation.
+     */
+    private EvaluationResult evaluate(ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        EvaluationResult result = evaluator.evaluate(expression.expression(),
+                new SymbolTableResolution(symbolTable), IEvaluationContext.none());
+        switch (result) {
+            case EvaluationResult.Value value -> {
+                symbolTable.recordResult(expression, ExpressionOutcome.of(value.value()));
+                if (value.value() instanceof Value.Type) {
+                    report("A molecule type cannot be used as an operand.", expression.sourceInfo(), diagnostics);
+                } else if (value.value() instanceof Value.Position) {
+                    report("A position cannot be used as an operand.", expression.sourceInfo(), diagnostics);
+                }
+            }
+            case EvaluationResult.Partial partial -> {
+                symbolTable.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
+                report(LAYOUT_VALUE, expression.sourceInfo(), diagnostics);
+            }
+            case EvaluationResult.Error error ->
+                    report(error.reason(), error.at() != null ? error.at() : expression.sourceInfo(), diagnostics);
+            case EvaluationResult.Reported reported -> {
+                // The error stands at the definition the computation uses
+            }
+        }
+        return result;
+    }
+
+    private static void report(String message, SourceInfo at, DiagnosticsEngine diagnostics) {
+        diagnostics.reportError(message, at.fileName(), at.lineNumber());
     }
 
     /**

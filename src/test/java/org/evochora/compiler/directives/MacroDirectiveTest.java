@@ -75,4 +75,33 @@ public class MacroDirectiveTest {
                 TokenType.END_OF_FILE
         );
     }
+
+    /**
+     * A name a computation reads as an operation, or the cursor, cannot be the name of a macro
+     * or of one of its parameters; the letter case does not matter.
+     */
+    @Test
+    @Tag("unit")
+    void aReservedNameCannotBeAMacroNameOrAParameterName() {
+        assertThat(macroErrors(".MACRO number X", "  NOP", ".ENDMACRO"))
+                .containsExactly("'number' is a function and cannot be a macro name.");
+        assertThat(macroErrors(".MACRO SHL X", "  NOP", ".ENDMACRO"))
+                .containsExactly("'SHL' is an operator and cannot be a macro name.");
+        assertThat(macroErrors(".MACRO @ X", "  NOP", ".ENDMACRO"))
+                .containsExactly("'@' cannot be a macro name.");
+        assertThat(macroErrors(".MACRO SET TYPE @", "  NOP", ".ENDMACRO"))
+                .containsExactly("'TYPE' is a function and cannot be a parameter name.",
+                        "'@' cannot be a parameter name.");
+    }
+
+    private static List<String> macroErrors(String... lines) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines), diagnostics).scanTokens();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(), "<memory>", "<memory>",
+                CompilerOptions.defaults(), TestRegistries.operations().reservedNames());
+        TestRegistries.registerPreProcessorBlocks(context.handlers());
+        new PreProcessor(tokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), context)
+                .expand();
+        return diagnostics.getDiagnostics().stream().map(d -> d.message()).toList();
+    }
 }

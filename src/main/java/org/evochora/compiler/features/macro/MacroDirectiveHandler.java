@@ -45,9 +45,33 @@ public class MacroDirectiveHandler implements IPreProcessorBlockHandler {
         List<Token> body = preProcessor.tokensOf(block.bodyStart(), block.closer());
         MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, body));
 
-        // A macro name may be defined again in its module, as happens when the file that defines
-        // it is sourced more than once, only with the same parameters and the same body word for
-        // word; the first definition stays in force. A different definition is rejected.
+        // A name a computation reads as an operation, or as the cursor, cannot be a macro or a
+        // parameter: the macro is reported and not defined.
+        boolean reserved = rejectReserved(name, "a macro name", preProcessor, preProcessorContext);
+        for (Token param : params) {
+            reserved |= rejectReserved(param, "a parameter name", preProcessor, preProcessorContext);
+        }
+
+        if (!reserved) {
+            define(name, expansion, preProcessor, preProcessorContext);
+        }
+
+        // The definition leaves nothing behind: the block goes, and the newline after .ENDMACRO with it.
+        int endIndex = block.end();
+        if (endIndex < preProcessor.streamSize() && preProcessor.getToken(endIndex).type() == TokenType.NEWLINE) {
+            endIndex++;
+        }
+        preProcessor.removeTokens(startIndex, endIndex - startIndex);
+    }
+
+    /**
+     * Defines the macro in its module. A macro name may be defined again in its module, as
+     * happens when the file that defines it is sourced more than once, only with the same
+     * parameters and the same body word for word; the first definition stays in force. A
+     * different definition is rejected.
+     */
+    private static void define(Token name, MacroExpansionHandler expansion, PreProcessor preProcessor,
+                               PreProcessorContext preProcessorContext) {
         Optional<IPreProcessorHandler> existing = preProcessorContext.handlers().get(name.text());
         if (existing.isEmpty()) {
             preProcessorContext.handlers().defineInModule(name.text(), expansion);
@@ -65,12 +89,25 @@ public class MacroDirectiveHandler implements IPreProcessorBlockHandler {
                     "Cannot define macro '" + name.text() + "': the name is already used by another definition.",
                     name.source().fileName(), name.source().lineNumber());
         }
+    }
 
-        // The definition leaves nothing behind: the block goes, and the newline after .ENDMACRO with it.
-        int endIndex = block.end();
-        if (endIndex < preProcessor.streamSize() && preProcessor.getToken(endIndex).type() == TokenType.NEWLINE) {
-            endIndex++;
+    /**
+     * Reports a name the program may not define, compared without regard to letter case.
+     *
+     * @param name The name token.
+     * @param role What the name would be, for the message: "a macro name", "a parameter name".
+     * @return Whether the name is reserved.
+     */
+    private static boolean rejectReserved(Token name, String role, PreProcessor preProcessor, PreProcessorContext context) {
+        Optional<String> what = context.reservedName(name.text());
+        if (what.isEmpty()) {
+            return false;
         }
-        preProcessor.removeTokens(startIndex, endIndex - startIndex);
+        preProcessor.getDiagnostics().reportError(
+                what.get().isEmpty()
+                        ? "'" + name.text() + "' cannot be " + role + "."
+                        : "'" + name.text() + "' is " + what.get() + " and cannot be " + role + ".",
+                name.source().fileName(), name.source().lineNumber());
+        return true;
     }
 }

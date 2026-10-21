@@ -94,7 +94,7 @@ public interface IParsingContext {
     void skipStatement();
 
     /**
-     * Parses an expression (literal, register, identifier, or vector).
+     * Parses an expression (literal, register, identifier, vector, or computation).
      * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
      *         reported error.
      */
@@ -110,6 +110,19 @@ public interface IParsingContext {
      *         before one is complete.
      */
     Optional<OperandNode> operandOf(List<Token> tokens);
+
+    /**
+     * Reads a list of tokens apart from the token stream as exactly one operand, as
+     * {@link #operandOf(List)} does, and reports through this parser's diagnostics why the tokens
+     * form none: the error of the operand itself at the token at fault, and a token after a
+     * complete operand as unexpected. The list may end with an end of file or without one; the
+     * reading ends after its last token either way.
+     *
+     * @param tokens The tokens of the operand.
+     * @return The operand, or empty after a reported error; empty and unreported when the tokens
+     *         are none, which the caller, knowing what it expected, reports itself.
+     */
+    Optional<OperandNode> readOperand(List<Token> tokens);
 
     /**
      * Returns the placement of the compilation root, so that a handler can tell the main program

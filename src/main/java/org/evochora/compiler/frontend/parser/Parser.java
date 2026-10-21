@@ -1,5 +1,13 @@
 package org.evochora.compiler.frontend.parser;
 
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.INameResolution;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.parser.ExpressionParser;
+import org.evochora.compiler.expression.parser.ParseResult;
+import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -36,6 +44,9 @@ public class Parser implements IParsingContext {
     private final BlockReader blockReader;
     private final String rootAliasChain;
     private final Map<String, List<Token>> values;
+    private final OperationRegistry operations;
+    private final IInstructionSet isa;
+    private final ExpressionParser expressionParser;
     private int current = 0;
 
     private final ParserState parserState = new ParserState();
@@ -53,7 +64,8 @@ public class Parser implements IParsingContext {
     }
 
     /**
-     * Constructs a new Parser for a compilation.
+     * Constructs a new Parser that knows no operations of computations: a computation in an
+     * operand reads only as far as it needs none, and an operator in it is unexpected.
      * @param tokens The list of tokens to parse.
      * @param diagnostics The engine for reporting errors and warnings.
      * @param statementRegistry The pre-built registry of statement handlers.
@@ -64,12 +76,34 @@ public class Parser implements IParsingContext {
     public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
                   ParserStatementRegistry statementRegistry, String rootAliasChain,
                   Map<String, List<Token>> values) {
+        this(tokens, diagnostics, statementRegistry, rootAliasChain, values,
+                new OperationRegistry(), new RuntimeInstructionSetAdapter());
+    }
+
+    /**
+     * Constructs a new Parser for a compilation.
+     * @param tokens The list of tokens to parse.
+     * @param diagnostics The engine for reporting errors and warnings.
+     * @param statementRegistry The pre-built registry of statement handlers.
+     * @param rootAliasChain The placement of the compilation root, or {@code null} for none.
+     * @param values The lexed text of every value of the compilation's options, by its name as
+     *               the options normalise it.
+     * @param operations The operations of computations, which the features registered.
+     * @param isa The instruction set, whose molecule types a computation recognises before the
+     *            typing colon.
+     */
+    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
+                  ParserStatementRegistry statementRegistry, String rootAliasChain,
+                  Map<String, List<Token>> values, OperationRegistry operations, IInstructionSet isa) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
         this.statementRegistry = statementRegistry;
         this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Export::isWord, diagnostics);
         this.rootAliasChain = rootAliasChain;
         this.values = Map.copyOf(values);
+        this.operations = operations;
+        this.isa = isa;
+        this.expressionParser = new ExpressionParser(operations, isa);
     }
 
     /**
@@ -207,14 +241,22 @@ public class Parser implements IParsingContext {
     }
 
     /**
-     * Parses an expression, which can be a literal, a register, an identifier, or a vector. A
-     * number, a component of a vector and the value of a typed literal may each be preceded by a
-     * {@code -}, which makes the number negative.
+     * Parses an expression, which can be a literal, a register, an identifier, a vector, or a
+     * computation. A number, a component of a vector and the value of a typed literal may each be
+     * preceded by a {@code -}, which makes the number negative. A computation is a parenthesis, a
+     * call {@code NAME(…)}, an index {@code V[…]}, each with any calls and indexes directly after
+     * it, a typed literal whose value is one of these, or the cursor {@code @}; its tokens are cut
+     * to the matching closing token and read by the {@link ExpressionParser}.
      * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
      *         reported error.
      */
     @Override
     public OperandNode expression() {
+        int computationLength = computationLengthAt(current);
+        if (computationLength > 0) {
+            return computation(computationLength);
+        }
+
         int numberLength = numberLengthAt(current);
         if (numberLength > 0 && typeAt(current + numberLength) == TokenType.PIPE) {
             Token first = peek();
@@ -251,6 +293,102 @@ public class Parser implements IParsingContext {
         Token unexpected = advance();
         diagnostics.reportError("Expected a register, a literal, a vector or a name, but got '" + unexpected.text() + "'.", unexpected.source().fileName(), unexpected.source().lineNumber());
         return null;
+    }
+
+    /**
+     * Reads the computation at the current position into an {@link ExpressionNode}, or reports
+     * why its tokens form none, at the token at fault.
+     * @param length The number of tokens of the computation.
+     * @return The node, or {@code null} after a reported error.
+     */
+    private OperandNode computation(int length) {
+        List<Token> operand = tokens.subList(current, current + length);
+        current += length;
+        Token first = operand.getFirst();
+        return switch (expressionParser.parse(operand)) {
+            case ParseResult.Parsed parsed -> new ExpressionNode(parsed.expression(), first.source(), operand.getLast().source());
+            case ParseResult.Failed failed -> {
+                SourceInfo at = failed.at() != null ? failed.at() : first.source();
+                diagnostics.reportError(failed.message(), at.fileName(), at.lineNumber());
+                yield null;
+            }
+        };
+    }
+
+    /**
+     * Tells how many tokens the computation at the given position takes: a typed form
+     * {@code NAME :} followed by a computed value, a computed value, or the cursor {@code @} with
+     * any indexes after it.
+     * @param index The position in the token list.
+     * @return The number of tokens, or 0 if no computation stands there.
+     */
+    private int computationLengthAt(int index) {
+        TokenType type = typeAt(index);
+        if (type == TokenType.IDENTIFIER && typeAt(index + 1) == TokenType.COLON) {
+            int value = computedValueLengthAt(index + 2);
+            return value > 0 ? 2 + value : 0;
+        }
+        if (type == TokenType.IDENTIFIER && INameResolution.CURSOR.equals(tokens.get(index).text())) {
+            return 1 + suffixLength(index + 1);
+        }
+        return computedValueLengthAt(index);
+    }
+
+    /**
+     * Tells how many tokens a computed value at the given position takes: a parenthesis, or a
+     * name or a number followed by a call or an index, each with any calls and indexes directly
+     * after it.
+     * @param index The position in the token list.
+     * @return The number of tokens, or 0 if none stands there.
+     */
+    private int computedValueLengthAt(int index) {
+        TokenType type = typeAt(index);
+        if (type == TokenType.OPEN_PARENTHESIS) {
+            int group = groupedLength(index);
+            return group + suffixLength(index + group);
+        }
+        if (type == TokenType.IDENTIFIER || type == TokenType.OPCODE || type == TokenType.NUMBER) {
+            int suffix = suffixLength(index + 1);
+            return suffix > 0 ? 1 + suffix : 0;
+        }
+        return 0;
+    }
+
+    /**
+     * Tells how many tokens the calls and indexes directly at the given position take, one after
+     * another, as in {@code MIN(A, 1)[0]} or {@code V[0][1]}.
+     */
+    private int suffixLength(int index) {
+        int length = 0;
+        while (typeAt(index + length) == TokenType.CALL_PARENTHESIS || typeAt(index + length) == TokenType.OPEN_BRACKET) {
+            length += groupedLength(index + length);
+        }
+        return length;
+    }
+
+    /**
+     * Tells how many tokens the group opened at the given position takes, its opener and its
+     * matching closing token included, with the nesting of its own kind of bracket counted; a
+     * group left open ends before the end of its line, where the expression parser reports it.
+     */
+    private int groupedLength(int index) {
+        boolean bracket = typeAt(index) == TokenType.OPEN_BRACKET;
+        int depth = 0;
+        int i = index;
+        while (typeAt(i) != TokenType.NEWLINE && typeAt(i) != TokenType.END_OF_FILE) {
+            TokenType type = typeAt(i);
+            if (bracket ? type == TokenType.OPEN_BRACKET
+                    : type == TokenType.OPEN_PARENTHESIS || type == TokenType.CALL_PARENTHESIS) {
+                depth++;
+            } else if (type == (bracket ? TokenType.CLOSE_BRACKET : TokenType.CLOSE_PARENTHESIS)) {
+                depth--;
+            }
+            i++;
+            if (depth == 0) {
+                break;
+            }
+        }
+        return i - index;
     }
 
     /**
@@ -381,11 +519,47 @@ public class Parser implements IParsingContext {
         if (operandTokens.isEmpty() || operandTokens.getFirst().type() == TokenType.END_OF_FILE) {
             return Optional.empty();
         }
-        Parser reader = new Parser(operandTokens, new DiagnosticsEngine(), statementRegistry);
+        Parser reader = new Parser(operandTokens, new DiagnosticsEngine(), statementRegistry, rootAliasChain, values,
+                operations, isa);
         try {
             OperandNode operand = reader.expression();
             return operand != null && reader.isAtEnd() ? Optional.of(operand) : Optional.empty();
         } catch (ErrorRecoveryException incomplete) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A parser of its own reads the tokens, with the same registry, the same operations and this
+     * parser's diagnostics engine.
+     */
+    @Override
+    public Optional<OperandNode> readOperand(List<Token> operandTokens) {
+        if (operandTokens.isEmpty() || operandTokens.getFirst().type() == TokenType.END_OF_FILE) {
+            return Optional.empty();
+        }
+        Token last = operandTokens.getLast();
+        List<Token> ended = operandTokens;
+        if (last.type() != TokenType.END_OF_FILE) {
+            ended = new ArrayList<>(operandTokens);
+            ended.add(new Token(TokenType.END_OF_FILE, "", null, last.source()));
+        }
+        Parser reader = new Parser(ended, diagnostics, statementRegistry, rootAliasChain, values, operations, isa);
+        try {
+            OperandNode operand = reader.expression();
+            if (operand == null) {
+                return Optional.empty();
+            }
+            if (!reader.isAtEnd()) {
+                Token extra = reader.peek();
+                diagnostics.reportError("Unexpected '" + extra.text() + "'.",
+                        extra.source().fileName(), extra.source().lineNumber());
+                return Optional.empty();
+            }
+            return Optional.of(operand);
+        } catch (ErrorRecoveryException reported) {
             return Optional.empty();
         }
     }

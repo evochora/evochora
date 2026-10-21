@@ -21,7 +21,7 @@ public class ProcFeature implements ICompilerFeature {
         ctx.parserBlock(new BlockKind(Set.of(".PROC"), ".ENDPROC", Set.of()), new ProcDirectiveHandler(ctx.isa()));
         ctx.parserStatement("CALL", new CallStatementHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler(ctx.isa()));
+        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler(ctx.isa(), ctx.operations()));
         ctx.irConverter(CallNode.class, new CallNodeConverter());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());

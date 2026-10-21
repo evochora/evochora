@@ -136,6 +136,38 @@ public class ConstDirectiveTest {
                 .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
     }
 
+    /**
+     * A constant computed from a typed constant and a number is a typed value, and an
+     * instruction uses it as a typed literal.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedConstantIsUsedAsItsValue() {
+        String source = String.join("\n",
+                ".CONST W DATA:10",
+                ".CONST H 5",
+                ".CONST AREA (W*H)",
+                "SETI %DR0 AREA"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry(),
+                null, java.util.Map.of(), TestRegistries.operations(), new org.evochora.compiler.isa.RuntimeInstructionSetAdapter())
+                .parse().stream().filter(Objects::nonNull).toList();
+
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry())
+                .analyze(ast);
+        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        List<AstNode> processed = ast.stream().map(postProcessor::process).toList();
+
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+        assertThat(((ConstNode) processed.get(2)).value()).isInstanceOfSatisfying(LiteralNode.class,
+                literal -> assertThat(literal.value()).isEqualTo(new Value.Typed("DATA", 50)));
+        InstructionNode seti = (InstructionNode) processed.get(3);
+        assertThat(seti.arguments().get(1)).isInstanceOfSatisfying(LiteralNode.class,
+                literal -> assertThat(literal.value()).isEqualTo(new Value.Typed("DATA", 50)));
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());

@@ -2,6 +2,7 @@ package org.evochora.compiler;
 
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
@@ -27,6 +28,16 @@ public final class TestRegistries {
         registry.registerAllCollectors(featureRegistry.symbolCollectors());
 
         return registry;
+    }
+
+    /**
+     * Builds the operations of computations the standard features register, as {@link Compiler}
+     * hands them to the parser.
+     */
+    public static OperationRegistry operations() {
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        return featureRegistry.operations();
     }
 
     /**

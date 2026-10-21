@@ -44,7 +44,8 @@ public class SemanticAnalyzerTest {
         
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, allHandlers());
+        Parser parser = new Parser(tokens, diagnostics, allHandlers(), null, java.util.Map.of(),
+                TestRegistries.operations(), new RuntimeInstructionSetAdapter());
         return parser.parse();
     }
 
@@ -890,6 +891,119 @@ public class SemanticAnalyzerTest {
         assertThat(errors).singleElement().satisfies(d -> {
             assertThat(d.lineNumber()).isEqualTo(2);
             assertThat(d.message()).isEqualTo(".REQUIRE may stand only at the module level.");
+        });
+    }
+
+    /**
+     * A typed literal whose value is computed from a constant is a typed literal operand.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedTypedLiteralIsALiteralOperand() {
+        assertThat(analyze(
+                ".CONST WIDTH 99",
+                "SETI %DR0 DATA:(WIDTH+1)")).isEmpty();
+    }
+
+    /**
+     * A computation whose value is a bare number is held to the rule of a written number.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedNumberRequiresATypedLiteral() {
+        assertThat(analyze(
+                ".CONST WIDTH 99",
+                "SETI %DR0 (WIDTH+1)")).singleElement().satisfies(d ->
+                assertThat(d.message()).isEqualTo("Argument 2 for instruction 'SETI' requires a typed literal (e.g., DATA:42)."));
+    }
+
+    /**
+     * A computed vector is a vector operand.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedVectorIsAVectorOperand() {
+        assertThat(analyze(
+                ".CONST WIDTH 100",
+                ".CONST HEIGHT 70",
+                "SETV %DR0 (WIDTH-1|HEIGHT-1)")).isEmpty();
+    }
+
+    /**
+     * A computed vector at a literal slot has the wrong type, as a written vector has.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedVectorAtALiteralSlotHasTheWrongType() {
+        assertThat(analyze("SETI %DR0 (1|0)")).singleElement().satisfies(d ->
+                assertThat(d.message()).isEqualTo("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got VECTOR."));
+    }
+
+    /**
+     * A computation only the layout can compute is no operand.
+     */
+    @Test
+    @Tag("unit")
+    void aLayoutValueIsNoOperand() {
+        assertThat(analyze("SETI %DR0 DATA:(@[0])")).singleElement().satisfies(d -> {
+            assertThat(d.message()).isEqualTo("A layout value cannot be used as an operand.");
+            assertThat(d.lineNumber()).isEqualTo(1);
+        });
+    }
+
+    /**
+     * A constant whose value is a computation on a label is a layout value, and a jump to it is
+     * reported: a computed position is never a jump target.
+     */
+    @Test
+    @Tag("unit")
+    void aJumpToALayoutValuedConstantIsReported() {
+        assertThat(analyze(
+                ".LABEL TARGET NOP",
+                ".CONST X (TARGET)",
+                "JMPI X")).singleElement().satisfies(d -> {
+            assertThat(d.message()).isEqualTo("A layout value cannot be used as an operand.");
+            assertThat(d.lineNumber()).isEqualTo(3);
+        });
+    }
+
+    /**
+     * A jump to a constant that names a label stays a jump to the label.
+     */
+    @Test
+    @Tag("unit")
+    void aJumpToAConstantThatNamesALabelStaysAJumpToTheLabel() {
+        assertThat(analyze(
+                ".LABEL TARGET NOP",
+                ".CONST X TARGET",
+                "JMPI X")).isEmpty();
+    }
+
+    /**
+     * The error of a computation is reported at the line it stands on.
+     */
+    @Test
+    @Tag("unit")
+    void theErrorOfAComputationIsReported() {
+        assertThat(analyze("NOP", "SETI %DR0 DATA:(1/0)")).singleElement().satisfies(d -> {
+            assertThat(d.message()).isEqualTo("Division by zero.");
+            assertThat(d.lineNumber()).isEqualTo(2);
+        });
+    }
+
+    /**
+     * A constant that failed to compute is reported once, at its definition, and not again at
+     * its use.
+     */
+    @Test
+    @Tag("unit")
+    void aConstantThatFailedIsReportedOnlyAtItsDefinition() {
+        assertThat(analyze(
+                ".CONST BAD DATA:(1/0)",
+                "SETI %DR0 BAD",
+                "SETI %DR1 DATA:(BAD)")).singleElement().satisfies(d -> {
+            assertThat(d.message()).isEqualTo("Division by zero.");
+            assertThat(d.lineNumber()).isEqualTo(1);
         });
     }
 

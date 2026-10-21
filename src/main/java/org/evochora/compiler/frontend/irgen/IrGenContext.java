@@ -7,6 +7,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.model.ast.OperandNode;
@@ -18,6 +19,7 @@ import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.model.ir.IrReg;
+import org.evochora.compiler.model.ir.IrValue;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -178,9 +180,12 @@ public final class IrGenContext {
 	 * replaced by registers and literals in Phase 6, so an identifier that is still one here
 	 * names a label under its qualified name.
 	 *
+	 * A computation is no operand here: phase 6 replaced every one that may stand in an
+	 * instruction by its value.
+	 *
 	 * @param node The AST node to convert; it has to be an operand form.
 	 * @return The corresponding IR operand.
-	 * @throws IllegalArgumentException if the node is no operand form.
+	 * @throws IllegalArgumentException if the node is no operand form, or a computation.
 	 */
 	public IrOperand convertOperand(AstNode node) {
 		if (!(node instanceof OperandNode operand)) {
@@ -190,6 +195,27 @@ public final class IrGenContext {
 			case RegisterNode r -> new IrReg(r.name());
 			case LiteralNode literal -> new IrLiteral(literal.value());
 			case IdentifierNode id -> new IrLabelRef(id.text());
+			case ExpressionNode expression -> throw new IllegalArgumentException(
+					"A computation reached IR generation as an operand: " + expression.expression().text());
+		};
+	}
+
+	/**
+	 * Converts an AST operand node that a directive carries as a value into its IR value: a
+	 * literal as its value, a name, which phase 6 qualified, as its text, and a computation only
+	 * the layout can compute as its tree.
+	 *
+	 * @param node The operand.
+	 * @return The corresponding IR value.
+	 * @throws IllegalArgumentException if the operand is a register, which is no value.
+	 */
+	public IrValue convertValue(OperandNode node) {
+		return switch (node) {
+			case LiteralNode literal -> new IrValue.Literal(literal.value());
+			case IdentifierNode id -> new IrValue.Str(id.text());
+			case ExpressionNode expression -> new IrValue.Expression(expression.expression(), expression.end());
+			case RegisterNode register -> throw new IllegalArgumentException(
+					"A register is no value: " + register.name());
 		};
 	}
 }

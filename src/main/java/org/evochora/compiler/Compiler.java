@@ -185,7 +185,7 @@ public class Compiler implements ICompiler {
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, graph.tokens(), graph.lines(),
-                programName, mainFilePath, effectiveOptions);
+                programName, mainFilePath, effectiveOptions, featureRegistry.operations().reservedNames());
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(block ->
                 ppContext.handlers().registerBlock(block.kind(), block.handler(), block.stored()));
@@ -202,7 +202,8 @@ public class Compiler implements ICompiler {
         if (featureRegistry.defaultParserStatementHandler() != null) {
             parserRegistry.registerDefault(featureRegistry.defaultParserStatementHandler());
         }
-        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry, rootAliasChain, valueTokens);
+        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry, rootAliasChain, valueTokens,
+                featureRegistry.operations(), isa);
         List<AstNode> ast = parser.parse();
 
         failOnErrors(diagnostics);

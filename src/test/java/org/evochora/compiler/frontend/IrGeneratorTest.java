@@ -86,7 +86,8 @@ public class IrGeneratorTest {
             fail("Lexer errors: " + diagnostics.summary());
         }
 
-        Parser parser = new Parser(tokens, diagnostics, allHandlers());
+        Parser parser = new Parser(tokens, diagnostics, allHandlers(), null, java.util.Map.of(),
+                TestRegistries.operations(), new RuntimeInstructionSetAdapter());
         List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) {
             fail("Parser errors: " + diagnostics.summary());
@@ -118,6 +119,34 @@ public class IrGeneratorTest {
             fail("IR generation errors: " + diagnostics.summary());
         }
         return ir;
+    }
+
+    @Test
+    @Tag("unit")
+    void aComputedOperandBecomesALiteral() {
+        IrProgram ir = compileToIr(String.join("\n",
+                ".CONST WIDTH 99",
+                "SETI %DR0 DATA:(WIDTH+1)"));
+
+        IrInstruction seti = ir.items().stream()
+                .filter(IrInstruction.class::isInstance).map(IrInstruction.class::cast)
+                .filter(i -> i.opcode().equals("SETI")).findFirst().orElseThrow();
+        assertThat(seti.operands().get(1)).isEqualTo(new IrLiteral(new Value.Typed("DATA", 100)));
+    }
+
+    @Test
+    @Tag("unit")
+    void aLayoutValuedConstantCarriesItsTree() {
+        IrProgram ir = compileToIr(String.join("\n",
+                ".LABEL TARGET NOP",
+                ".CONST X (TARGET)"));
+
+        IrDirective constValue = ir.items().stream()
+                .filter(IrDirective.class::isInstance).map(IrDirective.class::cast)
+                .filter(d -> d.name().equals("const_value")).findFirst().orElseThrow();
+        assertThat(constValue.args().get("name")).isEqualTo(new IrValue.Str("X"));
+        assertThat(constValue.args().get("value")).isInstanceOfSatisfying(IrValue.Expression.class,
+                value -> assertThat(value.expression().text()).isEqualTo("TARGET"));
     }
 
     @Test

@@ -3,8 +3,14 @@ package org.evochora.compiler.frontend.tokenmap;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
+import org.evochora.compiler.expression.INameResolution;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.expression.Expression;
+import org.evochora.compiler.model.expression.LiteralExpression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.ast.RegisterNode;
 
 import org.evochora.compiler.frontend.ModuleContextTracker;
@@ -31,8 +37,9 @@ import java.util.Optional;
  * <p>
  * Feature-specific AST node handling is delegated to {@link ITokenMapContributor}
  * implementations via the {@link TokenMapContributorRegistry}. Core node types
- * (IdentifierNode, RegisterNode) are handled as default logic: an identifier is classified by
- * the symbol it names, a register as a register.
+ * (IdentifierNode, ExpressionNode, RegisterNode) are handled as default logic: an identifier is
+ * classified by the symbol it names, every name of a computation but the cursor as an identifier
+ * at the position of its token, a register as a register.
  */
 public class TokenMapGenerator implements ITokenMapContext {
 
@@ -174,21 +181,9 @@ public class TokenMapGenerator implements ITokenMapContext {
         }
 
         if (node instanceof IdentifierNode identifierNode) {
-            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo());
-            if (symbolOpt.isPresent()) {
-                ResolvedSymbol resolved = symbolOpt.get();
-                Symbol sym = resolved.symbol();
-                SourceInfo si = identifierNode.sourceInfo();
-                String qualifiedName = resolved.qualifiedName();
-                put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), resolved.scope(), qualifiedName));
-            } else {
-                diagnostics.reportError(
-                    "Internal error: symbol '" + identifierNode.text() +
-                    "' could not be resolved although the semantic analysis accepted it.",
-                    identifierNode.sourceInfo().fileName(),
-                    identifierNode.sourceInfo().lineNumber()
-                );
-            }
+            classifyName(identifierNode.text(), identifierNode.sourceInfo());
+        } else if (node instanceof ExpressionNode expressionNode) {
+            classifyNames(expressionNode.expression());
         } else if (node instanceof RegisterNode registerNode) {
             // A register is written as a register here: aliases and parameters are still
             // identifiers in Phase 5 and are replaced by registers only in Phase 6.
@@ -197,6 +192,43 @@ public class TokenMapGenerator implements ITokenMapContext {
                 TokenKind.REGISTER,
                 this.currentScopeName
             ));
+        }
+    }
+
+    /**
+     * Classifies a name by the symbol it names, at the position of its token.
+     */
+    private void classifyName(String name, SourceInfo at) {
+        Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(name, at);
+        if (symbolOpt.isPresent()) {
+            ResolvedSymbol resolved = symbolOpt.get();
+            Symbol sym = resolved.symbol();
+            put(at, new TokenInfo(name, TokenKindMapper.map(sym.type()), resolved.scope(), resolved.qualifiedName()));
+        } else {
+            diagnostics.reportError(
+                "Internal error: symbol '" + name +
+                "' could not be resolved although the semantic analysis accepted it.",
+                at.fileName(),
+                at.lineNumber()
+            );
+        }
+    }
+
+    /**
+     * Classifies every name of a computation as an identifier with that name, except the
+     * cursor, which names no symbol.
+     */
+    private void classifyNames(Expression expression) {
+        switch (expression) {
+            case NameExpression name -> {
+                if (!INameResolution.CURSOR.equals(name.name())) {
+                    classifyName(name.name(), name.sourceInfo());
+                }
+            }
+            case OperationExpression operation -> operation.operands().forEach(this::classifyNames);
+            case LiteralExpression literal -> {
+                // A literal names nothing
+            }
         }
     }
 

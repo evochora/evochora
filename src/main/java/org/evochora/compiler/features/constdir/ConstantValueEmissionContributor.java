@@ -13,7 +13,8 @@ import org.evochora.compiler.model.ir.IrValue;
  *
  * <p>The {@code const_value} directive is emitted by {@link ConstNodeConverter} in Phase 7, one
  * per constant definition, with the path of the constant and the value as text; the value is
- * filed under the path.</p>
+ * filed under the path. A constant whose value only the layout knows carries its tree instead of
+ * a text and is not filed.</p>
  */
 public final class ConstantValueEmissionContributor implements IEmissionContributor {
 

@@ -81,6 +81,7 @@ This is a sealed interface for typed values used in directive arguments. It allo
 
 -   **`IrValue` Subtypes**:
     -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
+    -   `Expression(Expression, SourceInfo)`: a computation only the layout can compute, every name in it qualified, with the position of its last token; `const_value` carries one for a constant whose value is such a computation
     -   `Str(String)`
     -   `Bool(boolean)`
     -   `ListVal(List<IrValue>)`

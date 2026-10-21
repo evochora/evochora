@@ -5,9 +5,11 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.LiteralNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -99,6 +101,13 @@ public class SymbolTable {
     // Keyed by node identity: AST nodes are records, so two structurally equal nodes would
     // otherwise share one entry and therefore one scope.
     private final Map<AstNode, Scope> nodeScopeMap = new IdentityHashMap<>();
+
+    // --- Outcomes of computations (recorded by the analysis handlers that evaluate, read by later phases) ---
+    // Keyed by node identity, as the scopes are: an outcome belongs to the computation where it
+    // stands, and two structurally equal nodes are two computations.
+    private final Map<ExpressionNode, ExpressionOutcome> expressionResults = new IdentityHashMap<>();
+    // The values of definitions, keyed by the identity of the defining node.
+    private final Map<AstNode, ExpressionOutcome> definitionValues = new IdentityHashMap<>();
 
     private final DiagnosticsEngine diagnostics;
 
@@ -322,6 +331,58 @@ public class SymbolTable {
         return nodeScopeMap.get(node);
     }
 
+    // === Outcomes of computations ===
+
+    /**
+     * Records what phase 4 made of a computation in operand position. Called by the analysis
+     * handler that evaluates it; a computation that failed records nothing.
+     *
+     * @param node    The node of the computation, used as the lookup key by identity.
+     * @param outcome Its value, or the tree a later phase computes with its kind.
+     * @throws IllegalStateException if the table is frozen.
+     */
+    public void recordResult(ExpressionNode node, ExpressionOutcome outcome) {
+        guardFrozen();
+        expressionResults.put(node, outcome);
+    }
+
+    /**
+     * Returns what phase 4 made of a computation in operand position.
+     * <p>
+     * Nodes are matched by identity, so this has to be the very instance that was evaluated, as
+     * for {@link #getNodeScope}.
+     *
+     * @param node The node of the computation.
+     * @return Its outcome; empty if it was not evaluated or failed.
+     */
+    public Optional<ExpressionOutcome> resultOf(ExpressionNode node) {
+        return Optional.ofNullable(expressionResults.get(node));
+    }
+
+    /**
+     * Records the value of a definition whose value is a computation, so that a name bound to it
+     * stands for that value: a value now, or, for a value only a later phase knows, the
+     * definition's qualified name (see {@link #chainEndOf}).
+     *
+     * @param definition The defining node, the node of its symbol, used as the key by identity.
+     * @param outcome    Its value, or the tree a later phase computes with its kind.
+     * @throws IllegalStateException if the table is frozen.
+     */
+    public void recordDefinitionValue(AstNode definition, ExpressionOutcome outcome) {
+        guardFrozen();
+        definitionValues.put(definition, outcome);
+    }
+
+    /**
+     * Returns the value recorded for a definition.
+     *
+     * @param definition The defining node, matched by identity.
+     * @return Its recorded value; empty if none was recorded.
+     */
+    public Optional<ExpressionOutcome> definitionValueOf(AstNode definition) {
+        return Optional.ofNullable(definitionValues.get(definition));
+    }
+
     // === Symbol definition and resolution ===
 
     /**
@@ -388,11 +449,12 @@ public class SymbolTable {
      * identifiers, until a node that is not one is reached.
      *
      * @param reference The identifier as written.
-     * @return The node the identifier finally stands for: what the last binding binds to, or
-     *         the identifier under the qualified name of a symbol that offers no binding (a
-     *         label, a procedure). Empty if the identifier names no symbol, if the last
-     *         definition has no value, or if its definitions go in a circle, which is reported
-     *         once at the definition the circle was entered through.
+     * @return The node the identifier finally stands for: what the last binding binds to, a
+     *         literal for a definition whose recorded value is a value, or the identifier under
+     *         the qualified name of a symbol that offers no binding (a label, a procedure) or of a
+     *         definition whose recorded value only a later phase knows. Empty if the identifier
+     *         names no symbol, if the last definition has no value, or if its definitions go in a
+     *         circle, which is reported once at the definition the circle was entered through.
      */
     public Optional<AstNode> bindingOf(IdentifierNode reference) {
         return chainEndOf(reference).map(end -> end.symbol() != null
@@ -402,13 +464,15 @@ public class SymbolTable {
 
     /**
      * Where a chain of names ends, as {@link #chainEndOf} finds it: at the node a binding gave,
-     * or at a symbol whose node offers no binding.
+     * at a symbol whose node offers no binding, or at a definition whose recorded value only a
+     * later phase knows.
      *
-     * @param node          The node the chain ends at: what the last binding binds to, or the
-     *                      node of the symbol that offers no binding, whose capabilities the
-     *                      caller asks.
-     * @param symbol        The symbol that offers no binding; {@code null} when the chain ends at
-     *                      the node a binding gave.
+     * @param node          The node the chain ends at: what the last binding binds to, a literal
+     *                      of a recorded value, or the node of the symbol the chain stops at,
+     *                      whose capabilities and recorded value the caller asks.
+     * @param symbol        The symbol the chain stops at: one that offers no binding, or a
+     *                      definition whose recorded value only a later phase knows;
+     *                      {@code null} when the chain ends at a node.
      * @param qualifiedName The qualified name of that symbol; {@code null} with it.
      * @param sourceInfo    The position of the last identifier of the chain, as written.
      */
@@ -420,12 +484,18 @@ public class SymbolTable {
      * identifiers, and says where the chain ends. Each identifier is looked up where it is
      * written: the reference from the current scope, every identifier a definition binds to
      * from the scope of that definition, in the placement its position names.
+     * <p>
+     * A definition with a recorded value ends the chain: a value as a literal at the position of
+     * the identifier that names it, a value only a later phase knows at the definition's symbol.
+     * A definition whose value is a computation without a recorded outcome has no value: the
+     * computation failed and was reported where it was evaluated.
      *
      * @param reference The identifier as written.
-     * @return Where the chain ends: at the node the last binding binds to, or at the symbol
-     *         with its qualified name whose node offers no binding (a label, a procedure, a
-     *         module alias). Empty if the identifier names no symbol, if the last definition has
-     *         no value, or if its definitions go in a circle, which is reported once at the
+     * @return Where the chain ends: at the node the last binding binds to, at the literal of a
+     *         recorded value, or at the symbol with its qualified name whose node offers no
+     *         binding (a label, a procedure, a module alias) or whose recorded value only a later
+     *         phase knows. Empty if the identifier names no symbol, if the last definition has no
+     *         value, or if its definitions go in a circle, which is reported once at the
      *         definition the circle was entered through.
      */
     public Optional<ChainEnd> chainEndOf(IdentifierNode reference) {
@@ -449,6 +519,12 @@ public class SymbolTable {
             if (!(symbol.node() instanceof IIdentifierBinding binding)) {
                 return Optional.of(new ChainEnd(symbol.node(), symbol, resolved.get().qualifiedName(), current.sourceInfo()));
             }
+            ExpressionOutcome recorded = definitionValues.get(symbol.node());
+            if (recorded != null) {
+                return Optional.of(recorded.value() != null
+                        ? new ChainEnd(new LiteralNode(recorded.value(), current.sourceInfo()), null, null, current.sourceInfo())
+                        : new ChainEnd(symbol.node(), symbol, resolved.get().qualifiedName(), current.sourceInfo()));
+            }
             if (visited.contains(symbol)) {
                 if (reportedCircles.add(symbol.sourceInfo() + " " + symbol.name())) {
                     diagnostics.reportError(
@@ -466,7 +542,7 @@ public class SymbolTable {
             from = lookup.scope();
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {
-                return bound == null
+                return bound == null || bound instanceof ExpressionNode
                         ? Optional.empty()
                         : Optional.of(new ChainEnd(bound, null, null, current.sourceInfo()));
             }
