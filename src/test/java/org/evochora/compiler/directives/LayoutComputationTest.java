@@ -130,6 +130,24 @@ class LayoutComputationTest {
                 .hasMessageContaining("Step 0 of a range must be positive.");
     }
 
+    /**
+     * A range whose end lies below its start would place nothing; it is reported, for a plain and
+     * for a stepped range alike.
+     */
+    @Test
+    void aRangeWhoseEndLiesBelowItsStartIsReported() {
+        assertThatThrownBy(() -> compile(
+                ".PLACE DATA:1 5..1|0",
+                "NOP"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("End 1 of a range must be at least its start 5.");
+        assertThatThrownBy(() -> compile(
+                ".PLACE DATA:1 10:2:(2*2)|0",
+                "NOP"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("End 4 of a range must be at least its start 10.");
+    }
+
     @Test
     void aNegativeStepIsReported() {
         assertThatThrownBy(() -> compile(

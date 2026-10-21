@@ -97,6 +97,7 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
             case "range" -> {
                 int start = number(entry(component, "start"), context, src);
                 int end = number(entry(component, "end"), context, src);
+                requireOrdered(start, end, src);
                 List<Integer> values = new ArrayList<>();
                 for (int i = start; i <= end; i++) {
                     values.add(i);
@@ -110,6 +111,7 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
                 if (step < 1) {
                     throw new CompilationException(SourceInfo.locate(src, "Step " + step + " of a range must be positive."));
                 }
+                requireOrdered(start, end, src);
                 List<Integer> values = new ArrayList<>();
                 for (int i = start; i <= end; i += step) {
                     values.add(i);
@@ -132,6 +134,16 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
                 return values;
             }
             default -> throw new IllegalStateException("Unknown placement component: " + kindOf(component));
+        }
+    }
+
+    /**
+     * A range counts upwards from its start to its end, so the end has to be at least the start.
+     */
+    private static void requireOrdered(int start, int end, SourceInfo src) throws CompilationException {
+        if (end < start) {
+            throw new CompilationException(SourceInfo.locate(src,
+                    "End " + end + " of a range must be at least its start " + start + "."));
         }
     }
 
