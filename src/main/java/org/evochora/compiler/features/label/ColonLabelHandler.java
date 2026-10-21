@@ -76,6 +76,6 @@ public class ColonLabelHandler implements IPreProcessorHandler {
      * on the line of the body; otherwise the token's own position.
      */
     private static SourceInfo standsAt(Token token) {
-        return token.replaces().isEmpty() ? token.source() : token.replaces().getLast();
+        return token.replaces().isEmpty() ? token.source() : token.replaces().getLast().source();
     }
 }

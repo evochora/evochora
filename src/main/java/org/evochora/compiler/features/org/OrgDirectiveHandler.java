@@ -70,7 +70,7 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
                 continue;
             }
             boolean backward = marked && isSymbol(piece.get(1), "-");
-            components.add(backward ? negated(operand.get()) : operand.get());
+            components.add(backward ? negated(operand.get(), rest.getLast()) : operand.get());
             relative.add(marked);
         }
         return failed ? null : new OrgNode(components, relative, directive.source());
@@ -90,9 +90,10 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
 
     /**
      * The operand of a component the marker {@code @-} counts backwards: a number negated, and
-     * any other operand under the sign operator, which the analysis and the layout compute.
+     * any other operand under the sign operator, which the analysis and the layout compute. The
+     * computation ends right after the operand's last token.
      */
-    private static OperandNode negated(OperandNode operand) {
+    private static OperandNode negated(OperandNode operand, Token last) {
         if (operand instanceof LiteralNode literal && literal.value() instanceof Value.Number number) {
             return new LiteralNode(new Value.Number(-number.value()), literal.sourceInfo());
         }
@@ -106,9 +107,8 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
             // A register stays as it is, for the analysis to report
             return operand;
         }
-        SourceInfo end = operand instanceof ExpressionNode expression ? expression.end() : operand.sourceInfo();
         return new ExpressionNode(new OperationExpression("-", List.of(inner), operand.sourceInfo()),
-                operand.sourceInfo(), end);
+                operand.sourceInfo(), last.after());
     }
 
     private static boolean isCursor(Token token) {

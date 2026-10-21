@@ -251,7 +251,8 @@ public class PreProcessor {
      * Records a note at a position, in its placement, file and instance of injected tokens. A
      * note equal to one already recorded is recorded once.
      *
-     * @param position The position the note stands at.
+     * @param position The position the note stands at: right after the token it belongs to, the
+     *                 column after the token's last character.
      * @param text     The text of the note.
      */
     public void note(SourceInfo position, String text) {

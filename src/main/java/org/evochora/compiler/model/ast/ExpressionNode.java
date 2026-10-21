@@ -14,7 +14,7 @@ import org.evochora.compiler.model.expression.Expression;
  *
  * @param expression The computation.
  * @param sourceInfo The position of the operand's first token.
- * @param end        The position of the operand's last token.
+ * @param end        The position right after the operand's last token.
  */
 public record ExpressionNode(
         Expression expression,

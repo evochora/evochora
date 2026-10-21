@@ -21,7 +21,7 @@ import java.util.OptionalLong;
  * @param view     One entry per inclusion of a file and every instance of injected tokens that
  *                 is no inclusion, with the regions and notes the preprocessor recorded in them.
  * @param tokenMap The classification of every token by its source position.
- * @param notes    The note {@code [=value]} at the last token of every computation the frontend
+ * @param notes    The note {@code [=value]} after the last token of every computation the frontend
  *                 computed, each distinct note once, not yet in the view.
  * @param flags    The defines of the compilation's options as the options normalise them: each
  *                 name upper-cased, each value an integer or empty for a name defined without

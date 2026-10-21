@@ -40,6 +40,17 @@ public record SourceInfo(String fileName, int lineNumber, int columnNumber, Stri
         return lineNumber >= 1;
     }
 
+    /**
+     * Returns the position a number of columns further on the same line, in the same placement
+     * and instance: the position right after a text of that length that begins here.
+     *
+     * @param columns The number of columns to move on.
+     * @return The position {@code columns} columns further on.
+     */
+    public SourceInfo plusColumns(int columns) {
+        return new SourceInfo(fileName, lineNumber, columnNumber + columns, placement, expansion);
+    }
+
     private static final String UNKNOWN_FILE = "<unknown>";
 
     /**

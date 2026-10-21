@@ -57,13 +57,13 @@ class NotesIntegrationTest {
         ProgramArtifact artifact = compile();
 
         SourceFile main = artifact.sources().get(0);
-        assertThat(main.notes()).containsExactly(new Note(0, 7, 21, "[=DATA:98]"));
+        assertThat(main.notes()).containsExactly(new Note(0, 7, 22, "[=DATA:98]"));
         assertThat(artifact.expansions()).hasSize(1);
         Expansion.Binding binding = artifact.expansions().values().iterator().next().bindings().get(0);
         assertThat(binding.argument()).isEqualTo("DATA:(WIDTH-1)");
         int instance = artifact.expansions().keySet().iterator().next();
         assertThat(artifact.expansions().get(instance).notes())
-                .containsExactly(new Note(instance, 3, 26, "[=DATA:100]"));
+                .containsExactly(new Note(instance, 3, 27, "[=DATA:100]"));
     }
 
     /**
@@ -86,7 +86,7 @@ class NotesIntegrationTest {
 
         ProgramArtifact artifact = compile();
 
-        assertThat(artifact.sources().get(0).notes()).containsExactly(new Note(0, 3, 71, "[=99|69]"));
+        assertThat(artifact.sources().get(0).notes()).containsExactly(new Note(0, 3, 72, "[=99|69]"));
     }
 
     /**
@@ -107,7 +107,7 @@ class NotesIntegrationTest {
 
         SourceFile module = artifact.sources().stream()
                 .filter(source -> "LIB".equals(source.placement())).findFirst().orElseThrow();
-        assertThat(module.notes()).containsExactly(new Note(0, 1, 28, "[=5|7]"));
+        assertThat(module.notes()).containsExactly(new Note(0, 1, 29, "[=5|7]"));
     }
 
     /**
@@ -122,7 +122,7 @@ class NotesIntegrationTest {
 
         ProgramArtifact artifact = compile();
 
-        assertThat(artifact.sources().get(0).notes()).containsExactly(new Note(0, 2, 16, "[=1|2]"));
+        assertThat(artifact.sources().get(0).notes()).containsExactly(new Note(0, 2, 17, "[=1|2]"));
     }
 
     /**
@@ -144,7 +144,7 @@ class NotesIntegrationTest {
         ProgramArtifact artifact = compile();
 
         assertThat(artifact.sources().get(0).notes())
-                .containsExactly(new Note(0, 2, 13, "[=4]"), new Note(0, 6, 12, "[=3]"));
+                .containsExactly(new Note(0, 2, 14, "[=4]"), new Note(0, 6, 13, "[=3]"));
     }
 
     /**
@@ -166,9 +166,9 @@ class NotesIntegrationTest {
         ProgramArtifact artifact = compile();
 
         assertThat(artifact.sources().get(0).notes()).containsExactlyInAnyOrder(
-                new Note(0, 4, 24, "[=DATA:100]"),
-                new Note(0, 5, 16, "[=4|2]"),
-                new Note(0, 5, 16, "[=8|4]"));
+                new Note(0, 4, 25, "[=DATA:100]"),
+                new Note(0, 5, 17, "[=4|2]"),
+                new Note(0, 5, 17, "[=8|4]"));
     }
 
     /**

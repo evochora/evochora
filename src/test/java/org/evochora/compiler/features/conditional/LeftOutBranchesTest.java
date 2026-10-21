@@ -70,9 +70,9 @@ class LeftOutBranchesTest {
         SourceFile first = source(artifact, "FIRST", "lib.evo");
         SourceFile second = source(artifact, "SECOND", "lib.evo");
         assertThat(first.leftOut()).containsExactly(new LeftOut(0, 2, 3, 3));
-        assertThat(first.notes()).containsExactly(new Note(0, 2, 8, "[=1]"));
+        assertThat(first.notes()).containsExactly(new Note(0, 2, 11, "[=1]"));
         assertThat(second.leftOut()).containsExactly(new LeftOut(0, 4, 5, 5));
-        assertThat(second.notes()).containsExactly(new Note(0, 2, 8, "[=3]"));
+        assertThat(second.notes()).containsExactly(new Note(0, 2, 11, "[=3]"));
         assertThat(source(artifact, "", "main.evo").leftOut()).isEmpty();
     }
 
@@ -90,7 +90,7 @@ class LeftOutBranchesTest {
         SourceFile main = source(compile(Map.of()), "", "main.evo");
 
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 4, 5, 6));
-        assertThat(main.notes()).containsExactly(new Note(0, 2, 9, "[not set]"));
+        assertThat(main.notes()).containsExactly(new Note(0, 2, 12, "[not set]"));
     }
 
     @Test
@@ -104,7 +104,7 @@ class LeftOutBranchesTest {
         SourceFile main = source(compile(Map.of("PAD", OptionalLong.empty())), "", "main.evo");
 
         assertThat(main.leftOut()).isEmpty();
-        assertThat(main.notes()).containsExactly(new Note(0, 2, 8, "[set]"));
+        assertThat(main.notes()).containsExactly(new Note(0, 2, 11, "[set]"));
     }
 
     @Test
@@ -122,9 +122,9 @@ class LeftOutBranchesTest {
 
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 4, 5, 5));
         assertThat(main.notes()).containsExactly(
-                new Note(0, 2, 8, "[=3]"),
-                new Note(0, 2, 14, "[=2]"),
-                new Note(0, 4, 12, "[not set]"));
+                new Note(0, 2, 11, "[=3]"),
+                new Note(0, 2, 19, "[=2]"),
+                new Note(0, 4, 17, "[not set]"));
     }
 
     @Test
@@ -139,7 +139,7 @@ class LeftOutBranchesTest {
         SourceFile main = source(compile(Map.of()), "", "main.evo");
 
         assertThat(main.leftOut()).isEmpty();
-        assertThat(main.notes()).containsExactly(new Note(0, 2, 8, "[not set]"));
+        assertThat(main.notes()).containsExactly(new Note(0, 2, 11, "[not set]"));
     }
 
     @Test
@@ -156,7 +156,7 @@ class LeftOutBranchesTest {
         SourceFile main = source(compile(Map.of("INNER", OptionalLong.empty())), "", "main.evo");
 
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 2, 3, 5));
-        assertThat(main.notes()).containsExactly(new Note(0, 2, 8, "[not set]"));
+        assertThat(main.notes()).containsExactly(new Note(0, 2, 13, "[not set]"));
     }
 
     /**
@@ -189,12 +189,12 @@ class LeftOutBranchesTest {
         SourceFile source = source(artifact, "", "main.evo");
         assertThat(source.leftOut()).isEmpty();
         assertThat(source.notes()).containsExactly(
-                new Note(0, 9, 9, "[set]"),
-                new Note(0, 10, 9, "[not set]"));
+                new Note(0, 9, 11, "[set]"),
+                new Note(0, 10, 12, "[not set]"));
         assertThat(artifact.expansions().get(kept).leftOut()).containsExactly(new LeftOut(kept, 4, 5, 5));
-        assertThat(artifact.expansions().get(kept).notes()).containsExactly(new Note(kept, 2, 8, "[set]"));
+        assertThat(artifact.expansions().get(kept).notes()).containsExactly(new Note(kept, 2, 12, "[set]"));
         assertThat(artifact.expansions().get(other).leftOut()).containsExactly(new LeftOut(other, 2, 3, 3));
-        assertThat(artifact.expansions().get(other).notes()).containsExactly(new Note(other, 2, 8, "[not set]"));
+        assertThat(artifact.expansions().get(other).notes()).containsExactly(new Note(other, 2, 12, "[not set]"));
     }
 
     /**
@@ -223,10 +223,10 @@ class LeftOutBranchesTest {
         SourceFile source = source(artifact, "", "main.evo");
         assertThat(expansionOfLine(artifact, resolved("main.evo"), 3)).isEqualTo(2);
         assertThat(source.leftOut()).isEmpty();
-        assertThat(source.notes()).containsExactly(new Note(0, 12, 9, "[=2]"));
-        assertThat(artifact.expansions().get(1).notes()).containsExactly(new Note(1, 9, 9, "[=2]"));
+        assertThat(source.notes()).containsExactly(new Note(0, 12, 11, "[=2]"));
+        assertThat(artifact.expansions().get(1).notes()).containsExactly(new Note(1, 9, 13, "[=2]"));
         assertThat(artifact.expansions().get(2).leftOut()).containsExactly(new LeftOut(2, 4, 5, 5));
-        assertThat(artifact.expansions().get(2).notes()).containsExactly(new Note(2, 2, 8, "[=2]"));
+        assertThat(artifact.expansions().get(2).notes()).containsExactly(new Note(2, 2, 12, "[=2]"));
     }
 
     /**
@@ -253,7 +253,7 @@ class LeftOutBranchesTest {
         assertThat(expansion).isPositive();
         assertThat(source(artifact, "", "main.evo").leftOut()).isEmpty();
         assertThat(artifact.expansions().get(expansion).leftOut()).containsExactly(new LeftOut(expansion, 3, 4, 4));
-        assertThat(artifact.expansions().get(expansion).notes()).containsExactly(new Note(expansion, 3, 8, "[not set]"));
+        assertThat(artifact.expansions().get(expansion).notes()).containsExactly(new Note(expansion, 3, 11, "[not set]"));
     }
 
     /**
@@ -290,9 +290,9 @@ class LeftOutBranchesTest {
         assertThat(second.includedAt().lineNumber()).isEqualTo(1);
         assertThat(first.instance()).isPositive().isEqualTo(expansionOfLine(artifact, lib, 3));
         assertThat(second.instance()).isPositive().isNotEqualTo(first.instance());
-        assertThat(first.notes()).containsExactly(new Note(first.instance(), 1, 9, "[not set]"));
+        assertThat(first.notes()).containsExactly(new Note(first.instance(), 1, 12, "[not set]"));
         assertThat(first.leftOut()).isEmpty();
-        assertThat(second.notes()).containsExactly(new Note(second.instance(), 1, 9, "[set]"));
+        assertThat(second.notes()).containsExactly(new Note(second.instance(), 1, 12, "[set]"));
         assertThat(second.leftOut()).containsExactly(new LeftOut(second.instance(), 1, 2, 3));
     }
 
@@ -327,7 +327,7 @@ class LeftOutBranchesTest {
         assertThat(expansion.calledAt()).isEqualTo(new SourceInfo(resolved("main.evo"), 3, 3, "", 0));
         assertThat(expansion.definedAt()).isEqualTo(new SourceInfo(resolved("macros.evo"), 1, 8, "", macros.instance()));
         assertThat(expansion.leftOut()).containsExactly(new LeftOut(number, 2, 3, 3));
-        assertThat(expansion.notes()).containsExactly(new Note(number, 2, 8, "[not set]"));
+        assertThat(expansion.notes()).containsExactly(new Note(number, 2, 11, "[not set]"));
         assertThat(source(artifact, "", "main.evo").leftOut()).isEmpty();
     }
 
@@ -354,10 +354,10 @@ class LeftOutBranchesTest {
         ProgramArtifact artifact = compile(Map.of("ON", OptionalLong.empty()));
 
         String main = resolved("main.evo");
-        assertThat(source(artifact, "", "main.evo").notes()).containsExactly(new Note(0, 10, 9, "[set]"));
+        assertThat(source(artifact, "", "main.evo").notes()).containsExactly(new Note(0, 10, 11, "[set]"));
         assertThat(artifact.expansions()).containsOnlyKeys(1, 2);
-        assertThat(artifact.expansions().get(1).notes()).containsExactly(new Note(1, 3, 12, "[set]"));
-        assertThat(artifact.expansions().get(2).notes()).containsExactly(new Note(2, 3, 12, "[set]"));
+        assertThat(artifact.expansions().get(1).notes()).containsExactly(new Note(1, 3, 13, "[set]"));
+        assertThat(artifact.expansions().get(2).notes()).containsExactly(new Note(2, 3, 13, "[set]"));
         assertThat(artifact.sourceLineToInstructions().get("").get(main)).containsOnlyKeys(2);
         assertThat(artifact.sourceLineToInstructions().get("").get(main).get(2)).containsOnlyKeys(4);
     }

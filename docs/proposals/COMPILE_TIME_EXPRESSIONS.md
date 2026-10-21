@@ -378,7 +378,7 @@ rewritten.
 - *Phase 3:* `Parser.expression()` stays the one place operands are read. Register, literal and
   name are read as today; a call, an index, a parenthesis, a typed literal whose value is one of
   these, and a bare `@` become the fourth operand form, `ExpressionNode(Expression, SourceInfo of the
-  operand, position of its last token)`, the bracketed part cut to the matching bracket and handed to
+  operand, position after its last token)`, the bracketed part cut to the matching bracket and handed to
   the expression parser. `.PLACE` reads its literal with `expression()` first, as today, and then
   cuts its placements at its separators (`,`, `|`, `..`, `:`), outside brackets, with a method of
   `DirectiveLine`; `.ORG` and `.DIR` cut at `|`; each piece is read with a reporting form of
@@ -401,8 +401,8 @@ rewritten.
   rejected expression.
 - *Phase 5:* `TokenMapGenerator.visit` gets a branch for `ExpressionNode` next to its branch for
   `IdentifierNode`: every `NameExpression` of the tree is classified as an `IdentifierNode` is, at the
-  `SourceInfo` the node carries, and the note `[=value]` is written behind the expression's last
-  token from the result phase 4 recorded. The rule that nobody but the token map reads the kind of a
+  `SourceInfo` the node carries, and the note `[=value]` is written right after the expression's
+  last token from the result phase 4 recorded. The rule that nobody but the token map reads the kind of a
   symbol holds without a service, and the visualizer shows the value behind `WIDTH` inside
   `(WIDTH-1)` as it does behind a bare `WIDTH`.
 - *Phase 6:* `AstPostProcessor.collectPass` replaces each `ExpressionNode` by its recorded result,
@@ -445,7 +445,7 @@ rewritten.
 - *Emission and notes:* the emitter hands the named layout values of the `LayoutResult`,
   undeciphered, to the `EmissionContext`; the contributors of `constdir` and `importdir`, meeting a
   directive whose value is an `IrValue.Expression`, read the value under the definition's name there
-  and write `constantValues` as they do today. The token-map generator writing `[=value]` behind the
+  and write `constantValues` as they do today. The token-map generator writing `[=value]` right after the
   last token of each expression from the recorded results, `DebugInfo` carrying the notes; `LayoutContext.evaluate` writing a note for every
   value it computes, `LayoutResult` carrying them; the emitter merging the notes into the
   `SourceFile`s and, for a note inside a macro instance, into the `Expansion` its number names,

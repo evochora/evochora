@@ -306,7 +306,7 @@ public class Parser implements IParsingContext {
         current += length;
         Token first = operand.getFirst();
         return switch (expressionParser.parse(operand)) {
-            case ParseResult.Parsed parsed -> new ExpressionNode(parsed.expression(), first.source(), operand.getLast().source());
+            case ParseResult.Parsed parsed -> new ExpressionNode(parsed.expression(), first.source(), operand.getLast().after());
             case ParseResult.Failed failed -> {
                 SourceInfo at = failed.at() != null ? failed.at() : first.source();
                 diagnostics.reportError(failed.message(), at.fileName(), at.lineNumber());

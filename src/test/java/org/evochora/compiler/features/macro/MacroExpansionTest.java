@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * What a macro invocation expands to, checked on the token stream the preprocessor leaves
@@ -56,7 +57,7 @@ class MacroExpansionTest {
 
     /**
      * The body tokens stand in the expansion; an argument keeps the position it was written at
-     * and remembers the position of the parameter it replaced, in that expansion.
+     * and remembers the parameter it replaced, at its position in that expansion.
      */
     @Test
     void anArgumentKeepsItsPositionAndRemembersTheParameterItReplaces() {
@@ -72,7 +73,8 @@ class MacroExpansionTest {
         assertThat(seti.source()).isEqualTo(new SourceInfo("<memory>", 2, 3, "", 1));
         assertThat(seti.replaces()).isEmpty();
         assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 4, 5, "", 0));
-        assertThat(five.replaces()).containsExactly(new SourceInfo("<memory>", 2, 13, "", 1));
+        assertThat(five.replaces()).extracting(Token::text, Token::source)
+                .containsExactly(tuple("VALUE", new SourceInfo("<memory>", 2, 13, "", 1)));
     }
 
     /**
@@ -93,15 +95,15 @@ class MacroExpansionTest {
         assertThat(result.diagnostics.hasErrors()).isFalse();
         Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
         assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 7, 7, "", 0));
-        assertThat(five.replaces()).containsExactly(
-                new SourceInfo("<memory>", 5, 9, "", 1),
-                new SourceInfo("<memory>", 2, 13, "", 2));
+        assertThat(five.replaces()).extracting(Token::text, Token::source).containsExactly(
+                tuple("W", new SourceInfo("<memory>", 5, 9, "", 1)),
+                tuple("V", new SourceInfo("<memory>", 2, 13, "", 2)));
     }
 
     /**
      * An argument substituted into a body that defines a macro stands in that definition as it
-     * was written; expanding the inner macro keeps its position and adds its position in the body,
-     * in the inner expansion, to the positions it replaces.
+     * was written; expanding the inner macro keeps its position and adds the parameter it stands
+     * for in the body, at its position in the inner expansion, to the tokens it replaces.
      */
     @Test
     void anArgumentInsideADefinitionInABodyKeepsItsPositionInTheInnerExpansion() {
@@ -119,9 +121,9 @@ class MacroExpansionTest {
         Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
         assertThat(seti.source()).isEqualTo(new SourceInfo("<memory>", 3, 5, "", 2));
         assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 7, 7, "", 0));
-        assertThat(five.replaces()).containsExactly(
-                new SourceInfo("<memory>", 3, 15, "", 1),
-                new SourceInfo("<memory>", 3, 15, "", 2));
+        assertThat(five.replaces()).extracting(Token::text, Token::source).containsExactly(
+                tuple("VALUE", new SourceInfo("<memory>", 3, 15, "", 1)),
+                tuple("VALUE", new SourceInfo("<memory>", 3, 15, "", 2)));
     }
 
     @Test

@@ -356,7 +356,8 @@ public class ParserTest {
 
     /**
      * A parenthesis in operand position is a computation: the parser cuts it to its matching
-     * parenthesis and carries the tree with the positions of its first and last token.
+     * parenthesis and carries the tree with the position of its first token and the position
+     * right after its last token.
      */
     @Test
     @Tag("unit")
@@ -369,7 +370,7 @@ public class ParserTest {
         ExpressionNode computation = (ExpressionNode) seti.arguments().get(1);
         assertThat(computation.expression().text()).isEqualTo("(WIDTH-1)");
         assertThat(computation.sourceInfo().columnNumber()).isEqualTo(11);
-        assertThat(computation.end().columnNumber()).isEqualTo(21);
+        assertThat(computation.end().columnNumber()).isEqualTo(22);
     }
 
     /**

@@ -96,24 +96,27 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         }
 
         // The body tokens stand in this expansion. An argument keeps its own position, where it
-        // was written, and remembers the position of the parameter it replaces in this expansion.
+        // was written, and remembers the parameter it replaces, at its position in this expansion.
         // A body token that is itself an argument an enclosing expansion substituted, in a macro
-        // defined in that body, is treated the same way: it keeps its position and remembers its
-        // position in the body, now in this expansion. A call whose name was substituted so is
-        // called at its position in the body, so that the expansion stands in the enclosing one.
+        // defined in that body, is treated the same way: it keeps its position and remembers the
+        // parameter it stands for in the body, now in this expansion. A call whose name was
+        // substituted so is called at its position in the body, so that the expansion stands in
+        // the enclosing one.
         int expansion = preProcessorContext.nextInstance();
         preProcessor.expands(expansion, definedAt(), inBody(invocation), macro.name().text(), bindings);
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
-            SourceInfo position = inExpansion(inBody(bodyToken), expansion);
+            Token written = writtenInBody(bodyToken);
+            Token replaced = new Token(written.type(), written.text(), written.value(),
+                    inExpansion(written.source(), expansion));
             List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
             if (replacement == null) {
-                expandedBody.add(bodyToken.replaces().isEmpty() ? bodyToken.with(position)
-                        : replacing(bodyToken, position));
+                expandedBody.add(bodyToken.replaces().isEmpty() ? bodyToken.with(replaced.source())
+                        : replacing(bodyToken, replaced));
                 continue;
             }
             for (Token argument : replacement) {
-                expandedBody.add(replacing(argument, position));
+                expandedBody.add(replacing(argument, replaced));
             }
         }
 
@@ -242,19 +245,27 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
     }
 
     /**
-     * Returns where a token stands in the text it was read from: the last position it replaced,
-     * for a token substituted into that text, otherwise its own position.
+     * Returns where a token stands in the text it was read from: the position of the last token
+     * it replaced, for a token substituted into that text, otherwise its own position.
      */
     private static SourceInfo inBody(Token token) {
-        return token.replaces().isEmpty() ? token.source() : token.replaces().getLast();
+        return writtenInBody(token).source();
     }
 
     /**
-     * Returns a token that keeps its own position and remembers one more position it replaces.
+     * Returns the token as the text it was read from has it: the last token it replaced, for a
+     * token substituted into that text, otherwise the token itself.
      */
-    private static Token replacing(Token token, SourceInfo position) {
-        List<SourceInfo> replaces = new ArrayList<>(token.replaces());
-        replaces.add(position);
+    private static Token writtenInBody(Token token) {
+        return token.replaces().isEmpty() ? token : token.replaces().getLast();
+    }
+
+    /**
+     * Returns a token that keeps its own position and remembers one more token it replaces.
+     */
+    private static Token replacing(Token token, Token replaced) {
+        List<Token> replaces = new ArrayList<>(token.replaces());
+        replaces.add(replaced);
         return new Token(token.type(), token.text(), token.value(), token.source(), replaces);
     }
 

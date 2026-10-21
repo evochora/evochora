@@ -236,7 +236,7 @@ public class PreProcessorContext {
             case ReadTimeValues.Reading.Number number -> {
                 requireWalk();
                 if (number.computed() && tokens.getLast().source().inAFile()) {
-                    notes.accept(tokens.getLast().source(), "[=" + number.value() + "]");
+                    notes.accept(tokens.getLast().after(), "[=" + number.value() + "]");
                 }
                 yield Optional.of(number.value());
             }

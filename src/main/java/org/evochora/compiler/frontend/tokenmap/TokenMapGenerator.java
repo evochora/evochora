@@ -43,7 +43,7 @@ import java.util.Set;
  * (IdentifierNode, ExpressionNode, RegisterNode) are handled as default logic: an identifier is
  * classified by the symbol it names, every name of a computation but the cursor as an identifier
  * at the position of its token, a register as a register. A computation whose value phase 4
- * computed is noted with {@code [=value]} at its last token, for the source view to show; one
+ * computed is noted with {@code [=value]} after its last token, for the source view to show; one
  * that only the layout computes is noted by the layout.
  */
 public class TokenMapGenerator implements ITokenMapContext {
@@ -94,7 +94,7 @@ public class TokenMapGenerator implements ITokenMapContext {
      *
      * @param nodes The list of AST nodes to traverse.
      * @return The token map, keyed by the position of a token with instance 0, and the note
-     *         {@code [=value]} at the last token of every computation phase 4 computed in a file,
+     *         {@code [=value]} after the last token of every computation phase 4 computed in a file,
      *         at its full position, each distinct note once, in the order the walk met them.
      */
     public TokenMapResult generateAll(List<AstNode> nodes) {
@@ -204,7 +204,7 @@ public class TokenMapGenerator implements ITokenMapContext {
     }
 
     /**
-     * Notes the value phase 4 recorded for a computation at the position of its last token; a
+     * Notes the value phase 4 recorded for a computation right after its last token; a
      * computation the layout computes, one that failed, and one outside every file get no note
      * here.
      */

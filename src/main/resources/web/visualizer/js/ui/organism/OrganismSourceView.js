@@ -25,12 +25,13 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  *
  * An item carries what the preprocessor recorded about its text: the regions of lines a
  * conditional left out (`leftOut`), each owned by its directive line, and notes at positions
- * (`notes`), such as the state of a flag a condition names, shown as an annotation after the word
- * at its position, as is the value a constant stands for (`LIMIT[=DATA:9]`), which the
- * artifact's `constantValues` give under the constant's qualified name. The item's own are
- * always shown; those of an expansion only while the active position stands in it, directly or
- * through an expansion called in its body, and the item holds its body, because every expansion
- * shares the lines of the body but may have decided differently. The machine instructions under a
+ * (`notes`), such as the state of a flag a condition names, shown as an annotation inserted at
+ * its column, which is right after the token it belongs to, as is the value a constant stands
+ * for (`LIMIT[=DATA:9]`), which the artifact's `constantValues` give under the constant's
+ * qualified name. The item's own are always shown; those of an expansion only while the active
+ * position stands in it, directly or through an expansion called in its body, and the item holds
+ * its body, because every expansion shares the lines of the body but may have decided
+ * differently. The machine instructions under a
  * line are keyed by the expansion of their positions: a line shows those of the item's own
  * instances and, while expansions of the frame chain are shown, those of the shown expansions on
  * their body lines. A body outside a frame shows none: the definition is a template and produces
@@ -602,10 +603,8 @@ export class OrganismSourceView {
         shownNotes.forEach(note => {
             const text = lines[note.line - 1];
             if (text === undefined) return;
-            // A note is shown after the word that starts at its column, as an annotation of a
-            // register is shown after the register
-            let end = Math.max(0, note.column - 1);
-            while (end < text.length && /[A-Za-z0-9_]/.test(text[end])) end++;
+            // A note's column is where it is inserted: right after the token it belongs to
+            const end = Math.max(0, note.column - 1);
             const lineNotes = notes.get(note.line) || [];
             lineNotes.push({ end, text: note.text });
             notes.set(note.line, lineNotes);

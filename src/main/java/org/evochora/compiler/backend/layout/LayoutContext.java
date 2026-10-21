@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
  * recorded by the layout handler of its feature through {@link #record}. A computation resolves
  * a name from them; a name not yet recorded is a forward reference.</p>
  *
- * <p>Every computation it computes in a file is noted with {@code [=value]} at its last token,
+ * <p>Every computation it computes in a file is noted with {@code [=value]} after its last token,
  * for the source view to show.</p>
  */
 public final class LayoutContext {
@@ -98,7 +98,7 @@ public final class LayoutContext {
      * value; a qualified name and a computation are evaluated with the cursor {@code @} and the
      * origin the line counts its vectors from, the base position of the enclosing module, both as
      * positions of the program, and with the names the layout knows at this line. The value of
-     * a computation in a file is noted at its last token; an equal note is kept once.
+     * a computation in a file is noted right after its last token; an equal note is kept once.
      *
      * @param value The argument, as the IR carries it.
      * @param at    The position of the directive, for an error.
@@ -126,7 +126,7 @@ public final class LayoutContext {
     }
 
     /**
-     * Returns the notes of the computations computed so far: {@code [=value]} at the last token
+     * Returns the notes of the computations computed so far: {@code [=value]} after the last token
      * of each, in the order they were computed.
      *
      * @return The notes, each distinct note once.

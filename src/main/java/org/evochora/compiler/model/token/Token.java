@@ -15,21 +15,22 @@ import java.util.List;
  *                 the position it was read at, with an empty placement and instance 0; the
  *                 preprocessor gives the tokens of the main file the root placement, and its
  *                 handlers set the placement and the instance of the tokens they inject.
- * @param replaces The positions this token replaced. A handler that substitutes a token for a
+ * @param replaces The tokens this token replaced. A handler that substitutes a token for a
  *                 token at another position keeps the substituted token's own position and adds
- *                 the replaced one, with the instance it stands in; a token substituted again at
- *                 a further level adds one position per level, outermost first. Empty for a token
- *                 that replaces nothing.
+ *                 the replaced token, at its position in the instance it stands in; a token
+ *                 substituted again at a further level adds one replaced token per level,
+ *                 outermost first. The replaced tokens replace nothing themselves. Empty for a
+ *                 token that replaces nothing.
  */
 public record Token(
         TokenType type,
         String text,
         Object value,
         SourceInfo source,
-        List<SourceInfo> replaces
+        List<Token> replaces
 ) {
     /**
-     * Makes the list of replaced positions immutable; null becomes an empty list.
+     * Makes the list of replaced tokens immutable; null becomes an empty list.
      */
     public Token {
         replaces = replaces != null ? List.copyOf(replaces) : List.of();
@@ -48,12 +49,22 @@ public record Token(
     }
 
     /**
-     * Returns this token standing at another position, replacing the same parameters.
+     * Returns this token standing at another position, replacing the same tokens.
      *
      * @param newSource The position the token stands at.
      * @return A token equal to this one but for its position.
      */
     public Token with(SourceInfo newSource) {
         return new Token(type, text, value, newSource, replaces);
+    }
+
+    /**
+     * Returns the position right after this token: the column behind its last character, on its
+     * line, in its placement and instance.
+     *
+     * @return The position after the token's text.
+     */
+    public SourceInfo after() {
+        return source.plusColumns(text.length());
     }
 }

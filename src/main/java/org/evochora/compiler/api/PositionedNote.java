@@ -5,7 +5,8 @@ package org.evochora.compiler.api;
  * of injected tokens the position belongs to: {@link SourceView#withNotes} puts it there as a
  * {@link SourceFile.Note}.
  *
- * @param at   The position the note stands at: its placement, file, instance, line and column.
+ * @param at   The position the note stands at, right after the token it belongs to: its
+ *             placement, file, instance, line and the column after the token's last character.
  * @param text The text of the note.
  */
 public record PositionedNote(SourceInfo at, String text) {

@@ -467,7 +467,8 @@ class AstPostProcessorTest {
     /**
      * A value requirement whose bound value only the layout computes names itself: the whole node
      * is replaced, so the phase's own replacement of the identifier in the value slot, the
-     * qualified name, does not take the place of the computation.
+     * qualified name, does not take the place of the computation. The computation ends right
+     * after the requirement's name.
      */
     @Test
     void aValueRequirementWithARecordedValueIsReplacedAsAWhole() {
@@ -482,7 +483,7 @@ class AstPostProcessorTest {
 
         ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
 
-        assertThat(result.value()).isEqualTo(new ExpressionNode(self, createSourceInfo(), createSourceInfo()));
+        assertThat(result.value()).isEqualTo(new ExpressionNode(self, createSourceInfo(), createSourceInfo().plusColumns(1)));
     }
 
     @Test

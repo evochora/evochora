@@ -14,7 +14,7 @@ import java.util.Map;
  * notes that show the value of every computation phase 4 computed behind its last token.
  *
  * @param tokenMap The classification of every token by its position, with instance 0.
- * @param notes    The note {@code [=value]} at the last token of each computation that has a
+ * @param notes    The note {@code [=value]} after the last token of each computation that has a
  *                 value, each distinct note once, in the order the walk met them.
  */
 public record TokenMapResult(Map<SourceInfo, TokenInfo> tokenMap, List<PositionedNote> notes) {

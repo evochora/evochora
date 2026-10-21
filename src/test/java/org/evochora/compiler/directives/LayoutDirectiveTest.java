@@ -315,7 +315,8 @@ public class LayoutDirectiveTest {
     }
 
     /**
-     * A marked component may be any operand; the marker {@code @-} puts it under the sign.
+     * A marked component may be any operand; the marker {@code @-} puts it under the sign, and
+     * the computation ends right after the operand's last token.
      */
     @Test
     @Tag("unit")
@@ -327,7 +328,9 @@ public class LayoutDirectiveTest {
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(false, true);
         assertThat(org.components().get(0)).isInstanceOf(IdentifierNode.class);
-        assertThat(((ExpressionNode) org.components().get(1)).expression().text()).isEqualTo("-(ROW+1)");
+        ExpressionNode marked = (ExpressionNode) org.components().get(1);
+        assertThat(marked.expression().text()).isEqualTo("-(ROW+1)");
+        assertThat(marked.end().columnNumber()).isEqualTo(17);
     }
 
     /**

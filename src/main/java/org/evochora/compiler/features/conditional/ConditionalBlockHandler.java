@@ -1,7 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.BlockReader;
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
@@ -159,9 +158,8 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
 
     /**
      * Notes the state of the flag a token names: {@code [=value]}, {@code [set]} for a flag
-     * without a value, {@code [not set]}. The note stands at the token's position and at every
-     * position the token replaced, so that it is shown both where the name was written and where
-     * it is used.
+     * without a value, {@code [not set]}. The note stands after the token and after every token
+     * it replaced, so that it is shown both where the name was written and where it is used.
      */
     private static void note(PreProcessor preProcessor, Flags flags, Token name) {
         String state;
@@ -171,9 +169,9 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
             OptionalLong value = flags.valueOf(name.text());
             state = value.isPresent() ? "[=" + value.getAsLong() + "]" : "[set]";
         }
-        preProcessor.note(name.source(), state);
-        for (SourceInfo replaced : name.replaces()) {
-            preProcessor.note(replaced, state);
+        preProcessor.note(name.after(), state);
+        for (Token replaced : name.replaces()) {
+            preProcessor.note(replaced.after(), state);
         }
     }
 
