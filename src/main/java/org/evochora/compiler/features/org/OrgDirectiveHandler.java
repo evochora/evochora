@@ -1,9 +1,10 @@
 package org.evochora.compiler.features.org;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
@@ -28,7 +29,7 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
     public AstNode parse(IParsingContext context) {
         Token directive = context.advance(); // consume .ORG
         Token start = context.peek();
-        List<Integer> values = new ArrayList<>();
+        List<Long> values = new ArrayList<>();
         List<Boolean> relative = new ArrayList<>();
         do {
             boolean marked = true;
@@ -42,7 +43,7 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
                 sign = 1;
             }
             Token number = context.consume(TokenType.NUMBER, "Expected a number after .ORG.");
-            int value = (int) number.value();
+            long value = (Long) number.value();
             if (marked && value < 0) {
                 context.getDiagnostics().reportError(
                         "A component marked with '@+' or '@-' carries no sign of its own.",
@@ -52,7 +53,7 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
             relative.add(marked);
         } while (context.match(TokenType.PIPE));
 
-        return new OrgNode(new VectorLiteralNode(List.copyOf(values), start.source()),
+        return new OrgNode(new LiteralNode(new Value.Vector(values), start.source()),
                 List.copyOf(relative), directive.source());
     }
 }

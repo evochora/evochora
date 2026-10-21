@@ -1,29 +1,28 @@
 package org.evochora.compiler.frontend.parser;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Predicate;
 
 /**
  * The main parser for the assembly language. It consumes a list of tokens
- * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
+ * from the {@link org.evochora.compiler.frontend.lexer.Tokenizer} and produces an Abstract Syntax Tree (AST).
  * All statement dispatch goes through the {@link ParserStatementRegistry}. A statement that
  * opens a registered kind of block is read as a block first, by the rules of
  * {@link BlockReader}, and its handler is called with the block only when the block is whole.
@@ -67,7 +66,7 @@ public class Parser implements IParsingContext {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
         this.statementRegistry = statementRegistry;
-        this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Parser::isExport, diagnostics);
+        this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Export::isWord, diagnostics);
         this.rootAliasChain = rootAliasChain;
         this.values = Map.copyOf(values);
     }
@@ -108,7 +107,7 @@ public class Parser implements IParsingContext {
     private AstNode statement() {
         try {
             currentExported = false;
-            if (isExport(peek())) {
+            if (Export.isWord(peek())) {
                 currentExported = true;
                 advance();
             }
@@ -128,11 +127,9 @@ public class Parser implements IParsingContext {
                 return handler.get().parse(this);
             }
 
-            // A closer or divider the walk reaches stands outside any block; its line goes with it.
+            // A closer or divider the walk reaches stands outside any block; its statement goes with it.
             if (blockReader.reportStray(tokens, current)) {
-                while (!isAtEnd() && advance().type() != TokenType.NEWLINE) {
-                    // Skipping the rest of the line.
-                }
+                skipStatement();
                 return null;
             }
 
@@ -204,12 +201,8 @@ public class Parser implements IParsingContext {
     }
 
     private void reportExport(Token word) {
-        diagnostics.reportError("EXPORT is not supported before '" + word.text() + "'.",
+        diagnostics.reportError(Export.notSupportedBefore(word.text()),
                 word.source().fileName(), word.source().lineNumber());
-    }
-
-    private static boolean isExport(Token token) {
-        return token.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(token.text());
     }
 
     /**
@@ -221,27 +214,25 @@ public class Parser implements IParsingContext {
     public OperandNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
-            List<Integer> values = new ArrayList<>();
-            values.add((int) first.value());
+            List<Long> values = new ArrayList<>();
+            values.add((Long) first.value());
             while(match(TokenType.PIPE)) {
                 Token comp = consume(TokenType.NUMBER, "Expected number component after '|'.");
-                values.add((int) comp.value());
+                values.add((Long) comp.value());
             }
-            return new VectorLiteralNode(java.util.Collections.unmodifiableList(values),
-                    first.source());
+            return new LiteralNode(new Value.Vector(values), first.source());
         }
 
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token type = advance();
             advance();
             Token valueTok = consume(TokenType.NUMBER, "Expected a number after the literal type.");
-            return new TypedLiteralNode(type.text(), (int) valueTok.value(),
-                    type.source());
+            return new LiteralNode(new Value.Typed(type.text(), (Long) valueTok.value()), type.source());
         }
 
         if (match(TokenType.NUMBER)) {
             Token num = previous();
-            return new NumberLiteralNode((int) num.value(), num.source());
+            return new LiteralNode(new Value.Number((Long) num.value()), num.source());
         }
 
         if (match(TokenType.REGISTER)) {
@@ -319,6 +310,13 @@ public class Parser implements IParsingContext {
     }
 
     @Override
+    public void skipStatement() {
+        while (!isAtEnd() && !check(TokenType.NEWLINE)) {
+            advance();
+        }
+    }
+
+    @Override
     public Token peek() {
         return tokens.get(current);
     }
@@ -363,11 +361,6 @@ public class Parser implements IParsingContext {
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
     @Override public ParserState state() { return parserState; }
     @Override public boolean isExported() { return currentExported; }
-
-    @Override
-    public DirectiveLine currentLine(Predicate<Token> passedOver) {
-        return DirectiveLine.of(tokens, current, passedOver);
-    }
 
     @Override
     public DirectiveLine lineOf(int index) {

@@ -17,15 +17,15 @@ import java.util.Set;
  * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING {MODULE source AS target ... | VALUE name value ...} ...]}
  *
  * <p>This handler produces an {@link ImportNode} AST node. The actual module loading
- * is handled by Phase 0 (DependencyScanner) and preprocessing (ImportSourceHandler).
+ * is handled by the Lexer phase (ImportDependencyScanHandler) and preprocessing (ImportSourceHandler).
  *
  * <p>{@code USING} stands once on an import and opens the clause. Each kind word in it opens a
  * list, and the groups that follow it, up to the next kind word, belong to that list; a kind
  * word may repeat. After {@code MODULE}, a group is {@code source AS target}; after
  * {@code VALUE}, a group is {@code name value}, the value read as an operand.
  *
- * <p>The directive stands alone on its line: a token after the alias and its clauses that is no
- * kind word is an error, and the rest of the line is passed over.
+ * <p>The alias and its clauses end the statement: a token after them that is no kind word is an
+ * error, and the rest of the statement is passed over.
  */
 public class ImportDirectiveHandler implements IParserStatementHandler {
 
@@ -63,7 +63,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 context.getDiagnostics().reportError(
                         "Expected MODULE or VALUE after USING; found '" + found.text() + "'.",
                         found.source().fileName(), found.source().lineNumber());
-                skipLine(context);
+                context.skipStatement();
                 return null;
             }
             // Each kind word opens a list; the groups that follow it, up to the next kind word,
@@ -75,17 +75,17 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                     context.getDiagnostics().reportError(
                             valueList ? "Expected <name> <value> after VALUE." : "Expected <source> AS <target> after MODULE.",
                             kindWord.source().fileName(), kindWord.source().lineNumber());
-                    skipLine(context);
+                    context.skipStatement();
                     return null;
                 }
                 while (context.check(TokenType.IDENTIFIER) && !isKindWord(context) && !isWord(context, "USING")) {
                     if (valueList) {
                         if (!readValueGroup(context, values)) {
-                            skipLine(context);
+                            context.skipStatement();
                             return null;
                         }
                     } else if (!readModuleGroup(context, usings)) {
-                        skipLine(context);
+                        context.skipStatement();
                         return null;
                     }
                 }
@@ -94,7 +94,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                     context.getDiagnostics().reportError(
                             "USING stands once on an import; a further list begins with its kind word.",
                             second.source().fileName(), second.source().lineNumber());
-                    skipLine(context);
+                    context.skipStatement();
                     return null;
                 }
             }
@@ -103,10 +103,9 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         if (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             Token extra = context.peek();
             context.getDiagnostics().reportError(
-                    ".IMPORT must stand alone on its line; found '" + extra.text()
-                            + "' after the alias and its USING clauses.",
+                    "Unexpected '" + extra.text() + "' after the alias and its USING clauses of .IMPORT.",
                     extra.source().fileName(), extra.source().lineNumber());
-            skipLine(context);
+            context.skipStatement();
             return null;
         }
 
@@ -186,11 +185,5 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
     private static boolean isKindWord(IParsingContext context) {
         return !context.isAtEnd() && context.check(TokenType.IDENTIFIER)
                 && KIND_WORDS.contains(context.peek().text().toUpperCase());
-    }
-
-    private static void skipLine(IParsingContext context) {
-        while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-            context.advance();
-        }
     }
 }

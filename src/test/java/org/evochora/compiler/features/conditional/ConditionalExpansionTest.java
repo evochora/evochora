@@ -7,7 +7,7 @@ import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -25,7 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -386,7 +386,7 @@ class ConditionalExpansionTest {
 
     @Test
     void theSameDefinitionAsTheConfigurationIsAccepted() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalInt.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
                 ".DEFINE LEVEL 2",
                 ".IFDEF LEVEL = 2",
                 "  NOP",
@@ -398,7 +398,7 @@ class ConditionalExpansionTest {
 
     @Test
     void anotherValueThanTheConfigurationIsRejected() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalInt.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
                 ".DEFINE LEVEL 3");
 
         assertThat(result.errors()).containsExactly(MAIN + ":1: Cannot define flag LEVEL as 3: it is already"
@@ -417,7 +417,7 @@ class ConditionalExpansionTest {
                 "  JMPI END",
                 ".ENDDEF"};
 
-        Expansion configured = expandWith(Map.of("redundancy", OptionalInt.of(2)), List.of(), program);
+        Expansion configured = expandWith(Map.of("redundancy", OptionalLong.of(2)), List.of(), program);
         Expansion unconfigured = expand(program);
 
         assertThat(configured.errors()).isEmpty();
@@ -428,7 +428,7 @@ class ConditionalExpansionTest {
 
     @Test
     void aConfiguredFlagThatIsNoNameIsReportedOnce() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalInt.empty(), "GOOD", OptionalInt.empty()), List.of(),
+        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty(), "GOOD", OptionalLong.empty()), List.of(),
                 ".IFDEF GOOD",
                 "  NOP",
                 ".ENDDEF",
@@ -443,7 +443,7 @@ class ConditionalExpansionTest {
 
     @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalInt.empty()), List.of(), "NOP");
+        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty()), List.of(), "NOP");
 
         assertThat(result.errors()).isEmpty();
     }
@@ -488,25 +488,39 @@ class ConditionalExpansionTest {
         assertThat(result.texts()).containsExactly("NOP");
     }
 
+    /**
+     * A flag directive begins a statement: a word before it without a statement end is reported
+     * at the directive, and the statements around keep their own ends, so nothing merges with
+     * the next line.
+     */
     @Test
-    void anExportedDefineIsToldThatAConstantIsWrittenConst() {
+    void aWordBeforeAFlagDirectiveWithoutAStatementEndIsReported() {
         Expansion result = expand(
                 "EXPORT .DEFINE X 5",
-                "NOP");
+                "NOP .UNDEF X",
+                "JMPI L");
 
         assertThat(result.errors()).containsExactly(
-                MAIN + ":1: .DEFINE must stand alone on its line; a constant is written .CONST");
+                MAIN + ":1: EXPORT is not supported before '.DEFINE'.",
+                MAIN + ":2: Unexpected '.UNDEF' after 'NOP'.");
+        assertThat(result.texts()).containsExactly("EXPORT", "NOP", "JMPI", "L");
     }
 
+    /**
+     * A flag directive shares a line with other statements like any statement; the statements
+     * around it stay in the stream.
+     */
     @Test
-    void undefAndDefineWithAStatementAfterThemBreakTheLineRule() {
+    void undefAndDefineShareTheirLineWithOtherStatements() {
         Expansion result = expand(
                 ".DEFINE X; NOP",
-                ".UNDEF X; NOP");
+                "NOP; .UNDEF X",
+                ".IFDEF X",
+                "  JMPI L",
+                ".ENDDEF");
 
-        assertThat(result.errors()).containsExactly(
-                MAIN + ":1: .DEFINE must stand alone on its line; a constant is written .CONST",
-                MAIN + ":2: .UNDEF must stand alone on its line");
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP", "NOP");
     }
 
     // --- Nesting ---
@@ -861,12 +875,11 @@ class ConditionalExpansionTest {
      * configured flags, and a file {@code lib.evo} the main file may include with
      * {@code .SOURCE}.
      */
-    private static Expansion expandWith(Map<String, OptionalInt> defines, List<String> library, String... lines) {
+    private static Expansion expandWith(Map<String, OptionalLong> defines, List<String> library, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> libraryTokens = new ArrayList<>(new Lexer(String.join("\n", library) + "\n",
-                diagnostics, LIBRARY, TestLexers.symbols()).scanTokens());
-        Lexer.stripEofToken(libraryTokens);
-        List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
+        List<Token> libraryTokens = new ArrayList<>(TestLexers.tokenizer(String.join("\n", library) + "\n", diagnostics, LIBRARY).scanTokens());
+        Tokenizer.stripEofToken(libraryTokens);
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
         PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), MAIN, options);

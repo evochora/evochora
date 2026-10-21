@@ -1,15 +1,12 @@
 package org.evochora.compiler.features.conditional;
 
-import org.evochora.compiler.api.IntegerLiteral;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.OptionalInt;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.OptionalLong;
 
 /**
  * The condition of a conditional directive, {@code NAME [op operand]}, and its evaluation
@@ -29,10 +26,6 @@ import java.util.regex.Pattern;
  * @param comparison The comparison, or empty for a test of the flag alone.
  */
 public record Condition(boolean negated, String name, Optional<Comparison> comparison) {
-
-    // The operators, the two-character ones first so that the first match is the longest.
-    private static final Pattern HEAD = Pattern.compile(
-            "([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(<=|>=|<>|==|!=|=|<|>)\\s*(\\S+))?");
 
     /**
      * Upper-cases the name.
@@ -95,7 +88,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
          * @param right The value it is compared with.
          * @return {@code true} if the comparison holds.
          */
-        boolean holds(int left, int right) {
+        boolean holds(long left, long right) {
             return switch (this) {
                 case EQ -> left == right;
                 case NE -> left != right;
@@ -118,7 +111,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
      *
      * @param value The integer.
      */
-    public record Literal(int value) implements Operand {
+    public record Literal(long value) implements Operand {
     }
 
     /**
@@ -172,41 +165,6 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
     }
 
     /**
-     * Reads a condition from the text that follows the directive on its line, as the dependency
-     * scan sees it.
-     *
-     * @param directive The directive word, which decides whether the condition is negated.
-     * @param text      The rest of the line.
-     * @return The condition, or empty if the text is no condition the directive takes.
-     */
-    public static Optional<Condition> parse(String directive, String text) {
-        Matcher head = HEAD.matcher(text.trim());
-        if (!head.matches()) {
-            return Optional.empty();
-        }
-        boolean negated = negates(directive);
-        if (head.group(2) == null) {
-            return Optional.of(new Condition(negated, head.group(1), Optional.empty()));
-        }
-        if (negated) {
-            return Optional.empty();
-        }
-        Operator operator = Operator.of(head.group(2)).orElseThrow();
-        String operandText = head.group(3);
-        Operand operand;
-        if (Flags.isName(operandText)) {
-            operand = new FlagName(operandText);
-        } else {
-            OptionalInt value = IntegerLiteral.parse(operandText);
-            if (value.isEmpty()) {
-                return Optional.empty();
-            }
-            operand = new Literal(value.getAsInt());
-        }
-        return Optional.of(new Condition(false, head.group(1), Optional.of(new Comparison(operator, operand))));
-    }
-
-    /**
      * Reads a condition from the tokens that follow the directive up to the end of its line, as
      * the preprocessor sees them.
      *
@@ -243,7 +201,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         }
         Token operandToken = tokens.get(2);
         Operand operand;
-        if (operandToken.type() == TokenType.NUMBER && operandToken.value() instanceof Integer value) {
+        if (operandToken.type() == TokenType.NUMBER && operandToken.value() instanceof Long value) {
             operand = new Literal(value);
         } else if (isNameToken(operandToken)) {
             operand = new FlagName(operandToken.text());
@@ -275,25 +233,25 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         if (comparison.isEmpty()) {
             return true;
         }
-        OptionalInt left = flags.valueOf(name);
+        OptionalLong left = flags.valueOf(name);
         if (left.isEmpty()) {
             throw new Invalid("Flag " + name + " is set without a value and cannot be compared");
         }
-        int right = switch (comparison.get().operand()) {
+        long right = switch (comparison.get().operand()) {
             case Literal literal -> literal.value();
             case FlagName other -> {
                 if (!flags.isSet(other.name())) {
                     throw new Invalid("Flag " + other.name() + ", which " + name + " is compared with, is not set");
                 }
-                OptionalInt value = flags.valueOf(other.name());
+                OptionalLong value = flags.valueOf(other.name());
                 if (value.isEmpty()) {
                     throw new Invalid("Flag " + other.name() + ", which " + name
                             + " is compared with, is set without a value");
                 }
-                yield value.getAsInt();
+                yield value.getAsLong();
             }
         };
-        return comparison.get().operator().holds(left.getAsInt(), right);
+        return comparison.get().operator().holds(left.getAsLong(), right);
     }
 
     /**

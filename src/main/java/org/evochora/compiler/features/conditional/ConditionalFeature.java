@@ -17,7 +17,7 @@ import java.util.Set;
  * <p>Registers the comparison symbols; the preprocessor handlers for the four directives,
  * with {@code .DEFINE} and {@code .UNDEF} as directives that stand only at the top level and the
  * conditional block as a block processed in place; and the dependency scan handlers that follow
- * the same branches in Phase 0, so that a dependency in a branch that is not taken is never
+ * the same branches in the Lexer phase, so that a dependency in a branch that is not taken is never
  * loaded.</p>
  */
 public class ConditionalFeature implements ICompilerFeature {
@@ -32,9 +32,12 @@ public class ConditionalFeature implements ICompilerFeature {
         for (Condition.Operator operator : Condition.Operator.values()) {
             operator.symbols().forEach(ctx::lexerSymbol);
         }
-        ctx.dependencyScanHandler(new DefineScanHandler());
-        ctx.dependencyScanHandler(new UndefScanHandler());
-        ctx.dependencyScanHandler(new ConditionalScanHandler());
+        ctx.dependencyScanHandler(".DEFINE", new DefineScanHandler());
+        ctx.dependencyScanHandler(".UNDEF", new UndefScanHandler());
+        ConditionalScanHandler blocks = new ConditionalScanHandler();
+        for (String word : ConditionalScanHandler.WORDS) {
+            ctx.dependencyScanHandler(word, blocks);
+        }
         ctx.preprocessorBlock(new BlockKind(Set.of(".IFDEF", ".IFNDEF"), ".ENDDEF",
                 Set.of(".ELSEIFDEF", ".ELSEIFNDEF", ".ELSEDEF")), new ConditionalBlockHandler(), false);
         ctx.preprocessorTopLevelOnly(".DEFINE");

@@ -5,7 +5,7 @@ import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -50,7 +50,7 @@ public class MacroDirectiveTest {
                 "INCREMENT %DR0"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());

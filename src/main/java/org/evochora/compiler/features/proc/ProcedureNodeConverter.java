@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 
@@ -52,8 +53,8 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		if (node.lvalParameters() != null) {
 			args.put("lvalParams", new IrValue.ListVal(node.lvalParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
-		args.put("lrefArity", new IrValue.Int64(lrefArity));
-		args.put("lvalArity", new IrValue.Int64(lvalArity));
+		args.put("lrefArity", new IrValue.Literal(new Value.Number(lrefArity)));
+		args.put("lvalArity", new IrValue.Literal(new Value.Number(lvalArity)));
 		return args;
 	}
 }

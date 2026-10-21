@@ -1,9 +1,9 @@
 package org.evochora.compiler.features.org;
 
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import java.util.List;
 
@@ -17,7 +17,7 @@ import java.util.List;
  * @param sourceInfo The source location of the directive.
  */
 public record OrgNode(
-        VectorLiteralNode originVector,
+        LiteralNode originVector,
         List<Boolean> relative,
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {

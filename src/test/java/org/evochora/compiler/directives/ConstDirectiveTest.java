@@ -1,19 +1,20 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.semantics.ScopeTracker;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.ScopeTracker;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.TestRegistries;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -49,7 +50,7 @@ public class ConstDirectiveTest {
         // Arrange
         String source = ".CONST MY_CONST DATA:123";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -65,7 +66,7 @@ public class ConstDirectiveTest {
 
         ConstNode constNode = (ConstNode) ast.get(0);
         assertThat(constNode.name()).isEqualTo("MY_CONST");
-        assertThat(constNode.value()).isInstanceOf(TypedLiteralNode.class);
+        assertThat(constNode.value()).isInstanceOf(LiteralNode.class);
     }
     
     /**
@@ -81,7 +82,7 @@ public class ConstDirectiveTest {
                 "SETI %DR0 MAX_VALUE"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -110,9 +111,9 @@ public class ConstDirectiveTest {
         InstructionNode seti = (InstructionNode) processedAst.get(1);
         assertThat(seti.arguments()).hasSize(2);
 
-        assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        TypedLiteralNode constant = (TypedLiteralNode) seti.arguments().get(1);
-        assertThat(constant.value()).isEqualTo(42);
+        assertThat(seti.arguments().get(1)).isInstanceOf(LiteralNode.class);
+        LiteralNode constant = (LiteralNode) seti.arguments().get(1);
+        assertThat(constant.value()).isEqualTo(new Value.Typed("DATA", 42));
     }
 
     /**
@@ -124,7 +125,7 @@ public class ConstDirectiveTest {
     void testConstWithADotInItsNameIsReported() {
         String source = ".CONST X.Y DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry())
+        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);

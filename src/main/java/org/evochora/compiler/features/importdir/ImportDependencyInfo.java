@@ -1,9 +1,9 @@
 package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.frontend.module.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 
 /**
- * Dependency data for an .IMPORT directive discovered during Phase 0 scanning: the address of the
+ * Dependency data for an .IMPORT directive the Lexer phase discovers while it reads the files: the address of the
  * imported file, path and alias. What follows the alias on the line is the parser's.
  *
  * @param path The import path as written in source.

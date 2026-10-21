@@ -1,18 +1,20 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
-import org.evochora.compiler.frontend.semantics.ScopeTracker;
+import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
+import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.module.DependencyGraph;
-import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -28,7 +30,6 @@ import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.importdir.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
@@ -36,7 +37,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
 
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
@@ -60,7 +61,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for {@code .SOURCE} + {@code .CONST} in multi-module compilation.
- * Exercises the full pipeline from Phase 0 (dependency scanning) through Phase 6 (AST post-processing).
+ * Exercises the full pipeline from Phase 1 (Lexer) through Phase 6 (AST post-processing).
  */
 class ModuleSourceConstIntegrationTest {
 
@@ -155,8 +156,8 @@ class ModuleSourceConstIntegrationTest {
         assertThat(setiNodes).hasSize(2);
         assertThat(setiNodes).allSatisfy(seti -> {
             assertThat(seti.arguments()).hasSizeGreaterThanOrEqualTo(2);
-            assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-            assertThat(((TypedLiteralNode) seti.arguments().get(1)).value()).isEqualTo(99);
+            assertThat(seti.arguments().get(1)).isInstanceOf(LiteralNode.class);
+            assertThat(((LiteralNode) seti.arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 99));
         });
     }
 
@@ -201,11 +202,11 @@ class ModuleSourceConstIntegrationTest {
         assertThat(addiNodes).hasSize(2);
 
         // Extract resolved constant values
-        TypedLiteralNode fastStep = (TypedLiteralNode) addiNodes.get(0).arguments().get(1);
-        TypedLiteralNode slowStep = (TypedLiteralNode) addiNodes.get(1).arguments().get(1);
+        LiteralNode fastStep = (LiteralNode) addiNodes.get(0).arguments().get(1);
+        LiteralNode slowStep = (LiteralNode) addiNodes.get(1).arguments().get(1);
 
-        assertThat(fastStep.value()).isEqualTo(10);
-        assertThat(slowStep.value()).isEqualTo(1);
+        assertThat(fastStep.value()).isEqualTo(new Value.Typed("DATA", 10));
+        assertThat(slowStep.value()).isEqualTo(new Value.Typed("DATA", 1));
     }
 
     @Test
@@ -236,11 +237,11 @@ class ModuleSourceConstIntegrationTest {
             collectInstructions(node, "SETI", setiNodes);
         }
 
-        // At least one SETI should have a TypedLiteralNode with value 255
+        // At least one SETI should have a literal with value DATA:255
         boolean found = setiNodes.stream().anyMatch(seti ->
                 seti.arguments().size() >= 2
-                && seti.arguments().get(1) instanceof TypedLiteralNode tln
-                && tln.value() == 255);
+                && seti.arguments().get(1) instanceof LiteralNode tln
+                && tln.value().equals(new Value.Typed("DATA", 255)));
         assertThat(found).as("SETI with resolved constant MAX=255 not found").isTrue();
     }
 
@@ -248,7 +249,7 @@ class ModuleSourceConstIntegrationTest {
     @Tag("integration")
     void circularSourceDetected() throws Exception {
         // a.evo sources b.evo, b.evo sources a.evo
-        // Test at preprocessor level directly (DependencyScanner doesn't handle .SOURCE cycles)
+        // Tested at the preprocessor level, which has a check of its own for an inclusion a macro makes
         Files.writeString(tempDir.resolve("a.evo"),
                 ".SOURCE \"b.evo\"\n.CONST A_VAL DATA:1\n");
         Files.writeString(tempDir.resolve("b.evo"),
@@ -258,7 +259,7 @@ class ModuleSourceConstIntegrationTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(mainSource, diagnostics, mainPath);
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -268,9 +269,9 @@ class ModuleSourceConstIntegrationTest {
             String resolvedPath = circularResolver.resolve(fileName, mainPath);
             String content = Files.readString(Path.of(resolvedPath));
             if (!content.endsWith("\n")) content += "\n";
-            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath, TestLexers.symbols());
+            Tokenizer srcLexer = TestLexers.tokenizer(content, diagnostics, resolvedPath);
             List<Token> srcTokens = srcLexer.scanTokens();
-            Lexer.stripEofToken(srcTokens);
+            Tokenizer.stripEofToken(srcTokens);
             circularSourceTokens.put(resolvedPath, srcTokens);
         }
 
@@ -310,8 +311,8 @@ class ModuleSourceConstIntegrationTest {
         assertThat(setiNodes).isNotEmpty();
         boolean found = setiNodes.stream().anyMatch(seti ->
                 seti.arguments().size() >= 2
-                && seti.arguments().get(1) instanceof TypedLiteralNode tln
-                && tln.value() == 7);
+                && seti.arguments().get(1) instanceof LiteralNode tln
+                && tln.value().equals(new Value.Typed("DATA", 7)));
         assertThat(found).as("SETI with resolved constant INIT_VAL=7 not found").isTrue();
     }
 
@@ -327,18 +328,19 @@ class ModuleSourceConstIntegrationTest {
 
         String rootAliasChain = "";
 
-        // Phase 0: Dependency scanning
+        // Phase 1: Lexer, which finds the files and tokenizes each of them once
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
+        Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults(),
+                new RuntimeInstructionSetAdapter(), featureRegistry.lexerSymbols());
+        DependencyGraph graph = lexer.read(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
-        // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
+        // The main file as the stream
+        Map<String, List<Token>> fileTokens = graph.tokens();
+        List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
@@ -404,7 +406,7 @@ class ModuleSourceConstIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends org.evochora.compiler.frontend.module.IDependencyInfo> void registerSetupHandler(
+    private static <T extends org.evochora.compiler.frontend.lexer.IDependencyInfo> void registerSetupHandler(
             ModuleSetupRegistry registry, Class<T> type, IDependencySetupHandler<?> handler) {
         registry.register(type, (IDependencySetupHandler<T>) handler);
     }

@@ -5,7 +5,7 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -42,7 +42,7 @@ public class SemanticAnalyzerTest {
         // Initialize instruction set for the parser
         org.evochora.runtime.isa.Instruction.init();
         
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, allHandlers());
         return parser.parse();
@@ -388,13 +388,33 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that a defined constant can be correctly used as a literal value in an instruction.
-     * This is a unit test for constant symbol resolution.
+     * Verifies that a constant holding a typed literal can be used as a literal value in an
+     * instruction.
      */
     @Test
     @Tag("unit")
     void testUsingDefinedConstantAsLiteralIsAllowed() {
-        // Arrange
+        String source = String.join("\n",
+                ".CONST MY_CONST DATA:123",
+                "SETI %DR0 MY_CONST"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        analyzer.analyze(ast);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    /**
+     * A constant holding a bare number is held to the rule of a written number: a literal
+     * operand carries a molecule type.
+     */
+    @Test
+    @Tag("unit")
+    void testUntypedConstantAsLiteralIsReported() {
         String source = String.join("\n",
                 ".CONST MY_CONST 123",
                 "SETI %DR0 MY_CONST"
@@ -402,13 +422,58 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Argument 2 for instruction 'SETI' requires a typed literal (e.g., DATA:42).");
+    }
+
+    /**
+     * A label is not a vector; where a vector is expected it is a type error.
+     */
+    @Test
+    @Tag("unit")
+    void testLabelWhereVectorIsExpectedIsReported() {
+        String source = String.join("\n",
+                ".LABEL TARGET",
+                "SETV %DR0 TARGET"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        analyzer.analyze(ast);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
+    }
+
+    /**
+     * An unknown name is reported where a vector is expected as it is anywhere else; a constant
+     * defined below its use is such a name.
+     */
+    @Test
+    @Tag("unit")
+    void testUnknownNameWhereVectorIsExpectedIsReported() {
+        String source = String.join("\n",
+                "SETV %DR0 LATE",
+                ".CONST LATE 1|0"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        analyzer.analyze(ast);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message())
+                .startsWith("Cannot use 'LATE' as an argument:");
     }
 
     /**

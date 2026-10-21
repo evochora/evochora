@@ -9,13 +9,12 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
-import org.evochora.compiler.frontend.semantics.ScopeTracker;
+import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
@@ -24,7 +23,8 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.runtime.isa.Instruction;
@@ -233,9 +233,9 @@ class ControlLevelTest {
 
         assertThat(analyzed.errors()).isEmpty();
         assertThat(analyzed.instructionAt(3).arguments().get(1))
-                .isInstanceOfSatisfying(TypedLiteralNode.class, value -> assertThat(value.value()).isEqualTo(5));
+                .isInstanceOfSatisfying(LiteralNode.class, value -> assertThat(value.value()).isEqualTo(new Value.Typed("DATA", 5)));
         assertThat(analyzed.instructionAt(5).arguments().get(1))
-                .isInstanceOfSatisfying(TypedLiteralNode.class, value -> assertThat(value.value()).isEqualTo(5));
+                .isInstanceOfSatisfying(LiteralNode.class, value -> assertThat(value.value()).isEqualTo(new Value.Typed("DATA", 5)));
     }
 
     @Test
@@ -386,7 +386,7 @@ class ControlLevelTest {
      */
     private static Analyzed analyze(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, "main.evo", TestLexers.symbols())
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, "main.evo")
                 .scanTokens();
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));

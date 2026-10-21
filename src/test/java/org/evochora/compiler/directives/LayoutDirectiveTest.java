@@ -1,7 +1,8 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.TestLexers;
-import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
@@ -9,8 +10,6 @@ import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.features.place.placement.VectorPlacementNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.org.OrgNode;
@@ -37,7 +36,7 @@ public class LayoutDirectiveTest {
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine(), TestLexers.symbols()).scanTokens(), new DiagnosticsEngine(), registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -45,6 +44,40 @@ public class LayoutDirectiveTest {
         // Assert
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         assertThat(ast).hasSize(1).first().isInstanceOf(OrgNode.class);
+    }
+
+    /**
+     * A coordinate is bounded by the world, which is addressed with an {@code int}; a component
+     * beyond that is reported at the directive.
+     */
+    @Test
+    @Tag("unit")
+    void testPlaceComponentBeyondACoordinateIsReported() {
+        String source = ".PLACE DATA:1 4294967296|0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message()).isEqualTo("Value 4294967296 out of range for a coordinate.");
+    }
+
+    /**
+     * An axis of a rotation names a dimension, which the layout checks against the world; here
+     * it has to fit an {@code int}, so that the layout can.
+     */
+    @Test
+    @Tag("unit")
+    void testRotationAxisBeyondAnIntIsReported() {
+        String source = ".DIR @+4294967296|1";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message()).isEqualTo("Value 4294967296 out of range for an axis.");
     }
 
     /**
@@ -58,7 +91,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG 0|@+2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -67,7 +100,7 @@ public class LayoutDirectiveTest {
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(false, true);
-        assertThat(((VectorLiteralNode) org.originVector()).values()).containsExactly(0, 2);
+        assertThat(((Value.Vector) org.originVector().value()).components()).containsExactly(0L, 2L);
     }
 
     /**
@@ -80,7 +113,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG @-3|@+2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -89,7 +122,7 @@ public class LayoutDirectiveTest {
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(true, true);
-        assertThat(((VectorLiteralNode) org.originVector()).values()).containsExactly(-3, 2);
+        assertThat(((Value.Vector) org.originVector().value()).components()).containsExactly(-3L, 2L);
     }
 
     /**
@@ -102,7 +135,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG 0|@+-2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         parser.parse();
@@ -121,7 +154,7 @@ public class LayoutDirectiveTest {
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine(), TestLexers.symbols()).scanTokens(), new DiagnosticsEngine(), registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -142,7 +175,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".DIR @+0|1\n.DIR @-1|2\n.DIR 1|0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -165,7 +198,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".DIR %DR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -186,7 +219,7 @@ public class LayoutDirectiveTest {
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine(), TestLexers.symbols()).scanTokens(), new DiagnosticsEngine(), registry());
+        Parser parser = new Parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -196,7 +229,7 @@ public class LayoutDirectiveTest {
         assertThat(ast).hasSize(1).first().isInstanceOf(PlaceNode.class);
 
         PlaceNode placeNode = (PlaceNode) ast.get(0);
-        assertThat(placeNode.literal()).isInstanceOf(TypedLiteralNode.class);
+        assertThat(placeNode.literal()).isInstanceOf(LiteralNode.class);
         assertThat(placeNode.placements()).hasSize(1);
         assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
     }

@@ -41,17 +41,24 @@ public class RepeatDirectiveHandler implements IPreProcessorBlockHandler {
         preProcessor.advance(); // consume .REPEAT
 
         Token countToken = preProcessor.consume(TokenType.NUMBER, "Expected repeat count after .REPEAT");
-        int count = (Integer) countToken.value();
-
+        long written = (Long) countToken.value();
         int tokensToRemove = block.end() - startIndex;
+        if (written > Integer.MAX_VALUE) {
+            preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",
+                    countToken.source().fileName(), countToken.source().lineNumber());
+            preProcessor.removeTokens(startIndex, tokensToRemove);
+            return;
+        }
+        int count = (int) written;
+
         if (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
             rejectInlineForm(preProcessor, startIndex, tokensToRemove, repeatToken, count);
             return;
         }
 
-        if (count < 0) {
+        if (written < 0) {
             preProcessor.getDiagnostics().reportError(
-                    "Repeat count must be non-negative, got: " + count,
+                    "Repeat count must be non-negative, got: " + written,
                     countToken.source().fileName(), countToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, tokensToRemove);
             return;

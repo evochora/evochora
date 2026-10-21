@@ -6,7 +6,6 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.label.LabelNode;
-import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -257,7 +256,7 @@ class ControlDirectiveTest {
      */
     private static Parsed parse(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols()).scanTokens();
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics).scanTokens();
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
         ParserStatementRegistry registry = new ParserStatementRegistry();

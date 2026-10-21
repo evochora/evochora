@@ -289,19 +289,6 @@ A vector literal is used to define coordinates or direction vectors. The compone
     * `10|-5` (A vector pointing to the relative coordinate (10, -5))
     * `0xFF|0b1010` (A valid vector using mixed number formats)
 
-### Labels as Literals
-
-When a label is used as an argument for an instruction that expects a vector (like `SETV`), the compiler automatically calculates the relative vector from the instruction's location to the label's location. This allows for position-independent code.
-
-* **Example**:
-    ```
-    SETV %DR0 MY_TARGET  # DR0 will hold the vector pointing to MY_TARGET
-    ...
-    MY_TARGET: NOP
-    ```
-
----
-
 ## 6. Instruction Set
 
 The instruction set defines the fundamental operations an organism can perform. Many instructions come in three variants, identified by the last letter of their opcode:
@@ -314,7 +301,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 
 * `SETI %REG <Literal>`: Sets `<%REG>` to the immediate `<Literal>`.
 * `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`.
-* `SETV %REG <Vector|Label>`: Sets `<%REG>` to the specified vector or the vector to the label.
+* `SETV %REG <Vector>`: Sets `<%REG>` to the specified vector.
 * `XCHG %REG1 %REG2`: Exchanges (swaps) the contents of two registers atomically.
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack.
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`.
@@ -410,9 +397,9 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 * `JMPI <Label>`: Jumps to `<Label>`, found by fuzzy label matching; fails when no label matches.
 * `JMPR %REG`: Jumps to the label whose value is in `<%REG>`.
 * `JMPS`: Jumps to the label whose value is popped from the stack.
-  `CALL <Label> [REF %reg ...] [VAL %reg|Literal ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
+  `CALL <Label> [REF %reg ...] [VAL %reg|Literal|Vector ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
-    - `VAL`: Passes registers or literal values by value. Modifications are local.
+    - `VAL`: Passes registers, literal values or vectors by value. Modifications are local.
     - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
     - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time, as `PSLI` does: a label that matches nothing, or whose cell belongs to another organism, is passed as no position.
     - **Example**:
@@ -735,7 +722,7 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
     .ENDDEF
     ```
 * **A branch that is left out** is not assembled: no constant, label or macro in it exists, and no file named in it is read.
-* **Lines of their own**: `.DEFINE`, `.UNDEF` and the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
+* **Lines of their own**: the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
 * **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
 * **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
 * **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by `.IFDEF`; a flag is seen only by `.IFDEF` and cannot be used as an operand.
@@ -756,7 +743,6 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 * **`MODULE`**: This module uses a module as `<Alias>`, reaching its exported names as `<Alias>.<Name>`, but does not inline it; the importer names the module that takes the place of `<Alias>`, and `<path>` says which file the module expects there. The alias is never exported.
 * **`VALUE`**: Defines the constant `<Name>`, whose value the importer decides; `<Default>` is its value when the importer decides nothing, and without a default the importer has to decide. It is a constant as `.CONST` makes one, with the same values (a literal or a name) and the same rules, and `EXPORT` makes it reachable from outside. Two placements of one module may receive different values.
 * **The main program** has no importer; its values come from the configuration, `values { STEPS = "DATA:20" }` in the organism's entry or `evochora compile --value STEPS=DATA:20`. A value that no `.REQUIRE VALUE` of the main program names is ignored.
-* `.REQUIRE` stands alone on its line.
 
 #### `.IMPORT`
 

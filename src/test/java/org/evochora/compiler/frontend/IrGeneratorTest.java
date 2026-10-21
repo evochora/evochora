@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -35,7 +36,7 @@ import org.evochora.compiler.features.place.PlaceNode;
 import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.features.importdir.RequireNode;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -79,7 +80,7 @@ public class IrGeneratorTest {
     private IrProgram compileToIr(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         if (diagnostics.hasErrors()) {
             fail("Lexer errors: " + diagnostics.summary());
@@ -101,8 +102,8 @@ public class IrGeneratorTest {
         }
 
         // Phase 6: AST Post-Processing (resolve register aliases and parameters)
-        org.evochora.compiler.frontend.module.ModuleContextTracker postTracker = new org.evochora.compiler.frontend.module.ModuleContextTracker(symbolTable);
-        org.evochora.compiler.frontend.semantics.ScopeTracker scopeTracker = new org.evochora.compiler.frontend.semantics.ScopeTracker(symbolTable);
+        org.evochora.compiler.frontend.ModuleContextTracker postTracker = new org.evochora.compiler.frontend.ModuleContextTracker(symbolTable);
+        org.evochora.compiler.frontend.ScopeTracker scopeTracker = new org.evochora.compiler.frontend.ScopeTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         org.evochora.compiler.frontend.postprocess.AstPostProcessor postProcessor =
                 new org.evochora.compiler.frontend.postprocess.AstPostProcessor(symbolTable, postTracker, scopeTracker, TestRegistries.postProcessRegistry());
@@ -145,8 +146,8 @@ public class IrGeneratorTest {
         assertEquals("%DR1", ((IrReg) callInstruction.refOperands().get(0)).name());
 
         assertEquals(1, callInstruction.valOperands().size());
-        assertInstanceOf(IrImm.class, callInstruction.valOperands().get(0));
-        assertEquals(42, ((IrImm) callInstruction.valOperands().get(0)).value());
+        assertInstanceOf(IrLiteral.class, callInstruction.valOperands().get(0));
+        assertEquals(new Value.Number(42), ((IrLiteral) callInstruction.valOperands().get(0)).value());
     }
 
     @Test
@@ -205,7 +206,7 @@ public class IrGeneratorTest {
         assertEquals("SETI", seti.opcode());
         assertEquals(2, seti.operands().size());
         assertTrue(seti.operands().get(0) instanceof IrReg);
-        assertTrue(seti.operands().get(1) instanceof IrTypedImm);
+        assertTrue(seti.operands().get(1) instanceof IrLiteral literal && literal.value() instanceof Value.Typed);
     }
 
     @Test
@@ -217,7 +218,7 @@ public class IrGeneratorTest {
                 .filter(IrInstruction.class::isInstance)
                 .findFirst()
                 .orElseThrow();
-        assertThat(seti.operands().get(1)).isEqualTo(new IrTypedImm("DATA", -16));
+        assertThat(seti.operands().get(1)).isEqualTo(new IrLiteral(new Value.Typed("DATA", -16)));
     }
 
     @Test

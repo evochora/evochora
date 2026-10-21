@@ -1,21 +1,19 @@
 package org.evochora.compiler.features.conditional;
 
-import org.evochora.compiler.frontend.module.IDependencyScanContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessor;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
 
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * The preprocessor flags of one compilation: the names that are set, each with an integer value
  * or without one. Names are compared case-insensitively. The flags are global: one instance
- * serves the whole token stream of the preprocessor, another the whole text of the dependency
- * scan, each kept in the state slot of its phase's context and seeded from the flags of the
- * compilation's options on first use.
+ * serves the whole token stream of the preprocessor (see {@link PreprocessorFlags}), another the
+ * whole reading of the Lexer phase, each kept in the state slot of its phase's context and seeded
+ * from the flags of the compilation's options on first use.
  * <p>
  * A flag that is set may be defined again only with the same definition, both without a value
  * or both with the same value; {@link #undefine} first is how a flag changes.
@@ -24,7 +22,7 @@ public final class Flags {
 
     private static final String CONFIGURATION = "by the configuration";
 
-    private record Entry(OptionalInt value, String origin) {
+    private record Entry(OptionalLong value, String origin) {
     }
 
     private final Map<String, Entry> entries = new HashMap<>();
@@ -39,30 +37,10 @@ public final class Flags {
      * @param defines The flags of the compilation's options, name to optional value.
      * @return Flags holding exactly the given names and values.
      */
-    public static Flags of(Map<String, OptionalInt> defines) {
+    public static Flags of(Map<String, OptionalLong> defines) {
         Flags flags = new Flags();
         defines.forEach((name, value) -> flags.entries.put(key(name), new Entry(value, CONFIGURATION)));
         return flags;
-    }
-
-    /**
-     * Returns the flags of the preprocessor run, seeding them from the options on the first
-     * request. The seeding reports every configured name that is not an identifier, once per
-     * run, against the configuration rather than a source line.
-     *
-     * @param preProcessor The preprocessor, for its diagnostics.
-     * @param context      The context holding the slot and the options.
-     * @return The one instance of the run.
-     */
-    public static Flags inPreprocessor(PreProcessor preProcessor, PreProcessorContext context) {
-        return context.getOrCreate(Flags.class, () -> {
-            Map<String, OptionalInt> defines = context.options().defines();
-            defines.keySet().stream().filter(name -> !isName(name)).sorted().forEach(name ->
-                    preProcessor.getDiagnostics().reportError("Configured flag '" + name
-                            + "' is not a valid name: a flag name consists of letters, digits and _"
-                            + " and begins with a letter or _", "", 0));
-            return of(defines);
-        });
     }
 
     /**
@@ -87,7 +65,7 @@ public final class Flags {
      *               {@code "at main.evo:3"}; named when a later definition conflicts with it.
      * @return Empty when the definition is accepted, or the message telling why it is not.
      */
-    public Optional<String> define(String name, OptionalInt value, String origin) {
+    public Optional<String> define(String name, OptionalLong value, String origin) {
         String key = key(name);
         Entry existing = entries.get(key);
         if (existing == null) {
@@ -126,9 +104,9 @@ public final class Flags {
      * @param name The flag name.
      * @return The value, or empty if the flag is not set or set without a value.
      */
-    public OptionalInt valueOf(String name) {
+    public OptionalLong valueOf(String name) {
         Entry entry = entries.get(key(name));
-        return entry == null ? OptionalInt.empty() : entry.value();
+        return entry == null ? OptionalLong.empty() : entry.value();
     }
 
     /**
@@ -157,8 +135,8 @@ public final class Flags {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
     }
 
-    private static String describe(OptionalInt value) {
-        return value.isPresent() ? "as " + value.getAsInt() : "without a value";
+    private static String describe(OptionalLong value) {
+        return value.isPresent() ? "as " + value.getAsLong() : "without a value";
     }
 
     private static String key(String name) {

@@ -279,7 +279,7 @@ class ModuleValuesTest {
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("walk.evo")
-                                + ":2: EXPORT is not supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under its own name."));
+                                + ":2: EXPORT is not supported before '.REQUIRE MODULE'."));
     }
 
     @Test
@@ -332,7 +332,7 @@ class ModuleValuesTest {
     }
 
     @Test
-    void aValueRequirementStandsAloneOnItsLine() throws Exception {
+    void aValueRequirementTakesNothingAfterItsDefault() throws Exception {
         write("main.evo",
                 ".REQUIRE VALUE STEPS DATA:1 EXTRA",
                 "START:",
@@ -342,7 +342,7 @@ class ModuleValuesTest {
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("main.evo")
-                                + ":1: .REQUIRE must stand alone on its line; found 'EXTRA' after the value and its default."));
+                                + ":1: Unexpected 'EXTRA' after the value and its default of .REQUIRE."));
     }
 
     @Test

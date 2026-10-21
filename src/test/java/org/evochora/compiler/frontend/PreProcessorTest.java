@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -62,7 +62,7 @@ public class PreProcessorTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         Path mainFile = tempDir.resolve("main.s");
-        Lexer lexer = new Lexer(mainSource, diagnostics, mainFile.toString(), TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(mainSource, diagnostics, mainFile.toString());
         List<Token> initialTokens = lexer.scanTokens();
 
         SourceRootResolver resolver = new SourceRootResolver(
@@ -71,9 +71,9 @@ public class PreProcessorTest {
         String sourceContent = Files.readString(libFile);
         if (!sourceContent.endsWith("\n")) sourceContent += "\n";
         String resolvedSourcePath = resolver.resolve("test.s", mainFile.toString());
-        Lexer sourceLexer = new Lexer(sourceContent, diagnostics, resolvedSourcePath, TestLexers.symbols());
+        Tokenizer sourceLexer = TestLexers.tokenizer(sourceContent, diagnostics, resolvedSourcePath);
         List<Token> sourceTokenList = sourceLexer.scanTokens();
-        Lexer.stripEofToken(sourceTokenList);
+        Tokenizer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
         PreProcessorContext context = new PreProcessorContext("", sourceTokens, mainFile.toString(), CompilerOptions.defaults());

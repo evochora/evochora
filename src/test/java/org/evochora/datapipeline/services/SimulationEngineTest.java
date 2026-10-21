@@ -18,7 +18,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -571,7 +571,7 @@ class SimulationEngineTest {
     void readDefines_readsTrueAsAFlagWithoutValueAndAnIntegerAsAFlagWithThatValue() {
         Config entry = ConfigFactory.parseString("defines { AGGRESSIVE = true, REDUNDANCY = 2, OFF = false }");
 
-        assertEquals(Map.of("AGGRESSIVE", OptionalInt.empty(), "REDUNDANCY", OptionalInt.of(2)),
+        assertEquals(Map.of("AGGRESSIVE", OptionalLong.empty(), "REDUNDANCY", OptionalLong.of(2)),
                 SimulationEngine.readDefines(entry, 0));
     }
 

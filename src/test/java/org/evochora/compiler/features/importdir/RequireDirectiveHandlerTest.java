@@ -2,7 +2,6 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.model.ast.AstNode;
@@ -30,7 +29,7 @@ class RequireDirectiveHandlerTest {
     @Test
     void aRequireAsTheFirstTokenOfTheStreamIsAccepted() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Lexer(".REQUIRE MODULE \"d.evo\" AS D\n", diagnostics, "lib.evo", TestLexers.symbols())
+        List<Token> tokens = TestLexers.tokenizer(".REQUIRE MODULE \"d.evo\" AS D\n", diagnostics, "lib.evo")
                 .scanTokens();
         ParserStatementRegistry registry = new ParserStatementRegistry();
         registry.register(".REQUIRE", new RequireDirectiveHandler());

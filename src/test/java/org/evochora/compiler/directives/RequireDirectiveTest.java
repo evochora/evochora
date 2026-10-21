@@ -2,7 +2,7 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -33,7 +33,7 @@ public class RequireDirectiveTest {
     void parsesSimpleRequire() {
         String source = ".REQUIRE MODULE \"dependency.evo\" AS DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -53,7 +53,7 @@ public class RequireDirectiveTest {
     void missingAsKeywordReportsError() {
         String source = ".REQUIRE MODULE \"dependency.evo\" DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -66,7 +66,7 @@ public class RequireDirectiveTest {
     void missingPathReportsError() {
         String source = ".REQUIRE MODULE AS DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -79,7 +79,7 @@ public class RequireDirectiveTest {
     void missingAliasReportsError() {
         String source = ".REQUIRE MODULE \"dependency.evo\" AS";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -92,7 +92,7 @@ public class RequireDirectiveTest {
     void requireNodeRetainsSourceFileName() {
         String source = ".REQUIRE MODULE \"math.evo\" AS MATH";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, "main.evo", TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics, "main.evo");
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -108,7 +108,7 @@ public class RequireDirectiveTest {
     void requireNodeChildrenAreEmpty() {
         String source = ".REQUIRE MODULE \"utils.evo\" AS UTILS";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -124,7 +124,7 @@ public class RequireDirectiveTest {
     void parsesTheKindWordModule() {
         String source = ".REQUIRE MODULE \"d.evo\" AS D";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -142,7 +142,7 @@ public class RequireDirectiveTest {
     void aValueRequirementWithADefaultThatIsNoOperandIsReported() {
         String source = ".REQUIRE VALUE STEPS :";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -157,7 +157,7 @@ public class RequireDirectiveTest {
     void aRequireWithoutAKindWordReportsTheMissingModule() {
         String source = ".REQUIRE \"d.evo\" AS D";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 

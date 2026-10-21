@@ -3,10 +3,11 @@ package org.evochora.compiler.features.source;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.module.PlacementContext;
-import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.preprocessor.PlacementContext;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -29,7 +30,8 @@ import java.util.List;
  * preprocessor's sources, under the including placement, that number and the position of the
  * directive.</p>
  *
- * <p>The directive stands alone on its line: a token before it or after the path is an error.</p>
+ * <p>The directive begins a statement, and the path ends it: a word before the directive without
+ * a statement end, or a token after the path, is an error.</p>
  */
 public class SourceDirectiveHandler implements IPreProcessorHandler {
 
@@ -37,9 +39,9 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         int startIndex = preProcessor.getCurrentIndex();
         DirectiveLine line = preProcessor.lineOf(startIndex);
-        if (line.before() != null) {
+        if (!line.startsStatement()) {
             Token directive = preProcessor.peek();
-            String message = ".SOURCE must be the first word on its line; found '" + line.before().text() + "' before it.";
+            String message = Export.statementStartMessage(line);
             preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
@@ -48,14 +50,8 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");
         if (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
             Token extra = preProcessor.peek();
-            String message = ".SOURCE must stand alone on its line; found '" + extra.text() + "' after the path.";
+            String message = "Unexpected '" + extra.text() + "' after the path of .SOURCE.";
             preProcessor.getDiagnostics().reportError(message, extra.source().fileName(), extra.source().lineNumber());
-            throw new ErrorRecoveryException(message);
-        }
-        if (line.separator() != null) {
-            String message = ".SOURCE must stand alone on its line; found ';' after the path.";
-            preProcessor.getDiagnostics().reportError(message, line.separator().source().fileName(),
-                    line.separator().source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
 
@@ -66,7 +62,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         String resolvedPath;
         try {
             resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.source().fileName());
-        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
+        } catch (org.evochora.compiler.util.SourceRootResolver.UnresolvablePathException e) {
             preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.source().fileName(), pathToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;

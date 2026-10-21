@@ -4,8 +4,8 @@ import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
-import org.evochora.compiler.frontend.semantics.ScopeTracker;
+import org.evochora.compiler.frontend.ModuleContextTracker;
+import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.ArrayList;

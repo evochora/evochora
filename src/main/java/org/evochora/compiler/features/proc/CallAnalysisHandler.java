@@ -1,5 +1,7 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -9,10 +11,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import org.evochora.compiler.isa.IInstructionSet;
 
@@ -93,16 +92,15 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                     callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
         }
 
-        // Validate VAL argument types
+        // Validate VAL argument types: a register, a literal or a vector, written or through a constant
         for (AstNode valArg : callNode.valArguments()) {
             if (valArg instanceof RegisterNode) continue;
-            if (valArg instanceof NumberLiteralNode) continue;
-            if (valArg instanceof TypedLiteralNode) continue;
+            if (valArg instanceof LiteralNode) continue;
             if (valArg instanceof IdentifierNode idNode) {
-                validateDataIdentifierOrLabel(idNode, "VAL", symbolTable, diagnostics);
+                validateDataIdentifierOrLiteral(idNode, "VAL", symbolTable, diagnostics);
                 continue;
             }
-            diagnostics.reportError("Cannot pass " + describe(valArg) + " as VAL argument: VAL takes a register, a literal or a label.",
+            diagnostics.reportError("Cannot pass " + describe(valArg) + " as VAL argument: VAL takes a register, a literal or a vector.",
                     callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
         }
 
@@ -155,6 +153,11 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     private static final String A_DATA_REGISTER = "a data register";
     private static final String A_LOCATION_REGISTER = "a location register";
 
+    /**
+     * What an identifier stands for, asked of the node that defined it and followed through the
+     * definitions. A literal here is any value a constant can hold: a number, a typed value or a
+     * vector.
+     */
     private Meaning meaningOf(AstNode definition, IdentifierNode idNode, SymbolTable st) {
         if (!(definition instanceof IIdentifierBinding) && !(definition instanceof IJumpTarget)) {
             return Meaning.NONE;
@@ -172,8 +175,9 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      * Names an argument that is no register and no identifier, for a message.
      */
     private static String describe(AstNode argument) {
-        if (argument instanceof VectorLiteralNode) return "a vector";
-        if (argument instanceof NumberLiteralNode || argument instanceof TypedLiteralNode) return "a literal";
+        if (argument instanceof LiteralNode literal) {
+            return literal.value() instanceof Value.Vector ? "a vector" : "a literal";
+        }
         return "this argument";
     }
 
@@ -189,20 +193,16 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
     /**
      * Checks one identifier argument against the meanings its position accepts and reports
-     * what it is instead when it does not fit.
-     *
-     * @param mustExist Whether an identifier the symbol table does not know is reported here;
-     *                  a position that accepts a label leaves that to the linker.
+     * what it is instead when it does not fit. An identifier the symbol table does not know is
+     * reported here, whatever the position accepts.
      */
     private void validateIdentifier(IdentifierNode idNode, String position, Set<Meaning> accepted,
-                                    String expected, boolean mustExist, SymbolTable st, DiagnosticsEngine diag) {
+                                    String expected, SymbolTable st, DiagnosticsEngine diag) {
         ResolvedSymbol resolved;
         switch (st.resolve(idNode.text(), idNode.sourceInfo())) {
             case Resolution.Missing missing -> {
-                if (mustExist) {
-                    diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),
-                            idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-                }
+                diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),
+                        idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
                 return;
             }
             case ResolvedSymbol found -> resolved = found;
@@ -220,24 +220,24 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
     private void validateDataIdentifier(IdentifierNode idNode, String position,
                                         SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER), A_DATA_REGISTER, true, st, diag);
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER), A_DATA_REGISTER, st, diag);
     }
 
-    private void validateDataIdentifierOrLabel(IdentifierNode idNode, String position,
-                                               SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL, Meaning.LABEL),
-                A_DATA_REGISTER, false, st, diag);
+    private void validateDataIdentifierOrLiteral(IdentifierNode idNode, String position,
+                                                 SymbolTable st, DiagnosticsEngine diag) {
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL),
+                "a register, a literal or a vector", st, diag);
     }
 
     private void validateLocationIdentifier(IdentifierNode idNode, String position,
                                             SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER), A_LOCATION_REGISTER, true, st, diag);
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER), A_LOCATION_REGISTER, st, diag);
     }
 
     private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
                                                    SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LITERAL, Meaning.LABEL),
-                A_LOCATION_REGISTER, false, st, diag);
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LABEL),
+                "a location register or a label", st, diag);
     }
 
     /**

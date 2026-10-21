@@ -146,7 +146,7 @@ When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g.
 Sets a flag for the conditional compilation directives (`.IFDEF` and its relatives, see `ASSEMBLY_SPEC.md`), as `.DEFINE` in the program would, before its first line:
 
 - `--define NAME` — sets the flag without a value
-- `--define NAME=INTEGER` — sets it with that value; decimal, `0x…` and `0b…`, with an optional minus
+- `--define NAME=INTEGER` — sets it with that value; decimal, `0x…`, `0o…` and `0b…`, with an optional minus
 
 The option may be repeated. Flag names are case-insensitive. In a simulation the same flags are set per organism in the configuration (`defines { … }` in the organism entry).
 

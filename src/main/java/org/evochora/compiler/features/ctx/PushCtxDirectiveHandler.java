@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.ctx;
 
-import org.evochora.compiler.frontend.module.PlacementContext;
+import org.evochora.compiler.frontend.preprocessor.PlacementContext;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;

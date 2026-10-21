@@ -1,12 +1,13 @@
 package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.module.PlacementContext;
-import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.preprocessor.PlacementContext;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -19,9 +20,8 @@ import java.util.List;
  * Inlines the imported module's pre-lexed tokens at the directive location, wrapped with
  * PUSH_CTX/POP_CTX for relative .ORG support. The directive tokens remain in the
  * stream for the parser to create an {@code ImportNode}. The handler reads the path and the alias
- * and passes over the rest of the line, which the parser reads. The directive stands alone on its
- * line: anything but an {@code EXPORT} before it, or a {@code ;} that puts another statement after
- * it, is an error.
+ * and passes over the rest of the statement, which the parser reads. The directive begins a
+ * statement: anything but an {@code EXPORT} before it without a statement end is an error.
  *
  * <p>Every import is a placement and an entry of the preprocessor's sources, under the
  * placement's alias chain, instance 0 and the position of the directive.</p>
@@ -35,10 +35,10 @@ public class ImportSourceHandler implements IPreProcessorHandler {
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         // An EXPORT before the directive belongs to it; the parser reads it with the directive.
-        DirectiveLine line = preProcessor.lineOf(preProcessor.getCurrentIndex(), token -> isWord(token, "EXPORT"));
-        if (line.before() != null) {
+        DirectiveLine line = preProcessor.lineOf(preProcessor.getCurrentIndex(), Export::isWord);
+        if (!line.startsStatement()) {
             Token directive = preProcessor.peek();
-            String message = ".IMPORT must be the first word on its line; found '" + line.before().text() + "' before it.";
+            String message = Export.statementStartMessage(line);
             preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
@@ -58,19 +58,13 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         while (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
             preProcessor.advance();
         }
-        if (line.separator() != null) {
-            String message = ".IMPORT must stand alone on its line; found ';' after the alias and its USING clauses.";
-            preProcessor.getDiagnostics().reportError(message, line.separator().source().fileName(),
-                    line.separator().source().lineNumber());
-            throw new ErrorRecoveryException(message);
-        }
 
         // Resolve the path to an absolute path
         String pathValue = (String) pathToken.value();
         String resolvedPath;
         try {
             resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.source().fileName());
-        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
+        } catch (org.evochora.compiler.util.SourceRootResolver.UnresolvablePathException e) {
             preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.source().fileName(), pathToken.source().lineNumber());
             return;
         }
@@ -87,7 +81,8 @@ public class ImportSourceHandler implements IPreProcessorHandler {
             return;
         }
 
-        // Advance past the NEWLINE so module tokens are injected after the directive line
+        // The module's tokens go after the import's statement end, because the parser reads the
+        // directive's clauses up to that end.
         if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.NEWLINE)) {
             preProcessor.advance();
         }
@@ -125,6 +120,12 @@ public class ImportSourceHandler implements IPreProcessorHandler {
                 directive.expansion());
         newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, marker));
         newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, marker));
+        // The separator of the import's line is restored after the inlined module, so that the
+        // statement it put after the import still begins a statement where the preprocessor
+        // reads it.
+        if (line.separator() != null) {
+            newTokens.add(line.separator().with(marker));
+        }
 
         // The inclusion enters the module's alias chain and stays open until the injected
         // .POP_CTX token is processed by the preprocessor — not in this handler.
@@ -132,10 +133,6 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
         preProcessor.injectTokens(newTokens, 0);
-    }
-
-    private static boolean isWord(Token token, String word) {
-        return token.type() == TokenType.IDENTIFIER && word.equalsIgnoreCase(token.text());
     }
 
     /**

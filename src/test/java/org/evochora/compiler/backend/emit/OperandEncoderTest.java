@@ -1,14 +1,13 @@
 package org.evochora.compiler.backend.emit;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrLiteral;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrReg;
-import org.evochora.compiler.model.ir.IrTypedImm;
-import org.evochora.compiler.model.ir.IrVec;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
@@ -46,25 +45,40 @@ class OperandEncoderTest {
 
     @Test
     void immediateBecomesOneDataMolecule() throws Exception {
-        int[] cells = encoder.encodeOperand(new IrImm(42), SRC);
+        int[] cells = encoder.encodeOperand(new IrLiteral(new Value.Number(42)), SRC);
 
         assertThat(cells).containsExactly(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     @Test
     void typedImmediateCarriesItsMoleculeType() throws Exception {
-        int[] cells = encoder.encodeOperand(new IrTypedImm("STRUCTURE", 7), SRC);
+        int[] cells = encoder.encodeOperand(new IrLiteral(new Value.Typed("STRUCTURE", 7)), SRC);
 
         assertThat(cells).containsExactly(new Molecule(Config.TYPE_STRUCTURE, 7).toInt());
     }
 
     @Test
     void vectorBecomesOneDataMoleculePerComponent() throws Exception {
-        int[] cells = encoder.encodeOperand(new IrVec(new int[]{1, -2}), SRC);
+        int[] cells = encoder.encodeOperand(new IrLiteral(new Value.Vector(List.of(1L, -2L))), SRC);
 
         assertThat(cells).containsExactly(
                 new Molecule(Config.TYPE_DATA, 1).toInt(),
                 new Molecule(Config.TYPE_DATA, -2).toInt());
+    }
+
+    /**
+     * The value field of a cell is narrower than a number; a number beyond it is reported where
+     * it would be packed, instead of being cut to the field in silence.
+     */
+    @Test
+    void numberBeyondTheValueFieldIsReported() {
+        long beyond = (1L << (Config.VALUE_BITS - 1));
+        assertThatThrownBy(() -> encoder.encodeOperand(new IrLiteral(new Value.Typed("DATA", beyond)), SRC))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Value " + beyond + " out of range for a cell (" + -beyond + " to " + (beyond - 1) + ").");
+        assertThatThrownBy(() -> encoder.encodeOperand(new IrLiteral(new Value.Vector(List.of(0L, -beyond - 1))), SRC))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("out of range for a cell");
     }
 
     @Test
@@ -90,7 +104,7 @@ class OperandEncoderTest {
 
     @Test
     void unknownMoleculeTypeIsReportedAtTheInstruction() {
-        assertThatThrownBy(() -> encoder.encodeOperand(new IrTypedImm("NO_SUCH_TYPE", 1), SRC))
+        assertThatThrownBy(() -> encoder.encodeOperand(new IrLiteral(new Value.Typed("NO_SUCH_TYPE", 1)), SRC))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("test.evo:3")
                 .hasMessageContaining("NO_SUCH_TYPE");

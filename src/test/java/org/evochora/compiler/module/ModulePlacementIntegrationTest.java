@@ -16,7 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -210,7 +210,7 @@ class ModulePlacementIntegrationTest {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
 
-    private ProgramArtifact compile(String fileName, Map<String, OptionalInt> defines) throws Exception {
+    private ProgramArtifact compile(String fileName, Map<String, OptionalLong> defines) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines, Map.of());
         return new Compiler().compile(fileName, ENV, options);
     }

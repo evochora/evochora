@@ -6,7 +6,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
-import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.backend.link.LinkingResult;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
@@ -37,22 +37,22 @@ public class Emitter {
      * for each IR item. Contributors populate the {@link EmissionContext} with feature-specific
      * metadata (e.g., procedure parameter info), which the artifact carries.</p>
      *
-     * @param program The linked IR program; its {@link org.evochora.compiler.model.ir.DebugInfo}
-     *                supplies the source files and the token map, which the artifact carries
-     *                unchanged, and from which the token lookup by position is built.
+     * @param linked The linked IR program with the call site bindings; the program's
+     *               {@link org.evochora.compiler.model.ir.DebugInfo} supplies the source files
+     *               and the token map, which the artifact carries unchanged, and from which the
+     *               token lookup by position is built.
      * @param layout The layout result, containing coordinate and source mapping.
-     * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @return The final, compiled {@link ProgramArtifact}.
      * @throws CompilationException if an item cannot be encoded or has no cell in the layout, or
      *         if the position of an instruction names no entry of the program's sources.
      */
-    public ProgramArtifact emit(IrProgram program,
+    public ProgramArtifact emit(LinkingResult linked,
                                 LayoutResult layout,
-                                LinkingContext linkingContext,
                                 IInstructionSet isa,
                                 EmissionContributorRegistry contributorRegistry) throws CompilationException {
+        IrProgram program = linked.program();
         EmissionContext emissionContext = new EmissionContext();
         List<IEmissionContributor> contributors = contributorRegistry.contributors();
         for (IrItem item : program.items()) {
@@ -124,7 +124,7 @@ public class Emitter {
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),
-                linkingContext.callSiteBindings(),
+                linked.callSiteBindings(),
                 layout.relativeCoordToLinearAddress(),
                 linearToCoord,
                 emissionContext.registerAliasMap(),

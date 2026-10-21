@@ -1,10 +1,10 @@
 package org.evochora.compiler.features.place.placement;
 
-import org.evochora.compiler.model.ast.VectorLiteralNode;
+import org.evochora.compiler.model.ast.LiteralNode;
 
 /**
- * An adapter class that holds a VectorLiteralNode for the old syntax (e.g., 11|12).
- * @param vector The underlying VectorLiteralNode.
+ * A placement written as one vector, such as {@code 11|12}.
+ * @param vector The vector, a literal whose value is a vector.
  */
-public record VectorPlacementNode(VectorLiteralNode vector) implements IPlacementArgumentNode {
+public record VectorPlacementNode(LiteralNode vector) implements IPlacementArgumentNode {
 }

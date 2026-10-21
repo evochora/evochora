@@ -10,7 +10,6 @@ import org.evochora.compiler.frontend.DirectiveLine;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Predicate;
 
 /**
  * Provides parser directive handlers with access to the token stream.
@@ -87,6 +86,12 @@ public interface IParsingContext {
      * @return true if at the end of the stream, false otherwise.
      */
     boolean isAtEnd();
+
+    /**
+     * Passes over the rest of the current statement: every token up to its end, which stays, so
+     * that a handler that gives up on a statement leaves nothing of it for the next one.
+     */
+    void skipStatement();
 
     /**
      * Parses an expression (literal, register, identifier, or vector).
@@ -169,14 +174,4 @@ public interface IParsingContext {
      * @return true if the current statement is exported.
      */
     boolean isExported();
-
-    /**
-     * Finds the physical line of the current token, a directive, by the rules of
-     * {@link DirectiveLine}. The indices of the result count in the parser's token stream.
-     *
-     * @param passedOver The tokens directly before the directive that belong to it, which the
-     *                   rule passes over.
-     * @return The directive's operands, their end, and whether it stands alone on its line.
-     */
-    DirectiveLine currentLine(Predicate<Token> passedOver);
 }

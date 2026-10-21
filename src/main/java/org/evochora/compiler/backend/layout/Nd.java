@@ -1,5 +1,8 @@
 package org.evochora.compiler.backend.layout;
 
+import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.SourceInfo;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,6 +49,27 @@ public final class Nd {
 	public static int[] scale(int[] v, int k) {
 		int[] r = new int[v.length];
 		for (int i = 0; i < v.length; i++) r[i] = v[i] * k;
+		return r;
+	}
+
+	/**
+	 * Turns the components of a vector value into a coordinate. A component that does not fit
+	 * the coordinate space of the world is reported at the directive that wrote it.
+	 *
+	 * @param components The components, as a vector value carries them.
+	 * @param src        The position of the directive, for the message.
+	 * @return The coordinate.
+	 * @throws CompilationException if a component is outside the range of a coordinate.
+	 */
+	public static int[] coordinate(List<Long> components, SourceInfo src) throws CompilationException {
+		int[] r = new int[components.size()];
+		for (int i = 0; i < r.length; i++) {
+			long c = components.get(i);
+			if (c < Integer.MIN_VALUE || c > Integer.MAX_VALUE) {
+				throw new CompilationException(SourceInfo.locate(src, "Value " + c + " out of range for a coordinate."));
+			}
+			r[i] = (int) c;
+		}
 		return r;
 	}
 

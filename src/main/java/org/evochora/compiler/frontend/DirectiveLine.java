@@ -19,6 +19,7 @@ import java.util.function.Predicate;
  * from another position never break the rule. Tokens directly before the directive that the
  * caller passes over, such as a keyword that belongs to the directive, do not break it either.
  *
+ * @param word      The directive token.
  * @param directive The index of the directive token.
  * @param end       The index of the token that ends the operands: the next statement end, the
  *                  end-of-file token, or the size of the stream.
@@ -27,11 +28,15 @@ import java.util.function.Predicate;
  * @param before    The token of the directive's file and line that stands before it and breaks
  *                  the rule: the nearest one that is not a statement end, or the nearest
  *                  statement end if there is nothing else; {@code null} if there is none.
+ * @param startsStatement Whether the directive begins a statement: the token directly before it,
+ *                  those the caller passes over left out, is a statement end, the start of the
+ *                  stream, or a token of another file or line.
  * @param separator The {@code ;} on the directive's line that ends the operands and puts another
  *                  statement after them; {@code null} if the operands end at a line break, at the
  *                  end of the file, or at a statement end of another line.
  */
-public record DirectiveLine(int directive, int end, int next, List<Token> operands, Token before, Token separator) {
+public record DirectiveLine(Token word, int directive, int end, int next, List<Token> operands, Token before,
+                            boolean startsStatement, Token separator) {
 
     /**
      * Creates the line, with an immutable copy of the operands.
@@ -79,8 +84,14 @@ public record DirectiveLine(int directive, int end, int next, List<Token> operan
                 separator = terminator;
             }
         }
-        return new DirectiveLine(directive, end, next, tokens.subList(directive + 1, end),
-                tokenBefore(tokens, directive, passedOver), separator);
+        int previous = directive - 1;
+        while (previous >= 0 && sameLine(tokens.get(previous), word) && passedOver.test(tokens.get(previous))) {
+            previous--;
+        }
+        boolean startsStatement = previous < 0 || tokens.get(previous).type() == TokenType.NEWLINE
+                || !sameLine(tokens.get(previous), word);
+        return new DirectiveLine(word, directive, end, next, tokens.subList(directive + 1, end),
+                tokenBefore(tokens, directive, passedOver), startsStatement, separator);
     }
 
     /**

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -90,8 +90,8 @@ class ProgramIdentityTest {
     @Test
     void compilationsWithOtherFlagsAndTheSameCodeHaveDifferentIds() throws CompilationException {
         ProgramArtifact plain = compile(PINNED_PROGRAM, Map.of());
-        ProgramArtifact flagged = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalInt.empty()));
-        ProgramArtifact valued = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalInt.of(0)));
+        ProgramArtifact flagged = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalLong.empty()));
+        ProgramArtifact valued = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalLong.of(0)));
 
         assertThat(flagged.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
         assertThat(valued.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
@@ -122,7 +122,7 @@ class ProgramIdentityTest {
         return new Compiler().compile(lines, "identity.evo", ENV);
     }
 
-    private static ProgramArtifact compile(List<String> lines, Map<String, OptionalInt> defines)
+    private static ProgramArtifact compile(List<String> lines, Map<String, OptionalLong> defines)
             throws CompilationException {
         return new Compiler().compile(lines, "identity.evo", ENV,
                 new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of()));

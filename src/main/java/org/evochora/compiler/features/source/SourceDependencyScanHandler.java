@@ -1,47 +1,59 @@
 package org.evochora.compiler.features.source;
 
-import org.evochora.compiler.frontend.module.IDependencyScanContext;
-import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
+import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Phase 0 scan handler for .SOURCE directives. Detects source file inclusions,
- * loads content for Phase 1 pre-lexing, and triggers recursive scanning for
- * nested .SOURCE directives.
+ * Lexer-phase handler for {@code .SOURCE "path"}: reads the file so that its own directives are
+ * followed, and records the dependency. A directive that does not begin a statement, or whose
+ * operand is not one path, names no file here; the preprocessor reports what is wrong with it
+ * and inlines nothing. A file that sources,
+ * directly or through other source files, the file it is included from is a circular inclusion,
+ * reported at the line that closes the circle; the handler keeps the chain of inclusions in its
+ * own state, since the phase reads a source file within the call that includes it.
  */
 public class SourceDependencyScanHandler implements IDependencyScanHandler {
 
-    private static final Pattern SOURCE_PATTERN = Pattern.compile(
-            "(?i)^\\.SOURCE\\s+\"([^\"]+)\"\\s*$");
-
-    @Override
-    public Pattern pattern() {
-        return SOURCE_PATTERN;
+    /** The source files on the way to the one being read, kept in the phase's state. */
+    static final class Inclusions {
+        final Set<String> chain = new HashSet<>();
     }
 
     @Override
-    public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
-        String path = matcher.group(1);
-
+    public void handle(DirectiveLine line, IDependencyScanContext ctx) {
+        if (!line.startsStatement() || line.operands().size() != 1 || line.operands().get(0).type() != TokenType.STRING) {
+            return;
+        }
+        Token pathToken = line.operands().get(0);
+        String path = (String) pathToken.value();
         String resolvedPath;
         try {
             resolvedPath = ctx.resolve(path);
-        } catch (SourceRootResolver.UnknownPrefixException e) {
+        } catch (SourceRootResolver.UnresolvablePathException e) {
             ctx.reportError(e.getMessage());
             return;
         }
-
+        Set<String> chain = ctx.getOrCreate(Inclusions.class, Inclusions::new).chain;
+        if (resolvedPath.equals(ctx.sourcePath()) || chain.contains(resolvedPath)) {
+            ctx.reportError("Circular .SOURCE detected: " + path);
+            return;
+        }
+        chain.add(ctx.sourcePath());
         try {
-            String content = ctx.loadContent(resolvedPath);
-            ctx.registerSourceContent(resolvedPath, content);
+            ctx.scanNestedSourceFile(resolvedPath);
             ctx.addDependency(new SourceDependencyInfo(path, resolvedPath));
-            ctx.scanNestedSourceFile(resolvedPath, content);
         } catch (IOException e) {
             ctx.reportError("Source file not found: " + path);
+        } finally {
+            chain.remove(ctx.sourcePath());
         }
     }
 }

@@ -10,7 +10,7 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * The identity of a compiled program: a digest of what the compiler puts into the world, its
@@ -21,7 +21,8 @@ import java.util.OptionalInt;
  * would otherwise share one artifact, whose debug information describes only one of them; the
  * identity attaches no meaning to their names or contents.
  *
- * <p>The digest is SHA-256 over a stream of 32-bit big-endian integers and the bytes of the
+ * <p>The digest is SHA-256 over a stream of 32-bit big-endian integers (a define's value, a
+ * 64-bit integer, as two such words, high word first) and the bytes of the
  * defined names and of the values' names and texts, rendered as lower-case hex and truncated to its first 16 characters (64 bits). The
  * stream is length-prefixed, so no two different programs produce the same stream:</p>
  * <ol>
@@ -33,7 +34,7 @@ import java.util.OptionalInt;
  *       components followed by the {@link PlacedMolecule}'s type, value and marker;</li>
  *   <li>the number of defines, then for each define in alphabetical order of its name: the
  *       number of bytes of that name in UTF-8 followed by those bytes, then 1 if it has a value
- *       and 0 if not, then the value (0 without one);</li>
+ *       and 0 if not, then the value as two words (0 without one);</li>
  *   <li>the number of values, then for each value in alphabetical order of its name: the number
  *       of bytes of that name in UTF-8 followed by those bytes, then the number of bytes of the
  *       value's text in UTF-8 followed by those bytes.</li>
@@ -66,7 +67,7 @@ public final class ProgramIdentity {
      * @return The identity: 16 lower-case hex characters.
      */
     public static String of(Map<int[], Integer> machineCode, Map<int[], PlacedMolecule> initialObjects,
-                            Map<String, OptionalInt> flags, Map<String, String> values) {
+                            Map<String, OptionalLong> flags, Map<String, String> values) {
         MessageDigest digest = sha256();
         int dimensions = !machineCode.isEmpty() ? machineCode.keySet().iterator().next().length
                 : !initialObjects.isEmpty() ? initialObjects.keySet().iterator().next().length
@@ -88,17 +89,17 @@ public final class ProgramIdentity {
             update(digest, molecule.marker());
         }
 
-        List<Map.Entry<String, OptionalInt>> sortedFlags = new ArrayList<>(flags.size());
+        List<Map.Entry<String, OptionalLong>> sortedFlags = new ArrayList<>(flags.size());
         sortedFlags.addAll(flags.entrySet());
         sortedFlags.sort(Map.Entry.comparingByKey());
         update(digest, sortedFlags.size());
-        for (Map.Entry<String, OptionalInt> flag : sortedFlags) {
+        for (Map.Entry<String, OptionalLong> flag : sortedFlags) {
             byte[] name = flag.getKey().getBytes(StandardCharsets.UTF_8);
             update(digest, name.length);
             digest.update(name);
-            OptionalInt value = flag.getValue();
+            OptionalLong value = flag.getValue();
             update(digest, value.isPresent() ? 1 : 0);
-            update(digest, value.orElse(0));
+            update(digest, value.orElse(0L));
         }
 
         List<Map.Entry<String, String>> sortedValues = new ArrayList<>(values.entrySet());
@@ -128,6 +129,11 @@ public final class ProgramIdentity {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         update(digest, bytes.length);
         digest.update(bytes);
+    }
+
+    private static void update(MessageDigest digest, long value) {
+        update(digest, (int) (value >>> 32));
+        update(digest, (int) value);
     }
 
     private static void update(MessageDigest digest, int value) {

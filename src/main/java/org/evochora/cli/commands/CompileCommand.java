@@ -24,7 +24,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.concurrent.Callable;
 
 /**
@@ -109,7 +109,7 @@ public class CompileCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         Instruction.init();
 
-        Map<String, OptionalInt> defines;
+        Map<String, OptionalLong> defines;
         Map<String, String> values;
         try {
             defines = parseDefines(defineArgs != null ? defineArgs : List.of());
@@ -156,7 +156,7 @@ public class CompileCommand implements Callable<Integer> {
      *                                  among them two flag names or two value names that differ
      *                                  only in case.
      */
-    private CompilerOptions buildCompilerOptions(String programPath, Map<String, OptionalInt> defines,
+    private CompilerOptions buildCompilerOptions(String programPath, Map<String, OptionalLong> defines,
                                                  Map<String, String> values) {
         if (sourceRootArgs == null || sourceRootArgs.isEmpty()) {
             Path directory = Path.of(programPath).getParent();
@@ -188,15 +188,15 @@ public class CompileCommand implements Callable<Integer> {
      *                                  is given twice as written. Two names that differ only in
      *                                  case are left to {@link CompilerOptions}, which rejects them.
      */
-    static Map<String, OptionalInt> parseDefines(List<String> defineArgs) {
-        Map<String, OptionalInt> defines = new LinkedHashMap<>();
+    static Map<String, OptionalLong> parseDefines(List<String> defineArgs) {
+        Map<String, OptionalLong> defines = new LinkedHashMap<>();
         for (String arg : defineArgs) {
             int equalsIdx = arg.indexOf('=');
             String name = (equalsIdx < 0 ? arg : arg.substring(0, equalsIdx)).trim();
             if (name.isEmpty()) {
                 throw new IllegalArgumentException("--define '" + arg + "' has no flag name");
             }
-            OptionalInt value = OptionalInt.empty();
+            OptionalLong value = OptionalLong.empty();
             if (equalsIdx >= 0) {
                 String text = arg.substring(equalsIdx + 1);
                 value = IntegerLiteral.parse(text.trim());

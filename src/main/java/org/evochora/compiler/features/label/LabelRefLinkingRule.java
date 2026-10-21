@@ -1,5 +1,7 @@
 package org.evochora.compiler.features.label;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrLiteral;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
@@ -28,7 +30,7 @@ public class LabelRefLinkingRule implements ILinkingRule {
                 if (rewritten == null) {
                     rewritten = new ArrayList<>(ops);
                 }
-                rewritten.set(i, new IrTypedImm("LABELREF", layout.labelToValue().get(ref.labelName())));
+                rewritten.set(i, new IrLiteral(new Value.Typed("LABELREF", layout.labelToValue().get(ref.labelName()))));
             }
         }
         return rewritten != null ? instruction.withOperands(rewritten) : instruction;

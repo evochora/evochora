@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.link;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.layout.PlacedItem;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
@@ -40,13 +41,14 @@ public final class Linker {
      * nothing would stop the two from describing different programs.
      *
      * @param layout The placed items with their addresses, and the coordinate mappings.
-     * @param context The linking context, which will be populated with call site bindings.
+     * @param isa The instruction set the rules resolve registers against.
      * @param programName The name carried over to the linked program.
      * @param debugInfo The debug information carried over to the linked program unchanged.
-     * @return The linked IR program.
+     * @return The linked program with the call-site bindings the rules recorded.
      * @throws CompilationException if an error occurs during linking.
      */
-    public IrProgram link(LayoutResult layout, LinkingContext context, String programName, DebugInfo debugInfo) throws CompilationException {
+    public LinkingResult link(LayoutResult layout, IInstructionSet isa, String programName, DebugInfo debugInfo) throws CompilationException {
+        LinkingContext context = new LinkingContext(isa);
         List<IrItem> out = new ArrayList<>();
 
         for (PlacedItem placed : layout.placedItems()) {
@@ -69,6 +71,6 @@ public final class Linker {
                 }
             }
         }
-        return new IrProgram(programName, out, debugInfo);
+        return new LinkingResult(new IrProgram(programName, out, debugInfo), context.callSiteBindings());
     }
 }

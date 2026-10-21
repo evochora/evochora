@@ -3,6 +3,7 @@ package org.evochora.compiler.util;
 import org.evochora.compiler.api.SourceRoot;
 
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -71,10 +72,11 @@ public final class SourceRootResolver {
      * @param sourceFilePath The file containing the directive (unused for resolution,
      *                       retained for HTTP relative resolution).
      * @return The resolved absolute path.
-     * @throws UnknownPrefixException if the path names a prefix for which no source root is
-     *                                configured, or if it is unprefixed and no default root exists.
+     * @throws UnresolvablePathException if the path names a prefix for which no source root is
+     *                                    configured, if it is unprefixed and no default root exists,
+     *                                    or if the file system of this machine does not allow it.
      */
-    public String resolve(String directivePath, String sourceFilePath) throws UnknownPrefixException {
+    public String resolve(String directivePath, String sourceFilePath) throws UnresolvablePathException {
         if (SourceLoader.isHttpUrl(directivePath)) {
             return directivePath;
         }
@@ -90,15 +92,19 @@ public final class SourceRootResolver {
             return SourceLoader.resolveHttpRelative(base, parsed.filePath());
         }
 
-        Path rootPath = workingDirectory.resolve(root.path()).normalize();
-        return rootPath.resolve(parsed.filePath()).normalize().toString().replace('\\', '/');
+        try {
+            Path rootPath = workingDirectory.resolve(root.path()).normalize();
+            return rootPath.resolve(parsed.filePath()).normalize().toString().replace('\\', '/');
+        } catch (InvalidPathException invalid) {
+            throw new UnresolvablePathException("Path '" + directivePath + "' cannot be resolved: " + invalid.getReason() + ".");
+        }
     }
 
-    private SourceRoot findRoot(String prefix) throws UnknownPrefixException {
+    private SourceRoot findRoot(String prefix) throws UnresolvablePathException {
         if (prefix == null) {
             var result = sourceRoots.stream().filter(SourceRoot::isDefault).findFirst();
             if (result.isEmpty()) {
-                throw new UnknownPrefixException(
+                throw new UnresolvablePathException(
                         "No source root configured for unprefixed paths. "
                         + "Add a source root without prefix or qualify the path with a prefix (e.g., MYLIB:path.evo).");
             }
@@ -106,7 +112,7 @@ public final class SourceRootResolver {
         }
         var result = sourceRoots.stream().filter(r -> prefix.equals(r.prefix())).findFirst();
         if (result.isEmpty()) {
-            throw new UnknownPrefixException(
+            throw new UnresolvablePathException(
                     "No source root configured for prefix '" + prefix + "'. "
                     + "Available prefixes: " + availablePrefixes());
         }
@@ -121,15 +127,16 @@ public final class SourceRootResolver {
     }
 
     /**
-     * Thrown when a directive path references a prefix with no matching source root.
+     * Thrown when a directive path cannot be resolved: it references a prefix with no matching
+     * source root, or the file system does not allow it.
      */
-    public static class UnknownPrefixException extends Exception {
+    public static class UnresolvablePathException extends Exception {
         /**
          * Creates the exception carrying the text that the compiler surfaces as the compilation error.
          *
-         * @param message Names the prefix that could not be resolved and the roots that are configured.
+         * @param message Names the path or prefix that could not be resolved and why.
          */
-        public UnknownPrefixException(String message) {
+        public UnresolvablePathException(String message) {
             super(message);
         }
     }

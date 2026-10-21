@@ -9,6 +9,8 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
@@ -32,6 +34,7 @@ import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrValue;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -59,7 +62,6 @@ class CompilerArchitectureRulesTest {
 
     /** The classes that run the phases of the pipeline, in pipeline order. */
     private static final String[] PHASE_CLASSES = {
-            COMPILER + ".frontend.module.DependencyScanner",
             COMPILER + ".frontend.lexer.Lexer",
             COMPILER + ".frontend.preprocessor.PreProcessor",
             COMPILER + ".frontend.parser.Parser",
@@ -75,7 +77,6 @@ class CompilerArchitectureRulesTest {
 
     /** The packages holding the phases of the pipeline, in pipeline order. */
     private static final String[] PHASE_PACKAGES = {
-            COMPILER + ".frontend.module..",
             COMPILER + ".frontend.lexer..",
             COMPILER + ".frontend.preprocessor..",
             COMPILER + ".frontend.parser..",
@@ -189,14 +190,14 @@ class CompilerArchitectureRulesTest {
      * <p>
      * Handler, registration and context interfaces are recognisable by name. The exceptions
      * are the types every AST node, AST operand, IR item, IR operand and IR value implements,
-     * and the outcome of a name lookup; they name data, not a role, and are listed here so
+     * the value family the formats share, and the outcome of a name lookup; they name data, not a role, and are listed here so
      * that a further exception is a decision. A nested interface is named by its owner, as in
      * {@code IInstructionSet.Signature}, and is not covered.
      */
     @Test
     void topLevelInterfacesCarryThePrefix() {
         classes().that().areInterfaces().and().areTopLevelClasses()
-                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class)
+                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
                 .check(compilerClasses);
     }
@@ -311,7 +312,9 @@ class CompilerArchitectureRulesTest {
      * <p>
      * An AST node carries a token's {@code SourceInfo}, never the token, and an IR item carries
      * nothing of the AST it was made from. The rule is checked on the types themselves, wherever
-     * they live, because features define AST nodes and IR items of their own.
+     * they live, because features define AST nodes and IR items of their own. The values the
+     * formats share ({@code model.expression}) reference none of them either, so that no format
+     * reaches another through a value.
      */
     @Test
     void dataFormatsDoNotReferenceEachOther() {
@@ -326,6 +329,11 @@ class CompilerArchitectureRulesTest {
         noClasses().that().implement(IrItem.class).or().resideInAPackage(COMPILER + ".model.ir..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".model.token..", COMPILER + ".model.ast..")
+                .check(compilerClasses);
+        noClasses().that().resideInAPackage(COMPILER + ".model.expression..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        COMPILER + ".model.token..", COMPILER + ".model.ast..",
+                        COMPILER + ".model.ir..", COMPILER + ".model.symbols..")
                 .check(compilerClasses);
     }
 
@@ -366,6 +374,154 @@ class CompilerArchitectureRulesTest {
                     : layers.whereLayer(PHASE_PACKAGES[i]).mayOnlyAccessLayers(earlier);
         }
         layers.check(compilerClasses);
+    }
+
+    /**
+     * A phase uses only its own logic: from another phase it takes results, which are data.
+     * <p>
+     * A phase receives the results of earlier phases as its input. A class with behaviour that
+     * two phases used would tie the later phase to the decisions of the earlier one, and a change
+     * there would break at a place nobody connects with it. Logic that phases share lives outside
+     * the phases, in the {@code frontend} root or in a phase-free package. So: a class of a phase
+     * package that another phase references is a record or an interface; a class of a feature
+     * that implements a handler interface of a phase uses classes with behaviour of that phase
+     * only, takes from earlier phases records and interfaces only, and references nothing of a
+     * later phase, and so does every helper class of the features it reaches, directly or through
+     * other helpers, such as a state holder or a condition, which serves the handler's phase
+     * through it; a class of a
+     * feature that implements no handler interface and that no handler reaches this way uses the
+     * logic of at most one phase; and the {@code frontend} root
+     * and the phase-free packages reference no phase package at all, so that no class can reach
+     * a phase through them. Which phase comes earlier is the order of {@link #PHASE_PACKAGES}.
+     * <p>
+     * What the rule cannot see: behaviour written into a record or a default method of an
+     * interface of a phase package counts as data here, because the form of a class is all a
+     * rule can judge. A reviewer reads such methods.
+     */
+    @Test
+    void phasesShareOnlyData() {
+        for (String phasePackage : PHASE_PACKAGES) {
+            String[] others = java.util.Arrays.stream(PHASE_PACKAGES)
+                    .filter(other -> !other.equals(phasePackage)).toArray(String[]::new);
+            noClasses().that().resideInAnyPackage(others)
+                    .should().dependOnClassesThat(resideInAPackage(phasePackage).and(not(recordOrInterface())))
+                    .check(compilerClasses);
+        }
+        classes().that().resideInAPackage(FEATURES + "..")
+                .should(useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes())
+                .check(compilerClasses);
+        noClasses().that().resideInAnyPackage(COMPILER + ".frontend", COMPILER + ".isa..", COMPILER + ".diagnostics..",
+                        COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..")
+                .should().dependOnClassesThat().resideInAnyPackage(PHASE_PACKAGES)
+                .check(compilerClasses);
+    }
+
+    private static DescribedPredicate<JavaClass> recordOrInterface() {
+        return new DescribedPredicate<>("records or interfaces") {
+            @Override
+            public boolean test(JavaClass clazz) {
+                return clazz.isInterface() || clazz.isRecord();
+            }
+        };
+    }
+
+    /**
+     * The index of the phase whose package holds the class, or -1 for a class outside the phases.
+     */
+    private static int phaseOf(JavaClass clazz) {
+        for (int i = 0; i < PHASE_PACKAGES.length; i++) {
+            String phasePackage = PHASE_PACKAGES[i].substring(0, PHASE_PACKAGES[i].length() - 2);
+            if (clazz.getPackageName().equals(phasePackage)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static ArchCondition<JavaClass> useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes() {
+        return new ArchCondition<>("use the logic of their phase only, the data of earlier phases, and nothing of a later one") {
+            @Override
+            public void check(JavaClass clazz, ConditionEvents events) {
+                // The phase a feature class serves: the one whose interfaces it implements
+                java.util.Set<Integer> served = new java.util.TreeSet<>();
+                for (JavaClass implemented : clazz.getAllRawInterfaces()) {
+                    int phase = phaseOf(implemented);
+                    if (phase >= 0) served.add(phase);
+                }
+                if (served.size() > 1) {
+                    events.add(SimpleConditionEvent.violated(clazz,
+                            clazz.getName() + " implements interfaces of more than one phase"));
+                    return;
+                }
+                java.util.Set<String> logicOf = new java.util.TreeSet<>();
+                for (Dependency dependency : clazz.getDirectDependenciesFromSelf()) {
+                    JavaClass target = dependency.getTargetClass();
+                    if (served.isEmpty()) {
+                        int phase = phaseOf(target);
+                        if (phase >= 0 && !(target.isInterface() || target.isRecord())) {
+                            logicOf.add(PHASE_PACKAGES[phase]);
+                        }
+                        continue;
+                    }
+                    int own = served.iterator().next();
+                    checkTarget(clazz, target, own, clazz.getName(), events);
+                    // A helper of the features that the handler reaches serves the handler's phase
+                    // through it, so its dependencies, and those of the helpers it reaches in turn,
+                    // are held to the same limits
+                    checkHelper(clazz, target, own, clazz.getName(), new java.util.HashSet<>(), events);
+                }
+                if (logicOf.size() > 1) {
+                    events.add(SimpleConditionEvent.violated(clazz,
+                            clazz.getName() + " uses the logic of " + logicOf));
+                }
+            }
+        };
+    }
+
+    /**
+     * Follows a feature helper the handler reaches, and every helper that one reaches, each once,
+     * holding what they reference to the limits of the handler's phase.
+     */
+    private static void checkHelper(JavaClass clazz, JavaClass helper, int own, String via,
+                                    java.util.Set<JavaClass> visited, ConditionEvents events) {
+        if (!isFeatureHelper(helper) || !visited.add(helper)) return;
+        String path = via + " through " + helper.getName();
+        for (Dependency inner : helper.getDirectDependenciesFromSelf()) {
+            JavaClass target = inner.getTargetClass();
+            checkTarget(clazz, target, own, path, events);
+            checkHelper(clazz, target, own, path, visited, events);
+        }
+    }
+
+    /**
+     * Whether a class is a helper of the features: a class in a feature package, with behaviour,
+     * that implements no interface of a phase and so has no phase of its own.
+     */
+    private static boolean isFeatureHelper(JavaClass target) {
+        if (!target.getPackageName().startsWith(FEATURES) || target.isInterface() || target.isRecord()) {
+            return false;
+        }
+        for (JavaClass implemented : target.getAllRawInterfaces()) {
+            if (phaseOf(implemented) >= 0) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Checks one referenced class against the limits of the phase a handler serves: logic of that
+     * phase only, data of earlier phases, nothing of a later one.
+     */
+    private static void checkTarget(JavaClass clazz, JavaClass target, int own, String via, ConditionEvents events) {
+        int phase = phaseOf(target);
+        if (phase < 0) return;
+        boolean data = target.isInterface() || target.isRecord();
+        if (phase > own) {
+            events.add(SimpleConditionEvent.violated(clazz,
+                    via + " references " + target.getName() + " of a later phase"));
+        } else if (phase < own && !data) {
+            events.add(SimpleConditionEvent.violated(clazz,
+                    via + " uses the logic of an earlier phase, " + target.getName()));
+        }
     }
 
     private static String otherPhasesThan(String phase) {

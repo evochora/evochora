@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.place;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
@@ -54,18 +55,17 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         }
     }
 
+    /**
+     * The molecule the directive places: its typed literal, whose type the instruction set has to
+     * know and whose number has to fit a cell of that type. The parser accepts only a typed
+     * literal for a {@code .PLACE}, and the node carries nothing else.
+     */
     private PlacedMolecule createMolecule(IrDirective directive) throws CompilationException {
-        IrValue val = directive.args().get("value");
-        IrValue.Str t = (IrValue.Str) directive.args().get("type");
-        if (t == null) {
-            throw new IllegalStateException(
-                    "Missing 'type' argument in place directive — PlaceNodeConverter must provide it");
-        }
-        String ts = t.value();
-        int type = isa.moleculeType(ts).orElseThrow(() ->
-                new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + ts + "' in .PLACE.")));
-        long value = val instanceof IrValue.Int64 iv ? iv.value() : 0L;
-        return new PlacedMolecule(type, (int) value, 0);
+        Value.Typed typed = (Value.Typed) ((IrValue.Literal) directive.args().get("value")).value();
+        int type = isa.moleculeType(typed.type()).orElseThrow(() ->
+                new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + typed.type() + "' in .PLACE.")));
+        isa.valueRange(type).require(typed.number(), directive.source());
+        return new PlacedMolecule(type, (int) typed.number(), 0);
     }
 
     private List<int[]> generateCoordinates(IPlacementArgument placement, LayoutContext context, SourceInfo src) throws CompilationException {

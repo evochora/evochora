@@ -151,8 +151,144 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:1");
     }
 
+    /**
+     * A dependency directive shares a line with other statements like any statement, each behind
+     * a statement end: the lexer phase reads the same statement lines as the preprocessor, so
+     * nothing requires it to stand first or alone. A label before it is a word before it, not a
+     * statement end.
+     */
     @Test
-    void aSourceWithATokenAfterItsPathIsRejectedByTheLineRule() throws Exception {
+    void aDependencyDirectiveMayShareItsLineWithOtherStatements() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB; NOP",
+                "NOP; .SOURCE \"x.evo\"; NOP",
+                "NOP; .REQUIRE VALUE STEPS DATA:1; SETI %DR0 STEPS",
+                "START:",
+                "  NOP");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    /**
+     * A path the file system rejects, here one with a NUL character, is reported at the directive
+     * like an unknown prefix; the reason behind the colon is the file system's and differs
+     * between operating systems.
+     */
+    @Test
+    void aPathTheFileSystemRejectsIsReportedAtTheDirective() throws Exception {
+        write("main.evo",
+                ".SOURCE \"lib\0.evo\"",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Path 'lib\0.evo' cannot be resolved: ");
+    }
+
+    @Test
+    void aWordBeforeADependencyDirectiveWithoutAStatementEndIsReported() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "NOP .IMPORT \"lib.evo\" AS LIB",
+                "NOP .SOURCE \"x.evo\"",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Unexpected '.IMPORT' after 'NOP'.")
+                .hasMessageContaining("main.evo:2: Unexpected '.SOURCE' after 'NOP'.");
+    }
+
+    /**
+     * The module an import inlines ends with a marker the user never wrote; a statement that
+     * follows the import on its line still begins after the import's statement end, in the
+     * preprocessor as in the file, so a flag set there is set in both phases.
+     */
+    @Test
+    void aDirectiveAfterAnImportOnTheSameLineBeginsAStatement() throws Exception {
+        write("a.evo",
+                "  NOP");
+        write("b.evo",
+                "  NOP");
+        write("other.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS A; .IMPORT \"b.evo\" AS B; .DEFINE X",
+                ".IFNDEF X",
+                "  .IMPORT \"other.evo\" AS O",
+                ".ENDDEF",
+                "START:",
+                "  NOP");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    /**
+     * The lexer phase follows the same statement rule as the preprocessor: a directive after a
+     * word without a statement end loads no file and sets no flag there, so the scan neither
+     * reports a missing file the preprocessor never asks for, nor takes a branch the preprocessor
+     * does not take.
+     */
+    @Test
+    void aWordBeforeADependencyDirectiveKeepsTheScanFromFollowingIt() throws Exception {
+        write("flags.evo",
+                ".DEFINE B");
+        write("lib.evo",
+                "L:",
+                "  NOP");
+        write("main.evo",
+                "NOP .DEFINE A",
+                ".IFDEF A",
+                ".IMPORT \"missing.evo\" AS MISSING",
+                ".ENDDEF",
+                "NOP .SOURCE \"flags.evo\"",
+                ".IFNDEF B",
+                ".IMPORT \"lib.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP .IMPORT \"missing.evo\" AS GONE",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Unexpected '.DEFINE' after 'NOP'.")
+                .hasMessageContaining("main.evo:5: Unexpected '.SOURCE' after 'NOP'.")
+                .hasMessageContaining("main.evo:9: Unexpected '.IMPORT' after 'NOP'.")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("not found", "Internal error"));
+    }
+
+    @Test
+    void aRepeatCountOutOfRangeIsReportedOnce() throws Exception {
+        write("main.evo",
+                "START:",
+                ".REPEAT 3000000000",
+                "  NOP",
+                ".ENDREPEAT",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo") + ":2: Value 3000000000 out of range for a count."));
+    }
+
+    @Test
+    void anUntypedPlaceLiteralIsReportedOnce() throws Exception {
+        write("main.evo",
+                ".PLACE 5 1|2",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo") + ":1: Expected a typed literal (e.g. DATA:5) for .PLACE."));
+    }
+
+    @Test
+    void aSourceWithATokenAfterItsPathIsRejected() throws Exception {
         write("x.evo",
                 "  NOP");
         write("main.evo",
@@ -162,13 +298,13 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".SOURCE must stand alone on its line; found '^' after the path.")
+                .hasMessageContaining("Unexpected '^' after the path of .SOURCE.")
                 .hasMessageContaining("main.evo:2")
                 .hasMessageNotContaining("must be a literal");
     }
 
     @Test
-    void anImportWithATokenAfterItsClausesIsRejectedByTheLineRule() throws Exception {
+    void anImportWithATokenAfterItsClausesIsRejected() throws Exception {
         write("lib.evo",
                 "  NOP");
         write("main.evo",
@@ -178,55 +314,10 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".IMPORT must stand alone on its line; found '^' after the alias and its USING clauses.")
+                .hasMessageContaining("Unexpected '^' after the alias and its USING clauses of .IMPORT.")
                 .hasMessageContaining("main.evo:2")
                 .hasMessageNotContaining("must be a literal")
                 .hasMessageNotContaining("Unexpected token");
-    }
-
-    @Test
-    void anImportAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
-        write("lib.evo",
-                "  NOP");
-        write("main.evo",
-                "L: .IMPORT \"lib.evo\" AS LIB",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .IMPORT must be the first word on its line; found 'L' before it."));
-    }
-
-    @Test
-    void aSourceAfterAStatementIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
-        write("x.evo",
-                "  NOP");
-        write("main.evo",
-                "START:",
-                "NOP; .SOURCE \"x.evo\"");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":2: .SOURCE must be the first word on its line; found 'NOP' before it."));
-    }
-
-    @Test
-    void aRequireAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
-        write("main.evo",
-                "L: .REQUIRE MODULE \"d.evo\" AS D",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .REQUIRE must be the first word on its line; found 'L' before it."));
     }
 
     @Test
@@ -244,7 +335,7 @@ class CompilerDiagnosticsTest {
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("main.evo")
-                                + ":1: EXPORT is not supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under its own name."));
+                                + ":1: EXPORT is not supported before '.REQUIRE MODULE'."));
     }
 
     @Test
@@ -278,53 +369,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REQUIRE must stand alone on its line; found 'EXTRA' after the alias.")
+                .hasMessageContaining("Unexpected 'EXTRA' after the alias of .REQUIRE.")
                 .hasMessageContaining("lib.evo:1");
-    }
-
-    @Test
-    void aSourceFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
-        write("x.evo",
-                "  NOP");
-        write("main.evo",
-                "START:",
-                ".SOURCE \"x.evo\"; NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":2: .SOURCE must stand alone on its line; found ';' after the path."));
-    }
-
-    @Test
-    void anImportFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
-        write("lib.evo",
-                "  NOP");
-        write("main.evo",
-                ".IMPORT \"lib.evo\" AS LIB; NOP",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .IMPORT must stand alone on its line; found ';' after the alias and its USING clauses."));
-    }
-
-    @Test
-    void aRequireFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
-        write("main.evo",
-                ".REQUIRE MODULE \"d.evo\" AS D; NOP",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .REQUIRE must stand alone on its line; found ';' after the alias."));
     }
 
     @Test
@@ -1210,7 +1256,7 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void aVectorPassedByValSaysWhatValTakes() throws Exception {
+    void aVectorPassedByValIsAccepted() throws Exception {
         write("main.evo",
                 ".PROC P VAL X",
                 "  RET",
@@ -1218,9 +1264,21 @@ class CompilerDiagnosticsTest {
                 "START:",
                 "  CALL P VAL 1|0");
 
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aLabelPassedByValSaysWhatValTakes() throws Exception {
+        write("main.evo",
+                ".PROC P VAL X",
+                "  RET",
+                ".ENDPROC",
+                "START:",
+                "  CALL P VAL START");
+
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass a vector as VAL argument: VAL takes a register, a literal or a label.")
+                .hasMessageContaining("VAL argument 'START' is a label, expected a register, a literal or a vector.")
                 .hasMessageContaining("main.evo:5");
     }
 

@@ -1,13 +1,13 @@
 package org.evochora.compiler.backend.link.features;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrLiteral;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.features.label.LabelRefLinkingRule;
-import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
-import org.evochora.compiler.model.ir.IrTypedImm;
 import org.evochora.runtime.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -63,14 +63,14 @@ class LabelRefLinkingRuleTest {
         // When: The rule is applied
         IrInstruction result = rule.apply(input, context, layout);
 
-        // Then: The IrLabelRef is converted to IrTypedImm("LABELREF", hash)
+        // Then: The IrLabelRef is converted to a LABELREF literal carrying the hash
         assertThat(result.operands()).hasSize(1);
-        assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
+        assertThat(result.operands().get(0)).isInstanceOf(IrLiteral.class);
 
-        IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
-        assertThat(typedImm.typeName()).isEqualTo("LABELREF");
+        Value.Typed typed = (Value.Typed) ((IrLiteral) result.operands().get(0)).value();
+        assertThat(typed.type()).isEqualTo("LABELREF");
         long expectedHash = "TEST.FOO".hashCode() & Config.VALUE_MASK;
-        assertThat(typedImm.value()).isEqualTo(expectedHash);
+        assertThat(typed.number()).isEqualTo(expectedHash);
     }
 
     @Test
@@ -104,18 +104,18 @@ class LabelRefLinkingRuleTest {
             IrInstruction result = rule.apply(input, context, layout);
 
             // Then: The hash matches the expected formula (within the value field, always positive)
-            assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
-            IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
-            assertThat(typedImm.typeName()).isEqualTo("LABELREF");
+            assertThat(result.operands().get(0)).isInstanceOf(IrLiteral.class);
+            Value.Typed typed = (Value.Typed) ((IrLiteral) result.operands().get(0)).value();
+            assertThat(typed.type()).isEqualTo("LABELREF");
 
             long expectedHash = qualifiedName.hashCode() & Config.VALUE_MASK;
-            assertThat(typedImm.value())
+            assertThat(typed.number())
                     .as("Hash for label '%s' should match runtime expectation", qualifiedName)
                     .isEqualTo(expectedHash);
 
             // And: The hash is within the valid range (within the value field, always positive)
-            assertThat(typedImm.value()).isGreaterThanOrEqualTo(0);
-            assertThat(typedImm.value()).isLessThanOrEqualTo(Config.VALUE_MASK);
+            assertThat(typed.number()).isGreaterThanOrEqualTo(0);
+            assertThat(typed.number()).isLessThanOrEqualTo(Config.VALUE_MASK);
         }
     }
 
@@ -142,8 +142,8 @@ class LabelRefLinkingRuleTest {
         IrInstruction result = rule.apply(input, context, layout);
 
         // Then: The reference is resolved exactly as written
-        assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
-        assertThat(((IrTypedImm) result.operands().get(0)).value())
+        assertThat(result.operands().get(0)).isInstanceOf(IrLiteral.class);
+        assertThat(((Value.Typed) ((IrLiteral) result.operands().get(0)).value()).number())
                 .isEqualTo("_safe_call_0".hashCode() & Config.VALUE_MASK);
     }
 
@@ -162,7 +162,7 @@ class LabelRefLinkingRuleTest {
         // Given: An instruction without IrLabelRef
         IrInstruction input = new IrInstruction(
                 "ADDI",
-                List.of(new IrImm(42)),
+                List.of(new IrLiteral(new Value.Number(42))),
                 dummySource
         );
 

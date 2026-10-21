@@ -1,12 +1,13 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -86,16 +87,16 @@ class SymbolTableTest {
         table.setCurrentModule("LIB");
         table.define(new Symbol("X", libX, Symbol.Type.CONSTANT,
                 new Binding(new IdentifierNode("Y", libY)), true));
-        table.define(new Symbol("Y", libY, Symbol.Type.CONSTANT, new Binding(new NumberLiteralNode(7, libY))));
+        table.define(new Symbol("Y", libY, Symbol.Type.CONSTANT, new Binding(new LiteralNode(new Value.Number(7), libY))));
         table.setCurrentModule("");
         // A Y of the importing placement, which the binding must not reach
         SourceInfo mainY = new SourceInfo(MAIN, 1, 8, "", 0);
-        table.define(new Symbol("Y", mainY, Symbol.Type.CONSTANT, new Binding(new NumberLiteralNode(9, mainY))));
+        table.define(new Symbol("Y", mainY, Symbol.Type.CONSTANT, new Binding(new LiteralNode(new Value.Number(9), mainY))));
 
         Optional<AstNode> bound = table.bindingOf(new IdentifierNode("LIB.X", new SourceInfo(MAIN, 3, 10, "", 0)));
 
-        assertThat(bound).containsInstanceOf(NumberLiteralNode.class);
-        assertThat(((NumberLiteralNode) bound.orElseThrow()).value()).isEqualTo(7);
+        assertThat(bound).containsInstanceOf(LiteralNode.class);
+        assertThat(((LiteralNode) bound.orElseThrow()).value()).isEqualTo(new Value.Number(7));
     }
 
     /**

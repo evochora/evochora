@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,7 +66,7 @@ class PreProcessorContextTest {
     @Test
     void options_areThoseGiven() {
         CompilerOptions options = new CompilerOptions(
-                List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.of(2)), Map.of());
+                List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalLong.of(2)), Map.of());
         assertThat(context(options).options()).isSameAs(options);
     }
 

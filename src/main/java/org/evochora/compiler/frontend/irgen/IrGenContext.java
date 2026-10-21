@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.irgen;
 
+import org.evochora.compiler.model.ir.IrLiteral;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -7,21 +9,15 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
-import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.model.ir.IrReg;
-import org.evochora.compiler.model.ir.IrTypedImm;
-import org.evochora.compiler.model.ir.IrVec;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -192,9 +188,7 @@ public final class IrGenContext {
 		}
 		return switch (operand) {
 			case RegisterNode r -> new IrReg(r.name());
-			case NumberLiteralNode n -> new IrImm(n.value());
-			case TypedLiteralNode t -> new IrTypedImm(t.typeName(), t.value());
-			case VectorLiteralNode v -> new IrVec(v.values().stream().mapToInt(Integer::intValue).toArray());
+			case LiteralNode literal -> new IrLiteral(literal.value());
 			case IdentifierNode id -> new IrLabelRef(id.text());
 		};
 	}

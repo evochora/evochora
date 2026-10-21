@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.semantics;
 
-import org.evochora.compiler.frontend.module.IDependencyInfo;
+import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 
 import java.util.HashMap;
 import java.util.Map;

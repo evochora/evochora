@@ -1,5 +1,8 @@
 package org.evochora.compiler.isa;
 
+import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.SourceInfo;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -59,10 +62,22 @@ public interface IInstructionSet {
 	Optional<Integer> moleculeType(String name);
 
 	/**
+	 * The range of values a cell of the given type holds. The value field of a molecule has a
+	 * fixed width, and the type declares how its bits are read: as a signed number for most
+	 * types, as a bit pattern without a sign for a label. A number outside the range cannot
+	 * become a cell of that type; the compiler checks it where it encodes it, instead of letting
+	 * the packing cut it.
+	 *
+	 * @param type The molecule type, as returned by {@link #moleculeType}.
+	 * @return The smallest and the largest value a cell of that type holds.
+	 */
+	ValueRange valueRange(int type);
+
+	/**
 	 * Packs a molecule into the value a cell holds.
 	 *
 	 * @param type  The molecule type, as returned by {@link #moleculeType}.
-	 * @param value The molecule value.
+	 * @param value The molecule value, within {@link #valueRange(int)}.
 	 * @return The packed cell.
 	 */
 	int encodeCell(int type, int value);
@@ -111,6 +126,43 @@ public interface IInstructionSet {
 			}
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * A closed range of numbers.
+	 *
+	 * @param min The smallest number in the range.
+	 * @param max The largest number in the range.
+	 */
+	record ValueRange(long min, long max) {
+		/**
+		 * Tells whether a number lies in the range.
+		 *
+		 * @param value The number.
+		 * @return {@code true} if {@code min <= value <= max}.
+		 */
+		public boolean contains(long value) {
+			return value >= min && value <= max;
+		}
+
+		/**
+		 * Rejects a number outside the range, at the position of what wrote it.
+		 *
+		 * @param value The number.
+		 * @param src   The position for the message.
+		 * @throws CompilationException if the number lies outside the range.
+		 */
+		public void require(long value, SourceInfo src) throws CompilationException {
+			if (!contains(value)) {
+				throw new CompilationException(SourceInfo.locate(src,
+						"Value " + value + " out of range for a cell (" + this + ")."));
+			}
+		}
+
+		@Override
+		public String toString() {
+			return min + " to " + max;
+		}
 	}
 
 	/**

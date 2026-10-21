@@ -36,7 +36,7 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 
 ## What the core does on its own
 
-The core is the pipeline in `Compiler.java`, the twelve phases with their registries and
+The core is the pipeline in `Compiler.java`, the eleven phases with their registries and
 contexts, the three data formats under `model/`, the symbol table and the instruction-set view.
 Five phases are pure dispatch and hold no language logic: the preprocessor, the IR generator,
 the IR rewriter, the linker and the compiler itself.
@@ -44,13 +44,13 @@ the IR rewriter, the linker and the compiler itself.
 The core does contain logic for three groups of concepts. None of them is declared a core
 concept in AGENTS.md; they are listed here because they are where the coupling lives.
 
-1. **The module system.** The dependency scanner detects cycles between files, records a
+1. **The module system.** The Lexer phase detects cycles between files, records a
    placement of a module at every import under its alias chain, each after the placements it
    imports, and distinguishes a `.SOURCE` file from a module. The placement of a position is
-   carried by the scanner, which records it, by the preprocessor, which gives the tokens of the
+   carried by the lexer, which records it, by the preprocessor, which gives the tokens of the
    main file the placement of the compilation root, and by the symbol table, which files the
    names of a module under its placement and looks a name up in the placement of the position it
-   is written at; the lexer gives every token an empty placement, and the handlers of
+   is written at; the tokenizer gives every token an empty placement, and the handlers of
    `importdir` and `source` set the placement of the tokens they inline. The semantic analyzer
    wires the placements together before any handler runs; the symbol table keeps the names of
    two placements of one file apart. The symbol table resolves a path segment by segment: into a
@@ -75,13 +75,13 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    the visualizer. The IR generator turns every identifier that survives phase 6 into a label
    reference. The `label` feature owns only the syntax, the symbol collection and the linking
    rule.
-3. **Registers and procedure parameters.** The lexer recognises and validates register tokens
+3. **Registers and procedure parameters.** The tokenizer recognises and validates register tokens
    and knows that one bank is reserved for procedure parameters. The token-map generator has
    its own branch for identifiers. `LinkingContext` has a field for
    call-site bindings, `EmissionContext` fields for procedure parameter names and register
    aliases, and `ProgramArtifact` carries all of them as named fields.
 
-Smaller instances: the lexer emits a colon token for `:` (label); `Symbol.Type` is a closed
+Smaller instances: the tokenizer emits a colon token for `:` (label); `Symbol.Type` is a closed
 enum whose eight members are named after individual features, mapped exhaustively in
 `TokenKindMapper`.
 
@@ -89,7 +89,7 @@ enum whose eight members are named after individual features, mapped exhaustivel
 the core at exactly one place: `ProgramIdentity` takes the defines into the program's identity as
 a key of the compilation's variant and attaches no meaning to their names or values.
 `sourceRoots` is read by the core. The core upper-cases the names, rejects two keys that are one
-name, and hands the options to the contexts of Phases 0 and 2 without looking at the defines.
+name, and hands the options to the contexts of Phases 1 and 2 without looking at the defines.
 
 A token carries two fields of provenance that the core uses only as keys — in the token map, in
 the symbol table by placement, in the instruction index by expansion and in the emitter's
@@ -115,15 +115,15 @@ attached — a record goes to the entry or the expansion whose number it carries
 they travel, with the token map, in the IR's `DebugInfo`, which the emitter copies into the
 artifact.
 
-Any other character sequence a feature reads is not a case of the lexer but a symbol the
-feature registers through `IFeatureRegistrationContext.lexerSymbol`; the lexer emits it as one
+Any other character sequence a feature reads is not a case of the tokenizer but a symbol the
+feature registers through `IFeatureRegistrationContext.lexerSymbol`; the tokenizer emits it as one
 `SYMBOL` token whose text the feature's handlers compare: `*`, `..` and `,` for `place`,
-`@+` and `@-` for `org` and `dir`, `^` for `repeat`. The lexer tries the registered symbols at
+`@+` and `@-` for `org` and `dir`, `^` for `repeat`. The tokenizer tries the registered symbols at
 the start of every token, longest first, before its fixed cases, so a symbol may consist only
 of the characters `! & * + , . / < = > ? @ ^ ~ -`, which cut into no identifier, number,
 register, string, comment or statement end. `|` and `:` stay fixed tokens, because the parser
 itself reads them in the vector and typed literals every operand may take; the single
-characters `.` and `-` are rejected as symbols, being the lexer's cases for directives and
+characters `.` and `-` are rejected as symbols, being the tokenizer's cases for directives and
 negative numbers, while longer sequences beginning with them are allowed. Brackets, `\` and
 `§` are kept out of the alphabet as a reserve for the core. The alphabet is one constant in
 `FeatureRegistry`; it grows by a character when a feature needs one and the core does not
