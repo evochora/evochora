@@ -15,8 +15,11 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 import org.slf4j.helpers.MessageFormatter;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 
@@ -31,6 +34,8 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         ValidationRules rules = resolveRules(context);
         LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
         TestScopedTurboFilter filter = new TestScopedTurboFilter(rules);
+        context.getTestClass().map(c -> c.getAnnotation(LogTimeline.class))
+                .ifPresent(timeline -> filter.recordTimeline(timeline.level(), timeline.limit()));
         filter.start();
         lc.addTurboFilter(filter);
         store.put("filter", filter);
@@ -109,6 +114,12 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
                 if (!missingExpected.isEmpty()) {
                     sb.append("Missing expected logs:\n");
                     missingExpected.forEach(msg -> sb.append("  ").append(msg).append('\n'));
+                }
+                List<String> timeline = filter.getTimeline();
+                if (!timeline.isEmpty()) {
+                    sb.append("Log timeline of the test, every entry from level ")
+                            .append(filter.timelineLevel()).append(" on:\n");
+                    timeline.forEach(line -> sb.append("  ").append(line).append('\n'));
                 }
                 throw new AssertionError(sb.toString());
             }
@@ -202,18 +213,29 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
     }
 
     /**
-     * One unexpected event for the report: the line as logged, where and when it was logged, and
-     * what was thrown with it, by class and causes first and as a stack trace below, so that a
-     * failure that only the log shows can be traced to the code that produced it.
+     * One unexpected event for the report: the line as logged, where and when it was logged, what
+     * was thrown with it, by class and causes first and as a stack trace below, then the stack of
+     * the thread that logged it and the stacks of the other threads of the system at that moment,
+     * so that a failure that only the log shows can be traced to the code that produced it and to
+     * what the rest of the system was doing.
      */
     private String format(CapturedEvent e) {
         String line = String.format("[%s] %s - %s", e.level, e.loggerName, e.message);
         String where = String.format("    (thread %s, %d ms after the test began, %s)",
                 e.thread, e.millisSinceTestStart, e.duringTeardown ? "during the teardown" : "while the test ran");
+        StringBuilder report = new StringBuilder(line);
         if (e.throwable.isEmpty()) {
-            return line + "\n" + where;
+            report.append('\n').append(where);
+        } else {
+            report.append("\n    ").append(e.throwable).append('\n').append(where).append('\n').append(e.stackTrace);
         }
-        return line + "\n    " + e.throwable + "\n" + where + "\n" + e.stackTrace;
+        if (!e.loggingStack.isEmpty()) {
+            report.append("\n    logged from:\n").append(e.loggingStack);
+        }
+        if (!e.threadDump.isEmpty()) {
+            report.append("\n    other threads at that moment:\n").append(e.threadDump);
+        }
+        return report.toString();
     }
 
     private static Level toLogback(LogLevel lvl) {
@@ -226,9 +248,15 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
 
     private static class TestScopedTurboFilter extends TurboFilter {
         private final List<CapturedEvent> events = new CopyOnWriteArrayList<>();
+        /** The timeline of the test, oldest entry first; guarded by itself. */
+        private final Deque<String> timeline = new ArrayDeque<>();
         private volatile long testStartNanos = System.nanoTime();
         private volatile boolean testMethodEnded;
         private volatile ValidationRules rules;
+        /** The lowest level an entry needs to enter the timeline, {@code null} when none is kept. */
+        private volatile LogLevel timelineLevel;
+        private int timelineLimit;
+        private int timelineDropped;
 
         TestScopedTurboFilter(ValidationRules rules) {
             this.rules = rules;
@@ -238,20 +266,129 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
             this.rules = newRules;
         }
 
+        /**
+         * Sees every log call of the test before the logger's level filters it. A call with no
+         * message is a logger asking whether a level is enabled; it enters no timeline.
+         */
         @Override
         public FilterReply decide(Marker marker, ch.qos.logback.classic.Logger logger, Level level, String format, Object[] params, Throwable t) {
+            long millis = (System.nanoTime() - testStartNanos) / 1_000_000L;
+            boolean teardown = testMethodEnded;
+            String thread = Thread.currentThread().getName();
+            LogLevel kept = timelineLevel;
+            if (kept != null && format != null && level.isGreaterOrEqual(toLogback(kept))) {
+                recordInTimeline(String.format("%6d ms [%s] %s - %s (thread %s%s)", millis, level, logger.getName(),
+                        formatMessage(format, params), thread, teardown ? ", teardown" : ""));
+            }
             if (level.isGreaterOrEqual(toLogback(rules.minLevel))) {
                 Throwable thrown = t != null ? t
                         : (format == null ? null : MessageFormatter.arrayFormat(format, params).getThrowable());
-                CapturedEvent ev = new CapturedEvent(logger.getName(), level, formatMessage(format, params),
-                        describe(thrown), stackTraceOf(thrown), Thread.currentThread().getName(),
-                        (System.nanoTime() - testStartNanos) / 1_000_000L, testMethodEnded);
+                String message = formatMessage(format, params);
+                boolean allowed = isAllowedLocal(logger.getName(), level, message, rules.allows);
+                boolean expected = isExpectedLocal(logger.getName(), level, message, rules.expects);
+                boolean reported = !rules.disabled && !allowed && !expected;
+                CapturedEvent ev = new CapturedEvent(logger.getName(), level, message,
+                        describe(thrown), stackTraceOf(thrown), thread, millis, teardown,
+                        reported ? loggingStack() : "", reported ? otherThreads() : "");
                 events.add(ev);
-                if (isAllowedLocal(ev, rules.allows) || isExpectedLocal(ev, rules.expects)) {
+                if (allowed || expected) {
                     return FilterReply.DENY;
                 }
             }
             return FilterReply.NEUTRAL;
+        }
+
+        void recordTimeline(LogLevel level, int limit) {
+            this.timelineLevel = level;
+            this.timelineLimit = limit;
+        }
+
+        LogLevel timelineLevel() {
+            return timelineLevel;
+        }
+
+        private void recordInTimeline(String line) {
+            synchronized (timeline) {
+                if (timeline.size() >= timelineLimit) {
+                    timeline.removeFirst();
+                    timelineDropped++;
+                }
+                timeline.addLast(line);
+            }
+        }
+
+        /** The timeline of the test, oldest entry first, headed by a count of dropped entries if any. */
+        List<String> getTimeline() {
+            synchronized (timeline) {
+                List<String> lines = new ArrayList<>(timeline);
+                if (timelineDropped > 0) {
+                    lines.add(0, "... " + timelineDropped + " earlier entries dropped");
+                }
+                return lines;
+            }
+        }
+
+        /**
+         * The stack of the thread logging an event, taken while it logs, without the frames of the
+         * logging libraries and of this extension: it shows where the event was logged, which for a
+         * throwable is where it was caught, not where it was created.
+         */
+        private static String loggingStack() {
+            StringBuilder sb = new StringBuilder();
+            int frames = 0;
+            for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+                String cls = frame.getClassName();
+                if (cls.startsWith("java.lang.Thread") || cls.startsWith("ch.qos.logback")
+                        || cls.startsWith("org.slf4j") || cls.startsWith(LogWatchExtension.class.getName())) {
+                    continue;
+                }
+                sb.append("        at ").append(frame).append('\n');
+                if (++frames == 40) {
+                    sb.append("        ...\n");
+                    break;
+                }
+            }
+            return sb.toString().stripTrailing();
+        }
+
+        /**
+         * The stacks of the other threads at the moment an event is logged, limited to threads that
+         * run code of the system, Jetty or Javalin, and to the top of each stack, so that the report
+         * shows what the rest of the system was doing, for example a test stopping a server while
+         * the server still answers.
+         */
+        private static String otherThreads() {
+            StringBuilder sb = new StringBuilder();
+            Thread self = Thread.currentThread();
+            for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+                Thread thread = entry.getKey();
+                StackTraceElement[] frames = entry.getValue();
+                if (thread == self || !runsTheSystem(frames)) {
+                    continue;
+                }
+                sb.append("        \"").append(thread.getName()).append("\" ").append(thread.getState()).append('\n');
+                for (int i = 0; i < frames.length && i < 30; i++) {
+                    sb.append("            at ").append(frames[i]).append('\n');
+                }
+                if (frames.length > 30) {
+                    sb.append("            ...\n");
+                }
+                if (sb.length() > 20000) {
+                    sb.append("        ... (cut)\n");
+                    break;
+                }
+            }
+            return sb.toString().stripTrailing();
+        }
+
+        private static boolean runsTheSystem(StackTraceElement[] frames) {
+            for (StackTraceElement frame : frames) {
+                String cls = frame.getClassName();
+                if (cls.startsWith("org.evochora.") || cls.startsWith("org.eclipse.jetty.") || cls.startsWith("io.javalin.")) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         List<CapturedEvent> getCapturedEvents() {
@@ -269,6 +406,10 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
 
         void clearEvents() {
             events.clear();
+            synchronized (timeline) {
+                timeline.clear();
+                timelineDropped = 0;
+            }
         }
 
         /**
@@ -313,22 +454,22 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
             return (format == null) ? "" : MessageFormatter.arrayFormat(format, params).getMessage();
         }
 
-        private boolean isExpectedLocal(CapturedEvent e, ExpectLog[] expects) {
+        private static boolean isExpectedLocal(String loggerName, Level level, String message, ExpectLog[] expects) {
             for (ExpectLog exp : expects) {
-                if (e.level.isGreaterOrEqual(toLogback(exp.level())) &&
-                    Pattern.matches(exp.loggerPattern(), e.loggerName) &&
-                    Pattern.matches(exp.messagePattern(), e.message)) {
+                if (level.isGreaterOrEqual(toLogback(exp.level())) &&
+                    Pattern.matches(exp.loggerPattern(), loggerName) &&
+                    Pattern.matches(exp.messagePattern(), message)) {
                     return true;
                 }
             }
             return false;
         }
 
-        private boolean isAllowedLocal(CapturedEvent e, AllowLog[] allows) {
+        private static boolean isAllowedLocal(String loggerName, Level level, String message, AllowLog[] allows) {
             for (AllowLog a : allows) {
-                if (e.level.isGreaterOrEqual(toLogback(a.level())) &&
-                    Pattern.matches(a.loggerPattern(), e.loggerName) &&
-                    Pattern.matches(a.messagePattern(), e.message)) {
+                if (level.isGreaterOrEqual(toLogback(a.level())) &&
+                    Pattern.matches(a.loggerPattern(), loggerName) &&
+                    Pattern.matches(a.messagePattern(), message)) {
                     return true;
                 }
             }
@@ -350,9 +491,14 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         final long millisSinceTestStart;
         /** Whether the event was logged after the test method had ended, in its teardown. */
         final boolean duringTeardown;
+        /** The stack of the logging thread when it logged, for an event the report will show; else empty. */
+        final String loggingStack;
+        /** The stacks of the other threads when the event was logged, for an event the report will show; else empty. */
+        final String threadDump;
 
         CapturedEvent(String loggerName, Level level, String message, String throwable, String stackTrace,
-                      String thread, long millisSinceTestStart, boolean duringTeardown) {
+                      String thread, long millisSinceTestStart, boolean duringTeardown,
+                      String loggingStack, String threadDump) {
             this.loggerName = loggerName;
             this.level = level;
             this.message = message != null ? message : "";
@@ -361,6 +507,8 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
             this.thread = thread;
             this.millisSinceTestStart = millisSinceTestStart;
             this.duringTeardown = duringTeardown;
+            this.loggingStack = loggingStack;
+            this.threadDump = threadDump;
         }
     }
 

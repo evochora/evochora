@@ -45,6 +45,7 @@ import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogTimeline;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.ServiceRegistry;
@@ -53,6 +54,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.eclipse.jetty.io.EndPoint;
+import org.eclipse.jetty.server.AbstractConnector;
+import org.eclipse.jetty.server.Connector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -74,8 +80,11 @@ import io.restassured.response.Response;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@LogTimeline
 @AllowLog(level = LogLevel.WARN, loggerPattern = ".*EnvironmentIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class EnvironmentControllerIntegrationTest {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentControllerIntegrationTest.class);
 
     private H2Database testDatabase;
     private FileSystemStorageResource testStorage;
@@ -124,6 +133,7 @@ class EnvironmentControllerIntegrationTest {
     void tearDown() throws Exception {
         // Stop HTTP server
         if (app != null) {
+            logServerState();
             app.stop();
         }
 
@@ -198,7 +208,7 @@ class EnvironmentControllerIntegrationTest {
         assertThat(indexer.getMetrics().get("batches_processed").longValue()).isEqualTo(1);
 
         // Now: Start HTTP server with EnvironmentController
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
 
         // Register database provider in controller registry
@@ -289,7 +299,7 @@ class EnvironmentControllerIntegrationTest {
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
         
         // Setup HTTP server
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
         
         ServiceRegistry registry = new ServiceRegistry();
@@ -352,7 +362,7 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
 
-        app = Javalin.create().start(0);
+        app = startApp();
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         new EnvironmentController(registry, ConfigFactory.empty())
@@ -387,7 +397,84 @@ class EnvironmentControllerIntegrationTest {
             .urlEncodingEnabled(false)
             .get("/1?runId=" + runId + "&" + minimapQuery);
         resp.then().statusCode(200);
-        return EnvironmentHttpResponse.parseFrom(resp.asByteArray());
+        byte[] body = resp.asByteArray();
+        LOGGER.info("Client received the whole answer: {} bytes for '{}'", body.length, minimapQuery);
+        return EnvironmentHttpResponse.parseFrom(body);
+    }
+
+    /**
+     * Starts the server on a free port, with a request logger that notes every request the server
+     * has finished, with its status, duration and thread, so that the log timeline of a failing
+     * test shows when the server was done with each answer.
+     */
+    private Javalin startApp() {
+        return Javalin.create(config -> config.requestLogger.http((ctx, ms) ->
+                LOGGER.info("Server finished {} {}{} with {} in {} ms on {}", ctx.method(), ctx.path(),
+                        ctx.queryString() == null ? "" : "?" + ctx.queryString(), ctx.statusCode(), ms,
+                        Thread.currentThread().getName())))
+            .start(0);
+    }
+
+    /**
+     * Logs, right before the server is stopped, every connection the server still holds, in
+     * Jetty's own words (fill and flush state of the endpoint, parser, generator and channel state
+     * of the connection), and the stack of
+     * every Jetty pool thread that is not idle. The entry lands in the log timeline that a failing
+     * test reports.
+     * <p>
+     * TODO (open investigation): this class fails now and then on the Windows CI runner, never on
+     * Linux and never locally, in {@code minimap_sizeFollowsTheParameter}: the log watch reports
+     * a Javalin ERROR "Exception occurred while servicing http-request" logged during the
+     * teardown, carrying a {@code ClosedChannelException} created in Jetty's closing of the
+     * connections, or an {@code IOException} "Close SendCallback in state PROCESSING" for an
+     * answer with status 200. Both are what Jetty throws into a pool thread that is still
+     * finishing an answer when its connection is closed under it; Javalin stops its server
+     * without a stop timeout, so stopping closes every connection at once. The suspected cause
+     * is therefore a race: the client has read the whole answer, the test ends and stops the
+     * server, while the pool thread that sent the answer has not yet left the send. The report of
+     * the next failure decides it. This entry showing a pool thread inside the send of the last
+     * request, or a connection whose write flusher is not idle, confirms it; this entry showing
+     * every connection and every pool thread idle refutes it, and the stacks the log watch takes
+     * when the error is logged show what else was running. A fix follows the finding, not the
+     * suspicion.
+     */
+    private void logServerState() {
+        StringBuilder state = new StringBuilder();
+        for (Connector connector : app.jettyServer().server().getConnectors()) {
+            if (connector instanceof AbstractConnector withEndPoints) {
+                for (EndPoint endPoint : withEndPoints.getConnectedEndPoints()) {
+                    state.append("\n  connection ").append(endPoint);
+                }
+            }
+        }
+        for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+            Thread thread = entry.getKey();
+            StackTraceElement[] frames = entry.getValue();
+            if (!thread.getName().startsWith("JettyServerThreadPool") || isIdle(frames)) {
+                continue;
+            }
+            state.append("\n  busy thread \"").append(thread.getName()).append("\" ").append(thread.getState());
+            for (int i = 0; i < frames.length && i < 30; i++) {
+                state.append("\n    at ").append(frames[i]);
+            }
+        }
+        LOGGER.info("Server state before the stop:{}", state.isEmpty() ? " no connection, every pool thread idle" : state);
+    }
+
+    /**
+     * Whether a Jetty pool thread waits for work: in the pool's job poll, as a reserved thread,
+     * in the selector's select, or as the acceptor.
+     */
+    private static boolean isIdle(StackTraceElement[] frames) {
+        for (StackTraceElement frame : frames) {
+            String method = frame.getMethodName();
+            if (method.equals("idleJobPoll") || method.equals("reservedWait")
+                    || (method.equals("select") && frame.getClassName().startsWith("org.eclipse.jetty.io.ManagedSelector"))
+                    || frame.getClassName().endsWith("AbstractConnector$Acceptor")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Test
@@ -477,7 +564,7 @@ class EnvironmentControllerIntegrationTest {
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
         
         // Setup HTTP server
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
         
         ServiceRegistry registry = new ServiceRegistry();
@@ -544,7 +631,7 @@ class EnvironmentControllerIntegrationTest {
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
         
         // Setup HTTP server
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
         
         ServiceRegistry registry = new ServiceRegistry();
@@ -610,7 +697,7 @@ class EnvironmentControllerIntegrationTest {
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 10);
         
         // Setup HTTP server
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
         
         ServiceRegistry registry = new ServiceRegistry();
@@ -846,7 +933,7 @@ class EnvironmentControllerIntegrationTest {
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 3);
 
         // Setup HTTP server
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
 
         ServiceRegistry registry = new ServiceRegistry();
@@ -883,7 +970,7 @@ class EnvironmentControllerIntegrationTest {
         indexMetadata(runId, metadata);
 
         // Setup HTTP server
-        app = Javalin.create().start(0);
+        app = startApp();
         int port = app.port();
 
         ServiceRegistry registry = new ServiceRegistry();
@@ -1039,7 +1126,7 @@ class EnvironmentControllerIntegrationTest {
 
     /** Starts an HTTP server carrying the environment controller and returns its port. */
     private int startControllerServer() {
-        app = Javalin.create().start(0);
+        app = startApp();
 
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
