@@ -107,6 +107,9 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
                 int start = number(entry(component, "start"), context, src);
                 int step = number(entry(component, "step"), context, src);
                 int end = number(entry(component, "end"), context, src);
+                if (step < 1) {
+                    throw new CompilationException(SourceInfo.locate(src, "Step " + step + " of a range must be positive."));
+                }
                 List<Integer> values = new ArrayList<>();
                 for (int i = start; i <= end; i += step) {
                     values.add(i);

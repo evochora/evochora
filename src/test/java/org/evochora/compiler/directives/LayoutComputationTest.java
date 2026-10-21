@@ -122,6 +122,24 @@ class LayoutComputationTest {
     }
 
     @Test
+    void aStepOfZeroIsReported() {
+        assertThatThrownBy(() -> compile(
+                ".PLACE DATA:1 10:0:20|5",
+                "NOP"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Step 0 of a range must be positive.");
+    }
+
+    @Test
+    void aNegativeStepIsReported() {
+        assertThatThrownBy(() -> compile(
+                ".PLACE DATA:1 10:(-2):20|5",
+                "NOP"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Step -2 of a range must be positive.");
+    }
+
+    @Test
     void aVectorWhereANumberIsExpectedIsReported() {
         assertThatThrownBy(() -> compile(
                 ".CONST V 1|1",
