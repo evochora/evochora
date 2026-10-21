@@ -10,6 +10,8 @@ import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.features.place.placement.RangeExpressionNode;
+import org.evochora.compiler.features.place.placement.RangeValueComponent;
 import org.evochora.compiler.features.place.placement.VectorPlacementNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.org.OrgNode;
@@ -255,6 +257,25 @@ public class LayoutDirectiveTest {
         assertThat(placeNode.literal()).isInstanceOf(LiteralNode.class);
         assertThat(placeNode.placements()).hasSize(1);
         assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
+    }
+
+    /**
+     * A range written in hexadecimal keeps its range symbol: the number ends before the dots.
+     */
+    @Test
+    @Tag("unit")
+    void testPlaceRangeInHexadecimal() {
+        String source = ".PLACE DATA:1 0x1..0x3|0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+
+        List<AstNode> ast = parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        PlaceNode placeNode = (PlaceNode) ast.get(0);
+        assertThat(placeNode.placements().get(0)).isInstanceOf(RangeExpressionNode.class);
+        RangeExpressionNode range = (RangeExpressionNode) placeNode.placements().get(0);
+        assertThat(range.dimensions().get(0).get(0)).isEqualTo(new RangeValueComponent(1, 3));
     }
 
     private static ParserStatementRegistry registry() {

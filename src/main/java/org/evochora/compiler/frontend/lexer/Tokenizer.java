@@ -272,7 +272,9 @@ public class Tokenizer {
         if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'o' || peek() == 'O'
                 || peek() == 'b' || peek() == 'B')) {
             advance(); // consume 'x', 'o' or 'b'
-            while (isAlphaNumeric(peek())) advance(); // Hex digits (A-F) are also alphanumeric
+            // The digits of the base are letters and digits; a '.' ends the number, so that a range
+            // such as 0x1F..3 keeps its symbol
+            while (isLetterOrDigit(peek())) advance();
         } else {
             // Normal decimal or floating-point numbers
             while (isDigit(peek())) advance();
@@ -343,6 +345,10 @@ public class Tokenizer {
     private char peekNext() {
         if (current + 1 >= source.length()) return '\0';
         return source.charAt(current + 1);
+    }
+
+    private static boolean isLetterOrDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
     }
 
     private boolean isDigit(char c) {

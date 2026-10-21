@@ -348,6 +348,23 @@ public class TokenizerTest {
      */
     @Test
     @Tag("unit")
+    void aPrefixedNumberEndsBeforeTheRangeSymbol() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer("0x1F..3", diagnostics);
+
+        List<Token> tokens = lexer.scanTokens();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.NUMBER, "0x1F"),
+                tuple(TokenType.SYMBOL, ".."),
+                tuple(TokenType.NUMBER, "3"),
+                tuple(TokenType.END_OF_FILE, "")
+        );
+    }
+
+    @Test
+    @Tag("unit")
     void testHexAndBinaryLiteralsWithAndWithoutSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
