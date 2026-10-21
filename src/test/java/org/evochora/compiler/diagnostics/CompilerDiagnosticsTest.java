@@ -206,6 +206,29 @@ class CompilerDiagnosticsTest {
     }
 
     /**
+     * The module an import inlines ends with a marker the user never wrote; a statement that
+     * follows the import on its line still begins after the import's statement end, in the
+     * preprocessor as in the file, so a flag set there is set in both phases.
+     */
+    @Test
+    void aDirectiveAfterAnImportOnTheSameLineBeginsAStatement() throws Exception {
+        write("a.evo",
+                "  NOP");
+        write("b.evo",
+                "  NOP");
+        write("other.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS A; .IMPORT \"b.evo\" AS B; .DEFINE X",
+                ".IFNDEF X",
+                "  .IMPORT \"other.evo\" AS O",
+                ".ENDDEF",
+                "START:",
+                "  NOP");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    /**
      * The lexer phase follows the same statement rule as the preprocessor: a directive after a
      * word without a statement end loads no file and sets no flag there, so the scan neither
      * reports a missing file the preprocessor never asks for, nor takes a branch the preprocessor
