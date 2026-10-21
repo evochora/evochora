@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -26,7 +27,7 @@ public class UndefHandler implements IPreProcessorHandler {
             // The directive owns its statement; a word before it without a statement end would lose
             // its own end with the directive's, so the line is reported and left to the parser
             preProcessor.getDiagnostics().reportError(
-                    wordBefore(line, directive),
+                    Export.statementStartMessage(line),
                     directive.source().fileName(), directive.source().lineNumber());
             preProcessor.removeTokens(start, line.end() - start);
             return;
@@ -47,14 +48,5 @@ public class UndefHandler implements IPreProcessorHandler {
             preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());
         }
         preProcessor.removeTokens(start, line.next() - start);
-    }
-    /**
-     * The message for a word before the directive without a statement end: the parser's own
-     * wording when the word is EXPORT, which no flag or inclusion directive takes.
-     */
-    private static String wordBefore(DirectiveLine line, Token directive) {
-        return "EXPORT".equalsIgnoreCase(line.before().text())
-                ? "EXPORT is not supported before '" + directive.text() + "'."
-                : "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.";
     }
 }

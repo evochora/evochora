@@ -13,8 +13,9 @@ import java.util.Set;
 
 /**
  * Lexer-phase handler for {@code .SOURCE "path"}: reads the file so that its own directives are
- * followed, and records the dependency. A directive whose operand is not one path names no file
- * here; the preprocessor reports what is wrong with it. A file that sources,
+ * followed, and records the dependency. A directive that does not begin a statement, or whose
+ * operand is not one path, names no file here; the preprocessor reports what is wrong with it
+ * and inlines nothing. A file that sources,
  * directly or through other source files, the file it is included from is a circular inclusion,
  * reported at the line that closes the circle; the handler keeps the chain of inclusions in its
  * own state, since the phase reads a source file within the call that includes it.
@@ -28,7 +29,7 @@ public class SourceDependencyScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handle(DirectiveLine line, IDependencyScanContext ctx) {
-        if (line.operands().size() != 1 || line.operands().get(0).type() != TokenType.STRING) {
+        if (!line.startsStatement() || line.operands().size() != 1 || line.operands().get(0).type() != TokenType.STRING) {
             return;
         }
         Token pathToken = line.operands().get(0);

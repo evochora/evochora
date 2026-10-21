@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * pinned here in isolation rather than only through programs that happen to use it. The handler
  * recognises a line by the directive and the quoted path alone, so a directive whose clauses are
  * malformed is still loaded and its malformation is reported by the phases that read the clauses.
+ * A directive that does not begin a statement is not loaded, as the preprocessor rejects it
+ * before it inlines anything.
  */
 class ImportPatternTest {
 
@@ -50,7 +53,7 @@ class ImportPatternTest {
                 && ".IMPORT".equalsIgnoreCase(tokens.get(directive).text()))) {
             directive++;
         }
-        RecordingContext ctx = new RecordingContext();
+        RecordingContext ctx = new RecordingContext(tokens);
         new ImportDependencyScanHandler().handle(DirectiveLine.of(tokens, directive), ctx);
         return ctx.loaded;
     }
@@ -62,6 +65,11 @@ class ImportPatternTest {
     /** A context that resolves a path to itself and records the module files read. */
     private static final class RecordingContext implements IDependencyScanContext {
         final List<String> loaded = new ArrayList<>();
+        private final List<Token> tokens;
+
+        RecordingContext(List<Token> tokens) {
+            this.tokens = tokens;
+        }
 
         @Override public String resolve(String path) { return path; }
         @Override public void reportError(String message) { throw new AssertionError(message); }
@@ -73,6 +81,9 @@ class ImportPatternTest {
         @Override public int lineNumber() { return 1; }
         @Override public List<Token> nextLine() { return null; }
         @Override public DirectiveLine lineOf(int indexInLine) { throw new UnsupportedOperationException(); }
+        @Override public DirectiveLine passingOver(DirectiveLine line, Predicate<Token> passedOver) {
+            return DirectiveLine.of(tokens, line.directive(), passedOver);
+        }
         @Override public CompilerOptions options() { return CompilerOptions.defaults(); }
         @Override public <T> T getOrCreate(Class<T> key, Supplier<T> factory) { return factory.get(); }
     }
@@ -115,14 +126,16 @@ class ImportPatternTest {
     }
 
     /**
-     * What stands before the directive on its line does not decide whether the file is read:
-     * the preprocessor accepts a statement there, so the file has to be loaded for it.
+     * A statement end before the directive lets it begin a statement, so the file is read; a word
+     * there, {@code EXPORT} apart, does not, and the preprocessor reports the line, so the file is
+     * not read.
      */
     @Test
     @Tag("unit")
-    void aWordBeforeTheDirectiveDoesNotHideThePath() {
-        assertRecognised("EXPORTED .IMPORT \"m.evo\" AS NAV", "m.evo");
-        assertRecognised("NOP .IMPORT \"m.evo\" AS NAV", "m.evo");
+    void aDirectiveAfterAStatementEndIsRecognisedAndAfterAWordIsNot() {
+        assertRecognised("NOP; .IMPORT \"m.evo\" AS NAV", "m.evo");
+        assertThat(loaded("EXPORTED .IMPORT \"m.evo\" AS NAV")).isEmpty();
+        assertThat(loaded("NOP .IMPORT \"m.evo\" AS NAV")).isEmpty();
     }
 
     @Test

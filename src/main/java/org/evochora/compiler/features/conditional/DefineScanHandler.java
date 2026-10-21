@@ -12,14 +12,15 @@ import java.util.OptionalLong;
 /**
  * Lexer-phase handler for {@code .DEFINE NAME [integer]}: sets the flag for the lines read after
  * it, so that the files of a conditional block are found as the preprocessor keeps them. A line
- * the preprocessor would reject sets nothing; the preprocessor reports it.
+ * the preprocessor would reject, a directive that does not begin a statement included, sets
+ * nothing; the preprocessor reports it.
  */
 public class DefineScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handle(DirectiveLine line, IDependencyScanContext ctx) {
         List<Token> operands = line.operands();
-        if (operands.isEmpty() || operands.size() > 2 || !Condition.isNameToken(operands.get(0))) {
+        if (!line.startsStatement() || operands.isEmpty() || operands.size() > 2 || !Condition.isNameToken(operands.get(0))) {
             return;
         }
         OptionalLong value = OptionalLong.empty();

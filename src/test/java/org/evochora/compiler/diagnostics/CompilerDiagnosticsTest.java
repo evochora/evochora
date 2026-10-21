@@ -205,6 +205,39 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:2: Unexpected '.SOURCE' after 'NOP'.");
     }
 
+    /**
+     * The lexer phase follows the same statement rule as the preprocessor: a directive after a
+     * word without a statement end loads no file and sets no flag there, so the scan neither
+     * reports a missing file the preprocessor never asks for, nor takes a branch the preprocessor
+     * does not take.
+     */
+    @Test
+    void aWordBeforeADependencyDirectiveKeepsTheScanFromFollowingIt() throws Exception {
+        write("flags.evo",
+                ".DEFINE B");
+        write("lib.evo",
+                "L:",
+                "  NOP");
+        write("main.evo",
+                "NOP .DEFINE A",
+                ".IFDEF A",
+                ".IMPORT \"missing.evo\" AS MISSING",
+                ".ENDDEF",
+                "NOP .SOURCE \"flags.evo\"",
+                ".IFNDEF B",
+                ".IMPORT \"lib.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP .IMPORT \"missing.evo\" AS GONE",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Unexpected '.DEFINE' after 'NOP'.")
+                .hasMessageContaining("main.evo:5: Unexpected '.SOURCE' after 'NOP'.")
+                .hasMessageContaining("main.evo:9: Unexpected '.IMPORT' after 'NOP'.")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("not found", "Internal error"));
+    }
+
     @Test
     void anUntypedPlaceLiteralIsReportedOnce() throws Exception {
         write("main.evo",

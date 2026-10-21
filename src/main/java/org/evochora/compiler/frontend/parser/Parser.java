@@ -6,6 +6,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -65,7 +66,7 @@ public class Parser implements IParsingContext {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
         this.statementRegistry = statementRegistry;
-        this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Parser::isExport, diagnostics);
+        this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Export::isWord, diagnostics);
         this.rootAliasChain = rootAliasChain;
         this.values = Map.copyOf(values);
     }
@@ -106,7 +107,7 @@ public class Parser implements IParsingContext {
     private AstNode statement() {
         try {
             currentExported = false;
-            if (isExport(peek())) {
+            if (Export.isWord(peek())) {
                 currentExported = true;
                 advance();
             }
@@ -202,12 +203,8 @@ public class Parser implements IParsingContext {
     }
 
     private void reportExport(Token word) {
-        diagnostics.reportError("EXPORT is not supported before '" + word.text() + "'.",
+        diagnostics.reportError(Export.notSupportedBefore(word),
                 word.source().fileName(), word.source().lineNumber());
-    }
-
-    private static boolean isExport(Token token) {
-        return token.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(token.text());
     }
 
     /**

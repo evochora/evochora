@@ -7,6 +7,7 @@ import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -102,6 +103,17 @@ public interface IDependencyScanContext {
      * @return The directive on its line.
      */
     DirectiveLine lineOf(int indexInLine);
+
+    /**
+     * The line of a directive once more, with the tokens directly before the directive that
+     * belong to it passed over, so that {@code before} and {@code startsStatement} look past them:
+     * the {@code EXPORT} an {@code .IMPORT} takes.
+     *
+     * @param line       The directive's line as the handler received it.
+     * @param passedOver The tokens directly before the directive that belong to it.
+     * @return The directive on its line, those tokens passed over.
+     */
+    DirectiveLine passingOver(DirectiveLine line, Predicate<Token> passedOver);
 
     /**
      * Returns the options of the compilation.

@@ -4,6 +4,7 @@ import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.PlacementContext;
@@ -40,7 +41,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         DirectiveLine line = preProcessor.lineOf(startIndex);
         if (!line.startsStatement()) {
             Token directive = preProcessor.peek();
-            String message = wordBefore(line, directive);
+            String message = Export.statementStartMessage(line);
             preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
@@ -115,14 +116,5 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
         preProcessor.injectTokens(newTokens, 0);
-    }
-    /**
-     * The message for a word before the directive without a statement end: the parser's own
-     * wording when the word is EXPORT, which no flag or inclusion directive takes.
-     */
-    private static String wordBefore(DirectiveLine line, Token directive) {
-        return "EXPORT".equalsIgnoreCase(line.before().text())
-                ? "EXPORT is not supported before '" + directive.text() + "'."
-                : "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.";
     }
 }

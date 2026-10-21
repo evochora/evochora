@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -268,6 +269,11 @@ public final class Lexer {
         @Override
         public DirectiveLine lineOf(int indexInLine) {
             return DirectiveLine.of(tokens, lineStart + indexInLine);
+        }
+
+        @Override
+        public DirectiveLine passingOver(DirectiveLine line, Predicate<Token> passedOver) {
+            return DirectiveLine.of(tokens, line.directive(), passedOver);
         }
 
         @Override

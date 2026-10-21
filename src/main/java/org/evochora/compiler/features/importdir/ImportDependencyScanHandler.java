@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
 import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
 import org.evochora.compiler.model.token.Token;
@@ -15,17 +16,20 @@ import java.util.List;
  * placement of its own, under the importing placement's chain followed by the alias, and
  * records the dependency.
  * <p>
- * Every line that names a module file is followed, whatever stands before the word or after the
- * path, so the file is loaded even when the directive is malformed and the parser can report the
- * malformation. A directive without an alias names no dependency; its tokens are still needed so
- * the phase that reads the directive can report what is wrong with it.
+ * A directive that begins a statement, the {@code EXPORT} it takes passed over, is followed
+ * whatever stands after the path, so the file is loaded even when the directive is malformed and
+ * the parser can report the malformation. A directive without an alias names no dependency; its
+ * tokens are still needed so the phase that reads the directive can report what is wrong with
+ * it. A directive that does not begin a statement is not followed: the preprocessor reports it
+ * and inlines nothing.
  */
 public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
     @Override
-    public void handle(DirectiveLine line, IDependencyScanContext ctx) {
+    public void handle(DirectiveLine received, IDependencyScanContext ctx) {
+        DirectiveLine line = ctx.passingOver(received, Export::isWord);
         List<Token> operands = line.operands();
-        if (operands.isEmpty() || operands.get(0).type() != TokenType.STRING) {
+        if (!line.startsStatement() || operands.isEmpty() || operands.get(0).type() != TokenType.STRING) {
             return;
         }
         String path = (String) operands.get(0).value();
