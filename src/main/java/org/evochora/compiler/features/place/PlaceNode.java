@@ -2,9 +2,9 @@ package org.evochora.compiler.features.place;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
-import org.evochora.compiler.features.place.placement.IPlacementArgumentNode;
+import org.evochora.compiler.features.place.placement.PlacementNode;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -13,13 +13,14 @@ import java.util.stream.Stream;
 /**
  * An AST node that represents a <code>.PLACE</code> directive.
  *
- * @param literal The typed literal to be placed.
- * @param placements The list of placement arguments, which can be vectors or range expressions.
+ * @param literal The molecule to be placed: a typed literal written out, or a name or a
+ *                computation whose value is a typed value.
+ * @param placements The placements, one per comma-separated part of the directive.
  * @param sourceInfo The source location of the directive.
  */
 public record PlaceNode(
-        LiteralNode literal,
-        List<IPlacementArgumentNode> placements,
+        OperandNode literal,
+        List<PlacementNode> placements,
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
 
@@ -32,13 +33,13 @@ public record PlaceNode(
     }
 
     /**
-     * Phase 6 puts the literal and the placement arguments it resolved into the node through
-     * this, in the order of {@link #getChildren()}.
+     * Phase 6 puts the literal and the placements it rebuilt into the node through this, in the
+     * order of {@link #getChildren()}.
      */
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
-        return new PlaceNode((LiteralNode) newChildren.getFirst(),
-                newChildren.subList(1, newChildren.size()).stream().map(p -> (IPlacementArgumentNode) p).toList(),
+        return new PlaceNode((OperandNode) newChildren.getFirst(),
+                newChildren.subList(1, newChildren.size()).stream().map(p -> (PlacementNode) p).toList(),
                 sourceInfo);
     }
 }

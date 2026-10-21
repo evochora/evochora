@@ -9,18 +9,17 @@ import org.evochora.compiler.backend.layout.LayoutContext;
 import org.evochora.compiler.backend.layout.Nd;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
-import org.evochora.compiler.model.ir.placement.*;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
- * Layout handler for the {@code core:place} IR directive (Phase 9). Evaluates
- * placement arguments (vectors, ranges, wildcards) and writes the resulting
- * molecules into the initial world object map at the computed coordinates.
+ * Layout handler for the {@code core:place} IR directive (Phase 9). Computes the placements
+ * (vectors, positions, ranges, wildcards) at this line and writes the resulting molecules into
+ * the initial world object map at the computed coordinates. A vector counts from the base
+ * position of the enclosing module, a position is a place of the program as it is.
  */
 public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
 
@@ -37,89 +36,118 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
 
     @Override
     public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
-        IrValue.PlacementListVal placementsVal = (IrValue.PlacementListVal) directive.args().get("placements");
-        if (placementsVal == null) {
-            // Fallback for old syntax, though IR converter should prevent this.
-            return;
-        }
+        PlacedMolecule molecule = createMolecule(directive, context);
+        List<IrValue> placements = ((IrValue.ListVal) directive.args().get("placements")).elements();
 
-        PlacedMolecule molecule = createMolecule(directive);
-        List<IPlacementArgument> placements = placementsVal.placements();
-
-        for (IPlacementArgument placement : placements) {
-            List<int[]> coordinates = generateCoordinates(placement, context, directive.source());
-            for (int[] coord : coordinates) {
-                int[] finalCoord = Nd.add(context.basePos(), coord);
-                context.placeObject(finalCoord, molecule, "a .PLACE", directive.source());
+        for (IrValue placement : placements) {
+            List<IrValue> components = ((IrValue.ListVal) placement).elements();
+            for (int[] coord : coordinatesOf(components, context, directive.source())) {
+                context.placeObject(coord, molecule, "a .PLACE", directive.source());
             }
         }
     }
 
     /**
-     * The molecule the directive places: its typed literal, whose type the instruction set has to
-     * know and whose number has to fit a cell of that type. The parser accepts only a typed
-     * literal for a {@code .PLACE}, and the node carries nothing else.
+     * The molecule the directive places: its value computed at this line, a typed value whose
+     * type the instruction set has to know and whose number has to fit a cell of that type.
      */
-    private PlacedMolecule createMolecule(IrDirective directive) throws CompilationException {
-        Value.Typed typed = (Value.Typed) ((IrValue.Literal) directive.args().get("value")).value();
+    private PlacedMolecule createMolecule(IrDirective directive, LayoutContext context) throws CompilationException {
+        if (!(context.evaluate(directive.args().get("value"), directive.source()) instanceof Value.Typed typed)) {
+            throw new CompilationException(SourceInfo.locate(directive.source(), "Expected a typed literal (e.g. DATA:5) for .PLACE."));
+        }
         int type = isa.moleculeType(typed.type()).orElseThrow(() ->
                 new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + typed.type() + "' in .PLACE.")));
         isa.valueRange(type).require(typed.number(), directive.source());
         return new PlacedMolecule(type, (int) typed.number(), 0);
     }
 
-    private List<int[]> generateCoordinates(IPlacementArgument placement, LayoutContext context, SourceInfo src) throws CompilationException {
-        if (placement instanceof IrVectorPlacement vp) {
-            return List.of(vp.components().stream().mapToInt(i -> i).toArray());
-        } else if (placement instanceof IrRangeExpression re) {
-            List<List<Integer>> dimensionValues = new ArrayList<>();
-            int dimIndex = 0;
-            for (List<IIrPlacementComponent> dimComponents : re.dimensions()) {
-                // For now, we only support one component per dimension
-                if (dimComponents.size() != 1) {
-                    throw new CompilationException(SourceInfo.locate(src, ".PLACE has " + dimComponents.size()
-                            + " components in dimension " + (dimIndex + 1) + "; only one is supported."));
-                }
-                IIrPlacementComponent component = dimComponents.get(0);
-                dimensionValues.add(getValuesForComponent(component, dimIndex++, re.dimensions().size(), context, src));
+    /**
+     * The cells of one placement, relative to the program origin. A placement of one single value
+     * whose value is a vector is that place counted from the base position of the enclosing
+     * module, one whose value is a position that place of the program; otherwise every component
+     * gives the coordinates along its axis, counted from the base position.
+     */
+    private List<int[]> coordinatesOf(List<IrValue> components, LayoutContext context, SourceInfo src) throws CompilationException {
+        if (components.size() == 1 && "single".equals(kindOf(components.getFirst()))) {
+            Value whole = context.evaluate(entry(components.getFirst(), "value"), src);
+            if (whole instanceof Value.Vector) {
+                return List.of(Nd.add(context.basePos(), Nd.coordinate(whole, src)));
             }
-            return cartesianProduct(dimensionValues);
+            if (whole instanceof Value.Position) {
+                return List.of(Nd.coordinate(whole, src));
+            }
         }
-        return Collections.emptyList();
+        List<List<Integer>> dimensionValues = new ArrayList<>();
+        for (int dimIndex = 0; dimIndex < components.size(); dimIndex++) {
+            dimensionValues.add(getValuesForComponent(components.get(dimIndex), dimIndex, components.size(), context, src));
+        }
+        List<int[]> cells = new ArrayList<>();
+        for (int[] coord : cartesianProduct(dimensionValues)) {
+            cells.add(Nd.add(context.basePos(), coord));
+        }
+        return cells;
     }
 
-    private List<Integer> getValuesForComponent(IIrPlacementComponent component, int dimIndex, int dimensions,
+    private List<Integer> getValuesForComponent(IrValue component, int dimIndex, int dimensions,
                                                 LayoutContext context, SourceInfo src) throws CompilationException {
-        if (component instanceof IrSingleValueComponent svc) {
-            return List.of(svc.value());
-        } else if (component instanceof IrRangeValueComponent rvc) {
-            List<Integer> values = new ArrayList<>();
-            for (int i = rvc.start(); i <= rvc.end(); i++) {
-                values.add(i);
+        switch (kindOf(component)) {
+            case "single" -> {
+                return List.of(number(entry(component, "value"), context, src));
             }
-            return values;
-        } else if (component instanceof IrSteppedRangeValueComponent srvc) {
-            List<Integer> values = new ArrayList<>();
-            for (int i = srvc.start(); i <= srvc.end(); i += srvc.step()) {
-                values.add(i);
+            case "range" -> {
+                int start = number(entry(component, "start"), context, src);
+                int end = number(entry(component, "end"), context, src);
+                List<Integer> values = new ArrayList<>();
+                for (int i = start; i <= end; i++) {
+                    values.add(i);
+                }
+                return values;
             }
-            return values;
-        } else if (component instanceof IrWildcardValueComponent) {
-            EnvironmentProperties envProps = context.getEnvProps();
-            if (envProps == null || envProps.getWorldShape() == null) {
-                throw new CompilationException(SourceInfo.locate(src, "'*' in .PLACE needs a world shape."));
+            case "stepped" -> {
+                int start = number(entry(component, "start"), context, src);
+                int step = number(entry(component, "step"), context, src);
+                int end = number(entry(component, "end"), context, src);
+                List<Integer> values = new ArrayList<>();
+                for (int i = start; i <= end; i += step) {
+                    values.add(i);
+                }
+                return values;
             }
-            int[] shape = envProps.getWorldShape();
-            if (dimIndex >= shape.length) {
-                throw new CompilationException(SourceInfo.locate(src, ".PLACE uses " + dimensions + " components, the world has " + shape.length + " dimensions."));
+            case "wildcard" -> {
+                EnvironmentProperties envProps = context.getEnvProps();
+                if (envProps == null || envProps.getWorldShape() == null) {
+                    throw new CompilationException(SourceInfo.locate(src, "'*' in .PLACE needs a world shape."));
+                }
+                int[] shape = envProps.getWorldShape();
+                if (dimIndex >= shape.length) {
+                    throw new CompilationException(SourceInfo.locate(src, ".PLACE uses " + dimensions + " components, the world has " + shape.length + " dimensions."));
+                }
+                List<Integer> values = new ArrayList<>();
+                for (int i = 0; i < shape[dimIndex]; i++) {
+                    values.add(i);
+                }
+                return values;
             }
-            List<Integer> values = new ArrayList<>();
-            for (int i = 0; i < shape[dimIndex]; i++) {
-                values.add(i);
-            }
-            return values;
+            default -> throw new IllegalStateException("Unknown placement component: " + kindOf(component));
         }
-        return Collections.emptyList();
+    }
+
+    /**
+     * Computes a part of a component, which has to be a number, and turns it into a coordinate.
+     */
+    private static int number(IrValue part, LayoutContext context, SourceInfo src) throws CompilationException {
+        if (!(context.evaluate(part, src) instanceof Value.Number number)) {
+            throw new CompilationException(SourceInfo.locate(src, "Expected a number."));
+        }
+        return Nd.coordinate(List.of(number.value()), src)[0];
+    }
+
+    private static String kindOf(IrValue component) {
+        return ((IrValue.Str) entry(component, "kind")).value();
+    }
+
+    private static IrValue entry(IrValue component, String key) {
+        return ((IrValue.MapVal) component).entries().get(key);
     }
 
     private List<int[]> cartesianProduct(List<List<Integer>> lists) {

@@ -39,7 +39,7 @@ import java.util.Optional;
 public class InstructionAnalysisHandler implements IAnalysisHandler {
 
     /** The message for a value only the layout knows, where an operand is expected. */
-    private static final String LAYOUT_VALUE = "A layout value cannot be used as an operand.";
+    private static final String LAYOUT_VALUE = "A layout value cannot be used as an instruction argument.";
 
     private final IInstructionSet isa;
     private final Evaluator evaluator;
@@ -196,8 +196,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      */
     private static void checkValue(Value value, SourceInfo at, Slot slot, DiagnosticsEngine diagnostics) {
         switch (value) {
-            case Value.Type type -> report("A molecule type cannot be used as an operand.", at, diagnostics);
-            case Value.Position position -> report("A position cannot be used as an operand.", at, diagnostics);
+            case Value.Type type -> report("A molecule type cannot be used as an instruction argument.", at, diagnostics);
+            case Value.Position position -> report("A position cannot be used as an instruction argument.", at, diagnostics);
             case Value.Vector vector -> reportWrongType(slot, ArgKind.VECTOR, diagnostics);
             case Value.Typed typed -> reportWrongType(slot, ArgKind.LITERAL, diagnostics);
             case Value.Number number -> {

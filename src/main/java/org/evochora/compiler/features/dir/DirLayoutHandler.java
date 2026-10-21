@@ -10,11 +10,12 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Layout handler for the {@code core:dir} IR directive (Phase 9). Sets the direction in which
- * subsequent instructions are placed, either from the vector the directive carries or by rotating
- * the direction currently in effect by 90 degrees.
+ * subsequent instructions are placed, either from the vector the directive carries, computed at
+ * this line, or by rotating the direction currently in effect by 90 degrees.
  */
 public final class DirLayoutHandler implements ILayoutDirectiveHandler {
 	/**
@@ -22,9 +23,14 @@ public final class DirLayoutHandler implements ILayoutDirectiveHandler {
 	 */
 	@Override
 	public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
-		IrValue.Literal direction = (IrValue.Literal) directive.args().get("direction");
+		IrValue direction = directive.args().get("direction");
 		if (direction != null) {
-			int[] comps = Nd.coordinate(((Value.Vector) direction.value()).components(), directive.source());
+			// A number is a vector of one component, the direction of a one-dimensional world
+			int[] comps = switch (context.evaluate(direction, directive.source())) {
+				case Value.Vector vector -> Nd.coordinate(vector, directive.source());
+				case Value.Number number -> Nd.coordinate(List.of(number.value()), directive.source());
+				default -> throw new CompilationException(SourceInfo.locate(directive.source(), "Expected a vector."));
+			};
 			// Checked here rather than at the first cell placed afterwards, and because everything
 			// that follows reads the dimensionality of the world off the direction vector.
 			int dims = context.currentDv().length;

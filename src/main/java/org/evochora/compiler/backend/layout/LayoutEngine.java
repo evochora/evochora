@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
@@ -31,12 +32,14 @@ public final class LayoutEngine {
      * @param envProps The environment properties, providing context like world dimensions. Can be null.
      * @param registry The handlers for layout-relevant IR directives; a directive without a
      *                 registered handler is passed to the registry's default handler.
+     * @param operations The operations of computations, with which the handlers compute their
+     *                   arguments.
      * @return The result of the layout process.
      * @throws CompilationException if address conflicts are detected during layout.
      */
     public LayoutResult layout(IrProgram program, IInstructionSet isa, EnvironmentProperties envProps,
-                               LayoutDirectiveRegistry registry) throws CompilationException {
-        LayoutContext ctx = new LayoutContext(envProps);
+                               LayoutDirectiveRegistry registry, OperationRegistry operations) throws CompilationException {
+        LayoutContext ctx = new LayoutContext(envProps, operations);
 
         Map<String, Integer> labelToAddress = new HashMap<>();
         List<PlacedItem> placedItems = new ArrayList<>(program.items().size());

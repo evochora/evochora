@@ -946,7 +946,7 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void aLayoutValueIsNoOperand() {
         assertThat(analyze("SETI %DR0 DATA:(@[0])")).singleElement().satisfies(d -> {
-            assertThat(d.message()).isEqualTo("A layout value cannot be used as an operand.");
+            assertThat(d.message()).isEqualTo("A layout value cannot be used as an instruction argument.");
             assertThat(d.lineNumber()).isEqualTo(1);
         });
     }
@@ -962,7 +962,7 @@ public class SemanticAnalyzerTest {
                 ".LABEL TARGET NOP",
                 ".CONST X (TARGET)",
                 "JMPI X")).singleElement().satisfies(d -> {
-            assertThat(d.message()).isEqualTo("A layout value cannot be used as an operand.");
+            assertThat(d.message()).isEqualTo("A layout value cannot be used as an instruction argument.");
             assertThat(d.lineNumber()).isEqualTo(3);
         });
     }

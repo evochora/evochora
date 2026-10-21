@@ -38,7 +38,7 @@ import java.util.Set;
 public class CallAnalysisHandler implements IAnalysisHandler {
 
     /** The message for a value only the layout knows, where an argument is expected. */
-    private static final String LAYOUT_VALUE = "A layout value cannot be used as an operand.";
+    private static final String LAYOUT_VALUE = "A layout value cannot be used as an instruction argument.";
 
     private final IInstructionSet isa;
     private final Evaluator evaluator;
@@ -290,9 +290,9 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             case EvaluationResult.Value value -> {
                 symbolTable.recordResult(expression, ExpressionOutcome.of(value.value()));
                 if (value.value() instanceof Value.Type) {
-                    report("A molecule type cannot be used as an operand.", expression.sourceInfo(), diagnostics);
+                    report("A molecule type cannot be used as an instruction argument.", expression.sourceInfo(), diagnostics);
                 } else if (value.value() instanceof Value.Position) {
-                    report("A position cannot be used as an operand.", expression.sourceInfo(), diagnostics);
+                    report("A position cannot be used as an instruction argument.", expression.sourceInfo(), diagnostics);
                 }
             }
             case EvaluationResult.Partial partial -> {

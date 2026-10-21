@@ -11,6 +11,7 @@ import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingResult;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrInstruction;
@@ -105,7 +106,7 @@ class EmitterTest {
         IrProgram program = new IrProgram("Test", List.of(new IrInstruction("NOP", List.of(), position)),
                 new DebugInfo(List.of(MAIN_ENTRY), expansions, Map.of(), Map.of(), Map.of()));
         LayoutResult layout = new LayoutEngine().layout(program, isa,
-                new EnvironmentProperties(new int[]{10, 10}, true), new LayoutDirectiveRegistry((directive, context) -> { }));
+                new EnvironmentProperties(new int[]{10, 10}, true), new LayoutDirectiveRegistry((directive, context) -> { }), new OperationRegistry());
         return new Emitter().emit(new LinkingResult(program, Map.of()), layout, isa, new EmissionContributorRegistry());
     }
 }

@@ -258,7 +258,7 @@ public class Compiler implements ICompiler {
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
         LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry);
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry, featureRegistry.operations());
 
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = new LinkingRegistry();

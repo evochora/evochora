@@ -239,8 +239,8 @@ that failed; the spec explains the rules, the message does not:
 
 `Expected an expression after '-'.` · `Expected a number after '|'.` · `Unknown function 'MINN'.` · `Register '%DR0' cannot be used in an expression.` · `'AND' and '+' need
 parentheses.` · `'FOO' is not defined.` (and the symbol table's other texts) · `'X' cannot be used as
-a value.` · `A position cannot be used as an operand.` · `A layout value cannot be used as an
-operand.` (a computed position or a number that needs the layout, in an operand or a label slot) ·
+a value.` · `A position cannot be used as an instruction argument.` · `A layout value cannot be used as an
+instruction argument.` (a computed position or a number that needs the layout, in an operand or a label slot) ·
 `'X' has no value.` (a flag set without a value, in a computation) · `Invalid operands for ':': typed and number.` (a defined name that is no molecule type before `:`; an undefined one reports `'FOO' is not defined.`)
 · `Division by zero.` · `Integer overflow.` · `Type mismatch: ENERGY and DATA.` · `Invalid operands
 for '*': vector and vector.` · `Invalid vector component: 'NW' is a vector.` · `Index 3 out of bounds

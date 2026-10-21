@@ -41,9 +41,9 @@ This represents a compiler directive, which provides instructions to the compile
 
 #### Core Directives
 
--   `core:org`: Sets the layout origin. Its `args` map holds `position`, the vector, and `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module.
--   `core:dir`: Sets the layout direction. Either `direction`, the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) spanning the plane it turns in.
--   `core:place`: Places a molecule at one or more locations. Its `args` map contains the typed literal as `value`, and a special `placements` argument holding a `PlacementListVal`.
+-   `core:org`: Sets the layout origin. Its `args` map holds `components`, a `ListVal` with one value per component, and `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module. Each component is a `Literal`, a `Str` (a qualified name) or an `Expression`, which the layout computes at the directive; each is a number, except that a directive of one component may give the whole origin as a vector, counted from the base position (or, marked, from the cursor), or as a position, which becomes the cursor as it is.
+-   `core:dir`: Sets the layout direction. Either `direction`, a `Literal`, `Str` or `Expression` whose value is the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) spanning the plane it turns in.
+-   `core:place`: Places a molecule at one or more locations. Its `args` map contains the typed literal as `value` and the locations as `placements`: a `ListVal` of placements, each a `ListVal` of components, each component a `MapVal` whose `kind` (`Str`) names its form and whose other entries are its operands, each a `Literal`, a `Str` or an `Expression`: `single` with `value`, `range` with `start` and `end`, `stepped` with `start`, `step` and `end`, `wildcard` with nothing else. Every operand is a number, except that a placement of one `single` component may give the whole place as a vector, counted from the base position of the enclosing module, or as a position, a place of the program.
 -   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
 -   `core:scope_enter` / `core:scope_exit`: Mark the boundaries of a named scope.
 -   `core:proc_enter` / `core:proc_exit`: Mark the boundaries of a procedure, carrying metadata like arity and export status.
@@ -81,27 +81,11 @@ This is a sealed interface for typed values used in directive arguments. It allo
 
 -   **`IrValue` Subtypes**:
     -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
-    -   `Expression(Expression, SourceInfo)`: a computation only the layout can compute, every name in it qualified, with the position of its last token; `const_value` carries one for a constant whose value is such a computation
+    -   `Expression(Expression, SourceInfo)`: a computation only the layout can compute, every name in it qualified, with the position of its last token; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line
     -   `Str(String)`
     -   `Bool(boolean)`
     -   `ListVal(List<IrValue>)`
     -   `MapVal(Map<String, IrValue>)`
-    -   `PlacementListVal(List<IPlacementArgument>)`
-
-### 5.4. Placement Arguments
-
-To support the extended syntax of the `.PLACE` directive, a dedicated set of IR objects exists in the `org.evochora.compiler.ir.placement` package.
-
--   **`IPlacementArgument`**: A marker interface for a complete placement argument.
--   **`IrVectorPlacement`**: Represents a simple vector placement, holding a list of integer components.
--   **`IrRangeExpression`**: Represents a complex range-based placement. It contains a list of dimensions, where each dimension is represented by a list of `IIrPlacementComponent` objects.
-
-The `IIrPlacementComponent` interface is the base for IR-level representations of the different parts of a range expression:
-
--   **`IrSingleValueComponent(int)`**: A single integer value.
--   **`IrRangeValueComponent(int start, int end)`**: A continuous range.
--   **`IrSteppedRangeValueComponent(int start, int step, int end)`**: A stepped range.
--   **`IrWildcardValueComponent()`**: A wildcard `*`.
 
 ---
 

@@ -63,7 +63,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(@[0])");
 
-        assertReported("A layout value cannot be used as an operand.", 2);
+        assertReported("A layout value cannot be used as an instruction argument.", 2);
     }
 
     @Test
@@ -74,7 +74,7 @@ class ExpressionDiagnosticsTest {
                 ".CONST X (TARGET)",
                 "  JMPI X");
 
-        assertReported("A layout value cannot be used as an operand.", 4);
+        assertReported("A layout value cannot be used as an instruction argument.", 4);
     }
 
     @Test
@@ -156,7 +156,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 T");
 
-        assertReported("A molecule type cannot be used as an operand.", 3);
+        assertReported("A molecule type cannot be used as an instruction argument.", 3);
     }
 
     @Test

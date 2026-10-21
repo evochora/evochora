@@ -1,15 +1,27 @@
 package org.evochora.compiler.features.org;
 
-import org.evochora.compiler.model.expression.Value;
-import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.INameResolution;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
+import org.evochora.compiler.model.expression.Expression;
+import org.evochora.compiler.model.expression.LiteralExpression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Handles the parsing of the <code>.ORG</code> directive.
@@ -20,10 +32,15 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
     /**
      * Parses an <code>.ORG</code> directive.
      * The syntax is <code>.ORG &lt;component&gt;{|&lt;component&gt;}</code>, where a component is
-     * a number, which a <code>-</code> may precede, or a number preceded by the marker
+     * an operand whose value is a number, or such an operand preceded by the marker
      * <code>@+</code> or <code>@-</code> and thereby counted from the layout cursor rather than
      * from the origin of the enclosing module. The marker is the name <code>@</code> followed by
-     * the symbol <code>+</code> or <code>-</code>, so a space between them is accepted.
+     * the symbol <code>+</code> or <code>-</code>, so a space between them is accepted; the
+     * operand after it carries no sign of its own. A directive of one piece may give the whole
+     * origin as one operand, a vector or a position.
+     * <p>
+     * The directive cuts its line at its own separator, the {@code |} outside brackets, and reads
+     * each piece as one operand; the analysis checks the kinds of their values.
      * @param context The parsing context.
      * @return An {@link OrgNode} representing the directive, or {@code null} after a reported
      *         error.
@@ -31,38 +48,82 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
     @Override
     public AstNode parse(IParsingContext context) {
         Token directive = context.advance(); // consume .ORG
-        Token start = context.peek();
-        List<Long> values = new ArrayList<>();
-        List<Boolean> relative = new ArrayList<>();
-        do {
-            boolean marked = context.check(TokenType.IDENTIFIER) && context.peek().text().equals("@");
-            int sign = 1;
-            if (marked) {
-                context.advance();
-                if (context.matchSymbol("-")) {
-                    sign = -1;
-                } else if (!context.matchSymbol("+")) {
-                    context.getDiagnostics().reportError("Expected '+' or '-' after '@' in .ORG.",
-                            context.peek().source().fileName(), context.peek().source().lineNumber());
-                    return null;
-                }
-            }
-            Token minus = context.matchSymbol("-") ? context.previous() : null;
-            Token number = context.consume(TokenType.NUMBER, "Expected a number after .ORG.");
-            long value = (Long) number.value();
-            if (minus != null) {
-                if (marked) {
-                    context.getDiagnostics().reportError(
-                            "A component marked with '@+' or '@-' carries no sign of its own.",
-                            minus.source().fileName(), minus.source().lineNumber());
-                }
-                value = -value;
-            }
-            values.add(sign * value);
-            relative.add(marked);
-        } while (context.match(TokenType.PIPE));
+        List<Token> operands = new ArrayList<>();
+        while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
+            operands.add(context.advance());
+        }
 
-        return new OrgNode(new LiteralNode(new Value.Vector(values), start.source()),
-                List.copyOf(relative), directive.source());
+        List<OperandNode> components = new ArrayList<>();
+        List<Boolean> relative = new ArrayList<>();
+        boolean failed = false;
+        for (List<Token> piece : DirectiveLine.pieces(operands, Set.of(TokenType.PIPE), Set.of())) {
+            boolean marked = piece.size() >= 2 && isCursor(piece.get(0)) && isSign(piece.get(1));
+            List<Token> rest = marked ? piece.subList(2, piece.size()) : piece;
+            if (marked && !rest.isEmpty() && isSymbol(rest.getFirst(), "-")) {
+                report(context, "A component marked with '@+' or '@-' carries no sign of its own.", rest.getFirst().source());
+                failed = true;
+                continue;
+            }
+            Optional<OperandNode> operand = read(context, rest, directive);
+            if (operand.isEmpty()) {
+                failed = true;
+                continue;
+            }
+            boolean backward = marked && isSymbol(piece.get(1), "-");
+            components.add(backward ? negated(operand.get()) : operand.get());
+            relative.add(marked);
+        }
+        return failed ? null : new OrgNode(components, relative, directive.source());
+    }
+
+    /**
+     * Reads a piece as one operand; a piece without tokens is reported here, every other failure
+     * by the reader.
+     */
+    private static Optional<OperandNode> read(IParsingContext context, List<Token> piece, Token directive) {
+        if (piece.isEmpty()) {
+            report(context, "Expected a number after .ORG.", directive.source());
+            return Optional.empty();
+        }
+        return context.readOperand(piece);
+    }
+
+    /**
+     * The operand of a component the marker {@code @-} counts backwards: a number negated, and
+     * any other operand under the sign operator, which the analysis and the layout compute.
+     */
+    private static OperandNode negated(OperandNode operand) {
+        if (operand instanceof LiteralNode literal && literal.value() instanceof Value.Number number) {
+            return new LiteralNode(new Value.Number(-number.value()), literal.sourceInfo());
+        }
+        Expression inner = switch (operand) {
+            case LiteralNode literal -> new LiteralExpression(literal.value(), literal.sourceInfo());
+            case IdentifierNode name -> new NameExpression(name.text(), name.sourceInfo());
+            case ExpressionNode expression -> expression.expression();
+            default -> null;
+        };
+        if (inner == null) {
+            // A register stays as it is, for the analysis to report
+            return operand;
+        }
+        SourceInfo end = operand instanceof ExpressionNode expression ? expression.end() : operand.sourceInfo();
+        return new ExpressionNode(new OperationExpression("-", List.of(inner), operand.sourceInfo()),
+                operand.sourceInfo(), end);
+    }
+
+    private static boolean isCursor(Token token) {
+        return token.type() == TokenType.IDENTIFIER && token.text().equals(INameResolution.CURSOR);
+    }
+
+    private static boolean isSign(Token token) {
+        return isSymbol(token, "+") || isSymbol(token, "-");
+    }
+
+    private static boolean isSymbol(Token token, String text) {
+        return token.type() == TokenType.SYMBOL && token.text().equals(text);
+    }
+
+    private static void report(IParsingContext context, String message, SourceInfo at) {
+        context.getDiagnostics().reportError(message, at.fileName(), at.lineNumber());
     }
 }

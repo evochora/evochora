@@ -1,7 +1,6 @@
 package org.evochora.compiler.model.ir;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.model.ir.placement.IPlacementArgument;
 import org.evochora.compiler.model.expression.Value;
 
 import java.util.List;
@@ -11,7 +10,7 @@ import java.util.Map;
  * Small, typed value system used for directive arguments. Designed to be
  * easily serializable and extensible without leaking Object.
  */
-public sealed interface IrValue permits IrValue.Literal, IrValue.Expression, IrValue.Str, IrValue.Bool, IrValue.ListVal, IrValue.MapVal, IrValue.PlacementListVal {
+public sealed interface IrValue permits IrValue.Literal, IrValue.Expression, IrValue.Str, IrValue.Bool, IrValue.ListVal, IrValue.MapVal {
 	/**
 	 * A literal value: a number, a typed value or a vector, as {@link Value} carries it.
 	 * @param value The value.
@@ -49,10 +48,4 @@ public sealed interface IrValue permits IrValue.Literal, IrValue.Expression, IrV
 	 * @param entries The map of string keys to IrValue values.
 	 */
 	record MapVal(Map<String, IrValue> entries) implements IrValue {}
-
-	/**
-	 * Represents a list of placement arguments.
-	 * @param placements The list of placement arguments.
-	 */
-	record PlacementListVal(List<IPlacementArgument> placements) implements IrValue {}
 }

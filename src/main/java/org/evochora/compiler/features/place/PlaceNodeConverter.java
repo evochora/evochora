@@ -1,70 +1,71 @@
 package org.evochora.compiler.features.place;
 
-import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.features.place.placement.*;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
-import org.evochora.compiler.model.ir.placement.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Converts {@link PlaceNode} into a generic {@link IrDirective} (namespace "core", name "place").
+ * <p>
+ * The directive carries the molecule as {@code value}, a literal, a qualified name or a
+ * computation the layout finishes, and the placements as
+ * {@code placements}: a list of placements, each a list of components, each component a map
+ * whose {@code kind} names its form and whose other entries are its operands, each a literal, a
+ * qualified name or a computation the layout finishes:
+ * <ul>
+ *   <li>{@code single}: {@code value};</li>
+ *   <li>{@code range}: {@code start} and {@code end};</li>
+ *   <li>{@code stepped}: {@code start}, {@code step} and {@code end};</li>
+ *   <li>{@code wildcard}: nothing else.</li>
+ * </ul>
  */
 public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode> {
 
     @Override
     public void convert(PlaceNode node, IrGenContext ctx) {
         Map<String, IrValue> args = new HashMap<>();
+        args.put("value", ctx.convertValue(node.literal()));
 
-        // Convert the literal part
-        args.put("value", new IrValue.Literal(node.literal().value()));
-
-        // Convert the placements part
-        List<IPlacementArgument> irPlacements = new ArrayList<>();
-        for (IPlacementArgumentNode placementNode : node.placements()) {
-            irPlacements.add(convertPlacementArgument(placementNode));
+        List<IrValue> placements = new ArrayList<>(node.placements().size());
+        for (PlacementNode placement : node.placements()) {
+            List<IrValue> components = new ArrayList<>(placement.components().size());
+            for (IPlacementComponent component : placement.components()) {
+                components.add(convertComponent(component, ctx));
+            }
+            placements.add(new IrValue.ListVal(List.copyOf(components)));
         }
-        args.put("placements", new IrValue.PlacementListVal(irPlacements));
+        args.put("placements", new IrValue.ListVal(List.copyOf(placements)));
 
         ctx.emit(new IrDirective("core", "place", args, ctx.sourceOf(node)));
     }
 
-    private IPlacementArgument convertPlacementArgument(IPlacementArgumentNode node) {
-        if (node instanceof VectorPlacementNode vpn) {
-            // The components were read as coordinates, so each fits an int
-            List<Integer> components = ((Value.Vector) vpn.vector().value()).components().stream()
-                    .map(Long::intValue).toList();
-            return new IrVectorPlacement(components);
-        } else if (node instanceof RangeExpressionNode ren) {
-            List<List<IIrPlacementComponent>> irDimensions = new ArrayList<>();
-            for (List<IPlacementComponent> dim : ren.dimensions()) {
-                irDimensions.add(dim.stream()
-                        .map(this::convertPlacementComponent)
-                        .collect(Collectors.toList()));
+    private static IrValue convertComponent(IPlacementComponent component, IrGenContext ctx) {
+        Map<String, IrValue> entries = new HashMap<>();
+        switch (component) {
+            case SingleValueComponent single -> {
+                entries.put("kind", new IrValue.Str("single"));
+                entries.put("value", ctx.convertValue(single.value()));
             }
-            return new IrRangeExpression(irDimensions);
+            case RangeValueComponent range -> {
+                entries.put("kind", new IrValue.Str("range"));
+                entries.put("start", ctx.convertValue(range.start()));
+                entries.put("end", ctx.convertValue(range.end()));
+            }
+            case SteppedRangeValueComponent stepped -> {
+                entries.put("kind", new IrValue.Str("stepped"));
+                entries.put("start", ctx.convertValue(stepped.start()));
+                entries.put("step", ctx.convertValue(stepped.step()));
+                entries.put("end", ctx.convertValue(stepped.end()));
+            }
+            case WildcardValueComponent wildcard -> entries.put("kind", new IrValue.Str("wildcard"));
         }
-        // Should not happen if parser is correct
-        throw new IllegalStateException("Unknown IPlacementArgumentNode type: " + node.getClass().getName());
-    }
-
-    private IIrPlacementComponent convertPlacementComponent(IPlacementComponent component) {
-        if (component instanceof SingleValueComponent svc) {
-            return new IrSingleValueComponent(svc.value());
-        } else if (component instanceof RangeValueComponent rvc) {
-            return new IrRangeValueComponent(rvc.start(), rvc.end());
-        } else if (component instanceof SteppedRangeValueComponent srvc) {
-            return new IrSteppedRangeValueComponent(srvc.start(), srvc.step(), srvc.end());
-        } else if (component instanceof WildcardValueComponent) {
-            return new IrWildcardValueComponent();
-        }
-        throw new IllegalStateException("Unknown IPlacementComponent type: " + component.getClass().getName());
+        return new IrValue.MapVal(Map.copyOf(entries));
     }
 }

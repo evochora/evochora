@@ -19,6 +19,7 @@ public class PlaceFeature implements ICompilerFeature {
         ctx.lexerSymbol("*");
         ctx.lexerSymbol("..");
         ctx.parserStatement(".PLACE", new PlaceDirectiveHandler());
+        ctx.analysisHandler(PlaceNode.class, new PlaceAnalysisHandler(ctx.operations()));
         ctx.irConverter(PlaceNode.class, new PlaceNodeConverter());
         ctx.layoutHandler("core", "place", new PlaceLayoutHandler(ctx.isa()));
     }

@@ -22,6 +22,9 @@ public class DirFeature implements ICompilerFeature {
         // Phase 3: Parsing
         ctx.parserStatement(".DIR", new DirDirectiveHandler());
 
+        // Phase 4: Semantic Analysis
+        ctx.analysisHandler(DirNode.class, new DirAnalysisHandler(ctx.operations()));
+
         // Phase 7: IR Generation
         ctx.irConverter(DirNode.class, new DirNodeConverter());
 

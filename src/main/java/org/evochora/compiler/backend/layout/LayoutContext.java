@@ -3,7 +3,16 @@ package org.evochora.compiler.backend.layout;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.Evaluator;
+import org.evochora.compiler.expression.IEvaluationContext;
+import org.evochora.compiler.expression.INameResolution;
+import org.evochora.compiler.expression.NameAnswer;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayDeque;
@@ -25,10 +34,14 @@ import java.util.stream.Collectors;
  * <p>The cursor is created lazily on first use, because its dimensionality is taken from the
  * world shape. A program that places nothing can therefore be laid out without environment
  * properties, while the first placement without them fails.</p>
+ *
+ * <p>A directive handler computes its arguments through {@link #evaluate}, with the operations
+ * the features registered, the cursor and the origin of the line.</p>
  */
 public final class LayoutContext {
 
     private final EnvironmentProperties envProps;
+    private final Evaluator evaluator;
     private boolean isInitialized = false;
     private int[] currentPos;
     private int[] currentDv;
@@ -56,12 +69,71 @@ public final class LayoutContext {
     /**
      * Creates a layout context for the given environment.
      *
-     * @param envProps The environment properties supplying the world shape, whose length fixes
-     *                 the dimensionality of every layout vector. May be null; such a context is
-     *                 usable only for programs that place nothing.
+     * @param envProps   The environment properties supplying the world shape, whose length fixes
+     *                   the dimensionality of every layout vector. May be null; such a context is
+     *                   usable only for programs that place nothing.
+     * @param operations The operations of computations, which the features registered.
      */
-    public LayoutContext(EnvironmentProperties envProps) {
+    public LayoutContext(EnvironmentProperties envProps, OperationRegistry operations) {
         this.envProps = envProps;
+        this.evaluator = new Evaluator(operations);
+    }
+
+    /**
+     * Computes an argument of a directive at the line the layout stands at. A literal is its
+     * value; a qualified name and a computation are evaluated with the cursor {@code @} and the
+     * origin the line counts its vectors from, the base position of the enclosing module, both as
+     * positions of the program, and with the names the layout knows at this line.
+     *
+     * @param value The argument, as the IR carries it.
+     * @param at    The position of the directive, for an error.
+     * @return The value.
+     * @throws CompilationException if the computation fails, at the directive.
+     * @throws IllegalStateException if the computation still needs what a later phase knows, as
+     *         nothing is left to wait for after the layout, or if the argument is no value.
+     */
+    public Value evaluate(IrValue value, SourceInfo at) throws CompilationException {
+        return switch (value) {
+            case IrValue.Literal literal -> literal.value();
+            case IrValue.Expression expression -> result(evaluator.evaluate(expression.expression(),
+                    this::resolve, evaluationContext()), at);
+            case IrValue.Str name -> result(evaluator.evaluate(new NameExpression(name.value(), at),
+                    this::resolve, evaluationContext()), at);
+            default -> throw new IllegalStateException("A directive argument is no value: " + value);
+        };
+    }
+
+    private IEvaluationContext evaluationContext() throws CompilationException {
+        return IEvaluationContext.at(position(currentPos()), position(basePos()));
+    }
+
+    /**
+     * Answers a name of a computation: the cursor {@code @} with its position; a label or a
+     * definition the layout computes is not yet known here and is a forward reference.
+     */
+    private NameAnswer resolve(NameExpression name) {
+        if (INameResolution.CURSOR.equals(name.name())) {
+            return new NameAnswer.Value(position(currentPos));
+        }
+        return new NameAnswer.NotUsable("Forward reference to '" + name.name() + "'.");
+    }
+
+    private static Value result(EvaluationResult result, SourceInfo at) throws CompilationException {
+        return switch (result) {
+            case EvaluationResult.Value computed -> computed.value();
+            case EvaluationResult.Error error -> throw new CompilationException(SourceInfo.locate(at, error.reason()));
+            case EvaluationResult.Partial partial -> throw new IllegalStateException(
+                    "A computation still needs a later phase after the layout: " + partial.expression().text());
+            case EvaluationResult.Reported reported -> throw new IllegalStateException(
+                    "A computation whose error was reported reached the layout.");
+        };
+    }
+
+    /**
+     * A coordinate of the layout as a position of the program.
+     */
+    private static Value.Position position(int[] coordinate) {
+        return new Value.Position(Arrays.stream(coordinate).mapToObj(c -> (long) c).toList());
     }
 
     private void initialize() throws CompilationException {
