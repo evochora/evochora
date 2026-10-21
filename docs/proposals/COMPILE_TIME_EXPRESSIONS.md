@@ -210,10 +210,13 @@ START:
 .CONST OUT_SE (BODY_SE + (1|1))
 .PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]      # north edge
 …
+.CONST SIZE (BODY_SE - BODY_NW)
 .ORG BODY_NW
 CNW:
 …
-.ORG 0|0                                                  # back to the module's own origin
+.ORG (BODY_NW + (1|SIZE[1]))                              # the body's bottom row, which the main file leaves free
+STEP:
+…
 ```
 
 The layout puts `.ORG BODY_NW` at `0|0` of the main file wherever the module was imported, because
@@ -221,8 +224,10 @@ The layout puts `.ORG BODY_NW` at `0|0` of the main file wherever the module was
 module's origin, computed when the layout reaches the `.PLACE`. A module hands a position on to a
 module of its own unchanged (`USING VALUE X BODY_NW`); a position a module exports is right in the
 importer too. A row whose length a flag decides is measured by a label at its end. A `.ORG` to a
-position moves the cursor, and the cursor stays there: after the last corner the behavior returns to
-its own origin with a vector `.ORG` before its code, and whatever the main file places after the
+position moves the cursor, and the cursor stays there: after the last corner the behavior puts its
+code at a place of the body it names from the corners and the main file leaves free, here the
+bottom row; its own origin is the cell the import line stood at, `0|0` of the main file, where
+`CNW` already stands, since a label occupies a cell. Whatever the main file places after the
 import line counts from where the module left the cursor.
 
 **Flags and configuration.** `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` compute with numbers and flags;
