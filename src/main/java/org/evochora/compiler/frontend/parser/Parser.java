@@ -127,11 +127,9 @@ public class Parser implements IParsingContext {
                 return handler.get().parse(this);
             }
 
-            // A closer or divider the walk reaches stands outside any block; its line goes with it.
+            // A closer or divider the walk reaches stands outside any block; its statement goes with it.
             if (blockReader.reportStray(tokens, current)) {
-                while (!isAtEnd() && advance().type() != TokenType.NEWLINE) {
-                    // Skipping the rest of the line.
-                }
+                skipStatement();
                 return null;
             }
 
