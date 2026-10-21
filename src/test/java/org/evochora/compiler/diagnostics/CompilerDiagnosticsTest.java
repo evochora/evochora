@@ -335,7 +335,7 @@ class CompilerDiagnosticsTest {
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("main.evo")
-                                + ":1: EXPORT is not supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under its own name."));
+                                + ":1: EXPORT is not supported before '.REQUIRE MODULE'."));
     }
 
     @Test

@@ -279,7 +279,7 @@ class ModuleValuesTest {
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("walk.evo")
-                                + ":2: EXPORT is not supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under its own name."));
+                                + ":2: EXPORT is not supported before '.REQUIRE MODULE'."));
     }
 
     @Test

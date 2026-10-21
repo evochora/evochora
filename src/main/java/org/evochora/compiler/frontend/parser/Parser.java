@@ -203,7 +203,7 @@ public class Parser implements IParsingContext {
     }
 
     private void reportExport(Token word) {
-        diagnostics.reportError(Export.notSupportedBefore(word),
+        diagnostics.reportError(Export.notSupportedBefore(word.text()),
                 word.source().fileName(), word.source().lineNumber());
     }
 

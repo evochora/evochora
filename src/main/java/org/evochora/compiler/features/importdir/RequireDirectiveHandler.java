@@ -5,6 +5,7 @@ import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
@@ -51,8 +52,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         if (isWord(context, "MODULE")) {
             context.advance(); // consume MODULE
             if (context.isExported()) {
-                context.getDiagnostics().reportError(
-                        "EXPORT is not supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under its own name.",
+                context.getDiagnostics().reportError(Export.notSupportedBefore(".REQUIRE MODULE"),
                         directive.source().fileName(), directive.source().lineNumber());
                 context.skipStatement();
                 return null;
