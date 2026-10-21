@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.expression.INameResolution;
 import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.parser.Computation;
 import org.evochora.compiler.expression.parser.ExpressionParser;
 import org.evochora.compiler.expression.parser.ParseResult;
 import org.evochora.compiler.isa.IInstructionSet;
@@ -243,16 +243,15 @@ public class Parser implements IParsingContext {
     /**
      * Parses an expression, which can be a literal, a register, an identifier, a vector, or a
      * computation. A number, a component of a vector and the value of a typed literal may each be
-     * preceded by a {@code -}, which makes the number negative. A computation is a parenthesis, a
-     * call {@code NAME(…)}, an index {@code V[…]}, each with any calls and indexes directly after
-     * it, a typed literal whose value is one of these, or the cursor {@code @}; its tokens are cut
-     * to the matching closing token and read by the {@link ExpressionParser}.
+     * preceded by a {@code -}, which makes the number negative. A computation is what
+     * {@link Computation} recognises; its tokens are cut to its last one and read by the
+     * {@link ExpressionParser}.
      * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
      *         reported error.
      */
     @Override
     public OperandNode expression() {
-        int computationLength = computationLengthAt(current);
+        int computationLength = Computation.lengthAt(tokens, current);
         if (computationLength > 0) {
             return computation(computationLength);
         }
@@ -313,82 +312,6 @@ public class Parser implements IParsingContext {
                 yield null;
             }
         };
-    }
-
-    /**
-     * Tells how many tokens the computation at the given position takes: a typed form
-     * {@code NAME :} followed by a computed value, a computed value, or the cursor {@code @} with
-     * any indexes after it.
-     * @param index The position in the token list.
-     * @return The number of tokens, or 0 if no computation stands there.
-     */
-    private int computationLengthAt(int index) {
-        TokenType type = typeAt(index);
-        if (type == TokenType.IDENTIFIER && typeAt(index + 1) == TokenType.COLON) {
-            int value = computedValueLengthAt(index + 2);
-            return value > 0 ? 2 + value : 0;
-        }
-        if (type == TokenType.IDENTIFIER && INameResolution.CURSOR.equals(tokens.get(index).text())) {
-            return 1 + suffixLength(index + 1);
-        }
-        return computedValueLengthAt(index);
-    }
-
-    /**
-     * Tells how many tokens a computed value at the given position takes: a parenthesis, or a
-     * name or a number followed by a call or an index, each with any calls and indexes directly
-     * after it.
-     * @param index The position in the token list.
-     * @return The number of tokens, or 0 if none stands there.
-     */
-    private int computedValueLengthAt(int index) {
-        TokenType type = typeAt(index);
-        if (type == TokenType.OPEN_PARENTHESIS) {
-            int group = groupedLength(index);
-            return group + suffixLength(index + group);
-        }
-        if (type == TokenType.IDENTIFIER || type == TokenType.OPCODE || type == TokenType.NUMBER) {
-            int suffix = suffixLength(index + 1);
-            return suffix > 0 ? 1 + suffix : 0;
-        }
-        return 0;
-    }
-
-    /**
-     * Tells how many tokens the calls and indexes directly at the given position take, one after
-     * another, as in {@code MIN(A, 1)[0]} or {@code V[0][1]}.
-     */
-    private int suffixLength(int index) {
-        int length = 0;
-        while (typeAt(index + length) == TokenType.CALL_PARENTHESIS || typeAt(index + length) == TokenType.OPEN_BRACKET) {
-            length += groupedLength(index + length);
-        }
-        return length;
-    }
-
-    /**
-     * Tells how many tokens the group opened at the given position takes, its opener and its
-     * matching closing token included, with the nesting of its own kind of bracket counted; a
-     * group left open ends before the end of its line, where the expression parser reports it.
-     */
-    private int groupedLength(int index) {
-        boolean bracket = typeAt(index) == TokenType.OPEN_BRACKET;
-        int depth = 0;
-        int i = index;
-        while (typeAt(i) != TokenType.NEWLINE && typeAt(i) != TokenType.END_OF_FILE) {
-            TokenType type = typeAt(i);
-            if (bracket ? type == TokenType.OPEN_BRACKET
-                    : type == TokenType.OPEN_PARENTHESIS || type == TokenType.CALL_PARENTHESIS) {
-                depth++;
-            } else if (type == (bracket ? TokenType.CLOSE_BRACKET : TokenType.CLOSE_PARENTHESIS)) {
-                depth--;
-            }
-            i++;
-            if (depth == 0) {
-                break;
-            }
-        }
-        return i - index;
     }
 
     /**

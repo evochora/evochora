@@ -252,8 +252,8 @@ is a function and cannot be a macro name.` · `'SHL' is an operator and cannot b
 cannot be defined.` · at start-up: `Operation '^' is a preprocessor directive.`
 
 **The visualizer** shows the source as written and, behind each computation, its result as a yellow
-note `[=99|69]`, the way it shows a flag's state behind an `.IFDEF`; a constant keeps the value behind
-its name, inside a computation and a layout-valued one included.
+note `[=99|69]`, the way it shows a flag's state behind its name wherever a directive reads the flag;
+a constant keeps the value behind its name, inside a computation and a layout-valued one included.
 
 ### The architecture
 

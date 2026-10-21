@@ -7,11 +7,12 @@ import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.INameResolution;
 import org.evochora.compiler.expression.NameAnswer;
 import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.parser.Computation;
 import org.evochora.compiler.expression.parser.ExpressionParser;
 import org.evochora.compiler.expression.parser.ParseResult;
 import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.NameExpression;
-import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.token.Token;
 
@@ -66,11 +67,23 @@ public final class ReadTimeValues {
         /**
          * The tokens compute to a number.
          *
-         * @param value    The number.
-         * @param computed Whether the tokens are a computation, rather than a number or a name
-         *                 written alone.
+         * @param value The number.
+         * @param form  What the tokens are: a computation, a name or a number.
          */
-        record Number(long value, boolean computed) implements Reading {
+        record Number(long value, Form form) implements Reading {
+        }
+
+        /**
+         * What the tokens of a value are. A computation is what {@link Computation} recognises;
+         * a name or a number written alone is not one.
+         */
+        enum Form {
+            /** A computation. */
+            COMPUTATION,
+            /** A flag name written alone. */
+            NAME,
+            /** A number written alone, with its sign. */
+            NUMBER
         }
 
         /**
@@ -96,7 +109,7 @@ public final class ReadTimeValues {
             case ParseResult.Parsed parsed -> switch (evaluator.evaluate(parsed.expression(), this::resolve,
                     IEvaluationContext.none())) {
                 case EvaluationResult.Value value -> value.value() instanceof Value.Number number
-                        ? new Reading.Number(number.value(), parsed.expression() instanceof OperationExpression)
+                        ? new Reading.Number(number.value(), formOf(tokens, parsed.expression()))
                         : new Reading.Failed("Expected a number.", tokens.getFirst().source());
                 case EvaluationResult.Error error -> new Reading.Failed(error.reason(), error.at());
                 case EvaluationResult.Partial partial -> throw new IllegalStateException(
@@ -105,6 +118,17 @@ public final class ReadTimeValues {
                         "A computation at read time reported an error at a definition, though no name answers so.");
             };
         };
+    }
+
+    /**
+     * Tells what the tokens of a value are: a computation when the forms of the language say so,
+     * else a name or a number, whichever the tree the parser made of them is.
+     */
+    private static Reading.Form formOf(List<Token> tokens, Expression expression) {
+        if (Computation.lengthAt(tokens, 0) == tokens.size()) {
+            return Reading.Form.COMPUTATION;
+        }
+        return expression instanceof NameExpression ? Reading.Form.NAME : Reading.Form.NUMBER;
     }
 
     /**

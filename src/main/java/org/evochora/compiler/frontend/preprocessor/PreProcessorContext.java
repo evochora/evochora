@@ -224,8 +224,8 @@ public class PreProcessorContext {
      * preprocessor that walks the stream, at the token or the node at fault, or else at the
      * first token: tokens that form no computation, a name that is no flag or a flag without a
      * value, a computation that fails, a result that is no number. A computation that gives a
-     * number is noted for the source view as {@code [=n]} behind its last token; a number or a
-     * flag name written alone is not, nor is a computation outside every file.
+     * number, and a flag name written alone, are noted for the source view as {@code [=n]} right
+     * after their last token; a number written alone is not, nor is a value outside every file.
      *
      * @param tokens The tokens of the value, as the directive delimits them; not empty.
      * @return The number, or empty if an error was reported.
@@ -235,7 +235,7 @@ public class PreProcessorContext {
         return switch (values.read(tokens)) {
             case ReadTimeValues.Reading.Number number -> {
                 requireWalk();
-                if (number.computed() && tokens.getLast().source().inAFile()) {
+                if (number.form() != ReadTimeValues.Reading.Form.NUMBER && tokens.getLast().source().inAFile()) {
                     notes.accept(tokens.getLast().after(), "[=" + number.value() + "]");
                 }
                 yield Optional.of(number.value());

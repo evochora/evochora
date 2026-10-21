@@ -126,11 +126,12 @@ class NotesIntegrationTest {
     }
 
     /**
-     * A computation the preprocessor computes at read time is noted behind its last token; a
-     * number or a flag name written alone gets no note of its own.
+     * A computation the preprocessor computes at read time is noted right after its last token,
+     * a name in parentheses included; a flag name written alone is noted with its value; a
+     * number written alone gets no note.
      */
     @Test
-    void aComputationAtReadTimeIsNotedBehindItsLastToken() throws Exception {
+    void aComputationAndAFlagNameAtReadTimeAreNotedAfterTheirLastToken() throws Exception {
         write("main.evo",
                 ".DEFINE N 2",
                 ".REPEAT (N*2)",
@@ -139,12 +140,26 @@ class NotesIntegrationTest {
                 ".DEFINE A 2",
                 ".IFDEF (A+1) = 3",
                 "NOP",
-                ".ENDDEF");
+                ".ENDDEF",
+                ".IFDEF (A)",
+                "NOP",
+                ".ENDDEF",
+                ".REPEAT N",
+                "NOP",
+                ".ENDREPEAT",
+                "NOP^N",
+                ".REPEAT 3",
+                "NOP",
+                ".ENDREPEAT");
 
         ProgramArtifact artifact = compile();
 
-        assertThat(artifact.sources().get(0).notes())
-                .containsExactly(new Note(0, 2, 14, "[=4]"), new Note(0, 6, 13, "[=3]"));
+        assertThat(artifact.sources().get(0).notes()).containsExactly(
+                new Note(0, 2, 14, "[=4]"),
+                new Note(0, 6, 13, "[=3]"),
+                new Note(0, 9, 11, "[=2]"),
+                new Note(0, 12, 10, "[=2]"),
+                new Note(0, 15, 6, "[=2]"));
     }
 
     /**
