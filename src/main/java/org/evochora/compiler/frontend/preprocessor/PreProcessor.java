@@ -44,7 +44,8 @@ public class PreProcessor {
      * @param resolver       The source root resolver for path resolution.
      * @param ppContext      The shared preprocessor context: the handlers to dispatch to, the
      *                       pre-lexed tokens and lines of includable files, the entry of the main
-     *                       file, the open inclusions.
+     *                       file, the open inclusions; its computations at read time
+     *                       report to the given diagnostics.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                         PreProcessorContext ppContext) {
@@ -58,6 +59,7 @@ public class PreProcessor {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
+        ppContext.reportTo(diagnostics);
         this.blockReader = new BlockReader(ppContext.handlers()::blockKindOf, true, token -> false, diagnostics);
         entries.add(ppContext.mainFile());
     }

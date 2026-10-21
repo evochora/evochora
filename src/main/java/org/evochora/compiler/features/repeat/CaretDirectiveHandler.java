@@ -2,7 +2,6 @@ package org.evochora.compiler.features.repeat;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -19,7 +18,10 @@ import java.util.Optional;
  *
  * <p>The handler scans backward from the {@code ^} token to find the statement
  * body on the current line, then replaces the entire sequence with the
- * equivalent block. The tokens it adds carry the position of the {@code ^}.</p>
+ * equivalent block. The tokens it adds carry the position of the {@code ^}. The count is a
+ * number, a flag name or a computation; it is computed here, so that a count that cannot be
+ * computed or lies out of range is reported before the block is built, and the block takes the
+ * tokens of the count as they are written.</p>
  *
  * <p>Labels are preserved and excluded from the repeat body, so
  * {@code L1: NOP^3} becomes {@code L1:} followed by the block repeating {@code NOP}.</p>
@@ -33,17 +35,19 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume ^
 
-        int countIndex = preProcessor.getCurrentIndex();
-        Optional<SignedNumber> number = SignedNumber.at(
-                preProcessor.tokensOf(countIndex, Math.min(countIndex + 2, preProcessor.streamSize())), 0);
-        if (number.isEmpty()) {
-            // No number stands at the cursor, so this reports the missing count
+        List<Token> countTokens = RepeatCount.at(preProcessor, preProcessor.getCurrentIndex());
+        if (countTokens.isEmpty()) {
+            // No count stands at the cursor, so this reports the missing count
             preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");
         }
-        List<Token> countTokens = preProcessor.tokensOf(countIndex, countIndex + number.orElseThrow().length());
         Token countToken = countTokens.getFirst();
         for (int i = 0; i < countTokens.size(); i++) preProcessor.advance();
-        long written = number.get().value();
+        Optional<Long> evaluated = preProcessorContext.evaluate(countTokens);
+        if (evaluated.isEmpty()) {
+            // The count that could not be computed has been reported where it stands
+            return;
+        }
+        long written = evaluated.get();
         if (written > Integer.MAX_VALUE) {
             preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",
                     countToken.source().fileName(), countToken.source().lineNumber());

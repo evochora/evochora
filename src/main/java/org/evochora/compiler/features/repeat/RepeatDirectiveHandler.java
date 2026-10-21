@@ -3,7 +3,6 @@ package org.evochora.compiler.features.repeat;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.BlockReader;
-import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -17,6 +16,8 @@ import java.util.Optional;
  *
  * <p>{@code .REPEAT n} stands alone on its line and opens a block closed by {@code .ENDREPEAT};
  * everything between them is repeated {@code n} times, the repetitions separated by a newline.
+ * The count is a number, a flag name or a computation, computed with the flags as they are when
+ * the walk reaches the block.
  * The preprocessor has read the extent of the block, with the blocks nested inside it, before
  * this handler runs. A single statement is repeated with the shorthand {@code X^n}, which
  * {@link CaretDirectiveHandler} rewrites into this block.</p>
@@ -32,7 +33,7 @@ public class RepeatDirectiveHandler implements IPreProcessorBlockHandler {
      * Parses a {@code .REPEAT} directive and expands its block.
      *
      * @param preProcessor        The preprocessor providing direct access to the token stream.
-     * @param preProcessorContext  The preprocessor context (not used by this handler).
+     * @param preProcessorContext  The preprocessor context, which computes the count.
      * @param block               The extent of the block.
      */
     @Override
@@ -42,17 +43,21 @@ public class RepeatDirectiveHandler implements IPreProcessorBlockHandler {
         Token repeatToken = preProcessor.peek();
         preProcessor.advance(); // consume .REPEAT
 
-        int countIndex = preProcessor.getCurrentIndex();
-        Optional<SignedNumber> number = SignedNumber.at(
-                preProcessor.tokensOf(countIndex, Math.min(countIndex + 2, preProcessor.streamSize())), 0);
-        if (number.isEmpty()) {
-            // No number stands at the cursor, so this reports the missing count
+        List<Token> countTokens = RepeatCount.at(preProcessor, preProcessor.getCurrentIndex());
+        if (countTokens.isEmpty()) {
+            // No count stands at the cursor, so this reports the missing count
             preProcessor.consume(TokenType.NUMBER, "Expected repeat count after .REPEAT");
         }
-        Token countToken = preProcessor.peek();
-        for (int i = 0; i < number.orElseThrow().length(); i++) preProcessor.advance();
-        long written = number.get().value();
+        Token countToken = countTokens.getFirst();
+        for (int i = 0; i < countTokens.size(); i++) preProcessor.advance();
         int tokensToRemove = block.end() - startIndex;
+        Optional<Long> evaluated = preProcessorContext.evaluate(countTokens);
+        if (evaluated.isEmpty()) {
+            // The count that could not be computed has been reported where it stands
+            preProcessor.removeTokens(startIndex, tokensToRemove);
+            return;
+        }
+        long written = evaluated.get();
         if (written > Integer.MAX_VALUE) {
             preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",
                     countToken.source().fileName(), countToken.source().lineNumber());

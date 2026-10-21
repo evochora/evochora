@@ -12,6 +12,7 @@ import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -173,10 +174,15 @@ public class Compiler implements ICompiler {
         features.forEach(f -> f.register(featureRegistry));
         featureRegistry.operations().validate(preprocessorWords(featureRegistry));
 
+        // The two read-time phases each keep flags of their own, seeded alike, so that both start
+        // from the configuration and pass the same definitions in the same order
+        Map<String, String> reservedNames = featureRegistry.operations().reservedNames();
+
         // Phase 1: Lexer — finds the files and tokenizes each of them once; the main file's tokens
         // become the stream, and the text of every value of the options is tokenized on its own
         Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions,
-                isa, featureRegistry.lexerSymbols());
+                isa, featureRegistry.lexerSymbols(), featureRegistry.operations(),
+                Flags.of(effectiveOptions.defines(), reservedNames));
         DependencyGraph graph = lexer.read(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
         List<Token> initialTokens = new ArrayList<>(graph.mainStream());
@@ -185,7 +191,8 @@ public class Compiler implements ICompiler {
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, graph.tokens(), graph.lines(),
-                programName, mainFilePath, effectiveOptions, featureRegistry.operations().reservedNames());
+                programName, mainFilePath, effectiveOptions, featureRegistry.operations(), isa,
+                Flags.of(effectiveOptions.defines(), reservedNames));
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(block ->
                 ppContext.handlers().registerBlock(block.kind(), block.handler(), block.stored()));
@@ -209,7 +216,7 @@ public class Compiler implements ICompiler {
         failOnErrors(diagnostics);
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
-        SymbolTable symbolTable = new SymbolTable(diagnostics, featureRegistry.operations().reservedNames());
+        SymbolTable symbolTable = new SymbolTable(diagnostics, reservedNames);
         AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());

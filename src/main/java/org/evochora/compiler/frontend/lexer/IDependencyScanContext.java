@@ -2,19 +2,22 @@ package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
  * Context provided to {@link IDependencyScanHandler} implementations while the Lexer phase reads
  * the files of a compilation. Offers path resolution, reading a file as tokens, error reporting,
- * and reading a file as a placement of its own; a handler uses these to say what its directive
- * means for the files, without the phase knowing any directive.
+ * reading a file as a placement of its own, and the flags of the phase with the computation of a
+ * number over them; a handler uses these to say what its directive means for the files, without
+ * the phase knowing any directive.
  */
 public interface IDependencyScanContext {
 
@@ -120,6 +123,25 @@ public interface IDependencyScanContext {
      * @return The options the phase was created with.
      */
     CompilerOptions options();
+
+    /**
+     * Returns the flags of the phase: one store for every file the phase reads, seeded from the
+     * options of the compilation, which the directives of a feature fill as the lines are read.
+     *
+     * @return The flags of the phase.
+     */
+    Flags flags();
+
+    /**
+     * Computes a number at read time: the tokens of one value, a number, a flag name or a
+     * computation, read with the operations of the compilation, every name a flag of
+     * {@link #flags()} with its value. The phase reports nothing about it, as the preprocessor
+     * reads the same tokens and reports what is wrong with them.
+     *
+     * @param tokens The tokens of the value, as the directive delimits them; not empty.
+     * @return The number, or empty if the tokens form no computation or one without a number.
+     */
+    Optional<Long> evaluate(List<Token> tokens);
 
     /**
      * Returns the state object a feature keeps under the given key type, creating it with the

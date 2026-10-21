@@ -8,8 +8,9 @@ import java.util.Optional;
 
 /**
  * An integer read from a token list: a number, which a {@code -} may precede, since the tokenizer
- * emits the sign as a token of its own. It serves the directives that read a number before
- * expressions compute at read time, and goes when they do.
+ * emits the sign as a token of its own. It serves the operand reader of the parser and the
+ * grouping of a macro's arguments, where a sign stands outside a computation and belongs to the
+ * number after it.
  *
  * @param value  The value of the number, negated when a {@code -} precedes it.
  * @param length The number of tokens the number takes: two with the sign, one without.

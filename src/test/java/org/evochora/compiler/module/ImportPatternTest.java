@@ -1,5 +1,7 @@
 package org.evochora.compiler.module;
 
+import java.util.Optional;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -85,6 +87,8 @@ class ImportPatternTest {
             return DirectiveLine.of(tokens, line.directive(), passedOver);
         }
         @Override public CompilerOptions options() { return CompilerOptions.defaults(); }
+        @Override public Flags flags() { throw new UnsupportedOperationException(); }
+        @Override public Optional<Long> evaluate(List<Token> tokens) { throw new UnsupportedOperationException(); }
         @Override public <T> T getOrCreate(Class<T> key, Supplier<T> factory) { return factory.get(); }
     }
 

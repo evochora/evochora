@@ -3,6 +3,7 @@ package org.evochora.compiler.features.conditional;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -11,6 +12,7 @@ import org.evochora.compiler.model.token.Token;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
@@ -20,7 +22,8 @@ import java.util.OptionalLong;
  * The preprocessor has read the extent of the block before this handler runs, so that a block
  * whose heads or closer line are malformed is removed and reported once. The conditions
  * of the chain are evaluated in order against the {@link Flags} as they are when the walk reaches
- * the opener; the block is replaced by the lines of the first branch whose condition holds, or by
+ * the opener, a value computed through the context, which reports a value that cannot be
+ * computed and so removes the block; the block is replaced by the lines of the first branch whose condition holds, or by
  * nothing, and the walk continues at the first of those lines. A nested block or a
  * {@code .DEFINE} in the kept branch is therefore processed when the walk reaches it, and a
  * branch that is not kept has no effect at all. The handler keeps nothing between blocks.
@@ -38,7 +41,8 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext, BlockReader.Block block) {
         int start = block.opener();
         Token opener = preProcessor.peek();
-        Flags flags = PreprocessorFlags.in(preProcessor, preProcessorContext);
+        ConfiguredFlags.check(preProcessor, preProcessorContext);
+        Flags flags = preProcessorContext.flags();
 
         int closer = block.closer();
         DirectiveLine closerLine = preProcessor.lineOf(closer);
@@ -92,14 +96,18 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
         int taken = -1;
         for (int k = 0; k < heads.size() && taken < 0; k++) {
             Condition condition = conditions.get(k);
-            try {
-                if (condition == null || condition.holds(flags)) {
-                    taken = k;
-                }
-            } catch (Condition.Invalid invalid) {
-                report(preProcessor, preProcessor.getToken(heads.get(k).directive()), invalid.getMessage());
+            if (condition == null) {
+                taken = k;
+                continue;
+            }
+            Optional<Boolean> holds = condition.holds(flags, preProcessorContext::evaluate);
+            if (holds.isEmpty()) {
+                // The value that could not be computed has been reported where it stands
                 preProcessor.removeTokens(start, blockEnd - start);
                 return;
+            }
+            if (holds.get()) {
+                taken = k;
             }
         }
 
@@ -120,9 +128,9 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
     /**
      * Records for the source view what the block decided: for every branch that is not kept, the
      * lines from its directive line to the next head or the closer, owned by the directive line,
-     * unless there are none; for every flag name in every head, the condition's own and one on
-     * the right of a comparison, a note with the flag's state as the block saw it. Heads after the
-     * kept one were not evaluated, but their flags are noted all the same.
+     * unless there are none; for every flag name that stands alone on a side of a head, a note
+     * with the flag's state as the block saw it; a computation gets no note. Heads after the kept
+     * one were not evaluated, but their flags are noted all the same.
      */
     private static void recordForSourceView(PreProcessor preProcessor, Flags flags, List<DirectiveLine> heads,
                                             List<Condition> conditions, int closer, int taken) {
@@ -140,11 +148,11 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
             if (condition == null) {
                 continue;
             }
-            List<Token> operands = heads.get(k).operands();
-            note(preProcessor, flags, operands.get(0));
-            if (condition.comparison().isPresent()
-                    && condition.comparison().get().operand() instanceof Condition.FlagName) {
-                note(preProcessor, flags, operands.get(2));
+            if (Condition.isFlagName(condition.left())) {
+                note(preProcessor, flags, condition.left().get(0));
+            }
+            if (condition.comparison().isPresent() && Condition.isFlagName(condition.comparison().get().right())) {
+                note(preProcessor, flags, condition.comparison().get().right().get(0));
             }
         }
     }

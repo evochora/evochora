@@ -1,6 +1,4 @@
-package org.evochora.compiler.features.conditional;
-
-import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
+package org.evochora.compiler.frontend;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -9,11 +7,12 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * The preprocessor flags of one compilation: the names that are set, each with an integer value
- * or without one. Names are compared case-insensitively. The flags are global: one instance
- * serves the whole token stream of the preprocessor (see {@link PreprocessorFlags}), another the
- * whole reading of the Lexer phase, each kept in the state slot of its phase's context and seeded
- * from the flags of the compilation's options on first use.
+ * The preprocessor flags of one read-time phase: the names that are set, each with an integer
+ * value or without one. Names are compared case-insensitively. The flags are global: one instance
+ * serves the whole token stream of the preprocessor, another the whole reading of the Lexer
+ * phase. The compiler creates both alike, from the flags of the compilation's options and the
+ * names nothing may define; the directives of a feature fill them, and a computation at read
+ * time reads them.
  * <p>
  * A flag that is set may be defined again only with the same definition, both without a value
  * or both with the same value; {@link #undefine} first is how a flag changes.
@@ -26,40 +25,37 @@ public final class Flags {
     }
 
     private final Map<String, Entry> entries = new HashMap<>();
+    private final Map<String, String> reservedNames;
 
-    private Flags() {
+    private Flags(Map<String, String> reservedNames) {
+        Map<String, String> reserved = new HashMap<>();
+        reservedNames.forEach((name, what) -> reserved.put(key(name), what));
+        this.reservedNames = Map.copyOf(reserved);
     }
 
     /**
-     * Creates the flags as the configuration sets them. The names are taken as they are, valid
-     * or not; a name that is no identifier can never be named by a directive.
+     * Creates the flags as the configuration sets them. The configured names are taken as they
+     * are, valid or not, reserved or not; a name that is no identifier can never be named by a
+     * directive.
      *
-     * @param defines The flags of the compilation's options, name to optional value.
+     * @param defines       The flags of the compilation's options, name to optional value.
+     * @param reservedNames The names nothing may define, as the symbol table takes them: each
+     *                      with what it is, "an operator" or "a function", or the empty text for
+     *                      a name reserved as it is, such as {@code @}, the cursor.
      * @return Flags holding exactly the given names and values.
      */
-    public static Flags of(Map<String, OptionalLong> defines) {
-        Flags flags = new Flags();
+    public static Flags of(Map<String, OptionalLong> defines, Map<String, String> reservedNames) {
+        Flags flags = new Flags(reservedNames);
         defines.forEach((name, value) -> flags.entries.put(key(name), new Entry(value, CONFIGURATION)));
         return flags;
     }
 
     /**
-     * Returns the flags of the dependency scan, seeding them silently from the options on the
-     * first request; the preprocessor reports what is wrong with them.
+     * Sets a flag. A reserved name is rejected. A flag that is not set takes the definition; one
+     * that is set keeps its definition, and the call is accepted when the definition is the same
+     * and rejected when the value differs or one of the two has a value and the other has none.
      *
-     * @param context The scan context holding the slot and the options.
-     * @return The one instance of the scan.
-     */
-    public static Flags inScan(IDependencyScanContext context) {
-        return context.getOrCreate(Flags.class, () -> of(context.options().defines()));
-    }
-
-    /**
-     * Sets a flag. A flag that is not set takes the definition; one that is set keeps its
-     * definition, and the call is accepted when the definition is the same and rejected when the
-     * value differs or one of the two has a value and the other has none.
-     *
-     * @param name   The flag name.
+     * @param name   The flag name, as written.
      * @param value  The value, or empty for a flag without one.
      * @param origin Where the definition stands, as a phrase completing "defined …", e.g.
      *               {@code "at main.evo:3"}; named when a later definition conflicts with it.
@@ -67,6 +63,12 @@ public final class Flags {
      */
     public Optional<String> define(String name, OptionalLong value, String origin) {
         String key = key(name);
+        String reserved = reservedNames.get(key);
+        if (reserved != null) {
+            return Optional.of(reserved.isEmpty()
+                    ? "'" + name + "' cannot be defined."
+                    : "'" + name + "' is " + reserved + " and cannot be defined.");
+        }
         Entry existing = entries.get(key);
         if (existing == null) {
             entries.put(key, new Entry(value, origin));

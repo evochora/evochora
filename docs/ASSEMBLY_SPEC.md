@@ -725,7 +725,7 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
 * **Lines of their own**: the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
 * **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
 * **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
-* **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by `.IFDEF`; a flag is seen only by `.IFDEF` and cannot be used as an operand.
+* **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by the directives that read the program; a flag is seen only by `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` and cannot be used as an operand.
 
 ### Modules and Procedures
 

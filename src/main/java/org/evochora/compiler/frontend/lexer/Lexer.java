@@ -2,7 +2,10 @@ package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Flags;
+import org.evochora.compiler.frontend.ReadTimeValues;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -45,6 +49,7 @@ public final class Lexer {
     private final CompilerOptions options;
     private final IInstructionSet isa;
     private final Set<String> symbols;
+    private final ReadTimeValues values;
 
     /**
      * Creates a lexer whose entire directive knowledge comes from the supplied handlers.
@@ -57,16 +62,21 @@ public final class Lexer {
      *                    context.
      * @param isa         The instruction set the tokenizer tells opcodes and registers with.
      * @param symbols     The registered lexer symbols the tokenizer emits as symbol tokens.
+     * @param operations  The operations of the compilation, with which the handlers compute
+     *                    through the context.
+     * @param flags       The flags of the phase, seeded from the options, which the handlers
+     *                    fill through the context and a computation reads.
      */
     public Lexer(DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                  Map<String, IDependencyScanHandler> handlers, CompilerOptions options,
-                 IInstructionSet isa, Set<String> symbols) {
+                 IInstructionSet isa, Set<String> symbols, OperationRegistry operations, Flags flags) {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.handlers = handlers;
         this.options = Objects.requireNonNull(options, "options");
         this.isa = isa;
         this.symbols = symbols;
+        this.values = new ReadTimeValues(flags, operations, isa);
     }
 
     /**
@@ -279,6 +289,17 @@ public final class Lexer {
         @Override
         public CompilerOptions options() {
             return options;
+        }
+
+        @Override
+        public Flags flags() {
+            return values.flags();
+        }
+
+        @Override
+        public Optional<Long> evaluate(List<Token> tokens) {
+            return values.read(tokens) instanceof ReadTimeValues.Reading.Number number
+                    ? Optional.of(number.value()) : Optional.empty();
         }
 
         @Override

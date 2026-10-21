@@ -1,38 +1,49 @@
 package org.evochora.compiler.features.conditional;
 
-import org.evochora.compiler.frontend.SignedNumber;
+import org.evochora.compiler.frontend.DirectiveLine;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.OptionalLong;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * The condition of a conditional directive, {@code NAME [op operand]}, and its evaluation
- * against the {@link Flags}. The dependency scan reads it from the text of a line, the
- * preprocessor from the tokens of the directive; both evaluate it here, so the two phases agree
- * on what holds.
+ * The condition of a conditional directive and its evaluation against the {@link Flags}. The
+ * dependency scan and the preprocessor read it from the tokens of the directive's line and
+ * evaluate it here, each with its own way of computing a value, so the two phases agree on what
+ * holds.
  * <p>
- * {@code .IFDEF NAME} holds if the flag is set. {@code .IFDEF NAME op operand} holds if the flag
- * is set, has a value, and the comparison of that value with the operand holds; the operand is
- * an integer or the name of another flag, whose value is used. {@code .IFNDEF NAME} holds if the
- * flag is not set and takes no comparison. A comparison that cannot be made, because a flag has
- * no value or the operand names a flag that is not set, is an error, not a condition that fails.
+ * {@code .IFDEF NAME} holds if the flag is set. {@code .IFDEF left op right} compares two values,
+ * each a flag name, an integer or a computation, the tokens up to the comparison symbol outside
+ * brackets; a flag name stands for the flag's value. When the left side is a flag name alone and
+ * the flag is not set, the comparison does not hold. {@code .IFDEF (computation)}, a parenthesis,
+ * a call or an index alone, holds when the computation can be computed. {@code .IFNDEF NAME}
+ * holds if the flag is not set and takes no comparison. A value that cannot be computed, because
+ * a flag has no value, a name is no flag set or the result is no number, is an error, not a
+ * condition that fails.
  *
  * @param negated    Whether the directive asks for the flag not to be set, as {@code .IFNDEF}
  *                   and {@code .ELSEIFNDEF} do.
- * @param name       The flag name, upper-cased.
- * @param comparison The comparison, or empty for a test of the flag alone.
+ * @param left       The tokens of the left side, or of the whole condition without a
+ *                   comparison: a flag name alone, or a computation.
+ * @param comparison The comparison, or empty for a test of the left side alone.
  */
-public record Condition(boolean negated, String name, Optional<Comparison> comparison) {
+public record Condition(boolean negated, List<Token> left, Optional<Comparison> comparison) {
+
+    private static final Set<String> COMPARISON_SYMBOLS = Arrays.stream(Operator.values())
+            .flatMap(operator -> operator.symbols().stream()).collect(Collectors.toUnmodifiableSet());
 
     /**
-     * Upper-cases the name.
+     * Copies the left side.
      */
     public Condition {
-        name = name.toUpperCase(Locale.ROOT);
+        left = List.copyOf(left);
     }
 
     /**
@@ -43,13 +54,13 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         EQ("=", "=="),
         /** {@code <>}, also written {@code !=}: the values differ. */
         NE("<>", "!="),
-        /** {@code <}: the flag's value is less. */
+        /** {@code <}: the left value is less. */
         LT("<"),
-        /** {@code <=}: the flag's value is less or equal. */
+        /** {@code <=}: the left value is less or equal. */
         LE("<="),
-        /** {@code >}: the flag's value is greater. */
+        /** {@code >}: the left value is greater. */
         GT(">"),
-        /** {@code >=}: the flag's value is greater or equal. */
+        /** {@code >=}: the left value is greater or equal. */
         GE(">=");
 
         private final List<String> symbols;
@@ -83,9 +94,9 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         }
 
         /**
-         * Compares a flag's value with the value on the right of the operator.
+         * Compares the value on the left of the operator with the value on its right.
          *
-         * @param left  The flag's value.
+         * @param left  The value on the left.
          * @param right The value it is compared with.
          * @return {@code true} if the comparison holds.
          */
@@ -102,44 +113,22 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
     }
 
     /**
-     * The right-hand side of a comparison.
-     */
-    public sealed interface Operand permits Literal, FlagName {
-    }
-
-    /**
-     * An integer written in the condition.
+     * A comparison of the left side with a right side.
      *
-     * @param value The integer.
+     * @param operator The operator.
+     * @param right    The tokens of the right side: a flag name, an integer or a computation.
      */
-    public record Literal(long value) implements Operand {
-    }
-
-    /**
-     * The name of a flag whose value is compared.
-     *
-     * @param name The flag name, upper-cased.
-     */
-    public record FlagName(String name) implements Operand {
+    public record Comparison(Operator operator, List<Token> right) {
         /**
-         * Upper-cases the name.
+         * Copies the right side.
          */
-        public FlagName {
-            name = name.toUpperCase(Locale.ROOT);
+        public Comparison {
+            right = List.copyOf(right);
         }
     }
 
     /**
-     * A comparison of the flag's value with an operand.
-     *
-     * @param operator The operator.
-     * @param operand  The right-hand side.
-     */
-    public record Comparison(Operator operator, Operand operand) {
-    }
-
-    /**
-     * A condition that cannot be read, or cannot be evaluated against the flags as they are.
+     * A condition that cannot be read.
      */
     public static final class Invalid extends Exception {
         private static final long serialVersionUID = 1L;
@@ -166,8 +155,9 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
     }
 
     /**
-     * Reads a condition from the tokens that follow the directive up to the end of its line, as
-     * the preprocessor sees them.
+     * Reads a condition from the tokens that follow the directive up to the end of its line. The
+     * values are only delimited here; whether they compute is found when the condition is
+     * evaluated.
      *
      * @param directive The directive token.
      * @param tokens    The tokens after it, up to the line end, excluded.
@@ -180,82 +170,98 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         if (tokens.isEmpty()) {
             throw new Invalid(word + " needs a flag name");
         }
-        Token name = tokens.get(0);
-        if (!isNameToken(name)) {
-            throw new Invalid(word + " needs a flag name, found '" + name.text() + "'");
-        }
-        if (tokens.size() == 1) {
-            return new Condition(negates(word), name.text(), Optional.empty());
-        }
+        Token first = tokens.get(0);
         if (negates(word)) {
-            throw new Invalid(word + " takes no comparison; compare with .IFDEF or .ELSEIFDEF and use .ELSEDEF"
-                    + " for the opposite");
+            if (!isNameToken(first)) {
+                throw new Invalid(word + " needs a flag name, found '" + first.text() + "'");
+            }
+            if (tokens.size() > 1) {
+                throw new Invalid(word + " takes no comparison; compare with .IFDEF or .ELSEIFDEF and use .ELSEDEF"
+                        + " for the opposite");
+            }
+            return new Condition(true, tokens, Optional.empty());
         }
-        Token symbol = tokens.get(1);
-        Optional<Operator> operator = symbol.type() == TokenType.SYMBOL ? Operator.of(symbol.text()) : Optional.empty();
-        if (operator.isEmpty()) {
-            throw new Invalid("Expected a comparison (=, ==, <>, !=, <, <=, >, >=) after the flag name of " + word
-                    + ", found '" + symbol.text() + "'");
+        List<List<Token>> pieces = DirectiveLine.pieces(tokens, Set.of(), COMPARISON_SYMBOLS);
+        if (pieces.size() == 1) {
+            if (isFlagName(tokens) || isComputation(tokens)) {
+                return new Condition(false, tokens, Optional.empty());
+            }
+            if (isNameToken(first)) {
+                throw new Invalid("Expected a comparison (=, ==, <>, !=, <, <=, >, >=) after the flag name of " + word
+                        + ", found '" + tokens.get(1).text() + "'");
+            }
+            throw new Invalid(word + " needs a flag name, found '" + first.text() + "'");
         }
-        if (tokens.size() == 2) {
-            throw new Invalid("Expected an integer or a flag name after '" + symbol.text() + "' in " + word);
+        List<Token> left = pieces.get(0);
+        List<Token> right = pieces.get(1);
+        Token symbol = tokens.get(left.size());
+        if (pieces.size() > 2) {
+            throw new Invalid("Unexpected '" + tokens.get(left.size() + 1 + right.size()).text()
+                    + "' after the condition of " + word);
         }
-        Token operandToken = tokens.get(2);
-        Optional<SignedNumber> number = SignedNumber.at(tokens, 2);
-        Operand operand;
-        int operandLength = 1;
-        if (number.isPresent()) {
-            operand = new Literal(number.get().value());
-            operandLength = number.get().length();
-        } else if (isNameToken(operandToken)) {
-            operand = new FlagName(operandToken.text());
-        } else {
-            throw new Invalid("Expected an integer or a flag name after '" + symbol.text() + "' in " + word
-                    + ", found '" + operandToken.text() + "'");
+        if (left.isEmpty()) {
+            throw new Invalid("Expected an integer, a flag name or a computation before '" + symbol.text()
+                    + "' in " + word);
         }
-        if (tokens.size() > 2 + operandLength) {
-            throw new Invalid("Unexpected '" + tokens.get(2 + operandLength).text() + "' after the condition of " + word);
+        if (right.isEmpty()) {
+            throw new Invalid("Expected an integer, a flag name or a computation after '" + symbol.text()
+                    + "' in " + word);
         }
-        return new Condition(false, name.text(), Optional.of(new Comparison(operator.get(), operand)));
+        Operator operator = Operator.of(symbol.text()).orElseThrow();
+        return new Condition(false, left, Optional.of(new Comparison(operator, right)));
     }
 
     /**
      * Evaluates the condition against the flags as they are.
      *
-     * @param flags The flags.
-     * @return {@code true} if the condition holds.
-     * @throws Invalid if a comparison cannot be made: the flag is set without a value, or the
-     *                 operand names a flag that is not set or has no value.
+     * @param flags    The flags.
+     * @param evaluate Computes the number of the tokens of a value, or gives empty when they
+     *                 compute none; the phase decides whether that is reported.
+     * @return Whether the condition holds, or empty if a value it needs cannot be computed.
      */
-    public boolean holds(Flags flags) throws Invalid {
+    public Optional<Boolean> holds(Flags flags, Function<List<Token>, Optional<Long>> evaluate) {
         if (negated) {
-            return !flags.isSet(name);
-        }
-        if (!flags.isSet(name)) {
-            return false;
+            return Optional.of(!flags.isSet(left.get(0).text()));
         }
         if (comparison.isEmpty()) {
+            return isFlagName(left) ? Optional.of(flags.isSet(left.get(0).text())) : evaluate.apply(left).map(value -> true);
+        }
+        Comparison compared = comparison.get();
+        if (isFlagName(left) && !flags.isSet(left.get(0).text())) {
+            return evaluate.apply(compared.right()).map(value -> false);
+        }
+        Optional<Long> leftValue = evaluate.apply(left);
+        if (leftValue.isEmpty()) {
+            return Optional.empty();
+        }
+        return evaluate.apply(compared.right()).map(rightValue -> compared.operator().holds(leftValue.get(), rightValue));
+    }
+
+    /**
+     * Reports whether the tokens of a value are a flag name alone.
+     *
+     * @param tokens The tokens of a side.
+     * @return {@code true} for a single token that names a flag.
+     */
+    static boolean isFlagName(List<Token> tokens) {
+        return tokens.size() == 1 && isNameToken(tokens.get(0));
+    }
+
+    /**
+     * Reports whether the tokens of a condition without a comparison are a computation: a
+     * parenthesis, a call or an index. Whether it is one computation and nothing after it is
+     * found when it is computed.
+     */
+    private static boolean isComputation(List<Token> tokens) {
+        TokenType first = tokens.get(0).type();
+        if (first == TokenType.OPEN_PARENTHESIS) {
             return true;
         }
-        OptionalLong left = flags.valueOf(name);
-        if (left.isEmpty()) {
-            throw new Invalid("Flag " + name + " is set without a value and cannot be compared");
+        if (tokens.size() < 2 || (first != TokenType.IDENTIFIER && first != TokenType.OPCODE)) {
+            return false;
         }
-        long right = switch (comparison.get().operand()) {
-            case Literal literal -> literal.value();
-            case FlagName other -> {
-                if (!flags.isSet(other.name())) {
-                    throw new Invalid("Flag " + other.name() + ", which " + name + " is compared with, is not set");
-                }
-                OptionalLong value = flags.valueOf(other.name());
-                if (value.isEmpty()) {
-                    throw new Invalid("Flag " + other.name() + ", which " + name
-                            + " is compared with, is set without a value");
-                }
-                yield value.getAsLong();
-            }
-        };
-        return comparison.get().operator().holds(left.getAsLong(), right);
+        TokenType second = tokens.get(1).type();
+        return second == TokenType.CALL_PARENTHESIS || second == TokenType.OPEN_BRACKET;
     }
 
     /**

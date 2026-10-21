@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.CompilerOptions;
@@ -133,6 +134,21 @@ class LexerLinesTest {
     }
 
     @Test
+    void aComputedFlagDefinedBeforeAnImportHoldsInsideTheImportedFile() throws Exception {
+        Files.writeString(tempDir.resolve("lib.evo"), ".IFDEF HALF = 2\n.SOURCE \"big.evo\"\n.ENDDEF\nNOP\n");
+        Files.writeString(tempDir.resolve("big.evo"), "NOP\n");
+
+        Reading with = read(".DEFINE ROWS 4\n.DEFINE HALF (ROWS/2)\n.IMPORT \"lib.evo\" AS LIB\n",
+                CompilerOptions.defaults());
+        Reading without = read(".DEFINE ROWS 6\n.DEFINE HALF (ROWS/2)\n.IMPORT \"lib.evo\" AS LIB\n",
+                CompilerOptions.defaults());
+
+        assertThat(with.diagnostics.hasErrors()).as(with.diagnostics.summary()).isFalse();
+        assertThat(with.graph.tokens()).containsKey(resolved("big.evo"));
+        assertThat(without.graph.tokens()).doesNotContainKey(resolved("big.evo"));
+    }
+
+    @Test
     void aFileImportedTwiceIsTokenizedOnceAndItsErrorReportedOnce() throws Exception {
         Files.writeString(tempDir.resolve("lib.evo"), "NOP §\n");
 
@@ -184,7 +200,8 @@ class LexerLinesTest {
         StandardFeatures.all().forEach(f -> f.register(features));
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), tempDir),
-                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols());
+                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols(),
+                features.operations(), Flags.of(options.defines(), features.operations().reservedNames()));
         DependencyGraph graph = lexer.read(mainSource, resolved("main.evo"), "");
         return new Reading(graph, diagnostics);
     }

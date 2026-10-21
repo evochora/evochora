@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
@@ -64,8 +65,10 @@ public class LexerTest {
 
     private static Lexer lexer(DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                                Map<String, IDependencyScanHandler> handlers, CompilerOptions options) {
+        FeatureRegistry features = standardRegistry();
         return new Lexer(diagnostics, resolver, handlers, options, new RuntimeInstructionSetAdapter(),
-                standardRegistry().lexerSymbols());
+                features.lexerSymbols(), features.operations(),
+                Flags.of(options.defines(), features.operations().reservedNames()));
     }
 
     @Test

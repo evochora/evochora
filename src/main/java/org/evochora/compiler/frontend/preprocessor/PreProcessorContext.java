@@ -2,6 +2,13 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceFile;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.frontend.Flags;
+import org.evochora.compiler.frontend.ReadTimeValues;
+import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;
@@ -19,9 +26,12 @@ import java.util.function.Supplier;
  * Contains the state that handlers read and modify while the token stream is expanded: the
  * handlers the preprocessor dispatches to, the pre-lexed token streams and the lines of the files
  * that may be included, the entry of the main file, the inclusions currently open, the options of the compilation, the numbers of the instances of injected
- * tokens, the names nothing may define, and a slot in which features keep state of their own types.
+ * tokens, the names nothing may define, the flags with the computation of a number over them, and
+ * a slot in which features keep state of their own types.
  */
 public class PreProcessorContext {
+    private static final OperationRegistry NO_OPERATIONS = new OperationRegistry();
+
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
     private final String rootAliasChain;
     private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
@@ -30,13 +40,16 @@ public class PreProcessorContext {
     private final SourceFile mainFile;
     private final CompilerOptions options;
     private final Map<String, String> reservedNames;
+    private final ReadTimeValues values;
+    private DiagnosticsEngine diagnostics;
     private final Map<Class<?>, Object> featureState = new HashMap<>();
     private int lastInstance;
 
     /**
      * Creates a context carrying the token streams that were pre-lexed and the lines that were
-     * read for the files found during dependency scanning. A null alias chain becomes the empty
-     * chain, a null map an empty map.
+     * read for the files found during dependency scanning, which knows no operation of
+     * computations: a value read at this time is a number or a flag, and an operator in it is
+     * unexpected. A null alias chain becomes the empty chain, a null map an empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
@@ -51,17 +64,21 @@ public class PreProcessorContext {
      *                       entries, stands under the root chain with the lines of this path.
      *                       Must not be null.
      * @param options        The options of the compilation, offered to handlers through
-     *                       {@link #options()}; must not be null.
+     *                       {@link #options()}, whose flags seed {@link #flags()}; must not be
+     *                       null.
      */
     public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
                                Map<String, List<String>> fileLines, String mainName, String mainPath,
                                CompilerOptions options) {
-        this(rootAliasChain, fileTokens, fileLines, mainName, mainPath, options, Map.of());
+        this(rootAliasChain, fileTokens, fileLines, mainName, mainPath, options, NO_OPERATIONS,
+                new RuntimeInstructionSetAdapter(),
+                Flags.of(Objects.requireNonNull(options, "options").defines(), NO_OPERATIONS.reservedNames()));
     }
 
     /**
      * Creates a context as {@link #PreProcessorContext(String, Map, Map, String, String, CompilerOptions)}
-     * does, which also offers the names nothing in a program may define.
+     * does, which computes with the operations of the compilation and offers the names nothing in
+     * a program may define.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
@@ -70,13 +87,17 @@ public class PreProcessorContext {
      * @param mainName       The name the main file was given to the compiler under.
      * @param mainPath       The resolved path of the main file; must not be null.
      * @param options        The options of the compilation; must not be null.
-     * @param reservedNames  The names nothing may define, as the symbol table takes them: each
-     *                       with what it is, "an operator" or "a function", or the empty text for
-     *                       a name reserved as it is, such as {@code @}, the cursor.
+     * @param operations     The operations of the compilation, with which {@link #evaluate}
+     *                       computes; their names, and the cursor {@code @}, are the names
+     *                       nothing may define.
+     * @param isa            The instruction set, whose molecule types a computation recognises
+     *                       before the typing colon.
+     * @param flags          The flags of the phase, seeded from the options.
      */
     public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
                                Map<String, List<String>> fileLines, String mainName, String mainPath,
-                               CompilerOptions options, Map<String, String> reservedNames) {
+                               CompilerOptions options, OperationRegistry operations, IInstructionSet isa,
+                               Flags flags) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
         this.fileLines = fileLines != null ? fileLines : Map.of();
@@ -84,8 +105,9 @@ public class PreProcessorContext {
                 Objects.requireNonNull(mainPath, "mainPath"), linesOf(mainPath));
         this.options = Objects.requireNonNull(options, "options");
         Map<String, String> reserved = new HashMap<>();
-        reservedNames.forEach((name, what) -> reserved.put(name.toUpperCase(Locale.ROOT), what));
+        operations.reservedNames().forEach((name, what) -> reserved.put(name.toUpperCase(Locale.ROOT), what));
         this.reservedNames = Map.copyOf(reserved);
+        this.values = new ReadTimeValues(flags, operations, isa);
     }
 
     /**
@@ -178,6 +200,57 @@ public class PreProcessorContext {
      */
     public int nextInstance() {
         return ++lastInstance;
+    }
+
+    // --- Flags ---
+
+    /**
+     * Returns the flags of the phase: one store for the whole token stream, seeded from the
+     * options of the compilation, which the directives of a feature fill as the walk reaches
+     * them.
+     *
+     * @return The flags of the phase.
+     */
+    public Flags flags() {
+        return values.flags();
+    }
+
+    /**
+     * Computes a number at read time: the tokens of one value, a number, a flag name or a
+     * computation, read with the operations of the compilation, every name a flag of
+     * {@link #flags()} with its value. An error is reported to the diagnostics of the
+     * preprocessor that walks the stream, at the token or the node at fault, or else at the
+     * first token: tokens that form no computation, a name that is no flag or a flag without a
+     * value, a computation that fails, a result that is no number.
+     *
+     * @param tokens The tokens of the value, as the directive delimits them; not empty.
+     * @return The number, or empty if an error was reported.
+     * @throws IllegalStateException if no preprocessor walks a stream with this context.
+     */
+    public Optional<Long> evaluate(List<Token> tokens) {
+        return switch (values.read(tokens)) {
+            case ReadTimeValues.Reading.Number number -> Optional.of(number.value());
+            case ReadTimeValues.Reading.Failed failed -> {
+                if (diagnostics == null) {
+                    throw new IllegalStateException("No preprocessor reports for this context.");
+                }
+                SourceInfo at = failed.at() != null ? failed.at()
+                        : tokens.isEmpty() ? null : tokens.getFirst().source();
+                diagnostics.reportError(failed.message(), at == null ? "" : at.fileName(),
+                        at == null ? 0 : at.lineNumber());
+                yield Optional.empty();
+            }
+        };
+    }
+
+    /**
+     * Sets the diagnostics {@link #evaluate} reports to: those of the preprocessor that walks a
+     * stream with this context.
+     *
+     * @param diagnostics The preprocessor's diagnostics.
+     */
+    void reportTo(DiagnosticsEngine diagnostics) {
+        this.diagnostics = diagnostics;
     }
 
     // --- Feature state ---

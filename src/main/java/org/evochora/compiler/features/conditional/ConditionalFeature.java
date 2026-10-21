@@ -7,12 +7,14 @@ import org.evochora.compiler.frontend.BlockKind;
 import java.util.Set;
 
 /**
- * Compiler feature for conditional compilation: flags set with {@code .DEFINE NAME [integer]}
- * and removed with {@code .UNDEF NAME}, and blocks {@code .IFDEF} / {@code .IFNDEF} …
- * {@code .ELSEIFDEF} / {@code .ELSEIFNDEF} / {@code .ELSEDEF} … {@code .ENDDEF} that keep the
- * lines of the first branch whose condition holds. A condition tests whether a flag is set, and
- * may compare its value with {@code =} or {@code ==}, {@code <>} or {@code !=}, {@code <}, {@code <=},
- * {@code >} or {@code >=}.
+ * Compiler feature for conditional compilation: flags set with {@code .DEFINE NAME [value]},
+ * the value a number, a flag name or a computation, and removed with {@code .UNDEF NAME}, and
+ * blocks {@code .IFDEF} / {@code .IFNDEF} … {@code .ELSEIFDEF} / {@code .ELSEIFNDEF} /
+ * {@code .ELSEDEF} … {@code .ENDDEF} that keep the lines of the first branch whose condition
+ * holds. A condition tests whether a flag is set or whether a computation can be computed, or
+ * compares two values, each a flag, a number or a computation, with {@code =} or {@code ==},
+ * {@code <>} or {@code !=}, {@code <}, {@code <=}, {@code >} or {@code >=}. The flags are the
+ * stores the core creates for the two read-time phases; this feature fills them.
  *
  * <p>Registers the comparison symbols; the preprocessor handlers for the four directives,
  * with {@code .DEFINE} and {@code .UNDEF} as directives that stand only at the top level and the

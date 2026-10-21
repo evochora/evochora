@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.CompilerOptions;
@@ -334,7 +335,8 @@ class ModuleSourceConstIntegrationTest {
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults(),
-                new RuntimeInstructionSetAdapter(), featureRegistry.lexerSymbols());
+                new RuntimeInstructionSetAdapter(), featureRegistry.lexerSymbols(), featureRegistry.operations(),
+                Flags.of(Map.of(), featureRegistry.operations().reservedNames()));
         DependencyGraph graph = lexer.read(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 

@@ -25,8 +25,8 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `reg` | Register aliases `.REG %ALIAS %REGISTER`, alias names in the artifact | parser, analysis, IR conversion, emission |
 | `constdir` | Constants `[EXPORT] .CONST NAME VALUE`, a value that may be a computation the layout finishes | parser, analysis, IR conversion, layout, emission |
 | `macro` | `.MACRO NAME [PARAMS] … .ENDMACRO`, macro invocation by name, file-local macro scope | preprocessor `.MACRO`, block `.MACRO`/`.ENDMACRO` (stored) |
-| `repeat` | `.REPEAT n … .ENDREPEAT`, the shorthand `body^n` | preprocessor `.REPEAT` and `^`, block `.REPEAT`/`.ENDREPEAT` (stored) |
-| `conditional` | Flags `.DEFINE NAME [integer]` and `.UNDEF NAME`, global to a compilation and seeded from `CompilerOptions.defines`; conditional blocks `.IFDEF`/`.IFNDEF NAME` … `.ELSEIFDEF`/`.ELSEIFNDEF` … `.ELSEDEF` … `.ENDDEF`, a condition comparing a flag's value with `=`, `<>`, `<`, `<=`, `>` or `>=`; dependencies inside conditional blocks, followed by the dependency scan | lexer symbols `=` `<>` `<` `<=` `>` `>=`, dependency scan, preprocessor `.DEFINE`, `.UNDEF`, `.IFDEF` and `.IFNDEF` (`.DEFINE` and `.UNDEF` top level only), block `.IFDEF`/`.IFNDEF` … `.ENDDEF` divided by `.ELSEIFDEF`, `.ELSEIFNDEF` and `.ELSEDEF` (in place) |
+| `repeat` | `.REPEAT n … .ENDREPEAT`, the shorthand `body^n`, the count a number, a flag or a computation | preprocessor `.REPEAT` and `^`, block `.REPEAT`/`.ENDREPEAT` (stored) |
+| `conditional` | Flags `.DEFINE NAME [number\|flag\|computation]` and `.UNDEF NAME`, global to a compilation; their stores, one per read-time phase, are created and seeded from `CompilerOptions.defines` by the core and filled by this feature; conditional blocks `.IFDEF`/`.IFNDEF NAME` … `.ELSEIFDEF`/`.ELSEIFNDEF` … `.ELSEDEF` … `.ENDDEF`, a condition testing a flag, testing whether a computation can be computed, or comparing two values, each a flag, a number or a computation, with `=`, `<>`, `<`, `<=`, `>` or `>=`; the flags are what the counts of `.REPEAT` and `^` compute with; dependencies inside conditional blocks, followed by the dependency scan | lexer symbols `=` `<>` `<` `<=` `>` `>=`, dependency scan, preprocessor `.DEFINE`, `.UNDEF`, `.IFDEF` and `.IFNDEF` (`.DEFINE` and `.UNDEF` top level only), block `.IFDEF`/`.IFNDEF` … `.ENDDEF` divided by `.ELSEIFDEF`, `.ELSEIFNDEF` and `.ELSEDEF` (in place) |
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
@@ -37,7 +37,8 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 ## What the core does on its own
 
 The core is the pipeline in `Compiler.java`, the eleven phases with their registries and
-contexts, the three data formats under `model/`, the symbol table and the instruction-set view.
+contexts, the three data formats under `model/`, the symbol table, the flag stores of the two
+read-time phases and the instruction-set view.
 Five phases are pure dispatch and hold no language logic: the preprocessor, the IR generator,
 the IR rewriter, the linker and the compiler itself.
 
@@ -89,7 +90,8 @@ enum whose eight members are named after individual features, mapped exhaustivel
 the core at exactly one place: `ProgramIdentity` takes the defines into the program's identity as
 a key of the compilation's variant and attaches no meaning to their names or values.
 `sourceRoots` is read by the core. The core upper-cases the names, rejects two keys that are one
-name, and hands the options to the contexts of Phases 1 and 2 without looking at the defines.
+name, seeds the two flag stores, one per read-time phase, from the defines without giving the
+flags a meaning, and hands the options to the contexts of Phases 1 and 2 as before.
 
 A token carries two fields of provenance that the core uses only as keys — in the token map, in
 the symbol table by placement, in the instruction index by expansion and in the emitter's
