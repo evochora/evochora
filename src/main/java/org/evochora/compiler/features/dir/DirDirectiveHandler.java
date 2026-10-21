@@ -18,7 +18,8 @@ public class DirDirectiveHandler implements IParserStatementHandler {
      * Parses a <code>.DIR</code> directive.
      * The syntax is either <code>.DIR &lt;vector-literal&gt;</code>, which writes the direction
      * out, or <code>.DIR @+&lt;axis&gt;|&lt;axis&gt;</code>, which rotates the direction
-     * currently in effect by 90 degrees in the plane those two axes span.
+     * currently in effect by 90 degrees in the plane those two axes span. The marker is the name
+     * <code>@</code> followed by the symbol <code>+</code> or <code>-</code>.
      * @param context The parsing context.
      * @return A {@link DirNode} representing the directive, or {@code null} after a reported
      *         error, so that nothing but a vector or a rotation reaches the later phases.
@@ -27,9 +28,14 @@ public class DirDirectiveHandler implements IParserStatementHandler {
     public AstNode parse(IParsingContext context) {
         Token directive = context.advance(); // consume .DIR
 
-        boolean forward = context.checkSymbol("@+");
-        if (forward || context.checkSymbol("@-")) {
+        if (context.check(TokenType.IDENTIFIER) && context.peek().text().equals("@")) {
             context.advance();
+            boolean forward = context.matchSymbol("+");
+            if (!forward && !context.matchSymbol("-")) {
+                context.getDiagnostics().reportError("Expected '+' or '-' after '@' in .DIR.",
+                        context.peek().source().fileName(), context.peek().source().lineNumber());
+                return null;
+            }
             Token axisA = context.consume(TokenType.NUMBER, "Expected the first axis of the rotation plane.");
             context.consume(TokenType.PIPE, "Expected '|' between the two axes of the rotation plane.");
             Token axisB = context.consume(TokenType.NUMBER, "Expected the second axis of the rotation plane.");

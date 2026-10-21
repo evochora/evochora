@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
@@ -200,17 +201,20 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
             throw new Invalid("Expected an integer or a flag name after '" + symbol.text() + "' in " + word);
         }
         Token operandToken = tokens.get(2);
+        Optional<SignedNumber> number = SignedNumber.at(tokens, 2);
         Operand operand;
-        if (operandToken.type() == TokenType.NUMBER && operandToken.value() instanceof Long value) {
-            operand = new Literal(value);
+        int operandLength = 1;
+        if (number.isPresent()) {
+            operand = new Literal(number.get().value());
+            operandLength = number.get().length();
         } else if (isNameToken(operandToken)) {
             operand = new FlagName(operandToken.text());
         } else {
             throw new Invalid("Expected an integer or a flag name after '" + symbol.text() + "' in " + word
                     + ", found '" + operandToken.text() + "'");
         }
-        if (tokens.size() > 3) {
-            throw new Invalid("Unexpected '" + tokens.get(3).text() + "' after the condition of " + word);
+        if (tokens.size() > 2 + operandLength) {
+            throw new Invalid("Unexpected '" + tokens.get(2 + operandLength).text() + "' after the condition of " + word);
         }
         return new Condition(false, name.text(), Optional.of(new Comparison(operator.get(), operand)));
     }

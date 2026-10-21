@@ -2,12 +2,14 @@ package org.evochora.compiler.features.repeat;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Handles the {@code ^} directive, which is shorthand for a {@code .REPEAT} block.
@@ -31,8 +33,17 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume ^
 
-        Token countToken = preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");
-        long written = (Long) countToken.value();
+        int countIndex = preProcessor.getCurrentIndex();
+        Optional<SignedNumber> number = SignedNumber.at(
+                preProcessor.tokensOf(countIndex, Math.min(countIndex + 2, preProcessor.streamSize())), 0);
+        if (number.isEmpty()) {
+            // No number stands at the cursor, so this reports the missing count
+            preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");
+        }
+        List<Token> countTokens = preProcessor.tokensOf(countIndex, countIndex + number.orElseThrow().length());
+        Token countToken = countTokens.getFirst();
+        for (int i = 0; i < countTokens.size(); i++) preProcessor.advance();
+        long written = number.get().value();
         if (written > Integer.MAX_VALUE) {
             preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",
                     countToken.source().fileName(), countToken.source().lineNumber());
@@ -73,7 +84,7 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
         // Build replacement: .REPEAT n, NEWLINE, BODY, NEWLINE, .ENDREPEAT
         List<Token> replacement = new ArrayList<>();
         replacement.add(synthetic(TokenType.DIRECTIVE, ".REPEAT", caretToken));
-        replacement.add(countToken);
+        replacement.addAll(countTokens);
         replacement.add(synthetic(TokenType.NEWLINE, ";", caretToken));
         replacement.addAll(bodyTokens);
         replacement.add(synthetic(TokenType.NEWLINE, ";", caretToken));

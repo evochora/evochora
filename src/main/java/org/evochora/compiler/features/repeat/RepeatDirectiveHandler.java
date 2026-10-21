@@ -3,12 +3,14 @@ package org.evochora.compiler.features.repeat;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.BlockReader;
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Handles the {@code .REPEAT} directive, which repeats a block.
@@ -40,8 +42,16 @@ public class RepeatDirectiveHandler implements IPreProcessorBlockHandler {
         Token repeatToken = preProcessor.peek();
         preProcessor.advance(); // consume .REPEAT
 
-        Token countToken = preProcessor.consume(TokenType.NUMBER, "Expected repeat count after .REPEAT");
-        long written = (Long) countToken.value();
+        int countIndex = preProcessor.getCurrentIndex();
+        Optional<SignedNumber> number = SignedNumber.at(
+                preProcessor.tokensOf(countIndex, Math.min(countIndex + 2, preProcessor.streamSize())), 0);
+        if (number.isEmpty()) {
+            // No number stands at the cursor, so this reports the missing count
+            preProcessor.consume(TokenType.NUMBER, "Expected repeat count after .REPEAT");
+        }
+        Token countToken = preProcessor.peek();
+        for (int i = 0; i < number.orElseThrow().length(); i++) preProcessor.advance();
+        long written = number.get().value();
         int tokensToRemove = block.end() - startIndex;
         if (written > Integer.MAX_VALUE) {
             preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",

@@ -149,6 +149,56 @@ class MacroExpansionTest {
     }
 
     @Test
+    void substitutesSignedVectorArgumentAsAWhole() {
+        Expansion result = expand(
+                ".MACRO STEP DIR",
+                "  SEKI DIR",
+                ".ENDMACRO",
+                "STEP -1|-2");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly("SEKI", "-", "1", "|", "-", "2");
+    }
+
+    @Test
+    void substitutesSignedNumberAndSignedTypedLiteralArgumentsAsAWhole() {
+        Expansion result = expand(
+                ".MACRO SET REG VALUE",
+                "  SETI REG VALUE",
+                ".ENDMACRO",
+                "SET -3 DATA:-5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly("SETI", "-", "3", "DATA", ":", "-", "5");
+    }
+
+    @Test
+    void substitutesParenthesisAndCallArgumentsAsOneArgumentEach() {
+        Expansion result = expand(
+                ".MACRO PAIR FIRST SECOND",
+                "  SETI FIRST SECOND",
+                ".ENDMACRO",
+                "PAIR (W - (1)) MIN(A, 1)");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly(
+                "SETI", "(", "W", "-", "(", "1", ")", ")", "MIN", "(", "A", ",", "1", ")");
+    }
+
+    @Test
+    void substitutesTypedParenthesisAndIndexArgumentsAsOneArgumentEach() {
+        Expansion result = expand(
+                ".MACRO PAIR FIRST SECOND",
+                "  SETI FIRST SECOND",
+                ".ENDMACRO",
+                "PAIR DATA:(W-1) V[0][1]");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly(
+                "SETI", "DATA", ":", "(", "W", "-", "1", ")", "V", "[", "0", "]", "[", "1", "]");
+    }
+
+    @Test
     void expandsMacroInvokedFromAnotherMacroBody() {
         Expansion result = expand(
                 ".MACRO INC REG",

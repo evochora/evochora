@@ -73,13 +73,15 @@ public interface IFeatureRegistrationContext {
 	 * Registers a character sequence the lexer emits as one
 	 * {@link org.evochora.compiler.model.token.TokenType#SYMBOL} token with that text. The lexer
 	 * tries the registered symbols at the start of every token, longest first, before any of its
-	 * own cases, so a symbol may consist only of the characters {@code ! & * + , . / < = > ? @ ^ ~ -};
-	 * the single characters {@code .} and {@code -} are taken by the lexer and cannot be registered
-	 * alone. The same symbol registered by several features is one symbol.
+	 * own cases, so a symbol may consist only of the characters {@code ! & * + , . / < = > ? ^ ~ -};
+	 * a single character the lexer reads by a fixed case
+	 * ({@link org.evochora.compiler.frontend.lexer.Tokenizer#FIXED_CHARACTERS}, such as {@code .},
+	 * {@code -} or {@code ,}) cannot be registered alone, while a longer symbol such as {@code ..}
+	 * can. The same symbol registered by several features is one symbol.
 	 *
-	 * @param symbol The character sequence, for example {@code ".."} or {@code "@+"}.
+	 * @param symbol The character sequence, for example {@code ".."} or {@code "+"}.
 	 * @throws IllegalArgumentException if the symbol is empty, contains a character outside the
-	 *         alphabet, or is {@code "."} or {@code "-"}; the message names the symbol.
+	 *         alphabet, or is a single fixed character of the lexer; the message names the symbol.
 	 */
 	void lexerSymbol(String symbol);
 

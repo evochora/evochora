@@ -110,19 +110,27 @@ class FeatureRegistryTest {
 
     @Test
     void lexerSymbolRegisteredTwiceIsOneSymbol() {
-        registry.lexerSymbol("@+");
-        registry.lexerSymbol("@+");
+        registry.lexerSymbol("+");
+        registry.lexerSymbol("+");
         registry.lexerSymbol("..");
 
-        assertThat(registry.lexerSymbols()).containsExactlyInAnyOrder("@+", "..");
+        assertThat(registry.lexerSymbols()).containsExactlyInAnyOrder("+", "..");
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-", ".", "AS", ".E", "#-", ""})
+    @ValueSource(strings = {"-", ".", ",", "(", ")", "[", "]", "|", ":", ";", "#", "\"", "AS", ".E", "#-", "@", "@+", ""})
     void lexerSymbolOutsideTheAlphabetOrFixedIsRejected(String symbol) {
         assertThatThrownBy(() -> registry.lexerSymbol(symbol))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'" + symbol + "'");
         assertThat(registry.lexerSymbols()).isEmpty();
+    }
+
+    @Test
+    void lexerSymbolLongerThanAFixedCharacterIsAccepted() {
+        registry.lexerSymbol("..");
+        registry.lexerSymbol("->");
+
+        assertThat(registry.lexerSymbols()).containsExactlyInAnyOrder("..", "->");
     }
 }

@@ -117,17 +117,19 @@ artifact.
 
 Any other character sequence a feature reads is not a case of the tokenizer but a symbol the
 feature registers through `IFeatureRegistrationContext.lexerSymbol`; the tokenizer emits it as one
-`SYMBOL` token whose text the feature's handlers compare: `*`, `..` and `,` for `place`,
-`@+` and `@-` for `org` and `dir`, `^` for `repeat`. The tokenizer tries the registered symbols at
-the start of every token, longest first, before its fixed cases, so a symbol may consist only
-of the characters `! & * + , . / < = > ? @ ^ ~ -`, which cut into no identifier, number,
-register, string, comment or statement end. `|` and `:` stay fixed tokens, because the parser
-itself reads them in the vector and typed literals every operand may take; the single
-characters `.` and `-` are rejected as symbols, being the tokenizer's cases for directives and
-negative numbers, while longer sequences beginning with them are allowed. Brackets, `\` and
-`§` are kept out of the alphabet as a reserve for the core. The alphabet is one constant in
-`FeatureRegistry`; it grows by a character when a feature needs one and the core does not
-claim it.
+`SYMBOL` token whose text the feature's handlers compare: `*` and `..` for `place`, `+` for
+`org` and `dir`, which read their marker `@+` or `@-` as the name `@` followed by `+` or the
+minus, `^` for `repeat`. The tokenizer tries the registered symbols at the start of every token,
+longest first, before its fixed cases, so a symbol may consist only of the characters
+`! & * + , . / < = > ? ^ ~ -`, which cut into no identifier, number, register, string, comment
+or statement end. `|` and `:` stay fixed tokens, because the parser itself reads them in the
+vector and typed literals every operand may take; `( ) [ ]` and `,` are fixed tokens as well,
+and `@` alone is a name token. A symbol equal to one of the tokenizer's fixed characters
+(`Tokenizer.FIXED_CHARACTERS`: `.` `-` `( ) [ ] ,` `|` `:` `;` `#` `"`) is rejected, since the
+symbol would take the character from the tokenizer's own case, while longer sequences such as
+`..` are allowed. `\` and `§` are kept out of the alphabet as a reserve for the core.
+The alphabet is one constant in `FeatureRegistry`; it grows by a character when a feature needs
+one and the core does not claim it.
 
 ## What the probe showed
 

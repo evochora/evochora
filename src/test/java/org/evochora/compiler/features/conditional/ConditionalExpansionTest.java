@@ -224,6 +224,26 @@ class ConditionalExpansionTest {
     }
 
     @Test
+    void aNegativeOperandIsComparedWithItsSign() {
+        Expansion result = expand(
+                ".DEFINE A -1",
+                ".IFDEF A = -1",
+                "  ADDI %DR0 DATA:1",
+                ".ENDDEF",
+                ".IFDEF A = 1",
+                "  ADDI %DR0 DATA:2",
+                ".ENDDEF",
+                ".IFDEF A>-2",
+                "  ADDI %DR0 DATA:3",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly(
+                "ADDI", "%DR0", "DATA", ":", "1",
+                "ADDI", "%DR0", "DATA", ":", "3");
+    }
+
+    @Test
     void hexadecimalBinaryAndNegativeLiteralsAreCompared() {
         Expansion result = expand(
                 ".DEFINE MASK 0x1F",

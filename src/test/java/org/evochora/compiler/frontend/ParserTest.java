@@ -136,6 +136,35 @@ public class ParserTest {
     }
 
     /**
+     * Verifies that a minus before a number makes it negative: for a bare number, for every
+     * component of a vector, including the first, and for the value of a typed literal.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserSignedNumbers() {
+        // Arrange
+        String source = "SETI %DR0 -7\nSETV %DR0 -1|0|-3\nSETI %DR0 DATA:-1";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(3);
+        assertThat(((LiteralNode) ((InstructionNode) ast.get(0)).arguments().get(1)).value())
+                .isEqualTo(new Value.Number(-7));
+        assertThat(((LiteralNode) ((InstructionNode) ast.get(1)).arguments().get(1)).value())
+                .isEqualTo(new Value.Vector(List.of(-1L, 0L, -3L)));
+        assertThat(((LiteralNode) ((InstructionNode) ast.get(2)).arguments().get(1)).value())
+                .isEqualTo(new Value.Typed("DATA", -1));
+    }
+
+    /**
      * Verifies that the parser correctly handles an exported label (e.g., "EXPORT L1: NOP").
      * The exported flag should be true and the statement should be parsed correctly after the label.
      * This is a unit test for the parser.

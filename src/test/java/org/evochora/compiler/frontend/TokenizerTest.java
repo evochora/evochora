@@ -62,13 +62,13 @@ public class TokenizerTest {
     }
 
     /**
-     * Verifies that the relative marker is one symbol token carrying its sign, so that the number
-     * after it is read as an unsigned number.
+     * Verifies that the relative marker is the name {@code @} followed by the symbol of its sign,
+     * and that the number after it is read as an unsigned number.
      * This is a unit test for the lexer.
      */
     @Test
     @Tag("unit")
-    void testRelativeMarkerIsOneTokenWithItsSign() {
+    void testRelativeMarkerIsTheNameAtFollowedByItsSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(".ORG @+2|@-3", diagnostics);
@@ -78,32 +78,146 @@ public class TokenizerTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@+");
-        assertThat(tokens.get(2)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 2L);
-        assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.PIPE);
-        assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@-");
-        assertThat(tokens.get(5)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 3L);
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.DIRECTIVE, ".ORG"),
+                tuple(TokenType.IDENTIFIER, "@"),
+                tuple(TokenType.SYMBOL, "+"),
+                tuple(TokenType.NUMBER, "2"),
+                tuple(TokenType.PIPE, "|"),
+                tuple(TokenType.IDENTIFIER, "@"),
+                tuple(TokenType.SYMBOL, "-"),
+                tuple(TokenType.NUMBER, "3"),
+                tuple(TokenType.END_OF_FILE, ""));
     }
 
     /**
-     * Verifies that the marker character without a sign is rejected and that the message names
-     * the registered symbols beginning with it.
+     * Verifies that {@code @} alone is a name token of its own and never joins the word after it.
      * This is a unit test for the lexer.
      */
     @Test
     @Tag("unit")
-    void testMarkerWithoutSignNamesTheSymbolsBeginningWithIt() {
+    void testAtAloneIsAnIdentifierToken() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = TestLexers.tokenizer(".ORG 0|@2", diagnostics);
+        Tokenizer lexer = TestLexers.tokenizer("@ @FOO", diagnostics);
 
         // Act
-        lexer.scanTokens();
+        List<Token> tokens = lexer.scanTokens();
 
         // Assert
-        assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary())
-                .contains("Unexpected character '@'; symbols beginning with it are '@+' and '@-'");
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.IDENTIFIER, "@"),
+                tuple(TokenType.IDENTIFIER, "@"),
+                tuple(TokenType.IDENTIFIER, "FOO"),
+                tuple(TokenType.END_OF_FILE, ""));
+    }
+
+    /**
+     * Verifies that a minus is always a symbol token of its own and that a number carries no
+     * sign.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testMinusIsASymbolAndNumbersCarryNoSign() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer("-5 A-1 - 2", diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.SYMBOL, "-"),
+                tuple(TokenType.NUMBER, "5"),
+                tuple(TokenType.IDENTIFIER, "A"),
+                tuple(TokenType.SYMBOL, "-"),
+                tuple(TokenType.NUMBER, "1"),
+                tuple(TokenType.SYMBOL, "-"),
+                tuple(TokenType.NUMBER, "2"),
+                tuple(TokenType.END_OF_FILE, ""));
+    }
+
+    /**
+     * Verifies that parentheses, brackets and the comma are tokens of their own types.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testParenthesesBracketsAndCommaAreFixedTokens() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer("(A)[0],B", diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type).containsExactly(
+                TokenType.OPEN_PARENTHESIS,
+                TokenType.IDENTIFIER,
+                TokenType.CLOSE_PARENTHESIS,
+                TokenType.OPEN_BRACKET,
+                TokenType.NUMBER,
+                TokenType.CLOSE_BRACKET,
+                TokenType.COMMA,
+                TokenType.IDENTIFIER,
+                TokenType.END_OF_FILE);
+    }
+
+    /**
+     * Verifies that a parenthesis touching the identifier or opcode before it opens a call, while
+     * one after a space, after a closing parenthesis or after a number opens a group.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testCallParenthesisTouchesTheWordBeforeIt() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer("MIN(A) NOT(B) NAME (C) )( 5(", diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type).containsExactly(
+                TokenType.IDENTIFIER, TokenType.CALL_PARENTHESIS, TokenType.IDENTIFIER, TokenType.CLOSE_PARENTHESIS,
+                TokenType.OPCODE, TokenType.CALL_PARENTHESIS, TokenType.IDENTIFIER, TokenType.CLOSE_PARENTHESIS,
+                TokenType.IDENTIFIER, TokenType.OPEN_PARENTHESIS, TokenType.IDENTIFIER, TokenType.CLOSE_PARENTHESIS,
+                TokenType.CLOSE_PARENTHESIS, TokenType.OPEN_PARENTHESIS,
+                TokenType.NUMBER, TokenType.OPEN_PARENTHESIS,
+                TokenType.END_OF_FILE);
+    }
+
+    /**
+     * Verifies that a name stops before two dots, while a single dot inside a name stays part of
+     * it.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testNameStopsBeforeTwoDots() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer("OUT_NW..OUT_SE LIB.LABEL", diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.IDENTIFIER, "OUT_NW"),
+                tuple(TokenType.SYMBOL, ".."),
+                tuple(TokenType.IDENTIFIER, "OUT_SE"),
+                tuple(TokenType.IDENTIFIER, "LIB.LABEL"),
+                tuple(TokenType.END_OF_FILE, ""));
     }
 
     /**
@@ -134,7 +248,7 @@ public class TokenizerTest {
     void testStandardSymbolsAreSymbolTokens() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = TestLexers.tokenizer("*, @+ @- ^ ..", diagnostics);
+        Tokenizer lexer = TestLexers.tokenizer("* + ^ ..", diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -143,9 +257,7 @@ public class TokenizerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
                 tuple(TokenType.SYMBOL, "*"),
-                tuple(TokenType.SYMBOL, ","),
-                tuple(TokenType.SYMBOL, "@+"),
-                tuple(TokenType.SYMBOL, "@-"),
+                tuple(TokenType.SYMBOL, "+"),
                 tuple(TokenType.SYMBOL, "^"),
                 tuple(TokenType.SYMBOL, ".."),
                 tuple(TokenType.END_OF_FILE, "")
@@ -230,8 +342,8 @@ public class TokenizerTest {
     }
 
     /**
-     * Verifies that hexadecimal and binary literals are read as one number token, with and
-     * without a leading minus.
+     * Verifies that hexadecimal and binary literals are read as one number token, and that a
+     * minus before one is a symbol token of its own.
      * This is a unit test for the lexer.
      */
     @Test
@@ -247,12 +359,15 @@ public class TokenizerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(tokens).extracting(Token::type, Token::value).containsExactly(
-                tuple(TokenType.NUMBER, -16L),
-                tuple(TokenType.NUMBER, -3L),
+                tuple(TokenType.SYMBOL, null),
+                tuple(TokenType.NUMBER, 16L),
+                tuple(TokenType.SYMBOL, null),
+                tuple(TokenType.NUMBER, 3L),
                 tuple(TokenType.NUMBER, 16L),
                 tuple(TokenType.NUMBER, 3L),
                 tuple(TokenType.NUMBER, 15L),
-                tuple(TokenType.NUMBER, -15L),
+                tuple(TokenType.SYMBOL, null),
+                tuple(TokenType.NUMBER, 15L),
                 tuple(TokenType.END_OF_FILE, null)
         );
     }

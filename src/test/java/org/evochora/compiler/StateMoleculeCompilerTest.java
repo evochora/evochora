@@ -57,4 +57,19 @@ class StateMoleculeCompilerTest extends CompilerTestBase {
                 assertThat(molecule.toScalarValue()).isEqualTo(5);
             });
     }
+
+    @Test
+    void testNegativeTypedLiteralOperandIsNoLabelAndEmitsAStateMolecule() throws CompilationException {
+        String source = "SETI %DR0 STATE:-1";
+
+        ProgramArtifact artifact = compiler.compile(List.of(source), "state_negative.s", testEnvProps);
+
+        assertThat(artifact.labelNameToValue()).isEmpty();
+        assertThat(artifact.machineCodeLayout().values())
+            .map(Molecule::fromInt)
+            .anySatisfy(molecule -> {
+                assertThat(molecule.type()).isEqualTo(Config.TYPE_STATE);
+                assertThat(molecule.toScalarValue()).isEqualTo(-1);
+            });
+    }
 }

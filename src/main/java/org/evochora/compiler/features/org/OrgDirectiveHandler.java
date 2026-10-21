@@ -20,10 +20,13 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
     /**
      * Parses an <code>.ORG</code> directive.
      * The syntax is <code>.ORG &lt;component&gt;{|&lt;component&gt;}</code>, where a component is
-     * a number, or a number preceded by <code>@+</code> or <code>@-</code> and thereby counted
-     * from the layout cursor rather than from the origin of the enclosing module.
+     * a number, which a <code>-</code> may precede, or a number preceded by the marker
+     * <code>@+</code> or <code>@-</code> and thereby counted from the layout cursor rather than
+     * from the origin of the enclosing module. The marker is the name <code>@</code> followed by
+     * the symbol <code>+</code> or <code>-</code>, so a space between them is accepted.
      * @param context The parsing context.
-     * @return An {@link OrgNode} representing the directive.
+     * @return An {@link OrgNode} representing the directive, or {@code null} after a reported
+     *         error.
      */
     @Override
     public AstNode parse(IParsingContext context) {
@@ -32,22 +35,28 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
         List<Long> values = new ArrayList<>();
         List<Boolean> relative = new ArrayList<>();
         do {
-            boolean marked = true;
-            int sign;
-            if (context.matchSymbol("@+")) {
-                sign = 1;
-            } else if (context.matchSymbol("@-")) {
-                sign = -1;
-            } else {
-                marked = false;
-                sign = 1;
+            boolean marked = context.check(TokenType.IDENTIFIER) && context.peek().text().equals("@");
+            int sign = 1;
+            if (marked) {
+                context.advance();
+                if (context.matchSymbol("-")) {
+                    sign = -1;
+                } else if (!context.matchSymbol("+")) {
+                    context.getDiagnostics().reportError("Expected '+' or '-' after '@' in .ORG.",
+                            context.peek().source().fileName(), context.peek().source().lineNumber());
+                    return null;
+                }
             }
+            Token minus = context.matchSymbol("-") ? context.previous() : null;
             Token number = context.consume(TokenType.NUMBER, "Expected a number after .ORG.");
             long value = (Long) number.value();
-            if (marked && value < 0) {
-                context.getDiagnostics().reportError(
-                        "A component marked with '@+' or '@-' carries no sign of its own.",
-                        number.source().fileName(), number.source().lineNumber());
+            if (minus != null) {
+                if (marked) {
+                    context.getDiagnostics().reportError(
+                            "A component marked with '@+' or '@-' carries no sign of its own.",
+                            minus.source().fileName(), minus.source().lineNumber());
+                }
+                value = -value;
             }
             values.add(sign * value);
             relative.add(marked);

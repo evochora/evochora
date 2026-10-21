@@ -8,6 +8,7 @@ import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.BlockKind;
@@ -48,9 +49,10 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 * numbers, strings, comments and registers, so letters, digits, {@code _}, {@code $}, {@code #},
 	 * {@code "}, {@code ;}, {@code %} and whitespace would cut into those; {@code |} and {@code :}
 	 * are read by the parser itself. Brackets, {@code \} and {@code §} are kept out as a reserve
-	 * for the core. A character joins when a feature needs it and the core does not claim it.
+	 * for the core, and {@code @} is a name of its own. A character joins when a feature needs it
+	 * and the core does not claim it.
 	 */
-	private static final String LEXER_SYMBOL_ALPHABET = "!&*+,./<=>?@^~-";
+	private static final String LEXER_SYMBOL_ALPHABET = "!&*+,./<=>?^~-";
 
 	private final IInstructionSet isa;
 
@@ -110,7 +112,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 						+ "', which is not one of " + LEXER_SYMBOL_ALPHABET + ".");
 			}
 		}
-		if (symbol.equals(".") || symbol.equals("-")) {
+		if (symbol.length() == 1 && Tokenizer.FIXED_CHARACTERS.indexOf(symbol.charAt(0)) >= 0) {
 			throw new IllegalArgumentException("Lexer symbol '" + symbol
 					+ "' is a fixed case of the lexer and cannot be registered alone.");
 		}

@@ -43,7 +43,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
         List<IPlacementArgumentNode> placements = new ArrayList<>();
         do {
             placements.add(parsePlacementArgument(context));
-            if (!context.matchSymbol(",")) {
+            if (!context.match(TokenType.COMMA)) {
                 break;
             }
         } while (context.peek().type() != TokenType.NEWLINE && context.peek().type() != TokenType.END_OF_FILE);
@@ -93,20 +93,20 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
             return new WildcardValueComponent();
         }
 
-        if (context.peek().type() == TokenType.NUMBER) {
-            Token start = context.advance(); // consume start number
+        if (context.check(TokenType.NUMBER) || context.checkSymbol("-")) {
+            int start = coordinate(context, "Expected a number for the placement component.");
 
             if (context.matchSymbol("..")) {
-                Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the range.");
-                return new RangeValueComponent(coordinate(start, context), coordinate(end, context));
+                int end = coordinate(context, "Expected a number for the end of the range.");
+                return new RangeValueComponent(start, end);
             } else if (context.peek().type() == TokenType.COLON) {
                 context.advance(); // consume ':'
-                Token step = context.consume(TokenType.NUMBER, "Expected a number for the step of the range.");
+                int step = coordinate(context, "Expected a number for the step of the range.");
                 context.consume(TokenType.COLON, "Expected ':' after the step value.");
-                Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the stepped range.");
-                return new SteppedRangeValueComponent(coordinate(start, context), coordinate(step, context), coordinate(end, context));
+                int end = coordinate(context, "Expected a number for the end of the stepped range.");
+                return new SteppedRangeValueComponent(start, step, end);
             } else {
-                return new SingleValueComponent(coordinate(start, context));
+                return new SingleValueComponent(start);
             }
         }
 
@@ -115,11 +115,14 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
     }
 
     /**
-     * Reads a number of a placement as a coordinate. The layout checks it against the world;
-     * here it only has to fit an {@code int}, so that the layout can.
+     * Reads a number of a placement as a coordinate, negated when a {@code -} precedes it. The
+     * layout checks it against the world; here it only has to fit an {@code int}, so that the
+     * layout can.
      */
-    private static int coordinate(Token number, IParsingContext context) {
-        long written = (Long) number.value();
+    private static int coordinate(IParsingContext context, String errorMessage) {
+        boolean negative = context.matchSymbol("-");
+        Token number = context.consume(TokenType.NUMBER, errorMessage);
+        long written = negative ? -(Long) number.value() : (Long) number.value();
         if (written < Integer.MIN_VALUE || written > Integer.MAX_VALUE) {
             context.getDiagnostics().reportError("Value " + written + " out of range for a coordinate.",
                     number.source().fileName(), number.source().lineNumber());

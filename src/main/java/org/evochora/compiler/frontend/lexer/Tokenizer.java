@@ -27,6 +27,16 @@ import java.util.Set;
  */
 public class Tokenizer {
 
+    /**
+     * The characters the tokenizer reads by its fixed cases: {@code .} begins a directive or a
+     * name, {@code -} is the minus, the parentheses, brackets and the comma are tokens of their
+     * own, {@code |} and {@code :} are read by the parser, {@code ;} ends a statement, {@code #}
+     * begins a comment and {@code "} a string. A registered symbol is tried before these cases, so
+     * a symbol equal to one of these characters would take it from the tokenizer;
+     * {@link org.evochora.compiler.FeatureRegistry} rejects such a symbol.
+     */
+    public static final String FIXED_CHARACTERS = ".-()[],|:;#\"";
+
     private final String source;
     private final DiagnosticsEngine diagnostics;
     private final List<Token> tokens = new ArrayList<>();
@@ -129,6 +139,16 @@ public class Tokenizer {
             case '"': string(); break;
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
+            case ',': addToken(TokenType.COMMA); break;
+            case '(': addToken(touchesWordBefore() ? TokenType.CALL_PARENTHESIS : TokenType.OPEN_PARENTHESIS); break;
+            case ')': addToken(TokenType.CLOSE_PARENTHESIS); break;
+            case '[': addToken(TokenType.OPEN_BRACKET); break;
+            case ']': addToken(TokenType.CLOSE_BRACKET); break;
+            case '-': addToken(TokenType.SYMBOL); break;
+            case '@':
+                // '@' alone is a name of its own; it never joins the word that follows it.
+                addToken(TokenType.IDENTIFIER);
+                break;
             case ';':
                 // Semicolon acts as a statement terminator, allowing multiple instructions per line.
                 addToken(TokenType.NEWLINE);
@@ -137,14 +157,6 @@ public class Tokenizer {
             case '#':
                 // A comment goes until the end of the line.
                 while (peek() != '\n' && !isAtEnd()) advance();
-                break;
-            case '-':
-                // If a minus is followed by a digit, it's a negative number.
-                if (isDigit(peek())) {
-                    number();
-                } else {
-                    reportUnexpected(c);
-                }
                 break;
             // Ignore whitespace
             case ' ', '\r', '\t':
@@ -207,8 +219,21 @@ public class Tokenizer {
         diagnostics.reportError(message, logicalFileName, line);
     }
 
+    /**
+     * Tells whether the {@code (} at the start of the token directly touches the word before it:
+     * the character before it belongs to a name and the token emitted last is an identifier or an
+     * opcode, as in {@code MIN(} or {@code NOT(}.
+     * @return true if the parenthesis opens the arguments of a call.
+     */
+    private boolean touchesWordBefore() {
+        if (start == 0 || !isAlphaNumeric(source.charAt(start - 1)) || tokens.isEmpty()) return false;
+        TokenType last = tokens.getLast().type();
+        return last == TokenType.IDENTIFIER || last == TokenType.OPCODE;
+    }
+
     private void identifier() {
-        while (isAlphaNumeric(peek())) advance();
+        // A '.' followed by another '.' ends the name: "A..B" is A, the symbol "..", and B.
+        while (isAlphaNumeric(peek()) && !(peek() == '.' && peekNext() == '.')) advance();
         String text = source.substring(start, current);
         TokenType type = TokenType.IDENTIFIER;
 
@@ -243,9 +268,6 @@ public class Tokenizer {
     
 
     private void number() {
-        // After a leading minus the first digit is not yet consumed; consuming it here makes
-        // previous() the first digit for signed and unsigned numbers alike.
-        if (previous() == '-') advance();
         // Recognize hex/octal/binary prefixes right at the first digit
         if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'o' || peek() == 'O'
                 || peek() == 'b' || peek() == 'B')) {

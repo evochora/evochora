@@ -126,6 +126,29 @@ public class LayoutDirectiveTest {
     }
 
     /**
+     * Verifies that a space between the marker and its sign is accepted, and that an unmarked
+     * component may carry a sign of its own.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testOrgDirectiveAcceptsASpaceAfterTheMarkerAndASignedComponent() {
+        // Arrange
+        String source = ".ORG @ -3|-1|@ +2";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        OrgNode org = (OrgNode) ast.get(0);
+        assertThat(org.relative()).containsExactly(true, false, true);
+        assertThat(((Value.Vector) org.originVector().value()).components()).containsExactly(-3L, -1L, 2L);
+    }
+
+    /**
      * Verifies that a marked component may not carry a sign of its own.
      * This is a unit test for the parser.
      */

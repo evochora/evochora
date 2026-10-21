@@ -7,6 +7,7 @@ import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.Export;
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -206,19 +207,21 @@ public class Parser implements IParsingContext {
     }
 
     /**
-     * Parses an expression, which can be a literal, a register, an identifier, or a vector.
+     * Parses an expression, which can be a literal, a register, an identifier, or a vector. A
+     * number, a component of a vector and the value of a typed literal may each be preceded by a
+     * {@code -}, which makes the number negative.
      * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
      *         reported error.
      */
     @Override
     public OperandNode expression() {
-        if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
-            Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
+        int numberLength = numberLengthAt(current);
+        if (numberLength > 0 && typeAt(current + numberLength) == TokenType.PIPE) {
+            Token first = peek();
             List<Long> values = new ArrayList<>();
-            values.add((Long) first.value());
+            values.add(signedNumber("Expected number component for vector."));
             while(match(TokenType.PIPE)) {
-                Token comp = consume(TokenType.NUMBER, "Expected number component after '|'.");
-                values.add((Long) comp.value());
+                values.add(signedNumber("Expected number component after '|'."));
             }
             return new LiteralNode(new Value.Vector(values), first.source());
         }
@@ -226,13 +229,13 @@ public class Parser implements IParsingContext {
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token type = advance();
             advance();
-            Token valueTok = consume(TokenType.NUMBER, "Expected a number after the literal type.");
-            return new LiteralNode(new Value.Typed(type.text(), (Long) valueTok.value()), type.source());
+            long value = signedNumber("Expected a number after the literal type.");
+            return new LiteralNode(new Value.Typed(type.text(), value), type.source());
         }
 
-        if (match(TokenType.NUMBER)) {
-            Token num = previous();
-            return new LiteralNode(new Value.Number((Long) num.value()), num.source());
+        if (numberLength > 0) {
+            Token num = peek();
+            return new LiteralNode(new Value.Number(signedNumber("Expected a number.")), num.source());
         }
 
         if (match(TokenType.REGISTER)) {
@@ -248,6 +251,35 @@ public class Parser implements IParsingContext {
         Token unexpected = advance();
         diagnostics.reportError("Expected a register, a literal, a vector or a name, but got '" + unexpected.text() + "'.", unexpected.source().fileName(), unexpected.source().lineNumber());
         return null;
+    }
+
+    /**
+     * Tells how many tokens the number at the given position takes: two for a {@code -} followed
+     * by a number, one for a number, none if no number stands there.
+     * @param index The position in the token list.
+     * @return The number of tokens, 0, 1 or 2.
+     */
+    private int numberLengthAt(int index) {
+        return SignedNumber.at(tokens, index).map(SignedNumber::length).orElse(0);
+    }
+
+    private TokenType typeAt(int index) {
+        return index < tokens.size() ? tokens.get(index).type() : TokenType.END_OF_FILE;
+    }
+
+    /**
+     * Consumes a number, negated when a {@code -} precedes it, and the sign with it.
+     * @param errorMessage The error reported when no number stands at the current position.
+     * @return The value of the number.
+     */
+    private long signedNumber(String errorMessage) {
+        Optional<SignedNumber> number = SignedNumber.at(tokens, current);
+        if (number.isEmpty()) {
+            // No number stands here, so this reports the error
+            consume(TokenType.NUMBER, errorMessage);
+        }
+        for (int i = 0; i < number.orElseThrow().length(); i++) advance();
+        return number.get().value();
     }
 
     private void synchronize() {

@@ -2,6 +2,7 @@ package org.evochora.compiler.features.macro;
 
 import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
@@ -51,22 +52,9 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
 
         List<List<Token>> actualArgs = new ArrayList<>();
         while (!preProcessor.isAtEnd() && preProcessor.peek().type() != TokenType.NEWLINE) {
-            List<Token> arg = new ArrayList<>();
-            Token t = preProcessor.peek();
-            if (t.type() == TokenType.IDENTIFIER && (preProcessor.getCurrentIndex() + 2) < preProcessor.streamSize()
-                    && preProcessor.getToken(preProcessor.getCurrentIndex() + 1).type() == TokenType.COLON
-                    && preProcessor.getToken(preProcessor.getCurrentIndex() + 2).type() == TokenType.NUMBER) {
-                arg.add(preProcessor.advance());
-                arg.add(preProcessor.advance());
-                arg.add(preProcessor.advance());
-            } else if (t.type() == TokenType.NUMBER) {
-                arg.add(preProcessor.advance());
-                while (!preProcessor.isAtEnd() && preProcessor.peek().type() == TokenType.PIPE) {
-                    arg.add(preProcessor.advance());
-                    if (!preProcessor.isAtEnd()) arg.add(preProcessor.advance());
-                    else break;
-                }
-            } else {
+            int length = argumentLength(preProcessor, preProcessor.getCurrentIndex());
+            List<Token> arg = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
                 arg.add(preProcessor.advance());
             }
             actualArgs.add(arg);
@@ -133,6 +121,105 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         for (List<Token> g : actualArgs) removed += g.size();
         preProcessor.removeTokens(callSiteIndex, removed);
         preProcessor.injectTokens(expandedBody, 0);
+    }
+
+    /**
+     * Tells how many tokens the argument at an index takes. An argument is one of these forms:
+     * <ul>
+     *   <li>a typed form {@code NAME :} followed by a value: a number, a parenthesis, or an atom
+     *       with a call or an index, as below;</li>
+     *   <li>a number, which a {@code -} may precede, followed by the components of a vector, each
+     *       a {@code |} and a number with its sign or a single token;</li>
+     *   <li>a parenthesis, everything up to the matching {@code )};</li>
+     *   <li>any other single token.</li>
+     * </ul>
+     * A call parenthesis or a {@code [} directly after a parenthesis or a single token adds
+     * everything up to its matching closing token, again and again, as in {@code MIN(A, 1)} or
+     * {@code V[0][1]}. Closing tokens are matched with the nesting counted; a group left open
+     * ends before the end of its line.
+     *
+     * @param preProcessor The preprocessor holding the stream.
+     * @param index        The index of the argument's first token.
+     * @return The number of tokens, at least one.
+     */
+    private static int argumentLength(PreProcessor preProcessor, int index) {
+        if (typeAt(preProcessor, index) == TokenType.IDENTIFIER && typeAt(preProcessor, index + 1) == TokenType.COLON) {
+            int value = numberLength(preProcessor, index + 2);
+            if (value == 0) {
+                TokenType valueType = typeAt(preProcessor, index + 2);
+                int group = valueType == TokenType.OPEN_PARENTHESIS ? groupedLength(preProcessor, index + 2)
+                        : isLineEnd(valueType) ? 0 : 1;
+                int suffixed = group == 0 ? 0 : group + suffixLength(preProcessor, index + 2 + group);
+                value = valueType == TokenType.OPEN_PARENTHESIS || suffixed > group ? suffixed : 0;
+            }
+            if (value > 0) {
+                return 2 + value;
+            }
+        }
+        int number = numberLength(preProcessor, index);
+        if (number > 0) {
+            int length = number;
+            while (typeAt(preProcessor, index + length) == TokenType.PIPE) {
+                length++;
+                if (typeAt(preProcessor, index + length) == TokenType.END_OF_FILE) break;
+                length += Math.max(1, numberLength(preProcessor, index + length));
+            }
+            return length;
+        }
+        int atom = typeAt(preProcessor, index) == TokenType.OPEN_PARENTHESIS ? groupedLength(preProcessor, index) : 1;
+        return atom + suffixLength(preProcessor, index + atom);
+    }
+
+    /**
+     * Tells how many tokens the calls and indexes directly at an index take, one after another.
+     */
+    private static int suffixLength(PreProcessor preProcessor, int index) {
+        int length = 0;
+        while (typeAt(preProcessor, index + length) == TokenType.CALL_PARENTHESIS
+                || typeAt(preProcessor, index + length) == TokenType.OPEN_BRACKET) {
+            length += groupedLength(preProcessor, index + length);
+        }
+        return length;
+    }
+
+    /**
+     * Tells how many tokens the group opened at an index takes, its opener and its matching
+     * closing token included; a group left open ends before the end of its line.
+     */
+    private static int groupedLength(PreProcessor preProcessor, int index) {
+        boolean bracket = typeAt(preProcessor, index) == TokenType.OPEN_BRACKET;
+        int depth = 0;
+        int i = index;
+        while (!isLineEnd(typeAt(preProcessor, i))) {
+            TokenType type = typeAt(preProcessor, i);
+            if (bracket ? type == TokenType.OPEN_BRACKET
+                    : type == TokenType.OPEN_PARENTHESIS || type == TokenType.CALL_PARENTHESIS) {
+                depth++;
+            } else if (type == (bracket ? TokenType.CLOSE_BRACKET : TokenType.CLOSE_PARENTHESIS)) {
+                depth--;
+            }
+            i++;
+            if (depth == 0) break;
+        }
+        return i - index;
+    }
+
+    /**
+     * Tells how many tokens the number at an index takes: two for a {@code -} followed by a
+     * number, one for a number, none if no number stands there.
+     */
+    private static int numberLength(PreProcessor preProcessor, int index) {
+        if (index >= preProcessor.streamSize()) return 0;
+        List<Token> ahead = preProcessor.tokensOf(index, Math.min(index + 2, preProcessor.streamSize()));
+        return SignedNumber.at(ahead, 0).map(SignedNumber::length).orElse(0);
+    }
+
+    private static TokenType typeAt(PreProcessor preProcessor, int index) {
+        return index < preProcessor.streamSize() ? preProcessor.getToken(index).type() : TokenType.END_OF_FILE;
+    }
+
+    private static boolean isLineEnd(TokenType type) {
+        return type == TokenType.NEWLINE || type == TokenType.END_OF_FILE;
     }
 
     /**

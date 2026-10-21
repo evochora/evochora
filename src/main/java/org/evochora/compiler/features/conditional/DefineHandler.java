@@ -2,13 +2,14 @@ package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.Export;
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
@@ -43,16 +44,15 @@ public class DefineHandler implements IPreProcessorHandler {
 
         String error = null;
         List<Token> operands = line.operands();
+        Optional<SignedNumber> number = SignedNumber.at(operands, 1);
         if (operands.isEmpty()) {
             error = ".DEFINE needs a flag name";
         } else if (!Condition.isNameToken(operands.get(0))) {
             error = ".DEFINE needs a flag name, found '" + operands.get(0).text() + "'" + CONSTANT;
-        } else if (operands.size() > 2 || (operands.size() == 2 && !isInteger(operands.get(1)))) {
+        } else if (operands.size() > 1 && (number.isEmpty() || 1 + number.get().length() != operands.size())) {
             error = ".DEFINE takes a flag name and an optional integer" + CONSTANT;
         } else {
-            OptionalLong value = operands.size() == 2
-                    ? OptionalLong.of((Long) operands.get(1).value())
-                    : OptionalLong.empty();
+            OptionalLong value = number.map(n -> OptionalLong.of(n.value())).orElse(OptionalLong.empty());
             error = flags.define(operands.get(0).text(), value,
                     "at " + directive.source().fileName() + ":" + directive.source().lineNumber()).orElse(null);
         }
@@ -60,9 +60,5 @@ public class DefineHandler implements IPreProcessorHandler {
             preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());
         }
         preProcessor.removeTokens(start, line.next() - start);
-    }
-
-    private static boolean isInteger(Token token) {
-        return token.type() == TokenType.NUMBER && token.value() instanceof Long;
     }
 }

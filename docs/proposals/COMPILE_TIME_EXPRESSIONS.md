@@ -357,7 +357,7 @@ rewritten.
   as today, cached by path as the text is today, walks the lines of each placement as a cursor over
   token lines and, for every line that holds a directive word a scan handler is registered under,
   wherever the word stands in the line, calls the `IDependencyScanHandler` with the `DirectiveLine`;
-  the handler checks the line rules with `standsAlone` as the preprocessor does. A handler that
+  the handler checks that the directive begins a statement (`startsStatement`) as the preprocessor does. A handler that
   finds an `.IMPORT` or `.SOURCE` asks the context to read that file, which tokenizes it if it has
   not been, and scans its placement the same way, as `scanNestedModule` does today with text. The
   result is the dependency graph and the token streams of all files. `frontend/module` merges into

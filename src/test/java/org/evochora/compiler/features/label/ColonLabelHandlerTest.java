@@ -115,4 +115,30 @@ class ColonLabelHandlerTest {
         assertThat(tokens).extracting(Token::type)
                 .contains(TokenType.COLON);
     }
+
+    @Test
+    void twoLabelsOnOneLineSeparatedBySemicolonAreBothRewritten() {
+        List<Token> tokens = preprocess("L1: NOP; L2: NOP");
+
+        assertThat(tokens).extracting(Token::text)
+                .containsSubsequence(".LABEL", "L1", "NOP", ";", ".LABEL", "L2", "NOP");
+        assertThat(tokens).extracting(Token::type).doesNotContain(TokenType.COLON);
+    }
+
+    @Test
+    void signedTypedLiteral_notRewritten() {
+        List<Token> tokens = preprocess("SETI %DR0 STATE:-1");
+
+        assertThat(tokens).extracting(Token::text)
+                .containsSubsequence("SETI", "%DR0", "STATE", ":", "-", "1");
+        assertThat(tokens).extracting(Token::type).doesNotContain(TokenType.DIRECTIVE);
+    }
+
+    @Test
+    void typedParenthesis_notRewritten() {
+        List<Token> tokens = preprocess("SETI %DR0 DATA:(WIDTH-1)");
+
+        assertThat(tokens).extracting(Token::type).contains(TokenType.COLON);
+        assertThat(tokens).extracting(Token::type).doesNotContain(TokenType.DIRECTIVE);
+    }
 }
