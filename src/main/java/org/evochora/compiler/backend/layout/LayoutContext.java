@@ -13,6 +13,8 @@ import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.expression.NameExpression;
 import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrLiteral;
+import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -354,22 +356,33 @@ public final class LayoutContext {
 
     /**
      * Places a whole instruction: the opcode cell, then one cell per argument of the
-     * signature, where a vector argument takes one cell per dimension of the world.
+     * signature, where a vector argument takes one cell per dimension of the world and so has
+     * to carry one component per dimension.
      *
      * @param opcode    The opcode name, for the error a vector argument raises without a world.
      * @param signature The instruction's ISA signature, listing its argument kinds in order.
+     * @param operands  The instruction's operands, in the order of the signature.
      * @param src       The source information recorded for every placed cell; may be null.
-     * @throws CompilationException if a coordinate is already occupied, or if the instruction
-     *         needs a world shape and none was supplied.
+     * @throws CompilationException if a coordinate is already occupied, if a vector argument
+     *         has not one component per dimension, or if the instruction needs a world shape
+     *         and none was supplied.
      */
-    public void placeInstruction(String opcode, IInstructionSet.Signature signature, SourceInfo src) throws CompilationException {
+    public void placeInstruction(String opcode, IInstructionSet.Signature signature, List<IrOperand> operands,
+                                 SourceInfo src) throws CompilationException {
         placeOpcode(src);
-        for (IInstructionSet.ArgKind kind : signature.argumentTypes()) {
-            if (kind == IInstructionSet.ArgKind.VECTOR) {
+        List<IInstructionSet.ArgKind> kinds = signature.argumentTypes();
+        for (int i = 0; i < kinds.size(); i++) {
+            if (kinds.get(i) == IInstructionSet.ArgKind.VECTOR) {
                 if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
                     throw new CompilationException("Instruction " + opcode + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
                 }
-                for (int k = 0; k < envProps.getWorldShape().length; k++) {
+                int dimensions = envProps.getWorldShape().length;
+                if (i < operands.size() && operands.get(i) instanceof IrLiteral literal
+                        && literal.value() instanceof Value.Vector vector && vector.components().size() != dimensions) {
+                    throw new CompilationException(SourceInfo.locate(src,
+                            "Expected a vector with " + dimensions + " components."));
+                }
+                for (int k = 0; k < dimensions; k++) {
                     placeOperand(src);
                 }
             } else {

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
@@ -86,6 +87,25 @@ class DataInstructionCompilerTest extends CompilerTestBase {
         assertThatThrownBy(() -> compiler.compile(lines, "big_literal.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+    }
+
+    /**
+     * A vector argument of an instruction becomes one cell per dimension of the world, so it has
+     * to carry one component per dimension, whether written, taken from a constant or computed;
+     * a vector that never becomes cells may have any length.
+     */
+    @Test
+    void aVectorArgumentWithoutOneComponentPerDimensionIsReported() {
+        for (List<String> lines : List.of(
+                List.of("SETV %DR2 1|2|3"),
+                List.of("SETV %DR2 (1|2|3)"),
+                List.of(".CONST V 1|2|3", "SETV %DR2 V"))) {
+            assertThatThrownBy(() -> compiler.compile(lines, "long_vector.s", testEnvProps))
+                    .isInstanceOf(CompilationException.class)
+                    .hasMessageContaining("long_vector.s:" + lines.size() + ": Expected a vector with 2 components.");
+        }
+        assertThatCode(() -> compiler.compile(List.of(".CONST V 1|2|3", "SETI %DR0 DATA:V[2]"), "long_vector.s", testEnvProps))
+                .doesNotThrowAnyException();
     }
 
     @Test

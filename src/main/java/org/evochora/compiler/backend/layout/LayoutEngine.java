@@ -59,7 +59,7 @@ public final class LayoutEngine {
                     int opcodeId = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() -> new IllegalArgumentException("Unknown opcode: " + ins.opcode()));
                     IInstructionSet.Signature sig = isa.getSignatureById(opcodeId)
                             .orElseThrow(() -> new IllegalArgumentException("No ISA signature for instruction '" + ins.opcode() + "'."));
-                    ctx.placeInstruction(ins.opcode(), sig, src);
+                    ctx.placeInstruction(ins.opcode(), sig, ins.operands(), src);
                 }
             }
         }

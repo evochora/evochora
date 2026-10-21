@@ -149,12 +149,14 @@ public class Emitter {
      * Looks up the coordinate the layout assigned to an address.
      *
      * @throws CompilationException if the layout has no cell for the address, which means the
-     *         layout and the emitter disagree about how many cells an item occupies.
+     *         layout and the emitter disagree about how many cells an item occupies: a defect of
+     *         the compiler, since the layout checks every item against the cells it reserves.
      */
     private static int[] coordinateOf(Map<Integer, int[]> linearToCoord, int address, SourceInfo src) throws CompilationException {
         int[] coord = linearToCoord.get(address);
         if (coord == null) {
-            throw new CompilationException(SourceInfo.locate(src, "Missing coord for address " + address));
+            throw new CompilationException(SourceInfo.locate(src, "Internal error: the layout has no cell for address "
+                    + address + "; the layout and the emitter disagree about how many cells an item occupies."));
         }
         return coord;
     }

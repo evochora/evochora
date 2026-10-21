@@ -143,7 +143,9 @@ type and a number; a vector is a list of numbers; a molecule type is a value of 
 from the origin of the program: the origin of the main file, which at run time is the organism's
 start position; the compiler never knows the origin of the environment. Types and positions never
 become cells. A number is checked against the range of what it becomes: a cell in an instruction
-operand and in a `.PLACE`, a coordinate in a layout directive, a count in `.REPEAT` and `^`.
+operand and in a `.PLACE`, a coordinate in a layout directive, a count in `.REPEAT` and `^`; a vector
+is checked against the dimensions of the world where it becomes the cells of an instruction
+argument, and nowhere else.
 
 **Operators and functions.**
 
