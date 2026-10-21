@@ -18,7 +18,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -57,16 +56,10 @@ class OperationRegistrationTest {
         };
     }
 
-    private static Compiler compilerWith(ICompilerFeature feature) {
-        List<ICompilerFeature> features = new ArrayList<>(StandardFeatures.all());
-        features.add(feature);
-        return new Compiler(features);
-    }
-
     @Test
     void aFunctionOfAFeatureBecomesKnownToTheCompilation() throws Exception {
         AtomicReference<OperationRegistry> seen = new AtomicReference<>();
-        compilerWith(registering(ExpressionFixture.min(), seen)).compile(List.of("START:", "  NOP"), "main.evo",
+        TestRegistries.compilerWith(registering(ExpressionFixture.min(), seen)).compile(List.of("START:", "  NOP"), "main.evo",
                 new EnvironmentProperties(new int[]{100, 100}, true));
 
         assertThat(seen.get().find("MIN", Notation.FUNCTION)).isPresent();
@@ -85,7 +78,7 @@ class OperationRegistrationTest {
                 return new OperationResult.Value(operands.get(0));
             }
         };
-        Compiler compiler = compilerWith(registering(caret, new AtomicReference<>()));
+        Compiler compiler = TestRegistries.compilerWith(registering(caret, new AtomicReference<>()));
 
         assertThatThrownBy(() -> compiler.compile(List.of("START:", "  NOP"), "main.evo"))
                 .isInstanceOf(InternalCompilerException.class)
@@ -94,7 +87,7 @@ class OperationRegistrationTest {
 
     @Test
     void theNameOfAnOperationCannotBeDefined() {
-        Compiler compiler = compilerWith(registering(ExpressionFixture.min(), new AtomicReference<>()));
+        Compiler compiler = TestRegistries.compilerWith(registering(ExpressionFixture.min(), new AtomicReference<>()));
 
         assertThatThrownBy(() -> compiler.compile(List.of(".CONST MIN DATA:1", "START:", "  NOP"), "main.evo"))
                 .isInstanceOf(CompilationException.class)
