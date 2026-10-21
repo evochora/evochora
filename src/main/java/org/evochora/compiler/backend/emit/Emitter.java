@@ -4,6 +4,7 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.SourceView;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingResult;
@@ -39,9 +40,13 @@ public class Emitter {
      *
      * @param linked The linked IR program with the call site bindings; the program's
      *               {@link org.evochora.compiler.model.ir.DebugInfo} supplies the source files
-     *               and the token map, which the artifact carries unchanged, and from which the
-     *               token lookup by position is built.
-     * @param layout The layout result, containing coordinate and source mapping.
+     *               and the token map, which the artifact carries, and from which the token
+     *               lookup by position is built, and the notes of the computations the frontend
+     *               computed.
+     * @param layout The layout result, containing coordinate and source mapping and the notes of
+     *               the computations the layout computed. The artifact's source files and
+     *               expansions carry the notes the preprocessor recorded, then those of the
+     *               frontend and those of the layout, each distinct note once.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @return The final, compiled {@link ProgramArtifact}.
@@ -62,8 +67,10 @@ public class Emitter {
         }
 
         OperandEncoder encoder = new OperandEncoder(isa);
-        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, program.debugInfo().sources(),
-                program.debugInfo().expansions());
+        SourceView sourceView = program.debugInfo().view()
+                .withNotes(program.debugInfo().notes())
+                .withNotes(layout.notes());
+        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, sourceView);
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
 
@@ -119,8 +126,8 @@ public class Emitter {
 
         return new ProgramArtifact(
                 programId,
-                program.debugInfo().sources(),
-                program.debugInfo().expansions(),
+                sourceView.sources(),
+                sourceView.expansions(),
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),

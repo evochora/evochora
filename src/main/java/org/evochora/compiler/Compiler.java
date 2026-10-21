@@ -5,8 +5,6 @@ import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
@@ -36,6 +34,7 @@ import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
+import org.evochora.compiler.frontend.tokenmap.TokenMapResult;
 
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -232,7 +231,7 @@ public class Compiler implements ICompiler {
         tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
-        Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
+        TokenMapResult tokenMap = tokenMapGenerator.generateAll(ast);
         failOnErrors(diagnostics);
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
@@ -248,8 +247,8 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        DebugInfo debugInfo = new DebugInfo(ppResult.sources(), ppResult.expansions(), tokenMap,
-                effectiveOptions.defines(), effectiveOptions.values());
+        DebugInfo debugInfo = new DebugInfo(ppResult.view(), tokenMap.tokenMap(),
+                tokenMap.notes(), effectiveOptions.defines(), effectiveOptions.values());
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain, debugInfo);
         failOnErrors(diagnostics);
 

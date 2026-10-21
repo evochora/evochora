@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
@@ -18,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The names inside a computation are classified in the token map as the same names standing
- * alone are, at the positions of their own tokens.
+ * alone are, at the positions of their own tokens, and a computation with a value is noted with
+ * it behind its last token.
  */
 @Tag("unit")
 class ExpressionTokenMapTest {
@@ -53,6 +55,15 @@ class ExpressionTokenMapTest {
 
         assertThat(artifact.tokenMap().values()).noneMatch(info -> "@".equals(info.tokenText()));
         assertThat(entryAt(artifact.tokenMap(), 2, 14).tokenType()).isEqualTo(TokenKind.LABEL);
+    }
+
+    @Test
+    void aComputationWithAValueIsNotedBehindItsLastToken() throws Exception {
+        ProgramArtifact artifact = new Compiler().compile(List.of(
+                ".CONST WIDTH 99",
+                "SETI %DR0 DATA:(WIDTH+1)"), "expression_note.evo", new EnvironmentProperties(new int[]{100, 100}, true));
+
+        assertThat(artifact.sources().get(0).notes()).containsExactly(new SourceFile.Note(0, 2, 24, "[=DATA:100]"));
     }
 
     private static TokenInfo entryAt(Map<SourceInfo, TokenInfo> tokenMap, int line, int column) {

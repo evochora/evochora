@@ -29,6 +29,17 @@ public record SourceInfo(String fileName, int lineNumber, int columnNumber, Stri
         return expansion == 0 ? this : new SourceInfo(fileName, lineNumber, columnNumber, placement, 0);
     }
 
+    /**
+     * Reports whether the position stands on a line of a file of the program. Lines count from
+     * 1; a line number of 0 marks a position outside every file, such as a token of a configured
+     * value, which a source view cannot show.
+     *
+     * @return {@code true} for a line number from 1 on.
+     */
+    public boolean inAFile() {
+        return lineNumber >= 1;
+    }
+
     private static final String UNKNOWN_FILE = "<unknown>";
 
     /**

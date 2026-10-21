@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.tokenmap;
 
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
@@ -20,10 +21,12 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Traverses a syntactically and semantically valid Abstract Syntax Tree (AST)
@@ -39,12 +42,15 @@ import java.util.Optional;
  * implementations via the {@link TokenMapContributorRegistry}. Core node types
  * (IdentifierNode, ExpressionNode, RegisterNode) are handled as default logic: an identifier is
  * classified by the symbol it names, every name of a computation but the cursor as an identifier
- * at the position of its token, a register as a register.
+ * at the position of its token, a register as a register. A computation whose value phase 4
+ * computed is noted with {@code [=value]} at its last token, for the source view to show; one
+ * that only the layout computes is noted by the layout.
  */
 public class TokenMapGenerator implements ITokenMapContext {
 
     private final SymbolTable symbolTable;
     private final Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private final DiagnosticsEngine diagnostics;
     private final TokenMapContributorRegistry contributorRegistry;
     private final ModuleContextTracker contextTracker;
@@ -83,20 +89,21 @@ public class TokenMapGenerator implements ITokenMapContext {
     }
 
     /**
-     * Generates the token map by walking all provided AST nodes.
-     * This is useful when there are multiple top-level nodes (e.g., multiple procedures).
+     * Generates the token map and the notes of the computed values by walking all provided AST
+     * nodes. This is useful when there are multiple top-level nodes (e.g., multiple procedures).
      *
      * @param nodes The list of AST nodes to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token, with instance 0, and
-     *         the value is the detailed TokenInfo.
+     * @return The token map, keyed by the position of a token with instance 0, and the note
+     *         {@code [=value]} at the last token of every computation phase 4 computed in a file,
+     *         at its full position, each distinct note once, in the order the walk met them.
      */
-    public Map<SourceInfo, TokenInfo> generateAll(List<AstNode> nodes) {
+    public TokenMapResult generateAll(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             if (node != null) {
                 walkAndVisit(node);
             }
         }
-        return tokenMap;
+        return new TokenMapResult(tokenMap, List.copyOf(notes));
     }
 
     // === ITokenMapContext implementation ===
@@ -184,6 +191,7 @@ public class TokenMapGenerator implements ITokenMapContext {
             classifyName(identifierNode.text(), identifierNode.sourceInfo());
         } else if (node instanceof ExpressionNode expressionNode) {
             classifyNames(expressionNode.expression());
+            noteValue(expressionNode);
         } else if (node instanceof RegisterNode registerNode) {
             // A register is written as a register here: aliases and parameters are still
             // identifiers in Phase 5 and are replaced by registers only in Phase 6.
@@ -193,6 +201,20 @@ public class TokenMapGenerator implements ITokenMapContext {
                 this.currentScopeName
             ));
         }
+    }
+
+    /**
+     * Notes the value phase 4 recorded for a computation at the position of its last token; a
+     * computation the layout computes, one that failed, and one outside every file get no note
+     * here.
+     */
+    private void noteValue(ExpressionNode expression) {
+        if (!expression.end().inAFile()) {
+            return;
+        }
+        symbolTable.resultOf(expression)
+                .filter(outcome -> outcome.value() != null)
+                .ifPresent(outcome -> notes.add(new PositionedNote(expression.end(), "[=" + outcome.value().text() + "]")));
     }
 
     /**

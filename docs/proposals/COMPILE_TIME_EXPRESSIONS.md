@@ -449,8 +449,8 @@ rewritten.
   last token of each expression from the recorded results, `DebugInfo` carrying the notes; `LayoutContext.evaluate` writing a note for every
   value it computes, `LayoutResult` carrying them; the emitter merging the notes into the
   `SourceFile`s and, for a note inside a macro instance, into the `Expansion` its number names,
-  keeping the first note per position. Copies a `.REPEAT` makes carry no instance, so a note inside a
-  repeated body is shown once, with the value of the first copy; that is a known limit. Proto and
+  equal notes kept once. Copies a `.REPEAT` makes carry no instance, so the notes of a repeated body
+  share their positions: equal notes are kept once, different ones all shown. Proto and
   renderer are unchanged.
 - *Configuration:* `operandOf` reads a configured value through the same operand reader; configured
   flags stay numbers.

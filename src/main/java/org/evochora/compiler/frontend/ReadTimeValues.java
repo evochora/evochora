@@ -11,6 +11,7 @@ import org.evochora.compiler.expression.parser.ExpressionParser;
 import org.evochora.compiler.expression.parser.ParseResult;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.token.Token;
 
@@ -65,9 +66,11 @@ public final class ReadTimeValues {
         /**
          * The tokens compute to a number.
          *
-         * @param value The number.
+         * @param value    The number.
+         * @param computed Whether the tokens are a computation, rather than a number or a name
+         *                 written alone.
          */
-        record Number(long value) implements Reading {
+        record Number(long value, boolean computed) implements Reading {
         }
 
         /**
@@ -93,7 +96,7 @@ public final class ReadTimeValues {
             case ParseResult.Parsed parsed -> switch (evaluator.evaluate(parsed.expression(), this::resolve,
                     IEvaluationContext.none())) {
                 case EvaluationResult.Value value -> value.value() instanceof Value.Number number
-                        ? new Reading.Number(number.value())
+                        ? new Reading.Number(number.value(), parsed.expression() instanceof OperationExpression)
                         : new Reading.Failed("Expected a number.", tokens.getFirst().source());
                 case EvaluationResult.Error error -> new Reading.Failed(error.reason(), error.at());
                 case EvaluationResult.Partial partial -> throw new IllegalStateException(

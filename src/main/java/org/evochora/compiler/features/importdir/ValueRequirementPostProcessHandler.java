@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.postprocess.IPostProcessContext;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.model.ast.AstNode;
@@ -31,10 +32,28 @@ public final class ValueRequirementPostProcessHandler implements IPostProcessHan
 
     /**
      * Builds the value slot from the recorded value, at the position of the requirement's name.
+     * A tree that is the configured value's or the default's ends where that computation ends, so
+     * that what the layout computes of it stands behind its last token; the requirement's own name,
+     * recorded for a binding, ends at the name.
      */
     private static AstNode valueOf(ValueRequirementNode requirement, ExpressionOutcome outcome) {
-        return outcome.value() != null
-                ? new LiteralNode(outcome.value(), requirement.sourceInfo())
-                : new ExpressionNode(outcome.remaining(), requirement.sourceInfo(), requirement.sourceInfo());
+        if (outcome.value() != null) {
+            return new LiteralNode(outcome.value(), requirement.sourceInfo());
+        }
+        return new ExpressionNode(outcome.remaining(), requirement.sourceInfo(), endOf(requirement, outcome));
+    }
+
+    /**
+     * The end of the computation the recorded tree was made of: the configured value or the
+     * default whose tree starts where the recorded one does, else the requirement's name.
+     */
+    private static SourceInfo endOf(ValueRequirementNode requirement, ExpressionOutcome outcome) {
+        SourceInfo start = outcome.remaining().sourceInfo();
+        for (AstNode given : new AstNode[]{requirement.configured(), requirement.defaultValue()}) {
+            if (given instanceof ExpressionNode expression && expression.expression().sourceInfo().equals(start)) {
+                return expression.end();
+            }
+        }
+        return requirement.sourceInfo();
     }
 }

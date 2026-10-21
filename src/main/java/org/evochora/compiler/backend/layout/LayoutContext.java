@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.expression.EvaluationResult;
 import org.evochora.compiler.expression.Evaluator;
@@ -20,7 +21,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +46,9 @@ import java.util.stream.Collectors;
  * when the label is placed, and the value of every definition only the layout computes,
  * recorded by the layout handler of its feature through {@link #record}. A computation resolves
  * a name from them; a name not yet recorded is a forward reference.</p>
+ *
+ * <p>Every computation it computes in a file is noted with {@code [=value]} at its last token,
+ * for the source view to show.</p>
  */
 public final class LayoutContext {
 
@@ -60,6 +67,7 @@ public final class LayoutContext {
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private final Map<String, Occupant> occupied = new HashMap<>();
     private final Map<String, Value> namedValues = new HashMap<>();
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private int linearAddress = 0;
 
     /**
@@ -89,7 +97,8 @@ public final class LayoutContext {
      * Computes an argument of a directive at the line the layout stands at. A literal is its
      * value; a qualified name and a computation are evaluated with the cursor {@code @} and the
      * origin the line counts its vectors from, the base position of the enclosing module, both as
-     * positions of the program, and with the names the layout knows at this line.
+     * positions of the program, and with the names the layout knows at this line. The value of
+     * a computation in a file is noted at its last token; an equal note is kept once.
      *
      * @param value The argument, as the IR carries it.
      * @param at    The position of the directive, for an error.
@@ -101,12 +110,29 @@ public final class LayoutContext {
     public Value evaluate(IrValue value, SourceInfo at) throws CompilationException {
         return switch (value) {
             case IrValue.Literal literal -> literal.value();
-            case IrValue.Expression expression -> result(evaluator.evaluate(expression.expression(),
-                    this::resolve, evaluationContext()), at);
+            case IrValue.Expression expression -> noted(result(evaluator.evaluate(expression.expression(),
+                    this::resolve, evaluationContext()), at), expression.end());
             case IrValue.Str name -> result(evaluator.evaluate(new NameExpression(name.value(), at),
                     this::resolve, evaluationContext()), at);
             default -> throw new IllegalStateException("A directive argument is no value: " + value);
         };
+    }
+
+    private Value noted(Value value, SourceInfo end) {
+        if (end.inAFile()) {
+            notes.add(new PositionedNote(end, "[=" + value.text() + "]"));
+        }
+        return value;
+    }
+
+    /**
+     * Returns the notes of the computations computed so far: {@code [=value]} at the last token
+     * of each, in the order they were computed.
+     *
+     * @return The notes, each distinct note once.
+     */
+    public List<PositionedNote> notes() {
+        return List.copyOf(notes);
     }
 
     private IEvaluationContext evaluationContext() throws CompilationException {

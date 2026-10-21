@@ -406,7 +406,7 @@ class ControlLevelTest {
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.registerAll(features.tokenMapContributors());
         Map<SourceInfo, TokenInfo> tokenMap = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry,
-                new ModuleContextTracker(symbolTable)).generateAll(ast);
+                new ModuleContextTracker(symbolTable)).generateAll(ast).tokenMap();
         AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable),
                 new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         return new Analyzed(postProcessor.process(ast), diagnostics, tokenMap);

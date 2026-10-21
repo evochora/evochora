@@ -1,8 +1,11 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.api.Expansion;
+import org.evochora.compiler.api.PositionedLeftOut;
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.SourceView;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -11,8 +14,8 @@ import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.function.ToIntFunction;
 
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
@@ -29,8 +32,8 @@ public class PreProcessor {
     private int current = 0;
     private final PreProcessorContext ppContext;
     private final BlockReader blockReader;
-    private final Map<String, Map<String, Set<SourceFile.LeftOut>>> leftOut = new LinkedHashMap<>();
-    private final Map<String, Map<String, Set<SourceFile.Note>>> notes = new LinkedHashMap<>();
+    private final Set<PositionedLeftOut> leftOut = new LinkedHashSet<>();
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private final List<SourceFile> entries = new ArrayList<>();
     private final Map<Integer, Expansion> expansions = new HashMap<>();
 
@@ -59,7 +62,7 @@ public class PreProcessor {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
-        ppContext.reportTo(diagnostics);
+        ppContext.reportTo(diagnostics, this::note);
         this.blockReader = new BlockReader(ppContext.handlers()::blockKindOf, true, token -> false, diagnostics);
         entries.add(ppContext.mainFile());
     }
@@ -111,102 +114,43 @@ public class PreProcessor {
                 current++;
             }
         }
-        List<SourceFile> sources = new ArrayList<>(entries.size());
-        for (SourceFile entry : entries) {
-            sources.add(entry.withRecords(recordedFor(leftOut, entry, SourceFile.LeftOut::expansion),
-                    recordedFor(notes, entry, SourceFile.Note::expansion)));
+        SourceView view = new SourceView(entries, expansions);
+        List<SourceInfo> lost = new ArrayList<>();
+        List<PositionedNote> keptNotes = kept(view, notes, PositionedNote::at, lost);
+        List<PositionedLeftOut> keptRegions = kept(view, leftOut, PreProcessor::placeOf, lost);
+        if (!lost.isEmpty()) {
+            diagnostics.reportError("Internal error: " + lost.size()
+                    + " record(s) of the source view name neither a source entry nor an expansion.",
+                    lost.get(0).fileName(), lost.get(0).lineNumber());
         }
-        Map<Integer, Expansion> withRecords = new HashMap<>();
-        expansions.forEach((instance, expansion) -> withRecords.put(instance, expansion.withRecords(
-                recordedIn(leftOut, instance, SourceFile.LeftOut::expansion),
-                recordedIn(notes, instance, SourceFile.Note::expansion))));
-        checkEveryRecordIsKept(sources, withRecords);
-        return new PreProcessorResult(tokens, sources, withRecords);
+        return new PreProcessorResult(tokens, view.withRecords(keptRegions, keptNotes));
     }
 
     /**
-     * Compares the number of records distributed to entries and expansions with the number
-     * recorded, and reports a difference as an internal error at the first record that names
-     * neither an entry nor an expansion.
+     * Returns the records that have a place in the view, in the order they were recorded, and
+     * adds the positions of the others to the lost ones: a record that names neither an entry
+     * nor an expansion is a defect of the compiler.
      */
-    private void checkEveryRecordIsKept(List<SourceFile> sources, Map<Integer, Expansion> withRecords) {
-        int recorded = count(leftOut) + count(notes);
-        int distributed = 0;
-        for (SourceFile source : sources) {
-            distributed += source.leftOut().size() + source.notes().size();
-        }
-        for (Expansion expansion : withRecords.values()) {
-            distributed += expansion.leftOut().size() + expansion.notes().size();
-        }
-        if (distributed == recorded) {
-            return;
-        }
-        Set<String> entryKeys = new HashSet<>();
-        sources.forEach(source -> entryKeys.add(source.placement() + "\0" + source.resolvedPath() + "\0" + source.instance()));
-        String message = "Internal error: " + (recorded - distributed)
-                + " record(s) of the source view name neither a source entry nor an expansion.";
-        for (Map.Entry<String, Map<String, Set<SourceFile.Note>>> placement : notes.entrySet()) {
-            for (Map.Entry<String, Set<SourceFile.Note>> file : placement.getValue().entrySet()) {
-                for (SourceFile.Note note : file.getValue()) {
-                    if (!kept(entryKeys, placement.getKey(), file.getKey(), note.expansion())) {
-                        diagnostics.reportError(message, file.getKey(), note.line());
-                        return;
-                    }
-                }
+    private static <T> List<T> kept(SourceView view, Set<T> recorded, Function<T, SourceInfo> position,
+                                    List<SourceInfo> lost) {
+        List<T> kept = new ArrayList<>(recorded.size());
+        for (T record : recorded) {
+            SourceInfo at = position.apply(record);
+            if (view.holds(at.placement(), at.fileName(), at.expansion())) {
+                kept.add(record);
+            } else {
+                lost.add(at);
             }
         }
-        for (Map.Entry<String, Map<String, Set<SourceFile.LeftOut>>> placement : leftOut.entrySet()) {
-            for (Map.Entry<String, Set<SourceFile.LeftOut>> file : placement.getValue().entrySet()) {
-                for (SourceFile.LeftOut region : file.getValue()) {
-                    if (!kept(entryKeys, placement.getKey(), file.getKey(), region.expansion())) {
-                        diagnostics.reportError(message, file.getKey(), region.directiveLine());
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    private boolean kept(Set<String> entryKeys, String placement, String fileName, int expansion) {
-        return entryKeys.contains(placement + "\0" + fileName + "\0" + expansion) || expansions.containsKey(expansion);
-    }
-
-    private static int count(Map<String, ? extends Map<String, ? extends Set<?>>> recorded) {
-        int total = 0;
-        for (Map<String, ? extends Set<?>> byFile : recorded.values()) {
-            for (Set<?> records : byFile.values()) {
-                total += records.size();
-            }
-        }
-        return total;
+        return kept;
     }
 
     /**
-     * Returns what was recorded for an entry, in the order it was first recorded: the records of
-     * its placement and resolved path with the entry's instance.
+     * The position of the directive line that owns a region, as a record of the view is placed.
      */
-    private static <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile entry,
-                                           ToIntFunction<T> instance) {
-        Map<String, Set<T>> byFile = recorded.get(entry.placement());
-        if (byFile == null) {
-            return List.of();
-        }
-        return byFile.getOrDefault(entry.resolvedPath(), Set.of()).stream()
-                .filter(record -> instance.applyAsInt(record) == entry.instance())
-                .toList();
-    }
-
-    /**
-     * Returns what was recorded in an instance that is no inclusion, in the order it was first
-     * recorded. Its numbers are never those of an entry, so every record under it is its own.
-     */
-    private static <T> List<T> recordedIn(Map<String, Map<String, Set<T>>> recorded, int expansion,
-                                          ToIntFunction<T> instance) {
-        List<T> found = new ArrayList<>();
-        recorded.values().forEach(byFile -> byFile.values().forEach(records -> records.stream()
-                .filter(record -> instance.applyAsInt(record) == expansion)
-                .forEach(found::add)));
-        return found;
+    private static SourceInfo placeOf(PositionedLeftOut region) {
+        return new SourceInfo(region.fileName(), region.region().directiveLine(), 0, region.placement(),
+                region.region().expansion());
     }
 
     /**
@@ -299,9 +243,8 @@ public class PreProcessor {
      * @param toLine    The last line of the region, inclusive.
      */
     public void leftOut(SourceInfo directive, int fromLine, int toLine) {
-        leftOut.computeIfAbsent(directive.placement(), k -> new LinkedHashMap<>())
-                .computeIfAbsent(directive.fileName(), k -> new LinkedHashSet<>())
-                .add(new SourceFile.LeftOut(directive.expansion(), directive.lineNumber(), fromLine, toLine));
+        leftOut.add(new PositionedLeftOut(directive.placement(), directive.fileName(),
+                new SourceFile.LeftOut(directive.expansion(), directive.lineNumber(), fromLine, toLine)));
     }
 
     /**
@@ -312,9 +255,7 @@ public class PreProcessor {
      * @param text     The text of the note.
      */
     public void note(SourceInfo position, String text) {
-        notes.computeIfAbsent(position.placement(), k -> new LinkedHashMap<>())
-                .computeIfAbsent(position.fileName(), k -> new LinkedHashSet<>())
-                .add(new SourceFile.Note(position.expansion(), position.lineNumber(), position.columnNumber(), text));
+        notes.add(new PositionedNote(position, text));
     }
 
     // --- Token stream navigation ---

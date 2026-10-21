@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 /**
@@ -42,6 +43,7 @@ public class PreProcessorContext {
     private final Map<String, String> reservedNames;
     private final ReadTimeValues values;
     private DiagnosticsEngine diagnostics;
+    private BiConsumer<SourceInfo, String> notes;
     private final Map<Class<?>, Object> featureState = new HashMap<>();
     private int lastInstance;
 
@@ -221,7 +223,9 @@ public class PreProcessorContext {
      * {@link #flags()} with its value. An error is reported to the diagnostics of the
      * preprocessor that walks the stream, at the token or the node at fault, or else at the
      * first token: tokens that form no computation, a name that is no flag or a flag without a
-     * value, a computation that fails, a result that is no number.
+     * value, a computation that fails, a result that is no number. A computation that gives a
+     * number is noted for the source view as {@code [=n]} behind its last token; a number or a
+     * flag name written alone is not, nor is a computation outside every file.
      *
      * @param tokens The tokens of the value, as the directive delimits them; not empty.
      * @return The number, or empty if an error was reported.
@@ -229,11 +233,15 @@ public class PreProcessorContext {
      */
     public Optional<Long> evaluate(List<Token> tokens) {
         return switch (values.read(tokens)) {
-            case ReadTimeValues.Reading.Number number -> Optional.of(number.value());
-            case ReadTimeValues.Reading.Failed failed -> {
-                if (diagnostics == null) {
-                    throw new IllegalStateException("No preprocessor reports for this context.");
+            case ReadTimeValues.Reading.Number number -> {
+                requireWalk();
+                if (number.computed() && tokens.getLast().source().inAFile()) {
+                    notes.accept(tokens.getLast().source(), "[=" + number.value() + "]");
                 }
+                yield Optional.of(number.value());
+            }
+            case ReadTimeValues.Reading.Failed failed -> {
+                requireWalk();
                 SourceInfo at = failed.at() != null ? failed.at()
                         : tokens.isEmpty() ? null : tokens.getFirst().source();
                 diagnostics.reportError(failed.message(), at == null ? "" : at.fileName(),
@@ -243,14 +251,22 @@ public class PreProcessorContext {
         };
     }
 
+    private void requireWalk() {
+        if (diagnostics == null) {
+            throw new IllegalStateException("No preprocessor reports for this context.");
+        }
+    }
+
     /**
-     * Sets the diagnostics {@link #evaluate} reports to: those of the preprocessor that walks a
-     * stream with this context.
+     * Sets where {@link #evaluate} reports and notes: to the diagnostics and the notes of the
+     * preprocessor that walks a stream with this context.
      *
      * @param diagnostics The preprocessor's diagnostics.
+     * @param notes       Records a note at a position for the source view.
      */
-    void reportTo(DiagnosticsEngine diagnostics) {
+    void reportTo(DiagnosticsEngine diagnostics, BiConsumer<SourceInfo, String> notes) {
         this.diagnostics = diagnostics;
+        this.notes = notes;
     }
 
     // --- Feature state ---

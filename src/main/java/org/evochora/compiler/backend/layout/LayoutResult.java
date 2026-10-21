@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.PlacedMolecule;
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.expression.Value;
 
@@ -21,6 +22,8 @@ import java.util.Map;
  * @param placedItems The items in the order the layout walked them, each with the address it was given.
  * @param namedValues The named layout values by qualified name: the position of every label's
  *                    cell and the value of every definition only the layout computes.
+ * @param notes The note {@code [=value]} at the last token of every computation the layout
+ *              computed, each distinct note once, in the order they were computed.
  */
 public record LayoutResult(
         Map<Integer, int[]> linearAddressToCoord,
@@ -30,5 +33,6 @@ public record LayoutResult(
         Map<Integer, SourceInfo> sourceMap,
         Map<int[], PlacedMolecule> initialWorldObjects,
         List<PlacedItem> placedItems,
-        Map<String, Value> namedValues
+        Map<String, Value> namedValues,
+        List<PositionedNote> notes
 ) {}

@@ -45,12 +45,12 @@ class PreProcessorRecordsTest {
     void theMainFileComesFirst_andTheInclusionsFollowInTheOrderTheyAreAdded() {
         PreProcessorResult result = run(pp -> { });
 
-        assertThat(result.sources()).extracting(SourceFile::placement, SourceFile::instance)
+        assertThat(result.view().sources()).extracting(SourceFile::placement, SourceFile::instance)
                 .containsExactly(tuple("", 0), tuple("LIB", 0), tuple("", 2));
-        assertThat(result.sources().get(0).includedAt()).isNull();
-        assertThat(result.sources().get(2).includedAt()).isEqualTo(new SourceInfo(MAIN, 2, 1, "", 0));
-        assertThat(result.sources().get(1).lines()).isSameAs(result.sources().get(2).lines());
-        assertThat(result.expansions()).isEmpty();
+        assertThat(result.view().sources().get(0).includedAt()).isNull();
+        assertThat(result.view().sources().get(2).includedAt()).isEqualTo(new SourceInfo(MAIN, 2, 1, "", 0));
+        assertThat(result.view().sources().get(1).lines()).isSameAs(result.view().sources().get(2).lines());
+        assertThat(result.view().expansions()).isEmpty();
     }
 
     @Test
@@ -61,9 +61,9 @@ class PreProcessorRecordsTest {
             pp.note(new SourceInfo(LIB, 1, 1, "", 2), "sourced");
         });
 
-        SourceFile main = result.sources().get(0);
-        SourceFile placed = result.sources().get(1);
-        SourceFile sourced = result.sources().get(2);
+        SourceFile main = result.view().sources().get(0);
+        SourceFile placed = result.view().sources().get(1);
+        SourceFile sourced = result.view().sources().get(2);
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 1, 2, 3));
         assertThat(main.notes()).isEmpty();
         assertThat(placed.leftOut()).isEmpty();
@@ -82,7 +82,7 @@ class PreProcessorRecordsTest {
             pp.leftOut(at, 2, 3);
         });
 
-        SourceFile main = result.sources().get(0);
+        SourceFile main = result.view().sources().get(0);
         assertThat(main.notes()).containsExactly(new Note(0, 1, 1, "second"), new Note(0, 1, 1, "first"));
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 1, 2, 3));
     }
@@ -95,7 +95,7 @@ class PreProcessorRecordsTest {
             pp.note(new SourceInfo(MAIN, 3, 1, "OTHER", 0), "elsewhere");
         });
 
-        assertThat(result.sources().get(0).notes()).containsExactly(new Note(0, 1, 1, "kept"));
+        assertThat(result.view().sources().get(0).notes()).containsExactly(new Note(0, 1, 1, "kept"));
         assertThat(diagnostics.summary())
                 .contains(MAIN + ":3: Internal error: 1 record(s) of the source view name neither a source entry"
                         + " nor an expansion.");
@@ -113,15 +113,15 @@ class PreProcessorRecordsTest {
             pp.note(new SourceInfo(LIB, 1, 1, "", 2), "in the inclusion");
         });
 
-        assertThat(result.expansions()).containsOnlyKeys(5);
-        Expansion five = result.expansions().get(5);
+        assertThat(result.view().expansions()).containsOnlyKeys(5);
+        Expansion five = result.view().expansions().get(5);
         assertThat(five.calledAt()).isEqualTo(calledAt);
         assertThat(five.definedAt()).isEqualTo(definedAt);
         assertThat(five.name()).isEqualTo("STEP");
         assertThat(five.bindings()).isEqualTo(bindings);
         assertThat(five.notes()).containsExactly(new Note(5, 1, 1, "in five"));
         assertThat(five.leftOut()).containsExactly(new LeftOut(5, 1, 1, 1));
-        SourceFile sourced = result.sources().get(2);
+        SourceFile sourced = result.view().sources().get(2);
         assertThat(sourced.notes()).containsExactly(new Note(2, 1, 1, "in the inclusion"));
         assertThat(sourced.leftOut()).isEmpty();
     }
