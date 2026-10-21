@@ -241,7 +241,7 @@ that failed; the spec explains the rules, the message does not:
 parentheses.` · `'FOO' is not defined.` (and the symbol table's other texts) · `'X' cannot be used as
 a value.` · `A position cannot be used as an operand.` · `A layout value cannot be used as an
 operand.` (a computed position or a number that needs the layout, in an operand or a label slot) ·
-`'X' has no value.` (a flag set without a value, in a computation) · `'FOO' is not a molecule type.`
+`'X' has no value.` (a flag set without a value, in a computation) · `Invalid operands for ':': typed and number.` (a defined name that is no molecule type before `:`; an undefined one reports `'FOO' is not defined.`)
 · `Division by zero.` · `Integer overflow.` · `Type mismatch: ENERGY and DATA.` · `Invalid operands
 for '*': vector and vector.` · `Invalid vector component: 'NW' is a vector.` · `Index 3 out of bounds
 for a vector of length 2.` · `Value 1048576 out of range for a cell (-524288 to 524287).` · `Value
