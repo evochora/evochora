@@ -345,7 +345,7 @@ These instructions operate on the integer value of scalars.
 * `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
 * `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
-* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Arithmetic shift right, the sign is kept. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
 
 #### Rotation and Bit Utilities
 
