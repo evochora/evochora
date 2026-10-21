@@ -19,6 +19,8 @@ import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.expression.IOperation;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
@@ -55,6 +57,9 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private static final String LEXER_SYMBOL_ALPHABET = "!&*+,./<=>?^~-";
 
 	private final IInstructionSet isa;
+
+	// The operations of computations; the registry checks each registration itself.
+	private final OperationRegistry operations = new OperationRegistry();
 
 	// Map-based registrations are key-based with guardDuplicate — duplicates are a configuration error.
 	private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers = new HashMap<>();
@@ -98,6 +103,16 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	@Override
 	public IInstructionSet isa() {
 		return isa;
+	}
+
+	@Override
+	public void operation(IOperation operation) {
+		operations.register(operation);
+	}
+
+	@Override
+	public OperationRegistry operations() {
+		return operations;
 	}
 
 	@Override

@@ -57,7 +57,9 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 /**
@@ -169,6 +171,7 @@ public class Compiler implements ICompiler {
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         FeatureRegistry featureRegistry = new FeatureRegistry(isa);
         features.forEach(f -> f.register(featureRegistry));
+        featureRegistry.operations().validate(preprocessorWords(featureRegistry));
 
         // Phase 1: Lexer — finds the files and tokenizes each of them once; the main file's tokens
         // become the stream, and the text of every value of the options is tokenized on its own
@@ -205,7 +208,7 @@ public class Compiler implements ICompiler {
         failOnErrors(diagnostics);
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = new SymbolTable(diagnostics, featureRegistry.operations().reservedNames());
         AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
@@ -318,6 +321,16 @@ public class Compiler implements ICompiler {
         } catch (java.nio.file.InvalidPathException e) {
             throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
         }
+    }
+
+    /**
+     * The words the preprocessor acts on: the directives of its handlers and every word of its
+     * block kinds.
+     */
+    private static Set<String> preprocessorWords(FeatureRegistry featureRegistry) {
+        Set<String> words = new HashSet<>(featureRegistry.preprocessorHandlers().keySet());
+        featureRegistry.preprocessorBlocks().forEach(block -> words.addAll(block.kind().words()));
+        return words;
     }
 
     /**

@@ -160,4 +160,23 @@ class SymbolTableTest {
         assertThat(dotted.resolve("X.Y", new SourceInfo(MAIN, 5, 1, "", 0)).found()).isEmpty();
     }
 
+
+    @Test
+    void aReservedNameIsReportedAndNotFiled() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SymbolTable reserving = new SymbolTable(diagnostics,
+                java.util.Map.of("SHL", "an operator", "MIN", "a function", "@", ""));
+        reserving.registerModule("", MAIN);
+        reserving.setCurrentModule("");
+
+        reserving.define(new Symbol("shl", new SourceInfo(MAIN, 3, 1, "", 0), Symbol.Type.LABEL));
+        reserving.define(new Symbol("Min", new SourceInfo(MAIN, 4, 1, "", 0), Symbol.Type.CONSTANT));
+        reserving.define(new Symbol("@", new SourceInfo(MAIN, 5, 1, "", 0), Symbol.Type.CONSTANT));
+
+        assertThat(diagnostics.getDiagnostics()).extracting(d -> d.message())
+                .containsExactly("'shl' is an operator and cannot be defined.", "'Min' is a function and cannot be defined.",
+                        "'@' cannot be defined.");
+        assertThat(diagnostics.getDiagnostics().getFirst().lineNumber()).isEqualTo(3);
+        assertThat(reserving.resolve("SHL", new SourceInfo(MAIN, 6, 1, "", 0)).found()).isEmpty();
+    }
 }

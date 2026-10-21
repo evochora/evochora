@@ -103,6 +103,12 @@ public class SymbolTable {
     private final DiagnosticsEngine diagnostics;
 
     /**
+     * The names nothing may define, upper-cased, each with what it is ("an operator", "a
+     * function"); a name with the empty text, the cursor {@code @}, is reserved as it is.
+     */
+    private final Map<String, String> reservedNames;
+
+    /**
      * How many definitions {@link #bindingOf} follows before it gives up; a chain longer than
      * this is a circle it failed to notice, and it returns empty as for one it did.
      */
@@ -116,7 +122,24 @@ public class SymbolTable {
      * @param diagnostics The diagnostics engine for reporting errors.
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
+        this(diagnostics, Map.of());
+    }
+
+    /**
+     * Constructs a new symbol table that rejects the given names wherever anything is defined.
+     * The current module must be set via {@link #setCurrentModule(String)} before any
+     * define/resolve operations.
+     * @param diagnostics   The diagnostics engine for reporting errors.
+     * @param reservedNames The names nothing may define, in any letter case, each with what it
+     *                      is, worded for the message: "an operator", "a function" for the names
+     *                      of the operations of computations; the empty text for a name that is
+     *                      reserved as it is, such as {@code @}, the cursor.
+     */
+    public SymbolTable(DiagnosticsEngine diagnostics, Map<String, String> reservedNames) {
         this.diagnostics = diagnostics;
+        Map<String, String> reserved = new HashMap<>();
+        reservedNames.forEach((name, what) -> reserved.put(name.toUpperCase(), what));
+        this.reservedNames = Map.copyOf(reserved);
         this.rootScope = new Scope(null, TokenInfo.MODULE_LEVEL);
         this.currentScope = this.rootScope;
     }
@@ -309,10 +332,13 @@ public class SymbolTable {
      * <p>
      * A name is one segment: a name that contains a dot could only be confused with the path of
      * a name on another level. Such a definition is reported here, at the symbol's position,
-     * whatever kind of thing it names, and is not filed.
+     * whatever kind of thing it names, and is not filed. So is a reserved name: the name of an
+     * operation, which a computation would read as the operation, and {@code @}, the cursor; the
+     * message says what the name is.
      * @param symbol The symbol to define.
      * @return The definition the name already had in this scope, which stays; empty if the
-     *         symbol was defined, or if its name contains a dot and it was reported instead.
+     *         symbol was defined, or if its name contains a dot or is reserved and it was
+     *         reported instead.
      * @throws IllegalStateException if the table is frozen.
      */
     public Optional<Symbol> define(Symbol symbol) {
@@ -324,6 +350,15 @@ public class SymbolTable {
             return Optional.empty();
         }
         String name = symbol.name().toUpperCase();
+        String reserved = reservedNames.get(name);
+        if (reserved != null) {
+            diagnostics.reportError(
+                    reserved.isEmpty()
+                            ? "'" + symbol.name() + "' cannot be defined."
+                            : "'" + symbol.name() + "' is " + reserved + " and cannot be defined.",
+                    symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
+            return Optional.empty();
+        }
         String file = symbol.sourceInfo().fileName();
 
         // In module context, the symbol is filed under the module placement rather than the file
@@ -360,6 +395,40 @@ public class SymbolTable {
      *         once at the definition the circle was entered through.
      */
     public Optional<AstNode> bindingOf(IdentifierNode reference) {
+        return chainEndOf(reference).map(end -> end.symbol() != null
+                ? new IdentifierNode(end.qualifiedName(), end.sourceInfo())
+                : end.node());
+    }
+
+    /**
+     * Where a chain of names ends, as {@link #chainEndOf} finds it: at the node a binding gave,
+     * or at a symbol whose node offers no binding.
+     *
+     * @param node          The node the chain ends at: what the last binding binds to, or the
+     *                      node of the symbol that offers no binding, whose capabilities the
+     *                      caller asks.
+     * @param symbol        The symbol that offers no binding; {@code null} when the chain ends at
+     *                      the node a binding gave.
+     * @param qualifiedName The qualified name of that symbol; {@code null} with it.
+     * @param sourceInfo    The position of the last identifier of the chain, as written.
+     */
+    public record ChainEnd(AstNode node, Symbol symbol, String qualifiedName, SourceInfo sourceInfo) {
+    }
+
+    /**
+     * Follows what an identifier is bound to, through definitions that are themselves
+     * identifiers, and says where the chain ends. Each identifier is looked up where it is
+     * written: the reference from the current scope, every identifier a definition binds to
+     * from the scope of that definition, in the placement its position names.
+     *
+     * @param reference The identifier as written.
+     * @return Where the chain ends: at the node the last binding binds to, or at the symbol
+     *         with its qualified name whose node offers no binding (a label, a procedure, a
+     *         module alias). Empty if the identifier names no symbol, if the last definition has
+     *         no value, or if its definitions go in a circle, which is reported once at the
+     *         definition the circle was entered through.
+     */
+    public Optional<ChainEnd> chainEndOf(IdentifierNode reference) {
         IdentifierNode current = reference;
         // The symbols visited, by identity, and the names as written, for the message
         Set<Symbol> visited = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -376,11 +445,12 @@ public class SymbolTable {
             if (resolved.isEmpty()) {
                 return Optional.empty();
             }
-            if (!(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
-                return Optional.of(new IdentifierNode(resolved.get().qualifiedName(), current.sourceInfo()));
+            Symbol symbol = resolved.get().symbol();
+            if (!(symbol.node() instanceof IIdentifierBinding binding)) {
+                return Optional.of(new ChainEnd(symbol.node(), symbol, resolved.get().qualifiedName(), current.sourceInfo()));
             }
-            if (visited.contains(resolved.get().symbol())) {
-                if (reportedCircles.add(resolved.get().symbol().sourceInfo() + " " + resolved.get().symbol().name())) {
+            if (visited.contains(symbol)) {
+                if (reportedCircles.add(symbol.sourceInfo() + " " + symbol.name())) {
                     diagnostics.reportError(
                             "Definition of " + chain.get(0) + " is circular: " + String.join(" -> ", chain) + " -> " + current.text() + ".",
                             firstDefinition != null ? firstDefinition.fileName() : "unknown",
@@ -388,15 +458,17 @@ public class SymbolTable {
                 }
                 return Optional.empty();
             }
-            visited.add(resolved.get().symbol());
+            visited.add(symbol);
             chain.add(current.text());
             if (firstDefinition == null) {
-                firstDefinition = resolved.get().symbol().sourceInfo();
+                firstDefinition = symbol.sourceInfo();
             }
             from = lookup.scope();
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {
-                return Optional.ofNullable(bound);
+                return bound == null
+                        ? Optional.empty()
+                        : Optional.of(new ChainEnd(bound, null, null, current.sourceInfo()));
             }
             current = next;
         }

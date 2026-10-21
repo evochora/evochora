@@ -28,12 +28,19 @@ import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.backend.link.ILinkingRule;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.IOperation;
+import org.evochora.compiler.expression.IOperationGroup;
+import org.evochora.compiler.expression.NameAnswer;
+import org.evochora.compiler.expression.OperationResult;
+import org.evochora.compiler.expression.parser.ParseResult;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrValue;
+import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,6 +66,9 @@ class CompilerArchitectureRulesTest {
 
     /** Package holding one sub-package per feature. */
     private static final String FEATURES = COMPILER + ".features";
+
+    /** Package holding the behaviour of computations, shared by the phases that compute. */
+    private static final String EXPRESSION = COMPILER + ".expression";
 
     /** The classes that run the phases of the pipeline, in pipeline order. */
     private static final String[] PHASE_CLASSES = {
@@ -190,14 +200,16 @@ class CompilerArchitectureRulesTest {
      * <p>
      * Handler, registration and context interfaces are recognisable by name. The exceptions
      * are the types every AST node, AST operand, IR item, IR operand and IR value implements,
-     * the value family the formats share, and the outcome of a name lookup; they name data, not a role, and are listed here so
+     * the value family the formats share, the outcome of a name lookup, the expression tree, and
+     * the outcomes of reading, answering and computing an expression; they name data, not a role, and are listed here so
      * that a further exception is a decision. A nested interface is named by its owner, as in
      * {@code IInstructionSet.Signature}, and is not covered.
      */
     @Test
     void topLevelInterfacesCarryThePrefix() {
         classes().that().areInterfaces().and().areTopLevelClasses()
-                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class)
+                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class,
+                        Expression.class, OperationResult.class, EvaluationResult.class, NameAnswer.class, ParseResult.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
                 .check(compilerClasses);
     }
@@ -209,6 +221,10 @@ class CompilerArchitectureRulesTest {
      * exist for the backend. Neither a backend package nor a handler a feature registers for a
      * backend phase may read the symbol table, the AST or the tokens. A handler that needs
      * something from there says that the IR is missing it, and then it belongs into the IR.
+     * <p>
+     * The operations of computations are held to the same rule, as the layout computes with
+     * them, and so are the parts of the expression package only the frontend may use: the
+     * parser, which reads tokens, and the bridge to the symbol table.
      */
     @Test
     void backendReadsOnlyTheIrAndTheInstructionSet() {
@@ -218,11 +234,15 @@ class CompilerArchitectureRulesTest {
                 .or().implement(ILinkingDirectiveHandler.class)
                 .or().implement(IRewriteRule.class)
                 .or().implement(IEmissionContributor.class)
+                .or().implement(IOperation.class)
+                .or().implement(IOperationGroup.class)
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".frontend..",
                         COMPILER + ".model.ast..",
                         COMPILER + ".model.token..",
-                        COMPILER + ".model.symbols..")
+                        COMPILER + ".model.symbols..",
+                        EXPRESSION + ".parser..",
+                        EXPRESSION + ".symbols..")
                 .check(compilerClasses);
     }
 
@@ -338,6 +358,43 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
+     * The root of the expression package holds what frontend and backend share, and so reads
+     * neither its own sub-packages nor the data only the frontend has: the tokens, the AST and
+     * the symbol table.
+     * <p>
+     * The layout computes with the evaluator, the operations and the registry as phase 4 does.
+     * The parser, which reads tokens, and the bridge to the symbol table are the frontend's
+     * part and lie in sub-packages, which the backend may not reference; a root class that
+     * reached them would carry them into the backend.
+     */
+    @Test
+    void expressionRootReadsNothingOfTheFrontend() {
+        noClasses().that().resideInAPackage(EXPRESSION)
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        EXPRESSION + ".parser..",
+                        EXPRESSION + ".symbols..",
+                        COMPILER + ".model.token..",
+                        COMPILER + ".model.ast..",
+                        COMPILER + ".model.symbols..")
+                .check(compilerClasses);
+    }
+
+    /**
+     * The data of computations knows nothing of the behaviour that computes them: neither the
+     * expression tree and the values ({@code model.expression}) nor the symbol table, which
+     * records them, references the expression package.
+     * <p>
+     * The tree is data every phase may hold; if it reached the evaluator or the registry, a
+     * format would depend on the operations a compilation happens to register.
+     */
+    @Test
+    void computationDataReferencesNoBehaviour() {
+        noClasses().that().resideInAnyPackage(COMPILER + ".model.expression..", COMPILER + ".model.symbols..")
+                .should().dependOnClassesThat().resideInAPackage(EXPRESSION + "..")
+                .check(compilerClasses);
+    }
+
+    /**
      * Phases never call other phases: {@code Compiler} is the only class that knows the order.
      * <p>
      * A phase receives its input from the compiler and returns its result to it. A phase that
@@ -411,7 +468,7 @@ class CompilerArchitectureRulesTest {
                 .should(useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes())
                 .check(compilerClasses);
         noClasses().that().resideInAnyPackage(COMPILER + ".frontend", COMPILER + ".isa..", COMPILER + ".diagnostics..",
-                        COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..")
+                        COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..", EXPRESSION + "..")
                 .should().dependOnClassesThat().resideInAnyPackage(PHASE_PACKAGES)
                 .check(compilerClasses);
     }
