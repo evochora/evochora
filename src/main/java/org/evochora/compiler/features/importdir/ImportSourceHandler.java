@@ -82,12 +82,9 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         }
 
         // The module's tokens go after the import's statement end, because the parser reads the
-        // directive's clauses up to that end. A ';' there puts another statement on the line;
-        // it gets its statement end back after the injected tokens, so that it still begins a
-        // statement where the preprocessor reads it.
-        Token statementEnd = null;
+        // directive's clauses up to that end.
         if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.NEWLINE)) {
-            statementEnd = preProcessor.advance();
+            preProcessor.advance();
         }
 
         // Guard against circular imports
@@ -123,8 +120,11 @@ public class ImportSourceHandler implements IPreProcessorHandler {
                 directive.expansion());
         newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, marker));
         newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, marker));
-        if (statementEnd != null && ";".equals(statementEnd.text())) {
-            newTokens.add(new Token(TokenType.NEWLINE, ";", null, marker));
+        // The separator of the import's line is restored after the inlined module, so that the
+        // statement it put after the import still begins a statement where the preprocessor
+        // reads it.
+        if (line.separator() != null) {
+            newTokens.add(line.separator().with(marker));
         }
 
         // The inclusion enters the module's alias chain and stays open until the injected
