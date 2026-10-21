@@ -15,6 +15,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +47,9 @@ public class AstPostProcessor implements IPostProcessContext {
     private final ModuleContextTracker contextTracker;
     private final ScopeTracker scopeTracker;
     private final PostProcessHandlerRegistry registry;
-    private final Map<AstNode, AstNode> replacements = new HashMap<>();
+    // Keyed by node identity, as the symbol table keys what it records per node: a replacement
+    // belongs to the node it was collected for, and two equal nodes are two places in the tree.
+    private final Map<AstNode, AstNode> replacements = new IdentityHashMap<>();
 
     /**
      * Constructs a post-processor with handler registry, module context tracker, and scope tracker.
