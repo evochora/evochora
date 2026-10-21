@@ -35,9 +35,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
         if (!(literal instanceof LiteralNode typed && typed.value() instanceof Value.Typed)) {
             context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().source().fileName(), context.peek().source().lineNumber());
             // The rest of the statement belongs to the directive and is reported with it, once
-            while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                context.advance();
-            }
+            context.skipStatement();
             return null;
         }
 

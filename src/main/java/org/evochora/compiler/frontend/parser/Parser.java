@@ -312,6 +312,13 @@ public class Parser implements IParsingContext {
     }
 
     @Override
+    public void skipStatement() {
+        while (!isAtEnd() && !check(TokenType.NEWLINE)) {
+            advance();
+        }
+    }
+
+    @Override
     public Token peek() {
         return tokens.get(current);
     }

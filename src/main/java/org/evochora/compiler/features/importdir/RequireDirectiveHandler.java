@@ -54,7 +54,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
                 context.getDiagnostics().reportError(
                         "EXPORT is not supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under its own name.",
                         directive.source().fileName(), directive.source().lineNumber());
-                skipLine(context);
+                context.skipStatement();
                 return null;
             }
             return parseModule(context);
@@ -66,7 +66,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         context.getDiagnostics().reportError(
                 "Expected MODULE or VALUE after .REQUIRE; found '" + context.peek().text() + "'.",
                 directive.source().fileName(), directive.source().lineNumber());
-        skipLine(context);
+        context.skipStatement();
         return null;
     }
 
@@ -153,7 +153,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             context.getDiagnostics().reportError(
                     "Unexpected '" + extra.text() + "' after " + after + " of .REQUIRE.",
                     extra.source().fileName(), extra.source().lineNumber());
-            skipLine(context);
+            context.skipStatement();
             return false;
         }
         return true;
@@ -161,11 +161,5 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
 
     private static boolean isWord(IParsingContext context, String word) {
         return !context.isAtEnd() && context.check(TokenType.IDENTIFIER) && word.equalsIgnoreCase(context.peek().text());
-    }
-
-    private static void skipLine(IParsingContext context) {
-        while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-            context.advance();
-        }
     }
 }

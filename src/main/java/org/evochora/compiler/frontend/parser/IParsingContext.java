@@ -88,6 +88,12 @@ public interface IParsingContext {
     boolean isAtEnd();
 
     /**
+     * Passes over the rest of the current statement: every token up to its end, which stays, so
+     * that a handler that gives up on a statement leaves nothing of it for the next one.
+     */
+    void skipStatement();
+
+    /**
      * Parses an expression (literal, register, identifier, or vector).
      * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
      *         reported error.

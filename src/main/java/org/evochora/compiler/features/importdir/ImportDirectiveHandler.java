@@ -63,7 +63,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 context.getDiagnostics().reportError(
                         "Expected MODULE or VALUE after USING; found '" + found.text() + "'.",
                         found.source().fileName(), found.source().lineNumber());
-                skipLine(context);
+                context.skipStatement();
                 return null;
             }
             // Each kind word opens a list; the groups that follow it, up to the next kind word,
@@ -75,17 +75,17 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                     context.getDiagnostics().reportError(
                             valueList ? "Expected <name> <value> after VALUE." : "Expected <source> AS <target> after MODULE.",
                             kindWord.source().fileName(), kindWord.source().lineNumber());
-                    skipLine(context);
+                    context.skipStatement();
                     return null;
                 }
                 while (context.check(TokenType.IDENTIFIER) && !isKindWord(context) && !isWord(context, "USING")) {
                     if (valueList) {
                         if (!readValueGroup(context, values)) {
-                            skipLine(context);
+                            context.skipStatement();
                             return null;
                         }
                     } else if (!readModuleGroup(context, usings)) {
-                        skipLine(context);
+                        context.skipStatement();
                         return null;
                     }
                 }
@@ -94,7 +94,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                     context.getDiagnostics().reportError(
                             "USING stands once on an import; a further list begins with its kind word.",
                             second.source().fileName(), second.source().lineNumber());
-                    skipLine(context);
+                    context.skipStatement();
                     return null;
                 }
             }
@@ -105,7 +105,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
             context.getDiagnostics().reportError(
                     "Unexpected '" + extra.text() + "' after the alias and its USING clauses of .IMPORT.",
                     extra.source().fileName(), extra.source().lineNumber());
-            skipLine(context);
+            context.skipStatement();
             return null;
         }
 
@@ -185,11 +185,5 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
     private static boolean isKindWord(IParsingContext context) {
         return !context.isAtEnd() && context.check(TokenType.IDENTIFIER)
                 && KIND_WORDS.contains(context.peek().text().toUpperCase());
-    }
-
-    private static void skipLine(IParsingContext context) {
-        while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-            context.advance();
-        }
     }
 }
