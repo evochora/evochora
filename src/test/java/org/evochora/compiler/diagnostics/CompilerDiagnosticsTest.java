@@ -239,6 +239,20 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void aRepeatCountOutOfRangeIsReportedOnce() throws Exception {
+        write("main.evo",
+                "START:",
+                ".REPEAT 3000000000",
+                "  NOP",
+                ".ENDREPEAT",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo") + ":2: Value 3000000000 out of range for a count."));
+    }
+
+    @Test
     void anUntypedPlaceLiteralIsReportedOnce() throws Exception {
         write("main.evo",
                 ".PLACE 5 1|2",
