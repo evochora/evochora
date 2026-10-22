@@ -94,7 +94,7 @@ class SymbolTableResolutionTest {
     void aRegisterCannotBeUsed() {
         define("COUNTER", new Binding(new RegisterNode("%DR0", at(1))));
 
-        assertThat(resolve("COUNTER")).isEqualTo(new NameAnswer.NotUsable("Register '%DR0' cannot be used in an expression."));
+        assertThat(resolve("COUNTER")).isEqualTo(new NameAnswer.NotUsable("Register 'COUNTER' cannot be used in an expression."));
     }
 
     @Test

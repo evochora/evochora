@@ -336,7 +336,17 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(COUNTER+1)");
 
-        assertReported("Register '%DR1' cannot be used in an expression.", 3);
+        assertReported("Register 'COUNTER' cannot be used in an expression.", 3);
+    }
+
+    @Test
+    void aRegisterAliasAsAPositionIsReportedAsWritten() throws Exception {
+        write("main.evo",
+                ".REG %Spot %DR1",
+                ".ORG %spot",
+                "  NOP");
+
+        assertReported("Register '%spot' cannot be used in an expression.", 2);
     }
 
     @Test

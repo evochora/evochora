@@ -87,8 +87,8 @@ public final class SymbolTableResolution implements INameResolution {
         }
         return switch (end.get().node()) {
             case LiteralNode literal -> new NameAnswer.Value(literal.value());
-            case RegisterNode register -> new NameAnswer.NotUsable(
-                    "Register '" + register.name() + "' cannot be used in an expression.");
+            case RegisterNode ignored -> new NameAnswer.NotUsable(
+                    "Register '" + name.name() + "' cannot be used in an expression.");
             default -> notAValue(name);
         };
     }
