@@ -74,14 +74,14 @@ This is a sealed interface for typed values used in directive arguments. It allo
 -   **`IrReg`**: Represents a machine register.
     -   **`name`**: The `String` name of the register (e.g., "%DR0", "%PR1").
 
--   **`IrLiteral`**: Represents a literal operand, carried as one `Value` of `model/expression`: a `Number` (a `long`), a `Typed` value (a type name such as "DATA" and a `long`), or a `Vector` (a list of `long` components). The emitter checks a number against the range of a cell where it encodes it.
+-   **`IrLiteral`**: Represents a literal operand, carried as one `Value` of `model/expression`: a `Number` (a `long`), a `Typed` value (a type name such as "DATA" and a `long`), or a `Vector` (a list of `long` components). The layout checks that a vector argument of an instruction has one component per dimension of the world, and the emitter checks a number against the range of a cell where it encodes it.
 
 -   **`IrLabelRef`**: Represents a reference to a previously defined label. This is used as an operand for control flow instructions.
     -   **`labelName`**: The `String` name of the label being referenced.
 
 -   **`IrValue` Subtypes**:
     -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
-    -   `Expression(Expression, SourceInfo)`: a computation only the layout can compute, every name in it qualified, with the position of its last token; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line. The layout computes it where the directive stands: a `const_value` (`constdir`) and an `importdir` `value` record the result in the layout's named values under the directive's `name`, and an `importdir` `bound_value`, emitted at an import line for a `USING VALUE` binding that is a computation, records it under the qualified name of the requirement it binds; a `value` whose expression is only the requirement's own name records nothing, because the import line recorded the value already. The emitter hands the named values to the emission contributors, which write `constantValues` from them
+    -   `Expression(Expression)`: a computation only the layout can compute, every name in it qualified, every node of it carrying where it begins and ends in the source; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line. The layout computes it where the directive stands: a `const_value` (`constdir`) and an `importdir` `value` record the result in the layout's named values under the directive's `name`, and an `importdir` `bound_value`, emitted at an import line for a `USING VALUE` binding that is a computation, records it under the qualified name of the requirement it binds; a `value` whose expression is only the requirement's own name records nothing, because the import line recorded the value already. The emitter hands the named values to the emission contributors, which write `constantValues` from them
     -   `Str(String)`
     -   `Bool(boolean)`
     -   `ListVal(List<IrValue>)`

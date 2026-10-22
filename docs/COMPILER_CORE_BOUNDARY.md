@@ -30,6 +30,7 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
+| `expression` | The operations of computations: the sign, `NOT`, `*`, `/`, `MOD`, `+`, `-`, the chain `\|`, `AND`, `OR`, `XOR`, `SHL`, `SHR`, the index `[]`, the typing `:`, and the functions `NUMBER`, `TYPE` and `POSITION`, on numbers, typed values, vectors, molecule types and positions | lexer symbols `+` `*` `/`, operations |
 | `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING {MODULE x AS y ... \| VALUE n v ...} ...]`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import; `.REQUIRE MODULE "path" AS ALIAS`, a module the importer supplies; `[EXPORT] .REQUIRE VALUE N [default]`, a constant the importer supplies or that takes its default, the main program's from the configuration (`CompilerOptions.values`); a bound, default or configured value that is a computation, computed where it is written | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, post-process, IR conversion, layout, emission |
 | `source` | `.SOURCE "path"`, textual inclusion that shares the including file's scope | dependency scan, preprocessor (top level only) |
 | `ctx` | `.PUSH_CTX` and `.POP_CTX`, the module context around an inclusion; relative placement of an imported module. A programmer never writes them: `importdir` and `source` emit them around the tokens they include | preprocessor `.POP_CTX`, parser, IR conversion, layout |
@@ -38,11 +39,12 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 
 The core is the pipeline in `Compiler.java`, the eleven phases with their registries and
 contexts, the three data formats under `model/`, the symbol table, the flag stores of the two
-read-time phases and the instruction-set view.
+read-time phases, the instruction-set view and the machinery of computations in
+`compiler/expression`.
 Five phases are pure dispatch and hold no language logic: the preprocessor, the IR generator,
 the IR rewriter, the linker and the compiler itself.
 
-The core does contain logic for three groups of concepts. None of them is declared a core
+The core does contain logic for four groups of concepts. None of them is declared a core
 concept in AGENTS.md; they are listed here because they are where the coupling lives.
 
 1. **The module system.** The Lexer phase detects cycles between files, records a
@@ -82,7 +84,16 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    call-site bindings, `EmissionContext` fields for procedure parameter names and register
    aliases, and `ProgramArtifact` carries all of them as named fields.
 
-Smaller instances: the tokenizer emits a colon token for `:` (label); `Symbol.Type` is a closed
+4. **Computations.** `compiler/expression` holds the operation registry, the parser and the
+   evaluator of computations, the rule of which tokens form one (`Computation`) and the rule of
+   where their results are noted (`ValueNotes`); every phase that computes uses them. The
+   machinery knows an operation by its notation and its level, which it fixes (`Notation`,
+   `Level`), and names two operations itself: the index `[]`, which the parser reads at a
+   bracket, and the typing `:`, which the parser reads after a molecule type and whose result the
+   notes show at its parts. Which operations exist, and what they compute, is the `expression`
+   feature's.
+
+Smaller instances: the tokenizer emits a colon token for `:` (label and typing); `Symbol.Type` is a closed
 enum whose eight members are named after individual features, mapped exhaustively in
 `TokenKindMapper`.
 
@@ -97,8 +108,8 @@ A token carries two fields of provenance that the core uses only as keys — in 
 the symbol table by placement, in the instruction index by expansion and in the emitter's
 consistency walk — and to whose particular values it attaches no meaning: the
 instance of injected tokens its position stands in, `SourceInfo.expansion`, 0 for the text as
-written, and the positions it replaced, `Token.replaces`, one per level of substitution, each
-with the instance it stands in. A feature that injects tokens sets them, with a number the
+written, and the tokens it replaced, `Token.replaces`, one per level of substitution, each at its
+position in the instance it stands in. A feature that injects tokens sets them, with a number the
 preprocessor context hands out (`nextInstance`): the `macro` feature stamps the body tokens and
 the arguments it substitutes, `source` the tokens of every inclusion. For a source view the
 preprocessor keeps the source files of the compilation as one entry per inclusion: the main
@@ -111,8 +122,8 @@ expansion, and the name and bindings are its words, which the core passes on. Th
 offers `leftOut`, a region of lines owned by a directive line, and `note`, a text at a position;
 each records at exactly the position it is given, in its placement, file and instance, and
 equal records are kept once. A feature that records at a token decides which of its positions
-count: `conditional` notes the state of a flag at the token that names it and at every position
-that token replaced. The preprocessor returns the entries and the expansions with these records
+count: `conditional` notes the state of a flag right after the token that names it and after
+every token it replaced. The preprocessor returns the entries and the expansions with these records
 attached — a record goes to the entry or the expansion whose number it carries; from phase 7 on
 they travel, with the token map, in the IR's `DebugInfo`, which the emitter copies into the
 artifact.
@@ -121,7 +132,7 @@ Any other character sequence a feature reads is not a case of the tokenizer but 
 feature registers through `IFeatureRegistrationContext.lexerSymbol`; the tokenizer emits it as one
 `SYMBOL` token whose text the feature's handlers compare: `*` and `..` for `place`, `+` for
 `org` and `dir`, which read their marker `@+` or `@-` as the name `@` followed by `+` or the
-minus, `^` for `repeat`. The tokenizer tries the registered symbols at the start of every token,
+minus, `+`, `*` and `/` for `expression`, `^` for `repeat`. The tokenizer tries the registered symbols at the start of every token,
 longest first, before its fixed cases, so a symbol may consist only of the characters
 `! & * + , . / < = > ? ^ ~ -`, which cut into no identifier, number, register, string, comment
 or statement end. `|` and `:` stay fixed tokens, because the parser itself reads them in the
@@ -153,11 +164,13 @@ one and the core does not claim it.
 ## What cannot be added without touching the core
 
 A feature can add a directive, a statement, an AST node, an IR directive, a rewrite rule, a
-linking rule, an emission contributor and a lexer symbol through `IFeatureRegistrationContext`.
+linking rule, an emission contributor, a lexer symbol and an operation through
+`IFeatureRegistrationContext`.
 A feature cannot, without a core change:
 
 - put data of its own into `ProgramArtifact`, whose fields are fixed (issue #153);
 - introduce a symbol kind, because `Symbol.Type` is closed;
+- give an operation a notation or a level of its own, because `Notation` and `Level` are closed;
 - introduce an operand form or an IR item kind. Both are sealed by decision (AGENTS.md,
   "Fixed Kinds"); the open alternative is recorded under
   `docs/proposals/ideas/OPEN_COMPILER_BACKEND.md`.
