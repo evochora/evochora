@@ -737,7 +737,8 @@ What the built code does beyond the solution text:
   part (a number, a typed value, a vector, a molecule type, a position); "Expected a number after
   '|'." comes from the parser. A configured value that is no operand carries the parser's reason
   ("Configured value 'W' = (1: expected ')'."), and every error of the configuration is printed
-  without a file or line. A range of `.PLACE` with a step that is not positive, or an end below its
+  without a file or line; a configured flag with a reserved name is reported there as `.DEFINE`
+  reports it ("Configured flag 'SHL' is an operator and cannot be defined."). A range of `.PLACE` with a step that is not positive, or an end below its
   start, is reported ("End 1 of a range must be at least its start 5."). A vector argument is
   checked against the world's dimensions where it becomes cells, and the emitter's own check reports
   an internal error.

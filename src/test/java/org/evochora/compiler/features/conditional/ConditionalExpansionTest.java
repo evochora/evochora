@@ -463,6 +463,18 @@ class ConditionalExpansionTest {
     }
 
     @Test
+    void aConfiguredFlagWithAReservedNameIsReportedAgainstTheConfiguration() {
+        Expansion result = expandWith(Map.of("SHL", OptionalLong.of(1), "NUMBER", OptionalLong.empty()), List.of(),
+                ".IFDEF SHL",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).containsExactly(
+                ":0: Configured flag 'NUMBER' is a function and cannot be defined.",
+                ":0: Configured flag 'SHL' is an operator and cannot be defined.");
+    }
+
+    @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {
         Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty()), List.of(), "NOP");
 
