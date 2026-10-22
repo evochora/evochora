@@ -774,6 +774,12 @@ export class AppController {
                             toroidal: shape ? shape.map(() => isTorus) : null
                         };
                     }
+                    // The lookup from a coordinate relative to the program's origin to the address
+                    // of its cell, the inverse of linearAddressToCoord, built once per program
+                    program.coordToLinearAddress = {};
+                    for (const entry of program.linearAddressToCoord || []) {
+                        program.coordToLinearAddress[entry.coord.components.join('|')] = entry.linearAddress;
+                    }
                     this.programArtifactCache.set(program.programId, program);
                 }
             }

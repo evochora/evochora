@@ -64,7 +64,7 @@ public final class LayoutEngine {
             }
         }
 
-        return new LayoutResult(ctx.linearToCoord(), ctx.coordToLinear(), labelToAddress,
+        return new LayoutResult(ctx.linearToCoord(), labelToAddress,
                 assignLabelValues(labelToAddress, isa), ctx.sourceMap(), ctx.initialWorldObjects(), List.copyOf(placedItems),
                 ctx.namedValues(), ctx.notes());
     }

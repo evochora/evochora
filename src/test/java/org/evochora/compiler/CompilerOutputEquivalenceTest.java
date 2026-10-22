@@ -83,7 +83,7 @@ class CompilerOutputEquivalenceTest {
         ProgramArtifact artifact = new Compiler().compile(MAIN_FILE, ENV, options);
 
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String actualJson = withoutReferenceRoot(gson.toJson(artifact.toLinearized(ENV)), referenceRoot);
+        String actualJson = withoutReferenceRoot(gson.toJson(artifact.toJsonForm(ENV)), referenceRoot);
         Files.createDirectories(ACTUAL_DIR);
         Path actualFile = ACTUAL_DIR.resolve("main.json");
         Files.writeString(actualFile, actualJson);

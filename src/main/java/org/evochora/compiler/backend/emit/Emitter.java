@@ -132,7 +132,6 @@ public class Emitter {
                 sortedInitialObjects,
                 layout.sourceMap(),
                 linked.callSiteBindings(),
-                layout.relativeCoordToLinearAddress(),
                 linearToCoord,
                 emissionContext.registerAliasMap(),
                 emissionContext.constantValues(),

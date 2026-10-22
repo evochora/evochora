@@ -66,7 +66,6 @@ public final class LayoutContext {
     private final Deque<int[]> dvStack = new ArrayDeque<>();
 
     private final Map<Integer, int[]> linearToCoord = new HashMap<>();
-    private final Map<String, Integer> coordToLinear = new HashMap<>();
     private final Map<Integer, SourceInfo> sourceMap = new HashMap<>();
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private final Map<String, Occupant> occupied = new HashMap<>();
@@ -410,9 +409,8 @@ public final class LayoutContext {
     }
 
     private void placeAtCurrent(String description, SourceInfo src) throws CompilationException {
-        String coordKey = occupy(currentPos, new Occupant(description, src, Nd.copy(currentPos)));
+        occupy(currentPos, new Occupant(description, src, Nd.copy(currentPos)));
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
-        coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
         currentPos = Nd.add(currentPos, currentDv);
@@ -447,10 +445,8 @@ public final class LayoutContext {
      * coordinates lowest and highest along each axis are kept to tell. Whether the program lies
      * in the world at the start position it is given is checked where that position is known,
      * when the simulation places the organism.
-     *
-     * @return The key of the coordinate relative to the program origin.
      */
-    private String occupy(int[] coord, Occupant occupant) throws CompilationException {
+    private void occupy(int[] coord, Occupant occupant) throws CompilationException {
         initialize();
         int[] shape = envProps.getWorldShape();
         if (coord.length != shape.length) {
@@ -478,7 +474,6 @@ public final class LayoutContext {
             requireWithinWorldSize(occupant, shape);
         }
         occupied.put(cellKey, occupant);
-        return coordToStringKey(coord);
     }
 
     /**
@@ -529,16 +524,6 @@ public final class LayoutContext {
      */
     public Map<Integer, int[]> linearToCoord() {
         return linearToCoord;
-    }
-
-    /**
-     * Returns the inverse of the address mapping. Its keys are coordinates rendered as their
-     * components joined by '|', because an {@code int[]} key would be compared by identity.
-     *
-     * @return the live map, not a copy
-     */
-    public Map<String, Integer> coordToLinear() {
-        return coordToLinear;
     }
 
     /**

@@ -12,7 +12,6 @@ import java.util.Map;
  * Result of the layout phase (without linking): holds coordinates and mappings.
  *
  * @param linearAddressToCoord A map from linear address to relative coordinates.
- * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
  * @param labelToAddress A map from label names to their linear addresses.
  * @param labelToValue A map from label names to the values that stand for them in the machine
  *                     code, one value per label: the layout assigns them so that no two labels
@@ -28,7 +27,6 @@ import java.util.Map;
  */
 public record LayoutResult(
         Map<Integer, int[]> linearAddressToCoord,
-        Map<String, Integer> relativeCoordToLinearAddress,
         Map<String, Integer> labelToAddress,
         Map<String, Integer> labelToValue,
         Map<Integer, SourceInfo> sourceMap,

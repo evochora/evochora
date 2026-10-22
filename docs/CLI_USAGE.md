@@ -178,13 +178,13 @@ Compilation produces a JSON object with (among others):
 
 - `programId`: unique identifier
 - `sources`: one entry per placement and source file, with the placement's alias chain, the path as written, the resolved path and the lines
-- `machineCodeLayout`: generated machine code (linear address → instruction)
-- `labelAddressToName`: label addresses and names
+- `machineCodeLayout`: the code, one entry per cell with its `position` relative to the program's origin and its encoded `instruction`
+- `labelValueToName`, `labelNameToValue`: the value each label stands for in the machine code, by value and by name
 - `registerAliasMap`: register aliases used by the compiler
 - `procNameToParamNames`: procedures and their parameters
 - `sourceMap`: source mapping for debugging
 - `tokenMap`: token information for syntax highlighting
-- `envProps`: environment properties (worldShape, isToroidal)
+- `envProps`: environment properties (worldShape, isToroidal, strides, totalCells)
 
 ### Inspect Storage Data
 

@@ -43,7 +43,6 @@ class AnnotationDiagnosticTest {
         assertFalse(artifact.sources().isEmpty(), "sources must have entries");
         assertNotNull(artifact.sourceMap(), "sourceMap must be present");
         assertFalse(artifact.sourceMap().isEmpty(), "sourceMap must have entries");
-        assertNotNull(artifact.relativeCoordToLinearAddress(), "relativeCoordToLinearAddress must be present");
         assertNotNull(artifact.tokenLookup(), "tokenLookup must be present");
         assertFalse(artifact.tokenLookup().isEmpty(), "tokenLookup must have entries");
     }

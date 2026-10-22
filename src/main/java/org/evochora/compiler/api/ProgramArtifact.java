@@ -1,7 +1,6 @@
 package org.evochora.compiler.api;
 
-import org.evochora.compiler.internal.CoordinateConverter;
-import org.evochora.compiler.internal.LinearizedProgramArtifact;
+import org.evochora.compiler.internal.JsonProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
 import java.util.Collections;
 import java.util.List;
@@ -27,7 +26,6 @@ import java.util.Map;
  * @param callSiteBindings A map from the address recorded for a CALL instruction to that call's
  *                         parameter bindings: each formal register id (FDR/FLR bank) to the
  *                         caller register bound to it.
- * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
  * @param linearAddressToCoord A map from linear address to relative coordinates.
  * @param registerAliasMap A map from the path of a register alias, the qualified name the token map gives
  *                         a use of it (e.g., "%MY_REG", or "WORK.%TMP" for one defined in procedure WORK), to
@@ -59,7 +57,6 @@ public record ProgramArtifact(
         Map<int[], PlacedMolecule> initialWorldObjects,
         Map<Integer, SourceInfo> sourceMap,
         Map<Integer, Map<Integer, Integer>> callSiteBindings,
-        Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
         Map<String, Integer> registerAliasMap,
         Map<String, String> constantValues,
@@ -88,7 +85,6 @@ public record ProgramArtifact(
         initialWorldObjects = Collections.unmodifiableMap(initialWorldObjects);
         sourceMap = Collections.unmodifiableMap(sourceMap);
         callSiteBindings = Collections.unmodifiableMap(callSiteBindings);
-        relativeCoordToLinearAddress = Collections.unmodifiableMap(relativeCoordToLinearAddress);
         linearAddressToCoord = Collections.unmodifiableMap(linearAddressToCoord);
         registerAliasMap = Collections.unmodifiableMap(registerAliasMap);
         constantValues = constantValues != null ? Collections.unmodifiableMap(constantValues) : Collections.emptyMap();
@@ -109,36 +105,33 @@ public record ProgramArtifact(
     }
     
     /**
-     * Converts this ProgramArtifact to a LinearizedProgramArtifact
-     * for Jackson serialization.
+     * Converts this ProgramArtifact to its JSON form, a JsonProgramArtifact, which a JSON writer
+     * such as Gson writes as it is.
      * 
-     * <p>This method linearizes all maps with int[] keys to Integer keys
-     * to enable Jackson serialization. The original data remains unchanged.</p>
+     * <p>This method writes every map with int[] keys as a list of entries that carry their
+     * coordinate, relative to the program's origin, as an array, since a JSON object key cannot be
+     * an array. The original data remains unchanged.</p>
      * 
      * <p><b>Usage:</b></p>
      * <pre>{@code
      * ProgramArtifact artifact = ...;
      * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
-     * LinearizedProgramArtifact linearized = artifact.toLinearized(envProps);
-     * 
-     * // Jackson serialization
-     * String json = objectMapper.writeValueAsString(linearized);
+     * String json = new Gson().toJson(artifact.toJsonForm(envProps));
      * }</pre>
      * 
-     * <p><b>Linearized Fields:</b></p>
+     * <p><b>Fields Written as Lists:</b></p>
      * <ul>
-     *   <li><strong>machineCodeLayout</strong>: {@code Map<int[], Integer>} &rarr; {@code Map<Integer, Integer>}</li>
-     *   <li><strong>initialWorldObjects</strong>: {@code Map<int[], PlacedMolecule>} &rarr; {@code Map<Integer, PlacedMolecule>}</li>
+     *   <li><strong>machineCodeLayout</strong>: {@code Map<int[], Integer>} &rarr; {@code List<InstructionMapping>}</li>
+     *   <li><strong>initialWorldObjects</strong>: {@code Map<int[], PlacedMolecule>} &rarr; {@code List<PlacedMoleculeMapping>}</li>
      * </ul>
      * 
-     * @param envProps The environment properties containing world shape and toroidal information
-     * @return A LinearizedProgramArtifact with Integer keys for Jackson serialization
+     * @param envProps The world the artifact was compiled for, written into the JSON with it
+     * @return A JsonProgramArtifact without int[] map keys, for JSON serialization
      * @throws IllegalArgumentException if envProps is null
-     * @see LinearizedProgramArtifact
-     * @see CoordinateConverter
+     * @see JsonProgramArtifact
      */
-    public LinearizedProgramArtifact toLinearized(EnvironmentProperties envProps) {
-        return LinearizedProgramArtifact.from(this, envProps);
+    public JsonProgramArtifact toJsonForm(EnvironmentProperties envProps) {
+        return JsonProgramArtifact.from(this, envProps);
     }
 
 }

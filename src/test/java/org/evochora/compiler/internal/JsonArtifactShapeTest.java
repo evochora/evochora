@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.MachineInstructionInfo;
+import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
@@ -15,6 +16,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,19 +24,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for the shape of an artifact as the {@code compile} command writes it: the string
- * form of a position where it is a map key, and the structure of the sources and of the
- * instructions per line, read back from the JSON of a small hand-built artifact.
+ * form of a position where it is a map key, the code and the placed molecules as lists of entries
+ * with their coordinates, and the structure of the sources and of the instructions per line, read
+ * back from the JSON of a small hand-built artifact.
  */
 @Tag("unit")
-class LinearizedArtifactShapeTest {
+class JsonArtifactShapeTest {
 
     private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{10, 10}, true);
 
     @Test
     void aPositionIsWrittenWithItsPlacementButWithoutItsInstance() {
-        assertThat(new SerializableSourceInfo("lib.evo", 2, 5, "LIB", 3)).hasToString("LIB@lib.evo:2:5");
-        assertThat(new SerializableSourceInfo("main.evo", 2, 5, "", 0)).hasToString("main.evo:2:5");
-        assertThat(new SerializableSourceInfo(null, 1, 1, "", 0)).hasToString("<unknown>:1:1");
+        assertThat(new JsonSourceInfo("lib.evo", 2, 5, "LIB", 3)).hasToString("LIB@lib.evo:2:5");
+        assertThat(new JsonSourceInfo("main.evo", 2, 5, "", 0)).hasToString("main.evo:2:5");
+        assertThat(new JsonSourceInfo(null, 1, 1, "", 0)).hasToString("<unknown>:1:1");
     }
 
     @Test
@@ -45,13 +48,13 @@ class LinearizedArtifactShapeTest {
         Expansion expansion = new Expansion(new SourceInfo("/p/main.evo", 6, 3, "", 0), new SourceInfo("/p/lib.evo", 1, 8, "LIB", 0),
                 "STEP", List.of(new Expansion.Binding("REG", "%DR0")), List.of(new SourceFile.LeftOut(1, 2, 3, 3)), List.of());
         ProgramArtifact artifact = new ProgramArtifact("id", List.of(lib), Map.of(1, expansion), Map.of(), Map.of(), Map.of(), Map.of(),
-                Map.of(), Map.of(), Map.of(), Map.of("LIB.MAX", "DATA:5"), Map.of(),
+                Map.of(), Map.of(), Map.of("LIB.MAX", "DATA:5"), Map.of(),
                 Map.of(new SourceInfo("/p/lib.evo", 2, 5, "LIB", 0), new TokenInfo("A", TokenKind.CONSTANT, TokenInfo.MODULE_LEVEL)),
                 Map.of(),
                 Map.of("LIB", Map.of("/p/lib.evo", Map.of(0, Map.of(2, List.of(new MachineInstructionInfo(0, "NOP", "", false)))))),
                 Map.of(), Map.of());
 
-        JsonObject json = JsonParser.parseString(new Gson().toJson(artifact.toLinearized(ENV))).getAsJsonObject();
+        JsonObject json = JsonParser.parseString(new Gson().toJson(artifact.toJsonForm(ENV))).getAsJsonObject();
 
         JsonArray sources = json.getAsJsonArray("sources");
         assertThat(sources).hasSize(1);
@@ -88,5 +91,29 @@ class LinearizedArtifactShapeTest {
                 .getAsJsonObject("/p/lib.evo").getAsJsonObject("0").getAsJsonArray("2");
         assertThat(line).hasSize(1);
         assertThat(line.get(0).getAsJsonObject().get("opcode").getAsString()).isEqualTo("NOP");
+    }
+
+    /**
+     * The code and the placed molecules are written with the coordinate relative to the program's
+     * origin as an array, whatever lies outside the world when the program starts at its origin.
+     */
+    @Test
+    void theCodeAndThePlacedMoleculesCarryTheirCoordinatesAsWritten() {
+        Map<int[], Integer> code = new LinkedHashMap<>();
+        code.put(new int[]{-1, 2}, 5);
+        Map<int[], PlacedMolecule> placed = new LinkedHashMap<>();
+        placed.put(new int[]{3, -1}, new PlacedMolecule(3, 100, 0));
+        ProgramArtifact artifact = new ProgramArtifact("id", List.of(), Map.of(), code, placed, Map.of(), Map.of(),
+                Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+
+        JsonObject json = JsonParser.parseString(new Gson().toJson(
+                artifact.toJsonForm(new EnvironmentProperties(new int[]{10, 10}, false)))).getAsJsonObject();
+
+        JsonObject cell = json.getAsJsonArray("machineCodeLayout").get(0).getAsJsonObject();
+        assertThat(cell.getAsJsonArray("position").toString()).isEqualTo("[-1,2]");
+        assertThat(cell.get("instruction").getAsInt()).isEqualTo(5);
+        JsonObject molecule = json.getAsJsonArray("initialWorldObjects").get(0).getAsJsonObject();
+        assertThat(molecule.getAsJsonArray("position").toString()).isEqualTo("[3,-1]");
+        assertThat(molecule.getAsJsonObject("molecule").get("value").getAsInt()).isEqualTo(100);
     }
 }

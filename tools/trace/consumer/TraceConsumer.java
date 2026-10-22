@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
+import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.ParamInfo;
 import org.evochora.datapipeline.api.contracts.ParamType;
@@ -256,7 +257,9 @@ public final class TraceConsumer extends AbstractService {
 
     private static Program indexProgram(ProgramArtifact artifact) {
         Program p = new Program();
-        p.relCoordToAddress.putAll(artifact.getRelativeCoordToLinearAddressMap());
+        for (LinearAddressToCoord entry : artifact.getLinearAddressToCoordList()) {
+            p.relCoordToAddress.put(vector(entry.getCoord()), entry.getLinearAddress());
+        }
         for (SourceMapEntry entry : artifact.getSourceMapList()) {
             p.addressToSource.put(entry.getLinearAddress(), entry);
         }

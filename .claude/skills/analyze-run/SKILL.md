@@ -312,8 +312,8 @@ appears as new cells and a deletion as missing ones. Between members of one clad
 differences are inherited; the rest is ongoing individual change.
 
 **Reading a body as code.** Where the lineage has not moved a region, the compiled artifact of the
-organism's program maps a relative position to its source line (`relativeCoordToLinearAddress`,
-`sourceMap`). Where it has, read the cells: opcodes by name, labels by value. A recorded LABEL or
+organism's program maps a relative position to its source line (`linearAddressToCoord`, read
+from position to address, and `sourceMap`). Where it has, read the cells: opcodes by name, labels by value. A recorded LABEL or
 LABELREF value stands in the namespace the organism had; XOR it with the masks of the
 `label-rewrite` events on its ancestor chain and the compiled artifact names it
 (`labelValueToName`). A region's structure — which label opens it, which conditional and which

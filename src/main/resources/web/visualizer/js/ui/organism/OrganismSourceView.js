@@ -981,12 +981,12 @@ export class OrganismSourceView {
         // Deterministic key generation (must match Java backend)
         const coordKey = `${relX}|${relY}`;
         
-        // Ensure relativeCoordToLinearAddress exists
-        if (!this.artifact.relativeCoordToLinearAddress) {
+        // Ensure coordToLinearAddress exists
+        if (!this.artifact.coordToLinearAddress) {
             return { error: "Missing address mapping in artifact" };
         }
 
-        const linearAddress = this.artifact.relativeCoordToLinearAddress[coordKey];
+        const linearAddress = this.artifact.coordToLinearAddress[coordKey];
         
         if (linearAddress === undefined) {
             return { error: `IP ${ip[0]}|${ip[1]} not mapped to a source line` };
@@ -1049,7 +1049,7 @@ export class OrganismSourceView {
                 // Normalize to [0, width) to match the layout engine's non-negative coordinates.
                 // The layout always starts at [0,0] and grows positively, so we must NOT
                 // shift to [-width/2, width/2) as that would produce negative keys that
-                // don't exist in the relativeCoordToLinearAddress map.
+                // don't exist in the coordToLinearAddress map.
                 relX = ((relX % width) + width) % width;
             }
 

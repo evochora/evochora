@@ -183,11 +183,9 @@ message ProgramArtifact {
   // Used by runtime to resolve procedure calls
   repeated CallSiteBinding call_site_bindings = 6;
 
-  // Fast lookup from coordinate string to linear address
-  // Source: ProgramArtifact.relativeCoordToLinearAddress()
-  // Key: coordinate as string (e.g., "[10,20]"), Value: linear address
-  // Used for address calculations during execution
-  map<string, int32> relative_coord_to_linear_address = 7;
+  // Field 7 reserved (was: relative_coord_to_linear_address, the inverse of linear_address_to_coord,
+  // which a reader builds from that field)
+  reserved 7;
 
   // Reverse mapping from linear address to coordinates
   // Source: ProgramArtifact.linearAddressToCoord()

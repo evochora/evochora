@@ -10,7 +10,7 @@ import org.evochora.compiler.api.IntegerLiteral;
 import java.io.IOException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.internal.LinearizedProgramArtifact;
+import org.evochora.compiler.internal.JsonProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import picocli.CommandLine;
@@ -29,7 +29,7 @@ import java.util.concurrent.Callable;
 
 /**
  * The {@code compile} subcommand: translates one assembly source file and writes the resulting
- * program artifact in its linearized form as pretty-printed JSON to the command's standard output.
+ * program artifact in its JSON form as pretty-printed JSON to the command's standard output.
  * A successful run returns exit code 0; a compilation or I/O failure prints its message to the
  * command's error stream and returns exit code 1.
  * <p>
@@ -132,11 +132,11 @@ public class CompileCommand implements Callable<Integer> {
         Compiler compiler = new Compiler();
         try {
             ProgramArtifact artifact = compiler.compile(programPath, envProps, compilerOptions);
-            LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
+            JsonProgramArtifact jsonForm = artifact.toJsonForm(envProps);
 
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             PrintWriter out = spec.commandLine().getOut();
-            out.println(gson.toJson(linearizedArtifact));
+            out.println(gson.toJson(jsonForm));
 
             return 0;
         } catch (CompilationException | IOException e) {

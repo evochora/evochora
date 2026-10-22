@@ -45,7 +45,6 @@ class LabelRefLinkingRuleTest {
         // Given: A layout with module-qualified label "TEST.FOO" at address 10
         layout = new LayoutResult(
                 Map.of(10, new int[]{5, 5}),
-                Map.of("5|5", 10),
                 Map.of("TEST.FOO", 10),
                 valuesOf(Map.of("TEST.FOO", 10)),
                 Collections.emptyMap(),
@@ -88,7 +87,6 @@ class LabelRefLinkingRuleTest {
             // Given: A layout with the module-qualified label
             layout = new LayoutResult(
                     Map.of(0, new int[]{0, 0}),
-                    Map.of("0|0", 0),
                     Map.of(qualifiedName, 0),
                     valuesOf(Map.of(qualifiedName, 0)),
                     Collections.emptyMap(),
@@ -128,7 +126,6 @@ class LabelRefLinkingRuleTest {
         // Given: A bridge label created by a marshalling rule, which carries no module name
         layout = new LayoutResult(
                 Map.of(3, new int[]{3, 0}),
-                Map.of("3|0", 3),
                 Map.of("_safe_call_0", 3),
                 valuesOf(Map.of("_safe_call_0", 3)),
                 Collections.emptyMap(),
@@ -158,7 +155,6 @@ class LabelRefLinkingRuleTest {
         layout = new LayoutResult(
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyMap(),
                 valuesOf(Collections.emptyMap()),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
@@ -185,7 +181,6 @@ class LabelRefLinkingRuleTest {
     void doesNotConvertUnknownLabel() {
         // Given: A layout WITHOUT the referenced label
         layout = new LayoutResult(
-                Collections.emptyMap(),
                 Collections.emptyMap(),
                 Map.of("TEST.OTHER_LABEL", 5), // Different label
                 valuesOf(Map.of("TEST.OTHER_LABEL", 5)),

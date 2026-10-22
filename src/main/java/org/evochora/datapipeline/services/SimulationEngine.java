@@ -1335,8 +1335,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setLinearAddress(address)
                         .putAllBindings(bindingsMap)));
 
-        builder.putAllRelativeCoordToLinearAddress(artifact.relativeCoordToLinearAddress());
-
         artifact.linearAddressToCoord().forEach((address, coord) ->
                 builder.addLinearAddressToCoord(LinearAddressToCoord.newBuilder()
                         .setLinearAddress(address)
