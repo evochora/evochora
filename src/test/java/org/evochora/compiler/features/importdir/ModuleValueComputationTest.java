@@ -183,7 +183,7 @@ class ModuleValueComputationTest {
         assertThatThrownBy(() -> compile(new ArrayList<>(), Map.of("X", "(A/0)")))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] :0: Configured value 'X' = (A/0): division by zero."));
+                        "[ERROR] Configured value 'X' = (A/0): division by zero."));
     }
 
     /**

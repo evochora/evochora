@@ -6,7 +6,8 @@ package org.evochora.compiler.diagnostics;
  *
  * @param type The type of the diagnostic (e.g., ERROR, WARNING).
  * @param message The diagnostic message.
- * @param fileName The name of the file where the issue occurred.
+ * @param fileName The name of the file where the issue occurred; empty for an issue in the configuration,
+ *                 which has no file or line.
  * @param lineNumber The line number of the issue.
  */
 public record Diagnostic(
@@ -29,6 +30,9 @@ public record Diagnostic(
 
     @Override
     public String toString() {
+        if (fileName == null || fileName.isEmpty()) {
+            return String.format("[%s] %s", type, message);
+        }
         return String.format("[%s] %s:%d: %s", type, fileName, lineNumber, message);
     }
 }

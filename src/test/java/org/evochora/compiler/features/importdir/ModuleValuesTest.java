@@ -474,7 +474,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(() -> compile(Map.of("STEPS", text)))
                 .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly("[ERROR] :0: " + message));
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly("[ERROR] " + message));
     }
 
     /**
