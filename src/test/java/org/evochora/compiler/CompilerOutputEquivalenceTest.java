@@ -4,6 +4,8 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalLong;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -21,8 +23,8 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Compiles the reference program under {@code src/test/resources/org/evochora/compiler/reference/}
- * and compares the artifact with the one checked in next to it.
+ * Compiles the reference program under {@code src/test/resources/org/evochora/compiler/reference/},
+ * with flags and values set as the configuration sets them, and compares the artifact with the one checked in next to it.
  * <p>
  * The reference program uses every feature of the compiler once, so a change to any phase that
  * alters the generated code, the placed molecules or the debug information changes the artifact
@@ -42,7 +44,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CompilerOutputEquivalenceTest {
 
     /** Environment the reference program is compiled for; the wildcard placement needs one. */
-    private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{100, 100}, true);
+    private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{128, 128}, true);
+
+    /** Flags the configuration sets: one with a value the program computes with, one without. */
+    private static final Map<String, OptionalLong> DEFINES =
+            Map.of("ROWS", OptionalLong.of(4), "VERBOSE", OptionalLong.empty());
+
+    /** Values the configuration sets: a computation with the names of the main program. */
+    private static final Map<String, String> VALUES = Map.of("SPAN", "(SIZE * 2)");
 
     /** Classpath directory holding the reference program and its checked-in artifact. */
     private static final String REFERENCE_DIR = "/org/evochora/compiler/reference/";
@@ -68,7 +77,8 @@ class CompilerOutputEquivalenceTest {
     @Test
     void referenceProgramCompilesToTheCheckedInArtifact() throws Exception {
         Path referenceRoot = Path.of(getClass().getResource(REFERENCE_DIR + MAIN_FILE).toURI()).getParent();
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(referenceRoot.toString(), null)));
+        CompilerOptions options = new CompilerOptions(
+                List.of(new SourceRoot(referenceRoot.toString(), null)), DEFINES, VALUES);
 
         ProgramArtifact artifact = new Compiler().compile(MAIN_FILE, ENV, options);
 

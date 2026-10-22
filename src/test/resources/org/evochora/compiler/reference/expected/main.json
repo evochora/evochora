@@ -1,5 +1,5 @@
 {
-  "programId": "13709ffa36b21c4b",
+  "programId": "9a81ae8bf861239b",
   "sources": [
     {
       "placement": "",
@@ -19,7 +19,10 @@
         "# constants, macros, both repeat forms and the caret shorthand, origin and direction",
         "# changes, every placement form, procedures with all four parameter kinds including a",
         "# procedure-local alias, calls across modules and through a passed-on import, a call and a",
-        "# return guarded by a conditional, a jump to a label of another module, and control blocks.",
+        "# return guarded by a conditional, a jump to a label of another module, control blocks,",
+        "# compile-time expressions with every kind of value, operator and function, positions named",
+        "# in one file and used in another, conditional compilation with computed conditions, and",
+        "# flags and values set by the configuration.",
         "",
         ".SOURCE \"lib/consts.evo\"",
         ".IMPORT \"lib/util.evo\" AS UTIL",
@@ -104,10 +107,267 @@
         "  .ENDCONTROL",
         "  JMPI COUNTDOWN; NOP^4; JMPI COUNTDOWN   # repeat",
         ".ENDCONTROL",
-        "  JMPI NAV.SCOUT; NOP^4; JMPI NAV.SCOUT.BLOCKED"
+        "  JMPI NAV.SCOUT; NOP^4; JMPI NAV.SCOUT.BLOCKED",
+        "",
+        "# Compile-time expressions: constants computed from numbers, typed values, vectors and names,",
+        "# a value the configuration sets to a computation and one left to its computed default.",
+        ".CONST SIZE 6",
+        ".REQUIRE VALUE SPAN                       # set by the configuration to (SIZE * 2)",
+        ".REQUIRE VALUE DEPTH (SIZE - 1)           # left to its default",
+        ".CONST AREA (SIZE * SPAN)                 # 72",
+        ".CONST UNIT ENERGY:50",
+        ".CONST TWICE (UNIT * 2)                   # ENERGY:100",
+        ".CONST CORNER (SIZE|SPAN)                 # 6|12",
+        ".CONST KIND TYPE(UNIT)                    # ENERGY",
+        ".CONST AMOUNT NUMBER(TWICE)               # 100",
+        ".CONST BITS ((0xF0 OR 0x0F) SHL 1)        # 510",
+        ".CONST QUOTIENT (-7 / 2)                  # -3",
+        ".CONST REST (-7 MOD 2)                    # -1",
+        "",
+        "# Flags: one computed from the configured flag ROWS, conditions that compare computations,",
+        "# test a flag the configuration sets without a value, and hold because they can be computed.",
+        ".DEFINE HALF (ROWS / 2)                   # 2",
+        "",
+        ".ORG 0|90",
+        "EXPRESSIONS:",
+        "  SETI %DR0 DATA:(SIZE - 1)               # DATA:5",
+        "  SETI %DR1 TWICE                         # ENERGY:100",
+        "  SETV %DR2 (SIZE-1|SPAN-1)               # 5|11",
+        "  SETV %DR3 SIZE|(DEPTH + 1)              # 6|6",
+        "  SETI %DR4 KIND:AMOUNT                   # ENERGY:100",
+        "  SETI %DR5 DATA:CORNER[1]                # DATA:12",
+        "  SETV %DR6 (-CORNER)                     # -6|-12",
+        "  SETI %DR7 DATA:(BITS + QUOTIENT * REST) # DATA:513",
+        "  .REPEAT HALF",
+        "    NOP",
+        "  .ENDREPEAT",
+        "  NOP^(HALF + 1)",
+        "  .IFDEF (ROWS + 1) \u003d 5",
+        "    SETI %COUNT DATA:SIZE",
+        "  .ELSEDEF",
+        "    SETI %COUNT DATA:0",
+        "  .ENDDEF",
+        "  .IFDEF VERBOSE",
+        "    NOP",
+        "  .ENDDEF",
+        "  .IFNDEF QUIET",
+        "    NOP",
+        "  .ENDDEF",
+        "  .IFDEF (HALF * 2)",
+        "    NOP",
+        "  .ENDDEF",
+        "  JMPI START",
+        "",
+        "# Positions: the frame module gets two corners named in this file, a label is a position, a",
+        "# position minus a position is the vector between them, and @ is where the code continues.",
+        ".ORG 0|100",
+        ".IMPORT \"lib/frame.evo\" AS FRAME USING VALUE NW POSITION(4|104) VALUE SE POSITION(4+CORNER[0]|104+DEPTH)",
+        ".CONST STRETCH (MARK - START)             # 0|30",
+        ".PLACE DATA:STRETCH[1] (MARK + (2|0))     # two cells right of MARK",
+        ".PLACE DATA:11 (FRAME.INSIDE + (0|2))     # two cells below the frame module\u0027s label",
+        ".ORG POSITION(20|100)",
+        ".CONST HERE @                             # 20|100",
+        "FAR:",
+        "  NOP",
+        "  JMPI START",
+        ".PLACE DATA:12 (HERE + (0|2))"
       ],
-      "leftOut": [],
-      "notes": []
+      "leftOut": [
+        {
+          "expansion": 0,
+          "directiveLine": 138,
+          "from": 139,
+          "to": 139
+        }
+      ],
+      "notes": [
+        {
+          "expansion": 0,
+          "line": 120,
+          "column": 24,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
+          "line": 132,
+          "column": 15,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
+          "line": 135,
+          "column": 17,
+          "text": "[\u003d3]"
+        },
+        {
+          "expansion": 0,
+          "line": 136,
+          "column": 20,
+          "text": "[\u003d5]"
+        },
+        {
+          "expansion": 0,
+          "line": 141,
+          "column": 17,
+          "text": "[set]"
+        },
+        {
+          "expansion": 0,
+          "line": 144,
+          "column": 16,
+          "text": "[not set]"
+        },
+        {
+          "expansion": 0,
+          "line": 147,
+          "column": 20,
+          "text": "[\u003d4]"
+        },
+        {
+          "expansion": 0,
+          "line": 107,
+          "column": 32,
+          "text": "[\u003d5]"
+        },
+        {
+          "expansion": 0,
+          "line": 108,
+          "column": 26,
+          "text": "[\u003d72]"
+        },
+        {
+          "expansion": 0,
+          "line": 110,
+          "column": 24,
+          "text": "[\u003dENERGY:100]"
+        },
+        {
+          "expansion": 0,
+          "line": 112,
+          "column": 23,
+          "text": "[\u003dENERGY]"
+        },
+        {
+          "expansion": 0,
+          "line": 113,
+          "column": 28,
+          "text": "[\u003d100]"
+        },
+        {
+          "expansion": 0,
+          "line": 114,
+          "column": 35,
+          "text": "[\u003d510]"
+        },
+        {
+          "expansion": 0,
+          "line": 115,
+          "column": 25,
+          "text": "[\u003d-3]"
+        },
+        {
+          "expansion": 0,
+          "line": 116,
+          "column": 23,
+          "text": "[\u003d-1]"
+        },
+        {
+          "expansion": 0,
+          "line": 124,
+          "column": 28,
+          "text": "[\u003d5]"
+        },
+        {
+          "expansion": 0,
+          "line": 126,
+          "column": 20,
+          "text": "[\u003d5]"
+        },
+        {
+          "expansion": 0,
+          "line": 126,
+          "column": 27,
+          "text": "[\u003d11]"
+        },
+        {
+          "expansion": 0,
+          "line": 127,
+          "column": 29,
+          "text": "[\u003d6]"
+        },
+        {
+          "expansion": 0,
+          "line": 129,
+          "column": 27,
+          "text": "[\u003d12]"
+        },
+        {
+          "expansion": 0,
+          "line": 130,
+          "column": 22,
+          "text": "[\u003d-6|-12]"
+        },
+        {
+          "expansion": 0,
+          "line": 131,
+          "column": 42,
+          "text": "[\u003d513]"
+        },
+        {
+          "expansion": 0,
+          "line": 155,
+          "column": 64,
+          "text": "[\u003d4|104]"
+        },
+        {
+          "expansion": 0,
+          "line": 155,
+          "column": 105,
+          "text": "[\u003d10|109]"
+        },
+        {
+          "expansion": 0,
+          "line": 156,
+          "column": 30,
+          "text": "[\u003d0|30]"
+        },
+        {
+          "expansion": 0,
+          "line": 157,
+          "column": 23,
+          "text": "[\u003d30]"
+        },
+        {
+          "expansion": 0,
+          "line": 157,
+          "column": 38,
+          "text": "[\u003d2|40]"
+        },
+        {
+          "expansion": 0,
+          "line": 158,
+          "column": 38,
+          "text": "[\u003d4|106]"
+        },
+        {
+          "expansion": 0,
+          "line": 159,
+          "column": 22,
+          "text": "[\u003d20|100]"
+        },
+        {
+          "expansion": 0,
+          "line": 160,
+          "column": 14,
+          "text": "[\u003d20|100]"
+        },
+        {
+          "expansion": 0,
+          "line": 164,
+          "column": 30,
+          "text": "[\u003d20|102]"
+        }
+      ]
     },
     {
       "placement": "",
@@ -116,7 +376,7 @@
       "instance": 1,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 15,
+        "lineNumber": 18,
         "columnNumber": 1,
         "placement": "",
         "expansion": 0
@@ -135,7 +395,7 @@
       "instance": 0,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 16,
+        "lineNumber": 19,
         "columnNumber": 1,
         "placement": "",
         "expansion": 0
@@ -189,7 +449,7 @@
       "instance": 0,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 17,
+        "lineNumber": 20,
         "columnNumber": 1,
         "placement": "",
         "expansion": 0
@@ -249,20 +509,164 @@
       ],
       "leftOut": [],
       "notes": []
+    },
+    {
+      "placement": "FRAME",
+      "path": "lib/frame.evo",
+      "resolvedPath": "REFERENCE_ROOT/lib/frame.evo",
+      "instance": 0,
+      "includedAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 155,
+        "columnNumber": 1,
+        "placement": "",
+        "expansion": 0
+      },
+      "lines": [
+        "# Module that places a frame one margin outside two corners its importer names as positions,",
+        "# continues its code at one of them, and places a molecule computed from both.",
+        ".REQUIRE VALUE NW",
+        ".REQUIRE VALUE SE",
+        ".REQUIRE VALUE MARGIN (1|1)               # one cell outside the corners unless the importer says",
+        ".CONST OUT_NW (NW - MARGIN)",
+        ".CONST OUT_SE (SE + MARGIN)",
+        ".CONST EXTENT (SE - NW)                   # the vector between the corners",
+        ".PLACE STRUCTURE:2 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # north edge",
+        ".PLACE STRUCTURE:2 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # south edge",
+        ".PLACE STRUCTURE:2 OUT_NW[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # west edge",
+        ".PLACE STRUCTURE:2 OUT_SE[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # east edge",
+        "",
+        ".ORG NW",
+        "EXPORT INSIDE:",
+        "  NOP",
+        ".CONST NEXT @                             # the cell after the NOP",
+        ".PLACE DATA:EXTENT[0] (NEXT + (1|0))"
+      ],
+      "leftOut": [],
+      "notes": [
+        {
+          "expansion": 0,
+          "line": 6,
+          "column": 28,
+          "text": "[\u003d3|103]"
+        },
+        {
+          "expansion": 0,
+          "line": 7,
+          "column": 28,
+          "text": "[\u003d11|110]"
+        },
+        {
+          "expansion": 0,
+          "line": 8,
+          "column": 24,
+          "text": "[\u003d6|5]"
+        },
+        {
+          "expansion": 0,
+          "line": 9,
+          "column": 29,
+          "text": "[\u003d3]"
+        },
+        {
+          "expansion": 0,
+          "line": 9,
+          "column": 40,
+          "text": "[\u003d11]"
+        },
+        {
+          "expansion": 0,
+          "line": 9,
+          "column": 50,
+          "text": "[\u003d3]"
+        },
+        {
+          "expansion": 0,
+          "line": 10,
+          "column": 29,
+          "text": "[\u003d3]"
+        },
+        {
+          "expansion": 0,
+          "line": 10,
+          "column": 40,
+          "text": "[\u003d11]"
+        },
+        {
+          "expansion": 0,
+          "line": 10,
+          "column": 50,
+          "text": "[\u003d10]"
+        },
+        {
+          "expansion": 0,
+          "line": 11,
+          "column": 29,
+          "text": "[\u003d3]"
+        },
+        {
+          "expansion": 0,
+          "line": 11,
+          "column": 43,
+          "text": "[\u003d4]"
+        },
+        {
+          "expansion": 0,
+          "line": 11,
+          "column": 58,
+          "text": "[\u003d9]"
+        },
+        {
+          "expansion": 0,
+          "line": 12,
+          "column": 29,
+          "text": "[\u003d11]"
+        },
+        {
+          "expansion": 0,
+          "line": 12,
+          "column": 43,
+          "text": "[\u003d4]"
+        },
+        {
+          "expansion": 0,
+          "line": 12,
+          "column": 58,
+          "text": "[\u003d9]"
+        },
+        {
+          "expansion": 0,
+          "line": 17,
+          "column": 14,
+          "text": "[\u003d6|104]"
+        },
+        {
+          "expansion": 0,
+          "line": 18,
+          "column": 22,
+          "text": "[\u003d6]"
+        },
+        {
+          "expansion": 0,
+          "line": 18,
+          "column": 37,
+          "text": "[\u003d7|104]"
+        }
+      ]
     }
   ],
   "expansions": {
     "3": {
       "calledAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 42,
+        "lineNumber": 45,
         "columnNumber": 3,
         "placement": "",
         "expansion": 0
       },
       "definedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 25,
+        "lineNumber": 28,
         "columnNumber": 8,
         "placement": "",
         "expansion": 0
@@ -283,307 +687,304 @@
     }
   },
   "machineCodeLayout": {
+    "3584": 6292481,
+    "1536": 69,
     "0": 4795543,
-    "4610": 6291456,
-    "4100": 131,
-    "4102": 0,
-    "3080": 0,
+    "512": 6292480,
+    "1024": 6292482,
+    "2048": 6292480,
+    "2560": 6292480,
+    "3072": 133,
+    "4096": 133,
+    "4608": 33,
+    "5120": 1048675,
+    "5632": 6292480,
+    "6144": 6292480,
+    "6656": 4421015,
+    "7168": 6292736,
+    "7680": 6292480,
+    "8192": 6292480,
+    "8704": 6292480,
+    "4610": 1048576,
+    "5122": 6291456,
+    "5634": 0,
+    "6146": 0,
+    "6658": 6181427,
+    "7170": 1048576,
+    "7682": 0,
+    "3594": 6291457,
+    "1546": 6291457,
     "10": 4770882,
-    "4110": 296,
-    "3600": 33,
-    "3602": 1048576,
-    "2580": 69,
-    "3610": 5504717,
-    "3100": 6292480,
-    "2080": 0,
-    "3110": 195,
+    "522": 33,
+    "1034": 0,
+    "2058": 6291457,
+    "2570": 0,
+    "3082": 1048675,
+    "4106": 6291457,
+    "4618": 5504717,
+    "5130": 5469591,
+    "5642": 6291456,
+    "6154": 5971086,
+    "6666": 6291456,
+    "7178": 131,
+    "7690": 101,
+    "8202": 4250050,
+    "8714": 5819458,
     "40": 4456141,
-    "2600": 3,
     "41": 0,
     "42": 0,
     "43": 69,
     "44": 5819458,
-    "1580": 673,
-    "6700": 99,
     "45": 4302656,
     "46": 195,
     "47": 6292480,
     "48": 195,
     "49": 6292481,
     "50": 3,
-    "2610": 1048576,
     "51": 6291968,
     "52": 6292481,
-    "2100": 6292482,
     "53": 100,
     "54": 6291968,
-    "6710": 69,
     "55": 1048576,
     "56": 69,
-    "1080": 0,
-    "6200": 5971086,
     "57": 5896831,
     "58": 99,
     "59": 6292480,
     "60": 133,
     "61": 4848255,
     "62": 1,
-    "2110": 0,
     "63": 6292480,
     "64": 6291968,
-    "1600": 6292480,
     "65": 99,
     "66": 6292480,
-    "6210": 195,
     "67": 133,
-    "580": 5499742,
-    "5700": 296,
     "70": 4985287,
-    "5702": 0,
     "71": 0,
     "72": 0,
     "73": 0,
-    "1610": 6291457,
-    "1100": 6292481,
-    "5710": 1048578,
+    "1616": 69,
     "80": 4285969,
-    "5200": 4421015,
-    "5202": 6181427,
-    "4180": 0,
-    "1110": 33,
-    "600": 6292481,
-    "5210": 6291456,
-    "4700": 195,
-    "4702": 0,
-    "3680": 4451166,
-    "610": 1048583,
-    "100": 0,
-    "4710": 101,
-    "4200": 1048576,
-    "4202": 0,
-    "3180": 0,
-    "110": 35,
-    "4210": 6291712,
-    "3700": 6292480,
-    "3702": 69,
-    "2680": 5499742,
-    "3710": 264,
-    "3200": 133,
-    "2180": 4697803,
-    "3210": 6291457,
-    "2700": 6292480,
-    "1680": 6291456,
-    "6800": 6292480,
-    "2710": 99,
-    "2200": 99,
-    "6810": 5819458,
-    "1180": 0,
-    "6300": 195,
-    "2210": 0,
-    "1700": 69,
-    "6310": 6291456,
-    "680": 69,
-    "5800": 6292737,
-    "5802": 0,
-    "173": 0,
-    "1710": 1048577,
-    "1200": 69,
-    "5810": 99,
-    "180": 68,
-    "5300": 195,
-    "5302": 4779281,
-    "4280": 0,
-    "1210": 6291457,
-    "700": 195,
-    "5310": 1048583,
-    "4800": 6292480,
-    "4802": 0,
-    "3780": 69,
-    "710": 0,
-    "200": 4783023,
-    "4810": 5971086,
-    "4300": 99,
-    "4302": 0,
-    "3280": 0,
-    "210": 6291456,
-    "4310": 195,
-    "3800": 1048577,
-    "3802": 5827857,
-    "2780": 4409112,
-    "3810": 6291712,
-    "3300": 4922510,
-    "3302": 5132851,
-    "2280": 68,
-    "3310": 99,
-    "2800": 6292481,
-    "1780": 0,
-    "6900": 133,
-    "2810": 6291457,
-    "2300": 6292480,
-    "1280": 69,
+    "592": 69,
+    "1104": 0,
+    "2128": 6291456,
+    "2640": 0,
+    "3152": 1048583,
+    "3664": 69,
+    "4176": 0,
+    "4688": 4451166,
+    "5200": 0,
+    "5712": 5827857,
+    "1626": 6291459,
+    "90": 4871355,
+    "602": 35,
+    "1114": 6291458,
+    "2138": 6291460,
+    "2650": 1048588,
+    "3162": 2097140,
+    "3674": 0,
+    "4186": 0,
+    "4698": 0,
+    "5210": 5819458,
+    "2660": 4263671,
+    "616": 4396989,
+    "3712": 4476513,
+    "1664": 6268301,
+    "128": 0,
+    "640": 195,
+    "1152": 196,
+    "2176": 69,
+    "2688": 6292482,
+    "3200": 5219725,
+    "4224": 4922510,
+    "4736": 6292480,
+    "5248": 131,
+    "5760": 101,
+    "6272": 99,
+    "6784": 195,
+    "7296": 296,
+    "7808": 101,
+    "8320": 264,
+    "8832": 133,
+    "4226": 5132851,
+    "4738": 69,
+    "5250": 0,
+    "5762": 69,
+    "6274": 0,
+    "6786": 4779281,
+    "7298": 0,
+    "7810": 4847232,
+    "1674": 1048577,
+    "138": 35,
+    "650": 6291456,
+    "1162": 0,
+    "2186": 1048577,
+    "2698": 0,
+    "3210": 131,
+    "3722": 101,
+    "4234": 99,
+    "4746": 264,
+    "5258": 296,
+    "5770": 99,
+    "6282": 195,
+    "6794": 1048583,
+    "7306": 1048578,
+    "7818": 5351232,
+    "8330": 69,
+    "201": 0,
+    "1744": 5777247,
+    "208": 68,
+    "720": 5499742,
+    "1232": 0,
+    "2256": 0,
+    "2768": 4697803,
+    "3280": 69,
+    "3792": 5334545,
+    "4304": 0,
+    "4816": 69,
+    "5328": 0,
+    "1754": 1048582,
+    "218": 35,
+    "730": 6291457,
+    "1242": 1048581,
+    "2266": 2097252,
+    "2778": 67,
+    "3290": 35,
+    "3802": 0,
+    "4314": 35,
+    "4826": 0,
+    "2788": 0,
+    "744": 0,
+    "1792": 196,
+    "768": 6292481,
+    "256": 4783023,
+    "1280": 6292480,
+    "2304": 5525089,
+    "2816": 99,
+    "3328": 3,
+    "3840": 99,
+    "4352": 195,
+    "4864": 1048577,
+    "5376": 1048576,
+    "5888": 5831599,
     "6400": 6292480,
-    "2310": 131,
-    "1800": 5525089,
-    "6410": 4250050,
-    "780": 5777247,
-    "5900": 99,
-    "5902": 0,
-    "1810": 0,
-    "1300": 6268301,
-    "5910": 6291456,
-    "280": 6291456,
-    "5400": 6292480,
-    "5402": 35,
-    "4380": 69,
-    "1310": 1048577,
-    "800": 6292482,
-    "5410": 69,
-    "4900": 99,
-    "4902": 0,
-    "3880": 6181427,
-    "810": 0,
-    "300": 195,
-    "4910": 195,
-    "4400": 6292480,
-    "4402": 0,
-    "3380": 0,
-    "310": 1048576,
-    "4410": 6291456,
-    "3900": 131,
-    "3902": 609,
-    "2880": 69,
-    "3910": 101,
-    "3400": 195,
-    "3402": 1060,
-    "2380": 6291457,
-    "3410": 6291456,
-    "2900": 4476513,
-    "1880": 0,
-    "2910": 101,
-    "2400": 133,
-    "1380": 5777247,
-    "6500": 264,
-    "2410": 1048675,
-    "1900": 3,
-    "6510": 69,
-    "880": 0,
-    "6000": 6292480,
-    "6002": 0,
-    "1910": 0,
-    "1400": 196,
-    "6010": 101,
-    "380": 1048576,
-    "5500": 296,
-    "5502": 6291456,
-    "4480": 5827857,
-    "1410": 0,
-    "900": 196,
-    "5510": 5298626,
-    "5000": 6292480,
-    "5002": 0,
-    "3980": 0,
-    "910": 0,
-    "400": 6292480,
-    "5010": 6291456,
-    "4500": 101,
-    "4502": 69,
-    "3480": 69,
-    "410": 33,
-    "4510": 99,
-    "4000": 1048675,
-    "4002": 6291456,
-    "2980": 5334545,
-    "4010": 5469591,
-    "3500": 6292480,
-    "3502": 1048577,
-    "2480": 1048583,
-    "3510": 616,
-    "3000": 99,
-    "1980": 0,
-    "3010": 5831599,
-    "2500": 5219725,
-    "1480": 4728671,
-    "6600": 6292736,
-    "2510": 131,
-    "2000": 6292480,
-    "6610": 5844119,
-    "980": 0,
-    "6100": 101,
-    "6102": 4847232,
-    "2010": 0,
-    "1500": 6292482,
-    "6110": 5351232,
-    "480": 69,
-    "5600": 6292736,
-    "5602": 1048576,
-    "1510": 33,
-    "1000": 6292480,
-    "5610": 131,
-    "5100": 133,
-    "5102": 69,
-    "4080": 0,
-    "1010": 0,
-    "500": 195,
-    "5110": 292,
-    "4600": 5831599,
-    "4602": 6181427,
-    "3580": 5334545,
-    "510": 6291456
+    "6912": 6292480,
+    "7424": 6292737,
+    "7936": 5971086,
+    "8448": 6292736,
+    "4354": 1060,
+    "4866": 5827857,
+    "5378": 0,
+    "5890": 6181427,
+    "6402": 0,
+    "6914": 35,
+    "7426": 0,
+    "1802": 0,
+    "778": 1048583,
+    "266": 6291456,
+    "1290": 0,
+    "2314": 0,
+    "2826": 0,
+    "3338": 1048576,
+    "3850": 5831599,
+    "4362": 6291456,
+    "4874": 6291712,
+    "5386": 6291712,
+    "5898": 6291456,
+    "6410": 6291456,
+    "6922": 69,
+    "7434": 99,
+    "7946": 195,
+    "8458": 5844119,
+    "1872": 4728671,
+    "848": 69,
+    "336": 6291456,
+    "1360": 0,
+    "2384": 0,
+    "2896": 68,
+    "3408": 5499742,
+    "3920": 0,
+    "4432": 69,
+    "4944": 6181427,
+    "5456": 0,
+    "1882": 1048582,
+    "858": 2097252,
+    "346": 6291456,
+    "1370": 1048587,
+    "2394": 35,
+    "2906": 6291462,
+    "3418": 6291463,
+    "3930": 0,
+    "4442": 6291456,
+    "4954": 0,
+    "2916": 69,
+    "1920": 6292482,
+    "896": 195,
+    "384": 195,
+    "1408": 6292481,
+    "2432": 3,
+    "2944": 6292480,
+    "3456": 6292480,
+    "3968": 6292480,
+    "4480": 6292480,
+    "4992": 131,
+    "5504": 99,
+    "6016": 195,
+    "6528": 133,
+    "7040": 296,
+    "7552": 99,
+    "8064": 195,
+    "8576": 99,
+    "4482": 1048577,
+    "4994": 609,
+    "5506": 0,
+    "6018": 0,
+    "6530": 69,
+    "7042": 6291456,
+    "7554": 0,
+    "1930": 33,
+    "906": 0,
+    "394": 1048576,
+    "1418": 33,
+    "2442": 0,
+    "2954": 131,
+    "3466": 99,
+    "3978": 195,
+    "4490": 616,
+    "5002": 101,
+    "5514": 195,
+    "6026": 101,
+    "6538": 292,
+    "7050": 5298626,
+    "7562": 6291456,
+    "8074": 6291456,
+    "8586": 69,
+    "2000": 673,
+    "976": 5777247,
+    "464": 1048576,
+    "1488": 0,
+    "2512": 0,
+    "3024": 6291457,
+    "3536": 4409112,
+    "4048": 0,
+    "4560": 5334545,
+    "5072": 0,
+    "5584": 69,
+    "2010": 35,
+    "986": 67,
+    "474": 1048581,
+    "1498": 67,
+    "2522": 6291461,
+    "3034": 2097146,
+    "3546": 1049089,
+    "4058": 0,
+    "4570": 1048582,
+    "5082": 69,
+    "3044": 5819458
   },
   "initialWorldObjects": {
-    "3330": {
+    "2580": {
       "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9730": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1030": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7430": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "5130": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2830": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9230": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9999": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "530": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "6930": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1299": {
-      "type": 3145728,
-      "value": 1,
+      "value": 5,
       "marker": 0
     },
     "22": {
@@ -591,17 +992,32 @@
       "value": 6,
       "marker": 0
     },
-    "4630": {
+    "278": {
+      "type": 1048576,
+      "value": 6,
+      "marker": 0
+    },
+    "534": {
+      "type": 1048576,
+      "value": 6,
+      "marker": 0
+    },
+    "790": {
+      "type": 1048576,
+      "value": 6,
+      "marker": 0
+    },
+    "1046": {
+      "type": 1048576,
+      "value": 6,
+      "marker": 0
+    },
+    "3870": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "2330": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "8730": {
+    "1822": {
       "type": 1048576,
       "value": 7,
       "marker": 0
@@ -611,302 +1027,487 @@
       "value": 7,
       "marker": 0
     },
+    "286": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "542": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "798": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "1054": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "1310": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "1566": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "2078": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "2334": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "2590": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "2846": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "3102": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "3358": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "3614": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4126": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4382": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4638": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4894": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5150": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5406": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5662": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5918": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "6174": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
     "6430": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "799": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "4130": {
+    "6686": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "1830": {
+    "6942": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "8230": {
+    "7198": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "5930": {
+    "7454": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "299": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "3630": {
+    "7710": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "1330": {
+    "7966": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "7730": {
+    "8222": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "822": {
-      "type": 1048576,
-      "value": 6,
-      "marker": 0
-    },
-    "5430": {
+    "8478": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "3130": {
+    "8734": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "9530": {
+    "8990": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "3132": {
+    "9246": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "9502": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "9758": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10014": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10270": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10526": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10782": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11038": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11294": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11550": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11806": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12062": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12318": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12574": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12830": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13086": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13342": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13598": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13854": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14110": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14366": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14622": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14878": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15134": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15390": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15646": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15902": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "16158": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "3872": {
       "type": 1048576,
       "value": 8,
       "marker": 0
     },
-    "3133": {
+    "4128": {
       "type": 1048576,
       "value": 8,
       "marker": 0
     },
-    "830": {
+    "3873": {
       "type": 1048576,
-      "value": 7,
+      "value": 8,
       "marker": 0
     },
-    "7230": {
+    "4129": {
       "type": 1048576,
-      "value": 7,
+      "value": 8,
       "marker": 0
     },
-    "4930": {
+    "296": {
       "type": 1048576,
-      "value": 7,
+      "value": 30,
       "marker": 0
     },
-    "2630": {
+    "2662": {
       "type": 1048576,
-      "value": 7,
+      "value": 12,
       "marker": 0
     },
-    "9030": {
-      "type": 1048576,
-      "value": 7,
+    "871": {
+      "type": 3145728,
+      "value": 2,
       "marker": 0
     },
-    "2120": {
+    "615": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1127": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1383": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "618": {
+      "type": 1048576,
+      "value": 11,
+      "marker": 0
+    },
+    "878": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "622": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1134": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1390": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1407": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "1663": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "1151": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "127": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "383": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "639": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "895": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "2708": {
       "type": 1048576,
       "value": 5,
       "marker": 0
     },
-    "330": {
+    "3998": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "6730": {
+    "1950": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "1099": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "4430": {
+    "926": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "2130": {
+    "414": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "8530": {
+    "158": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "6230": {
+    "670": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "599": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "3930": {
+    "1182": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "1630": {
+    "1438": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "8030": {
+    "1694": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "5730": {
+    "2206": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "99": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "3430": {
+    "2462": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "9830": {
+    "2718": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "1130": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7530": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "622": {
-      "type": 1048576,
-      "value": 6,
-      "marker": 0
-    },
-    "5230": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2930": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9330": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "630": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7030": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "4730": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2430": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "8830": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "130": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "6530": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "899": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "4230": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1930": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "8330": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "6030": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "399": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "3730": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1430": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7830": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "5530": {
+    "2974": {
       "type": 1048576,
       "value": 7,
       "marker": 0
@@ -916,254 +1517,414 @@
       "value": 7,
       "marker": 0
     },
+    "3486": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "3742": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4254": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4510": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4766": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5022": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5278": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5534": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "5790": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "6046": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "6302": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "6558": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "6814": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "7070": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "7326": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "7582": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "7838": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "8094": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "8350": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "8606": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "8862": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "9118": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "9374": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
     "9630": {
       "type": 1048576,
       "value": 7,
       "marker": 0
     },
-    "3232": {
+    "9886": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10142": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10398": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10654": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "10910": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11166": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11422": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11678": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "11934": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12190": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12446": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12702": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "12958": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13214": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13470": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13726": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "13982": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14238": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14494": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "14750": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15006": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15262": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15518": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "15774": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "16030": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "16286": {
+      "type": 1048576,
+      "value": 7,
+      "marker": 0
+    },
+    "4000": {
       "type": 1048576,
       "value": 8,
       "marker": 0
     },
-    "3233": {
+    "4001": {
       "type": 1048576,
       "value": 8,
       "marker": 0
     },
-    "930": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7330": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "422": {
-      "type": 1048576,
-      "value": 6,
-      "marker": 0
-    },
-    "5030": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2730": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9130": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "430": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "6830": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1199": {
+    "487": {
       "type": 3145728,
-      "value": 1,
+      "value": 2,
       "marker": 0
     },
-    "4530": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2230": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "8630": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "6330": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "699": {
+    "743": {
       "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "4030": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1730": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "8130": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "5830": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "199": {
-      "type": 3145728,
-      "value": 1,
-      "marker": 0
-    },
-    "3530": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9930": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "1230": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7630": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "5330": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "3030": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "9430": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "3032": {
-      "type": 1048576,
-      "value": 8,
-      "marker": 0
-    },
-    "3033": {
-      "type": 1048576,
-      "value": 8,
-      "marker": 0
-    },
-    "730": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "7130": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "222": {
-      "type": 1048576,
-      "value": 6,
-      "marker": 0
-    },
-    "4830": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2530": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "8930": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "2020": {
-      "type": 1048576,
-      "value": 5,
-      "marker": 0
-    },
-    "230": {
-      "type": 1048576,
-      "value": 7,
-      "marker": 0
-    },
-    "6630": {
-      "type": 1048576,
-      "value": 7,
+      "value": 2,
       "marker": 0
     },
     "999": {
       "type": 3145728,
-      "value": 1,
+      "value": 2,
       "marker": 0
     },
-    "4330": {
+    "1255": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1511": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "488": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1000": {
       "type": 1048576,
-      "value": 7,
+      "value": 6,
       "marker": 0
     },
-    "2030": {
-      "type": 1048576,
-      "value": 7,
+    "1512": {
+      "type": 3145728,
+      "value": 2,
       "marker": 0
     },
-    "8430": {
-      "type": 1048576,
-      "value": 7,
+    "489": {
+      "type": 3145728,
+      "value": 2,
       "marker": 0
     },
-    "6130": {
-      "type": 1048576,
-      "value": 7,
+    "1513": {
+      "type": 3145728,
+      "value": 2,
       "marker": 0
     },
-    "499": {
+    "490": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1514": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "491": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1515": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "492": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1516": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "493": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1517": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "494": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "750": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1006": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1262": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1518": {
+      "type": 3145728,
+      "value": 2,
+      "marker": 0
+    },
+    "1535": {
       "type": 3145728,
       "value": 1,
       "marker": 0
     },
-    "3830": {
-      "type": 1048576,
-      "value": 7,
+    "511": {
+      "type": 3145728,
+      "value": 1,
       "marker": 0
     },
-    "1530": {
-      "type": 1048576,
-      "value": 7,
+    "16383": {
+      "type": 3145728,
+      "value": 1,
       "marker": 0
     },
-    "7930": {
-      "type": 1048576,
-      "value": 7,
+    "1279": {
+      "type": 3145728,
+      "value": 1,
       "marker": 0
     },
-    "5630": {
-      "type": 1048576,
-      "value": 7,
+    "255": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "767": {
+      "type": 3145728,
+      "value": 1,
+      "marker": 0
+    },
+    "1023": {
+      "type": 3145728,
+      "value": 1,
       "marker": 0
     }
   },
@@ -1863,1050 +2624,1379 @@
     },
     "99": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 40,
+      "lineNumber": 43,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "100": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 41,
+      "lineNumber": 44,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "101": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 41,
+      "lineNumber": 44,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "102": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 41,
+      "lineNumber": 44,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "103": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 26,
+      "lineNumber": 29,
       "columnNumber": 3,
       "placement": "",
       "expansion": 3
     },
     "104": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 26,
+      "lineNumber": 29,
       "columnNumber": 3,
       "placement": "",
       "expansion": 3
     },
     "105": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 26,
+      "lineNumber": 29,
       "columnNumber": 3,
       "placement": "",
       "expansion": 3
     },
     "106": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 27,
+      "lineNumber": 30,
       "columnNumber": 3,
       "placement": "",
       "expansion": 3
     },
     "107": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 43,
+      "lineNumber": 46,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "108": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 43,
+      "lineNumber": 46,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "109": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 43,
+      "lineNumber": 46,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "110": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 48,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "111": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 48,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "112": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 48,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "113": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 46,
+      "lineNumber": 49,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "114": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 48,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "115": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 48,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "116": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 48,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "117": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 46,
+      "lineNumber": 49,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "118": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "119": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "120": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "121": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "122": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "123": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "124": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "125": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "126": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "127": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "128": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "129": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "130": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "131": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "132": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "133": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "134": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "135": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "136": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "137": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "138": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "139": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "140": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "141": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "142": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "143": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 53,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "144": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "145": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "146": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "147": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "148": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "149": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "150": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "151": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "152": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "153": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "154": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "155": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "156": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "157": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "158": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "159": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "160": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "161": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "162": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "163": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 56,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "164": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 54,
+      "lineNumber": 57,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "165": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 54,
+      "lineNumber": 57,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "166": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 55,
+      "lineNumber": 58,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "167": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 55,
+      "lineNumber": 58,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "168": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 61,
+      "lineNumber": 64,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "169": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 62,
+      "lineNumber": 65,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "170": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 62,
+      "lineNumber": 65,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "171": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 63,
+      "lineNumber": 66,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "172": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 63,
+      "lineNumber": 66,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "173": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 65,
+      "lineNumber": 68,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "174": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 65,
+      "lineNumber": 68,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "175": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 65,
+      "lineNumber": 68,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "176": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 65,
+      "lineNumber": 68,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "177": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 65,
+      "lineNumber": 68,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "178": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 70,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "179": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 70,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "180": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 70,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "181": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "182": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "183": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "184": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "185": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "186": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 72,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "187": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 72,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "188": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 72,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "189": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 72,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "190": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 70,
+      "lineNumber": 73,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "191": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 70,
+      "lineNumber": 73,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "192": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 70,
+      "lineNumber": 73,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "193": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 71,
+      "lineNumber": 74,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "194": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 71,
+      "lineNumber": 74,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "195": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 71,
+      "lineNumber": 74,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "196": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 77,
+      "lineNumber": 80,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "197": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 78,
+      "lineNumber": 81,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "198": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 78,
+      "lineNumber": 81,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "199": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 80,
+      "lineNumber": 83,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "200": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 80,
+      "lineNumber": 83,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "201": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 86,
+      "lineNumber": 89,
       "columnNumber": 10,
       "placement": "",
       "expansion": 0
     },
     "202": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 87,
+      "lineNumber": 90,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "203": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 87,
+      "lineNumber": 90,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "204": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 87,
+      "lineNumber": 90,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "205": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 91,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "206": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 91,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "207": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "208": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "209": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "210": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "211": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "212": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "213": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 21,
       "placement": "",
       "expansion": 0
     },
     "214": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 92,
       "columnNumber": 21,
       "placement": "",
       "expansion": 0
     },
     "215": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 93,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "216": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 94,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "217": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 94,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "218": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 94,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "219": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 94,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "220": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 94,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "221": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 94,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "222": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 92,
+      "lineNumber": 95,
       "columnNumber": 12,
       "placement": "",
       "expansion": 0
     },
     "223": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 93,
+      "lineNumber": 96,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "224": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 93,
+      "lineNumber": 96,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "225": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 93,
+      "lineNumber": 96,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "226": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 94,
+      "lineNumber": 97,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "227": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 94,
+      "lineNumber": 97,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "228": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 98,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "229": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "230": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "231": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "232": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "233": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "234": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "235": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
     },
     "236": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 99,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
     },
     "237": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 100,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "238": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "239": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "240": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "241": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "242": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "243": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "244": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
     },
     "245": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 98,
+      "lineNumber": 101,
       "columnNumber": 26,
+      "placement": "",
+      "expansion": 0
+    },
+    "246": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 123,
+      "columnNumber": 1,
+      "placement": "",
+      "expansion": 0
+    },
+    "247": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 124,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "248": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 124,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "249": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 124,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "250": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 125,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "251": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 125,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "252": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 125,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "253": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 126,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "254": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 126,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "255": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 126,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "256": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 126,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "257": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 127,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "258": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 127,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "259": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 127,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "260": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 127,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "261": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 128,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "262": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 128,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "263": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 128,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "264": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 129,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "265": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 129,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "266": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 129,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "267": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 130,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "268": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 130,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "269": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 130,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "270": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 130,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "271": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 131,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "272": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 131,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "273": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 131,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "274": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 133,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "275": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 133,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "276": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 135,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "277": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 135,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "278": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 135,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "279": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 137,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "280": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 137,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "281": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 137,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "282": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 142,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "283": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 145,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "284": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 148,
+      "columnNumber": 5,
+      "placement": "",
+      "expansion": 0
+    },
+    "285": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 150,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "286": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 150,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "287": {
+      "fileName": "REFERENCE_ROOT/lib/frame.evo",
+      "lineNumber": 15,
+      "columnNumber": 8,
+      "placement": "FRAME",
+      "expansion": 0
+    },
+    "288": {
+      "fileName": "REFERENCE_ROOT/lib/frame.evo",
+      "lineNumber": 16,
+      "columnNumber": 3,
+      "placement": "FRAME",
+      "expansion": 0
+    },
+    "289": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 161,
+      "columnNumber": 1,
+      "placement": "",
+      "expansion": 0
+    },
+    "290": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 162,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "291": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 163,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 0
+    },
+    "292": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 163,
+      "columnNumber": 3,
       "placement": "",
       "expansion": 0
     }
   },
   "callSiteBindings": {
-    "128": {
-      "1024": 1
-    },
-    "146": {
-      "1024": 0
-    },
     "138": {
       "1024": 0,
       "1280": 256
+    },
+    "128": {
+      "1024": 1
     },
     "45": {
       "1024": 1024
     },
     "61": {
       "1024": 1024
+    },
+    "146": {
+      "1024": 0
     },
     "159": {
       "1024": 0
@@ -2927,6 +4017,8 @@
     "0|60": 188,
     "29|80": 230,
     "30|80": 231,
+    "12|90": 258,
+    "35|90": 281,
     "0|67": 195,
     "0|66": 194,
     "0|65": 193,
@@ -2938,6 +4030,7 @@
     "50|10": 149,
     "41|80": 242,
     "21|10": 120,
+    "5|90": 251,
     "24|80": 225,
     "5|0": 5,
     "67|10": 166,
@@ -2946,6 +4039,7 @@
     "42|2": 79,
     "27|0": 27,
     "0|72": 198,
+    "29|90": 275,
     "2|10": 101,
     "0|71": 197,
     "0|70": 196,
@@ -2966,27 +4060,40 @@
     "15|0": 15,
     "14|10": 113,
     "0|80": 201,
+    "28|90": 274,
     "37|10": 136,
     "56|10": 155,
+    "17|90": 263,
     "49|0": 49,
     "49|2": 86,
+    "40|90": 286,
     "6|80": 207,
     "4|0": 4,
     "41|0": 41,
     "64|0": 64,
     "41|2": 78,
+    "23|90": 269,
     "26|0": 26,
     "48|10": 147,
+    "0|90": 246,
     "8|10": 107,
     "12|80": 213,
+    "22|100": 291,
+    "34|90": 280,
     "51|10": 150,
     "14|0": 14,
     "37|0": 37,
     "37|2": 74,
+    "16|90": 262,
+    "6|90": 252,
+    "39|90": 285,
     "52|0": 52,
+    "21|100": 290,
+    "22|90": 268,
     "52|2": 89,
     "40|80": 241,
     "68|10": 167,
+    "5|104": 288,
     "3|10": 102,
     "31|10": 130,
     "34|80": 235,
@@ -3005,6 +4112,7 @@
     "63|10": 162,
     "36|10": 135,
     "28|80": 229,
+    "11|90": 257,
     "1|80": 202,
     "57|10": 156,
     "19|10": 118,
@@ -3019,18 +4127,24 @@
     "36|0": 36,
     "47|10": 146,
     "27|80": 228,
+    "33|90": 279,
     "9|10": 108,
     "18|10": 117,
+    "1|90": 247,
     "52|10": 151,
+    "10|90": 256,
     "24|0": 24,
     "47|2": 84,
     "16|80": 217,
     "2|0": 2,
+    "7|90": 253,
+    "38|90": 284,
     "62|0": 62,
     "22|80": 223,
     "47|0": 47,
     "13|10": 112,
     "33|80": 234,
+    "27|90": 273,
     "30|10": 129,
     "4|10": 103,
     "35|2": 72,
@@ -3046,31 +4160,42 @@
     "64|10": 163,
     "12|10": 111,
     "35|10": 134,
+    "26|90": 272,
     "50|0": 50,
     "2|80": 203,
     "15|80": 216,
+    "20|100": 289,
     "58|10": 157,
     "46|2": 83,
     "23|0": 23,
+    "15|90": 261,
     "1|0": 1,
     "8|80": 209,
     "61|2": 98,
     "29|10": 128,
+    "21|90": 267,
     "9|0": 9,
     "46|0": 46,
     "69|0": 69,
     "46|10": 145,
+    "32|90": 278,
     "61|0": 61,
+    "4|104": 287,
+    "2|90": 248,
     "53|10": 152,
     "10|80": 211,
     "57|2": 94,
+    "8|90": 254,
     "11|0": 11,
+    "37|90": 283,
     "19|0": 19,
     "34|0": 34,
+    "20|90": 266,
     "57|0": 57,
     "28|10": 127,
     "34|2": 71,
     "32|80": 233,
+    "14|90": 260,
     "5|10": 104,
     "43|80": 244,
     "22|0": 22,
@@ -3102,10 +4227,15 @@
     "45|10": 144,
     "56|0": 56,
     "56|2": 93,
+    "31|90": 277,
     "54|10": 153,
+    "3|90": 249,
     "16|10": 115,
     "39|10": 138,
+    "9|90": 255,
     "21|0": 21,
+    "19|90": 265,
+    "25|90": 271,
     "7|0": 7,
     "29|0": 29,
     "44|0": 44,
@@ -3115,13 +4245,17 @@
     "31|80": 232,
     "11|10": 110,
     "60|10": 159,
+    "36|90": 282,
     "14|80": 215,
     "6|10": 105,
+    "18|90": 264,
     "42|80": 243,
     "32|0": 32,
     "0|49": 177,
+    "4|90": 250,
     "0|48": 176,
     "66|10": 165,
+    "24|90": 270,
     "55|0": 55,
     "17|0": 17,
     "55|2": 92,
@@ -3143,15 +4277,18 @@
     "0|59": 187,
     "6|0": 6,
     "43|0": 43,
+    "23|100": 292,
     "28|0": 28,
     "66|0": 66,
     "43|2": 80,
     "27|10": 126,
     "44|10": 143,
     "0|50": 178,
+    "30|90": 276,
     "0|58": 186,
     "0|57": 185,
     "0|56": 184,
+    "13|90": 259,
     "0|55": 183,
     "0|54": 182,
     "0|53": 181,
@@ -4144,6 +5281,194 @@
     "245": [
       44,
       80
+    ],
+    "246": [
+      0,
+      90
+    ],
+    "247": [
+      1,
+      90
+    ],
+    "248": [
+      2,
+      90
+    ],
+    "249": [
+      3,
+      90
+    ],
+    "250": [
+      4,
+      90
+    ],
+    "251": [
+      5,
+      90
+    ],
+    "252": [
+      6,
+      90
+    ],
+    "253": [
+      7,
+      90
+    ],
+    "254": [
+      8,
+      90
+    ],
+    "255": [
+      9,
+      90
+    ],
+    "256": [
+      10,
+      90
+    ],
+    "257": [
+      11,
+      90
+    ],
+    "258": [
+      12,
+      90
+    ],
+    "259": [
+      13,
+      90
+    ],
+    "260": [
+      14,
+      90
+    ],
+    "261": [
+      15,
+      90
+    ],
+    "262": [
+      16,
+      90
+    ],
+    "263": [
+      17,
+      90
+    ],
+    "264": [
+      18,
+      90
+    ],
+    "265": [
+      19,
+      90
+    ],
+    "266": [
+      20,
+      90
+    ],
+    "267": [
+      21,
+      90
+    ],
+    "268": [
+      22,
+      90
+    ],
+    "269": [
+      23,
+      90
+    ],
+    "270": [
+      24,
+      90
+    ],
+    "271": [
+      25,
+      90
+    ],
+    "272": [
+      26,
+      90
+    ],
+    "273": [
+      27,
+      90
+    ],
+    "274": [
+      28,
+      90
+    ],
+    "275": [
+      29,
+      90
+    ],
+    "276": [
+      30,
+      90
+    ],
+    "277": [
+      31,
+      90
+    ],
+    "278": [
+      32,
+      90
+    ],
+    "279": [
+      33,
+      90
+    ],
+    "280": [
+      34,
+      90
+    ],
+    "281": [
+      35,
+      90
+    ],
+    "282": [
+      36,
+      90
+    ],
+    "283": [
+      37,
+      90
+    ],
+    "284": [
+      38,
+      90
+    ],
+    "285": [
+      39,
+      90
+    ],
+    "286": [
+      40,
+      90
+    ],
+    "287": [
+      4,
+      104
+    ],
+    "288": [
+      5,
+      104
+    ],
+    "289": [
+      20,
+      100
+    ],
+    "290": [
+      21,
+      100
+    ],
+    "291": [
+      22,
+      100
+    ],
+    "292": [
+      23,
+      100
     ]
   },
   "registerAliasMap": {
@@ -4153,12 +5478,33 @@
     "LOCAL_STEP.%TMP": 512
   },
   "constantValues": {
+    "TWICE": "ENERGY:100",
+    "CORNER": "6|12",
+    "STRETCH": "0|30",
+    "FRAME.OUT_SE": "11|110",
+    "LIMIT": "DATA:7",
+    "FRAME.SE": "10|109",
+    "MAX_VALUE": "DATA:99",
+    "FRAME.MARGIN": "1|1",
+    "HERE": "20|100",
+    "AREA": "72",
+    "FRAME.NW": "4|104",
+    "UTIL.MAX_VALUE": "DATA:99",
+    "AMOUNT": "100",
+    "BITS": "510",
+    "NAV.CEILING": "DATA:99",
     "NAV.STEP.STRIDE": "DATA:1",
     "NAV.STEP.CEILING": "DATA:99",
-    "UTIL.MAX_VALUE": "DATA:99",
-    "LIMIT": "DATA:7",
-    "MAX_VALUE": "DATA:99",
-    "NAV.CEILING": "DATA:99"
+    "UNIT": "ENERGY:50",
+    "FRAME.NEXT": "6|104",
+    "SIZE": "6",
+    "QUOTIENT": "-3",
+    "SPAN": "12",
+    "REST": "-1",
+    "FRAME.EXTENT": "6|5",
+    "KIND": "ENERGY",
+    "FRAME.OUT_NW": "3|103",
+    "DEPTH": "5"
   },
   "procNameToParamNames": {
     "LOCAL_STEP": [
@@ -4207,93 +5553,22 @@
     ]
   },
   "tokenMap": {
-    "REFERENCE_ROOT/main.evo:26:3": {
-      "tokenText": "ADDI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:51:8": {
-      "tokenText": "NAV.STEP.FORWARD",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "NAV.STEP.FORWARD"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:9:8": {
-      "tokenText": "TO_MIN",
-      "tokenType": "LABEL",
-      "scope": "UTIL.CLAMP",
-      "qualifiedName": "UTIL.CLAMP.TO_MIN"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:11:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
-    },
-    "REFERENCE_ROOT/main.evo:89:8": {
-      "tokenText": "BODY",
-      "tokenType": "LABEL",
-      "scope": "COUNTDOWN",
-      "qualifiedName": "COUNTDOWN.BODY"
-    },
-    "REFERENCE_ROOT/main.evo:50:35": {
-      "tokenText": "%POS",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%POS"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:20:15": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:91:3": {
-      "tokenText": "DECR",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:96:31": {
-      "tokenText": "COUNTDOWN",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:80:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:14": {
-      "tokenText": "FORWARD",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "NAV.STEP.FORWARD"
-    },
-    "REFERENCE_ROOT/main.evo:96:19": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:98:26": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:17:71": {
+    "REFERENCE_ROOT/main.evo:20:71": {
       "tokenText": "MAX_VALUE",
       "tokenType": "CONSTANT",
       "scope": "",
       "qualifiedName": "MAX_VALUE"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:20:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
+    "REFERENCE_ROOT/main.evo:53:23": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
     },
-    "REFERENCE_ROOT/main.evo:70:8": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.X"
+    "REFERENCE_ROOT/main.evo:83:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:7:34": {
       "tokenText": "MIN",
@@ -4305,26 +5580,550 @@
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:49:41": {
-      "tokenText": "MAX_VALUE",
+    "REFERENCE_ROOT/main.evo:99:19": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:133:5": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:15": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:54:8": {
+      "tokenText": "NAV.STEP.FORWARD",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.FORWARD"
+    },
+    "REFERENCE_ROOT/main.evo:131:26": {
+      "tokenText": "QUOTIENT",
       "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "MAX_VALUE"
+      "qualifiedName": "QUOTIENT"
     },
-    "REFERENCE_ROOT/main.evo:67:3": {
-      "tokenText": "SETR",
+    "REFERENCE_ROOT/main.evo:157:25": {
+      "tokenText": "MARK",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "MARK"
+    },
+    "REFERENCE_ROOT/main.evo:70:8": {
+      "tokenText": "%TMP",
+      "tokenType": "ALIAS",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.%TMP"
+    },
+    "REFERENCE_ROOT/main.evo:99:3": {
+      "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:126:3": {
+      "tokenText": "SETV",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:92:8": {
+      "tokenText": "BODY",
+      "tokenType": "LABEL",
+      "scope": "COUNTDOWN",
+      "qualifiedName": "COUNTDOWN.BODY"
+    },
+    "REFERENCE_ROOT/main.evo:111:21": {
+      "tokenText": "SPAN",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SPAN"
+    },
+    "REFERENCE_ROOT/main.evo:51:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:107:23": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:7:16": {
+      "tokenText": "SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.SE"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:8": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.STEP.FORWARD",
+      "qualifiedName": "NAV.STEP.FORWARD.X"
+    },
+    "REFERENCE_ROOT/main.evo:156:24": {
+      "tokenText": "START",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "START"
+    },
+    "REFERENCE_ROOT/main.evo:94:3": {
+      "tokenText": "DECR",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:5:16": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.CEILING"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:10:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.STEP.FORWARD"
+    },
+    "REFERENCE_ROOT/main.evo:124:8": {
+      "tokenText": "%DR0",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:10:7": {
+      "tokenText": "MAX",
+      "tokenType": "PARAMETER",
+      "scope": "UTIL.CLAMP",
+      "qualifiedName": "UTIL.CLAMP.MAX"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:14": {
+      "tokenText": "PATROL",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "NAV.PATROL"
+    },
+    "REFERENCE_ROOT/main.evo:129:8": {
+      "tokenText": "%DR5",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:66:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:14": {
+      "tokenText": "FORWARD",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.FORWARD"
     },
     "NAV@REFERENCE_ROOT/lib/nav.evo:17:3": {
       "tokenText": "INPI",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
     },
-    "REFERENCE_ROOT/main.evo:94:7": {
+    "REFERENCE_ROOT/main.evo:131:3": {
+      "tokenText": "SETI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:6:16": {
+      "tokenText": "NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.NW"
+    },
+    "REFERENCE_ROOT/main.evo:68:22": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP"
+    },
+    "REFERENCE_ROOT/main.evo:131:19": {
+      "tokenText": "BITS",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "BITS"
+    },
+    "REFERENCE_ROOT/main.evo:92:26": {
+      "tokenText": "BODY",
+      "tokenType": "LABEL",
+      "scope": "COUNTDOWN",
+      "qualifiedName": "COUNTDOWN.BODY"
+    },
+    "REFERENCE_ROOT/main.evo:127:13": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:15:14": {
+      "tokenText": "MIN",
+      "tokenType": "PARAMETER",
+      "scope": "UTIL.CLAMP",
+      "qualifiedName": "UTIL.CLAMP.MIN"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:11:8": {
+      "tokenText": "DONE",
+      "tokenType": "LABEL",
+      "scope": "UTIL.CLAMP",
+      "qualifiedName": "UTIL.CLAMP.DONE"
+    },
+    "REFERENCE_ROOT/main.evo:107:16": {
+      "tokenText": "DEPTH",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "DEPTH"
+    },
+    "REFERENCE_ROOT/main.evo:29:3": {
+      "tokenText": "ADDI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:19:14": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:9:20": {
+      "tokenText": "OUT_NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_NW"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:13:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:11:31": {
+      "tokenText": "OUT_NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_NW"
+    },
+    "REFERENCE_ROOT/main.evo:163:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:101:31": {
+      "tokenText": "NAV.SCOUT.BLOCKED",
+      "tokenType": "LABEL",
+      "scope": "NAV.SCOUT",
+      "qualifiedName": "NAV.SCOUT.BLOCKED"
+    },
+    "REFERENCE_ROOT/main.evo:66:8": {
+      "tokenText": "START",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "START"
+    },
+    "REFERENCE_ROOT/main.evo:131:8": {
+      "tokenText": "%DR7",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:91:5": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:108:14": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:19:3": {
+      "tokenText": "INCR",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:164:17": {
+      "tokenText": "HERE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "HERE"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:18:10": {
+      "tokenText": "BLOCKED",
+      "tokenType": "LABEL",
+      "scope": "NAV.SCOUT",
+      "qualifiedName": "NAV.SCOUT.BLOCKED"
+    },
+    "REFERENCE_ROOT/main.evo:30:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:8:16": {
+      "tokenText": "SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.SE"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:6:21": {
+      "tokenText": "MARGIN",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.MARGIN"
+    },
+    "REFERENCE_ROOT/main.evo:155:85": {
+      "tokenText": "CORNER",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "CORNER"
+    },
+    "REFERENCE_ROOT/main.evo:53:45": {
+      "tokenText": "MARK",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "MARK"
+    },
+    "REFERENCE_ROOT/main.evo:48:5": {
+      "tokenText": "ADDI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:7:24": {
+      "tokenText": "VALUE",
+      "tokenType": "PARAMETER",
+      "scope": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:56:25": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "REFERENCE_ROOT/main.evo:92:14": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:90:3": {
+      "tokenText": "IFI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:145:5": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:12:46": {
+      "tokenText": "OUT_SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_SE"
+    },
+    "REFERENCE_ROOT/main.evo:113:22": {
+      "tokenText": "TWICE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "TWICE"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:10": {
+      "tokenText": "STRIDE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.STRIDE"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:3:16": {
+      "tokenText": "NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.NW"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:11:20": {
+      "tokenText": "OUT_NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_NW"
+    },
+    "REFERENCE_ROOT/main.evo:163:8": {
+      "tokenText": "START",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "START"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:36": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.CEILING"
+    },
+    "REFERENCE_ROOT/main.evo:71:7": {
+      "tokenText": "%TMP",
+      "tokenType": "ALIAS",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.%TMP"
+    },
+    "REFERENCE_ROOT/main.evo:73:10": {
+      "tokenText": "%TMP",
+      "tokenType": "ALIAS",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.%TMP"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:15:3": {
+      "tokenText": "SETR",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:16:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:55:7": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "REFERENCE_ROOT/main.evo:130:15": {
+      "tokenText": "CORNER",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "CORNER"
+    },
+    "REFERENCE_ROOT/main.evo:127:3": {
+      "tokenText": "SETV",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:12:8": {
+      "tokenText": "VALUE",
+      "tokenType": "PARAMETER",
+      "scope": "UTIL.CLAMP",
+      "qualifiedName": "UTIL.CLAMP.VALUE"
+    },
+    "REFERENCE_ROOT/main.evo:158:17": {
+      "tokenText": "FRAME.INSIDE",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "FRAME.INSIDE"
+    },
+    "REFERENCE_ROOT/main.evo:99:26": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:137:10": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:18:24": {
+      "tokenText": "NEXT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.NEXT"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:11:46": {
+      "tokenText": "OUT_SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_SE"
+    },
+    "REFERENCE_ROOT/main.evo:56:10": {
+      "tokenText": "LOCAL_STEP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "LOCAL_STEP"
+    },
+    "REFERENCE_ROOT/main.evo:68:28": {
+      "tokenText": "DELTA",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP"
+    },
+    "REFERENCE_ROOT/main.evo:97:7": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": "COUNTDOWN.CHECK"
+    },
+    "REFERENCE_ROOT/main.evo:127:19": {
+      "tokenText": "DEPTH",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "DEPTH"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:10:20": {
+      "tokenText": "OUT_NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_NW"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:22": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:46:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:125:8": {
+      "tokenText": "%DR1",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:12:31": {
+      "tokenText": "OUT_NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_NW"
+    },
+    "REFERENCE_ROOT/main.evo:130:8": {
+      "tokenText": "%DR6",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:9:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:44:8": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:22:8": {
+      "tokenText": "%DR0",
+      "tokenType": "REGISTER",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:73:3": {
+      "tokenText": "ADDR",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
+    },
+    "REFERENCE_ROOT/main.evo:96:5": {
+      "tokenText": "IFI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN.CHECK"
+    },
+    "REFERENCE_ROOT/main.evo:57:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:128:13": {
+      "tokenText": "KIND",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "KIND"
+    },
+    "REFERENCE_ROOT/main.evo:101:26": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:7:38": {
       "tokenText": "MAX",
@@ -4337,106 +6136,174 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.VALUE"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:6:80": {
-      "tokenText": "CEILING",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "NAV.CEILING"
-    },
-    "REFERENCE_ROOT/main.evo:48:3": {
-      "tokenText": "NOP",
+    "REFERENCE_ROOT/main.evo:129:3": {
+      "tokenText": "SETI",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:19:14": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:5:16": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.CEILING"
     },
-    "REFERENCE_ROOT/main.evo:54:8": {
+    "REFERENCE_ROOT/main.evo:110:15": {
+      "tokenText": "UNIT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "UNIT"
+    },
+    "REFERENCE_ROOT/main.evo:112:18": {
+      "tokenText": "UNIT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "UNIT"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:18:13": {
+      "tokenText": "EXTENT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.EXTENT"
+    },
+    "REFERENCE_ROOT/main.evo:45:15": {
+      "tokenText": "LIMIT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "LIMIT"
+    },
+    "REFERENCE_ROOT/main.evo:97:12": {
+      "tokenText": "COUNTDOWN.END",
+      "tokenType": "LABEL",
+      "scope": "COUNTDOWN",
+      "qualifiedName": "COUNTDOWN.END"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:25": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.PATROL"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:4:16": {
+      "tokenText": "SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.SE"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:12:20": {
+      "tokenText": "OUT_SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_SE"
+    },
+    "REFERENCE_ROOT/main.evo:155:99": {
+      "tokenText": "DEPTH",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "DEPTH"
+    },
+    "REFERENCE_ROOT/main.evo:92:21": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:127:8": {
+      "tokenText": "%DR3",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:27": {
+      "tokenText": "SCOUT",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:53:35": {
+      "tokenText": "%POS",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%POS"
+    },
+    "REFERENCE_ROOT/main.evo:125:13": {
+      "tokenText": "TWICE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "TWICE"
+    },
+    "REFERENCE_ROOT/main.evo:157:13": {
+      "tokenText": "STRETCH",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "STRETCH"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:9:8": {
+      "tokenText": "TO_MIN",
+      "tokenType": "LABEL",
+      "scope": "UTIL.CLAMP",
+      "qualifiedName": "UTIL.CLAMP.TO_MIN"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:10:41": {
+      "tokenText": "OUT_SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_SE"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:11:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:128:18": {
+      "tokenText": "AMOUNT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "AMOUNT"
+    },
+    "REFERENCE_ROOT/main.evo:52:41": {
+      "tokenText": "MAX_VALUE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "MAX_VALUE"
+    },
+    "REFERENCE_ROOT/main.evo:73:8": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.X"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:9:31": {
+      "tokenText": "OUT_SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_SE"
+    },
+    "REFERENCE_ROOT/main.evo:57:8": {
       "tokenText": "UTIL.READY",
       "tokenType": "LABEL",
       "scope": "",
       "qualifiedName": "UTIL.READY"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:8:14": {
-      "tokenText": "PATROL",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "NAV.PATROL"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:26": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.STEP.FORWARD"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:3": {
-      "tokenText": "ADDI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.STEP.FORWARD"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:7:14": {
-      "tokenText": "CLAMP",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "UTIL.CLAMP"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:5:16": {
-      "tokenText": "CEILING",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "NAV.CEILING"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:11:8": {
-      "tokenText": "DONE",
+    "REFERENCE_ROOT/main.evo:99:31": {
+      "tokenText": "COUNTDOWN",
       "tokenType": "LABEL",
-      "scope": "UTIL.CLAMP",
-      "qualifiedName": "UTIL.CLAMP.DONE"
+      "scope": "",
+      "qualifiedName": "COUNTDOWN"
     },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:15:14": {
-      "tokenText": "MIN",
-      "tokenType": "PARAMETER",
-      "scope": "UTIL.CLAMP",
-      "qualifiedName": "UTIL.CLAMP.MIN"
+    "REFERENCE_ROOT/main.evo:150:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:91:8": {
+    "UTIL@REFERENCE_ROOT/lib/util.evo:10:3": {
+      "tokenText": "LTR",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:45:8": {
       "tokenText": "%COUNT",
       "tokenType": "ALIAS",
       "scope": "",
       "qualifiedName": "%COUNT"
     },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:5:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:65:22": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:13:3": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:22:21": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:98:31": {
-      "tokenText": "NAV.SCOUT.BLOCKED",
-      "tokenType": "LABEL",
-      "scope": "NAV.SCOUT",
-      "qualifiedName": "NAV.SCOUT.BLOCKED"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:10:3": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.PATROL"
-    },
-    "REFERENCE_ROOT/main.evo:98:19": {
+    "REFERENCE_ROOT/main.evo:101:19": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
@@ -4447,201 +6314,137 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.VALUE"
     },
-    "REFERENCE_ROOT/main.evo:51:29": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
     "UTIL@REFERENCE_ROOT/lib/util.evo:12:14": {
       "tokenText": "MAX",
       "tokenType": "PARAMETER",
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.MAX"
     },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:10:7": {
-      "tokenText": "MAX",
-      "tokenType": "PARAMETER",
-      "scope": "UTIL.CLAMP",
-      "qualifiedName": "UTIL.CLAMP.MAX"
-    },
-    "REFERENCE_ROOT/main.evo:46:5": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:5:16": {
-      "tokenText": "CEILING",
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:9:41": {
+      "tokenText": "OUT_NW",
       "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "NAV.STEP.CEILING"
+      "qualifiedName": "FRAME.OUT_NW"
     },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:10:3": {
-      "tokenText": "LTR",
-      "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
-    },
-    "REFERENCE_ROOT/main.evo:94:12": {
-      "tokenText": "COUNTDOWN.END",
-      "tokenType": "LABEL",
-      "scope": "COUNTDOWN",
-      "qualifiedName": "COUNTDOWN.END"
-    },
-    "REFERENCE_ROOT/main.evo:96:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:10:3": {
+    "REFERENCE_ROOT/main.evo:74:3": {
       "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.STEP.FORWARD"
-    },
-    "REFERENCE_ROOT/main.evo:52:14": {
-      "tokenText": "LIMIT",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "LIMIT"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:8": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.STEP.FORWARD",
-      "qualifiedName": "NAV.STEP.FORWARD.X"
-    },
-    "REFERENCE_ROOT/main.evo:50:23": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "REFERENCE_ROOT/main.evo:89:21": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:20:27": {
-      "tokenText": "SCOUT",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:42:15": {
-      "tokenText": "LIMIT",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "LIMIT"
-    },
-    "REFERENCE_ROOT/main.evo:67:8": {
-      "tokenText": "%TMP",
-      "tokenType": "ALIAS",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.%TMP"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:8:25": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.PATROL"
-    },
-    "REFERENCE_ROOT/main.evo:91:16": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:68:3": {
-      "tokenText": "IFI",
       "tokenType": "INSTRUCTION",
       "scope": "LOCAL_STEP"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:22:8": {
-      "tokenText": "%DR0",
-      "tokenType": "REGISTER",
-      "scope": "NAV.SCOUT"
+    "REFERENCE_ROOT/main.evo:99:8": {
+      "tokenText": "COUNTDOWN",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "COUNTDOWN"
     },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:4:16": {
-      "tokenText": "STRIDE",
+    "REFERENCE_ROOT/main.evo:108:21": {
+      "tokenText": "SPAN",
       "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "NAV.STEP.STRIDE"
+      "qualifiedName": "SPAN"
     },
-    "REFERENCE_ROOT/main.evo:45:5": {
-      "tokenText": "ADDI",
+    "REFERENCE_ROOT/main.evo:58:3": {
+      "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:87:7": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:10": {
-      "tokenText": "BLOCKED",
-      "tokenType": "LABEL",
-      "scope": "NAV.SCOUT",
-      "qualifiedName": "NAV.SCOUT.BLOCKED"
-    },
-    "REFERENCE_ROOT/main.evo:55:8": {
-      "tokenText": "START",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "START"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:15:3": {
-      "tokenText": "SETR",
+    "REFERENCE_ROOT/main.evo:101:3": {
+      "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
+      "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:41:3": {
+    "NAV@REFERENCE_ROOT/lib/nav.evo:6:80": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.CEILING"
+    },
+    "REFERENCE_ROOT/main.evo:70:13": {
+      "tokenText": "DELTA",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.DELTA"
+    },
+    "REFERENCE_ROOT/main.evo:128:3": {
       "tokenText": "SETI",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:87:3": {
-      "tokenText": "IFI",
+    "REFERENCE_ROOT/main.evo:94:16": {
+      "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": "COUNTDOWN"
     },
-    "REFERENCE_ROOT/main.evo:50:45": {
-      "tokenText": "MARK",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "MARK"
-    },
-    "REFERENCE_ROOT/main.evo:49:23": {
-      "tokenText": "%VALUE",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%VALUE"
-    },
-    "REFERENCE_ROOT/main.evo:52:3": {
-      "tokenText": "LTI",
+    "UTIL@REFERENCE_ROOT/lib/util.evo:5:3": {
+      "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:53:25": {
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:54:29": {
       "tokenText": "%COUNT",
       "tokenType": "ALIAS",
       "scope": "",
       "qualifiedName": "%COUNT"
     },
-    "REFERENCE_ROOT/main.evo:68:7": {
-      "tokenText": "%TMP",
+    "REFERENCE_ROOT/main.evo:94:8": {
+      "tokenText": "%COUNT",
       "tokenType": "ALIAS",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.%TMP"
+      "scope": "",
+      "qualifiedName": "%COUNT"
     },
-    "REFERENCE_ROOT/main.evo:70:10": {
-      "tokenText": "%TMP",
-      "tokenType": "ALIAS",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.%TMP"
+    "UTIL@REFERENCE_ROOT/lib/util.evo:7:14": {
+      "tokenText": "CLAMP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "UTIL.CLAMP"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:9:25": {
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:7:21": {
+      "tokenText": "MARGIN",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.MARGIN"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:3": {
+      "tokenText": "ADDI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.STEP.FORWARD"
+    },
+    "REFERENCE_ROOT/main.evo:55:14": {
+      "tokenText": "LIMIT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "LIMIT"
+    },
+    "REFERENCE_ROOT/main.evo:126:8": {
+      "tokenText": "%DR2",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:49:5": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:26": {
       "tokenText": "X",
       "tokenType": "PARAMETER",
-      "scope": "NAV.PATROL",
-      "qualifiedName": "NAV.PATROL.X"
+      "scope": "NAV.STEP.FORWARD"
+    },
+    "REFERENCE_ROOT/main.evo:125:3": {
+      "tokenText": "SETI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:68:7": {
+      "tokenText": "LOCAL_STEP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "LOCAL_STEP"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:8:13": {
       "tokenText": "MIN",
@@ -4649,190 +6452,27 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.MIN"
     },
-    "REFERENCE_ROOT/main.evo:50:8": {
-      "tokenText": "NAV.PATROL",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "NAV.PATROL"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:19:8": {
-      "tokenText": "%DR0",
-      "tokenType": "REGISTER",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:52:7": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:23": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.STEP.FORWARD",
-      "qualifiedName": "NAV.STEP.FORWARD.X"
-    },
-    "REFERENCE_ROOT/main.evo:89:26": {
-      "tokenText": "BODY",
-      "tokenType": "LABEL",
-      "scope": "COUNTDOWN",
-      "qualifiedName": "COUNTDOWN.BODY"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:7:24": {
-      "tokenText": "VALUE",
-      "tokenType": "PARAMETER",
-      "scope": "UTIL.CLAMP"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:12:3": {
-      "tokenText": "SETR",
-      "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
-    },
-    "REFERENCE_ROOT/main.evo:27:3": {
+    "REFERENCE_ROOT/main.evo:148:5": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:96:8": {
-      "tokenText": "COUNTDOWN",
+    "REFERENCE_ROOT/main.evo:156:17": {
+      "tokenText": "MARK",
       "tokenType": "LABEL",
       "scope": "",
-      "qualifiedName": "COUNTDOWN"
+      "qualifiedName": "MARK"
     },
-    "REFERENCE_ROOT/main.evo:98:3": {
-      "tokenText": "JMPI",
+    "REFERENCE_ROOT/main.evo:137:5": {
+      "tokenText": "SETI",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:42:8": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:20:22": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:55:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:8:32": {
-      "tokenText": "L",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.PATROL"
-    },
-    "REFERENCE_ROOT/main.evo:67:13": {
-      "tokenText": "DELTA",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.DELTA"
-    },
-    "REFERENCE_ROOT/main.evo:93:16": {
-      "tokenText": "LIMIT",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "LIMIT"
-    },
-    "REFERENCE_ROOT/main.evo:71:3": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
-    },
-    "REFERENCE_ROOT/main.evo:89:14": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:63:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:49:8": {
-      "tokenText": "UTIL.CLAMP",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "UTIL.CLAMP"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:9:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
-    },
-    "REFERENCE_ROOT/main.evo:89:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:93:9": {
-      "tokenText": "%VALUE",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%VALUE"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:5": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:70:3": {
-      "tokenText": "ADDR",
-      "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
-    },
-    "REFERENCE_ROOT/main.evo:43:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:20:8": {
-      "tokenText": "SCOUT",
+    "REFERENCE_ROOT/main.evo:150:8": {
+      "tokenText": "START",
       "tokenType": "LABEL",
       "scope": "",
-      "qualifiedName": "NAV.SCOUT"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:15:8": {
-      "tokenText": "VALUE",
-      "tokenType": "PARAMETER",
-      "scope": "UTIL.CLAMP",
-      "qualifiedName": "UTIL.CLAMP.VALUE"
-    },
-    "REFERENCE_ROOT/main.evo:65:28": {
-      "tokenText": "DELTA",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP"
-    },
-    "REFERENCE_ROOT/main.evo:45:10": {
-      "tokenText": "%VALUE",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%VALUE"
-    },
-    "REFERENCE_ROOT/main.evo:41:8": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "REFERENCE_ROOT/main.evo:53:10": {
-      "tokenText": "LOCAL_STEP",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "LOCAL_STEP"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:17:3": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "UTIL.CLAMP"
-    },
-    "REFERENCE_ROOT/main.evo:93:5": {
-      "tokenText": "IFI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN.CHECK"
+      "qualifiedName": "START"
     },
     "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:8": {
       "tokenText": "CALC.CLAMP",
@@ -4840,63 +6480,71 @@
       "scope": "",
       "qualifiedName": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:96:26": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:54:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:78:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:62:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:88:10": {
-      "tokenText": "END",
+    "REFERENCE_ROOT/main.evo:101:8": {
+      "tokenText": "NAV.SCOUT",
       "tokenType": "LABEL",
-      "scope": "COUNTDOWN",
-      "qualifiedName": "COUNTDOWN.END"
+      "scope": "",
+      "qualifiedName": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:72:5": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:12:3": {
+      "tokenText": "SETR",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:10:31": {
+      "tokenText": "OUT_SE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.OUT_SE"
+    },
+    "REFERENCE_ROOT/main.evo:44:3": {
+      "tokenText": "SETI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:58:8": {
+      "tokenText": "START",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "START"
+    },
+    "REFERENCE_ROOT/main.evo:52:23": {
+      "tokenText": "%VALUE",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%VALUE"
+    },
+    "REFERENCE_ROOT/main.evo:130:3": {
+      "tokenText": "SETV",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:4:16": {
+      "tokenText": "STRIDE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.STRIDE"
+    },
+    "REFERENCE_ROOT/main.evo:128:8": {
+      "tokenText": "%DR4",
+      "tokenType": "REGISTER",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:131:37": {
+      "tokenText": "REST",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "REST"
     },
     "NAV@REFERENCE_ROOT/lib/nav.evo:22:3": {
       "tokenText": "SETI",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:69:5": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
-    },
-    "UTIL@REFERENCE_ROOT/lib/util.evo:12:8": {
-      "tokenText": "VALUE",
-      "tokenType": "PARAMETER",
-      "scope": "UTIL.CLAMP",
-      "qualifiedName": "UTIL.CLAMP.VALUE"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:19:3": {
-      "tokenText": "INCR",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:88:5": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:98:8": {
-      "tokenText": "NAV.SCOUT",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "NAV.SCOUT"
     },
     "NAV@REFERENCE_ROOT/lib/nav.evo:8:39": {
       "tokenText": "M",
@@ -4909,35 +6557,812 @@
       "scope": "",
       "qualifiedName": "NAV.STEP.FORWARD"
     },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:10": {
-      "tokenText": "STRIDE",
+    "NAV@REFERENCE_ROOT/lib/nav.evo:18:5": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:96:16": {
+      "tokenText": "LIMIT",
       "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "NAV.STEP.STRIDE"
+      "qualifiedName": "LIMIT"
     },
-    "REFERENCE_ROOT/main.evo:63:8": {
-      "tokenText": "START",
+    "REFERENCE_ROOT/main.evo:90:7": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:8": {
+      "tokenText": "SCOUT",
       "tokenType": "LABEL",
       "scope": "",
-      "qualifiedName": "START"
+      "qualifiedName": "NAV.SCOUT"
     },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:36": {
-      "tokenText": "CEILING",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "NAV.STEP.CEILING"
-    },
-    "REFERENCE_ROOT/main.evo:65:7": {
-      "tokenText": "LOCAL_STEP",
+    "REFERENCE_ROOT/main.evo:53:8": {
+      "tokenText": "NAV.PATROL",
       "tokenType": "PROCEDURE",
       "scope": "",
-      "qualifiedName": "LOCAL_STEP"
+      "qualifiedName": "NAV.PATROL"
+    },
+    "REFERENCE_ROOT/main.evo:71:3": {
+      "tokenText": "IFI",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
+    },
+    "REFERENCE_ROOT/main.evo:126:21": {
+      "tokenText": "SPAN",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SPAN"
+    },
+    "REFERENCE_ROOT/main.evo:55:3": {
+      "tokenText": "LTI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:23": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.STEP.FORWARD",
+      "qualifiedName": "NAV.STEP.FORWARD.X"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:14:6": {
+      "tokenText": "NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.NW"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:10:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.PATROL"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:19:8": {
+      "tokenText": "%DR0",
+      "tokenType": "REGISTER",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:81:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:106:16": {
+      "tokenText": "SPAN",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SPAN"
+    },
+    "REFERENCE_ROOT/main.evo:135:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:142:5": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:91:10": {
+      "tokenText": "END",
+      "tokenType": "LABEL",
+      "scope": "COUNTDOWN",
+      "qualifiedName": "COUNTDOWN.END"
+    },
+    "REFERENCE_ROOT/main.evo:162:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:129:18": {
+      "tokenText": "CORNER",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "CORNER"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:22:21": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:70:3": {
+      "tokenText": "SETR",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:8:21": {
+      "tokenText": "NW",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.NW"
+    },
+    "REFERENCE_ROOT/main.evo:137:22": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
+    },
+    "REFERENCE_ROOT/main.evo:52:8": {
+      "tokenText": "UTIL.CLAMP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:65:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:15:8": {
+      "tokenText": "VALUE",
+      "tokenType": "PARAMETER",
+      "scope": "UTIL.CLAMP",
+      "qualifiedName": "UTIL.CLAMP.VALUE"
+    },
+    "REFERENCE_ROOT/main.evo:124:3": {
+      "tokenText": "SETI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:48:10": {
+      "tokenText": "%VALUE",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%VALUE"
+    },
+    "REFERENCE_ROOT/main.evo:111:16": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
+    },
+    "REFERENCE_ROOT/main.evo:96:9": {
+      "tokenText": "%VALUE",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%VALUE"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:32": {
+      "tokenText": "L",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.PATROL"
+    },
+    "FRAME@REFERENCE_ROOT/lib/frame.evo:5:16": {
+      "tokenText": "MARGIN",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "FRAME.MARGIN"
+    },
+    "UTIL@REFERENCE_ROOT/lib/util.evo:17:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:92:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:9:25": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.PATROL",
+      "qualifiedName": "NAV.PATROL.X"
+    },
+    "REFERENCE_ROOT/main.evo:124:19": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
+    },
+    "REFERENCE_ROOT/main.evo:126:14": {
+      "tokenText": "SIZE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "SIZE"
     }
   },
   "tokenLookup": {
     "": {
       "REFERENCE_ROOT/main.evo": {
+        "128": {
+          "18": [
+            {
+              "tokenText": "AMOUNT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "AMOUNT"
+            }
+          ],
+          "3": [
+            {
+              "tokenText": "SETI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "%DR4",
+              "tokenType": "REGISTER",
+              "scope": ""
+            }
+          ],
+          "13": [
+            {
+              "tokenText": "KIND",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "KIND"
+            }
+          ]
+        },
+        "129": {
+          "18": [
+            {
+              "tokenText": "CORNER",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "CORNER"
+            }
+          ],
+          "3": [
+            {
+              "tokenText": "SETI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "%DR5",
+              "tokenType": "REGISTER",
+              "scope": ""
+            }
+          ]
+        },
+        "130": {
+          "3": [
+            {
+              "tokenText": "SETV",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "%DR6",
+              "tokenType": "REGISTER",
+              "scope": ""
+            }
+          ],
+          "15": [
+            {
+              "tokenText": "CORNER",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "CORNER"
+            }
+          ]
+        },
+        "131": {
+          "19": [
+            {
+              "tokenText": "BITS",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "BITS"
+            }
+          ],
+          "3": [
+            {
+              "tokenText": "SETI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "37": [
+            {
+              "tokenText": "REST",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "REST"
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "%DR7",
+              "tokenType": "REGISTER",
+              "scope": ""
+            }
+          ],
+          "26": [
+            {
+              "tokenText": "QUOTIENT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "QUOTIENT"
+            }
+          ]
+        },
+        "133": {
+          "5": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "135": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "137": {
+          "5": [
+            {
+              "tokenText": "SETI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "22": [
+            {
+              "tokenText": "SIZE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SIZE"
+            }
+          ],
+          "10": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ]
+        },
+        "142": {
+          "5": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "145": {
+          "5": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "148": {
+          "5": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "20": {
+          "71": [
+            {
+              "tokenText": "MAX_VALUE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "MAX_VALUE"
+            }
+          ]
+        },
+        "150": {
+          "3": [
+            {
+              "tokenText": "JMPI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "START",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "START"
+            }
+          ]
+        },
+        "155": {
+          "99": [
+            {
+              "tokenText": "DEPTH",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "DEPTH"
+            }
+          ],
+          "85": [
+            {
+              "tokenText": "CORNER",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "CORNER"
+            }
+          ]
+        },
+        "156": {
+          "17": [
+            {
+              "tokenText": "MARK",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "MARK"
+            }
+          ],
+          "24": [
+            {
+              "tokenText": "START",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "START"
+            }
+          ]
+        },
+        "29": {
+          "3": [
+            {
+              "tokenText": "ADDI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "157": {
+          "25": [
+            {
+              "tokenText": "MARK",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "MARK"
+            }
+          ],
+          "13": [
+            {
+              "tokenText": "STRETCH",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "STRETCH"
+            }
+          ]
+        },
+        "158": {
+          "17": [
+            {
+              "tokenText": "FRAME.INSIDE",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "FRAME.INSIDE"
+            }
+          ]
+        },
+        "30": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "162": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "163": {
+          "3": [
+            {
+              "tokenText": "JMPI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "START",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "START"
+            }
+          ]
+        },
+        "164": {
+          "17": [
+            {
+              "tokenText": "HERE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "HERE"
+            }
+          ]
+        },
+        "44": {
+          "3": [
+            {
+              "tokenText": "SETI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ]
+        },
+        "45": {
+          "8": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ],
+          "15": [
+            {
+              "tokenText": "LIMIT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "LIMIT"
+            }
+          ]
+        },
+        "46": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "48": {
+          "5": [
+            {
+              "tokenText": "ADDI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "10": [
+            {
+              "tokenText": "%VALUE",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%VALUE"
+            }
+          ]
+        },
+        "49": {
+          "5": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "51": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "52": {
+          "23": [
+            {
+              "tokenText": "%VALUE",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%VALUE"
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "UTIL.CLAMP",
+              "tokenType": "PROCEDURE",
+              "scope": "",
+              "qualifiedName": "UTIL.CLAMP"
+            }
+          ],
+          "41": [
+            {
+              "tokenText": "MAX_VALUE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "MAX_VALUE"
+            }
+          ]
+        },
+        "53": {
+          "35": [
+            {
+              "tokenText": "%POS",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%POS"
+            }
+          ],
+          "23": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "NAV.PATROL",
+              "tokenType": "PROCEDURE",
+              "scope": "",
+              "qualifiedName": "NAV.PATROL"
+            }
+          ],
+          "45": [
+            {
+              "tokenText": "MARK",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "MARK"
+            }
+          ]
+        },
+        "54": {
+          "8": [
+            {
+              "tokenText": "NAV.STEP.FORWARD",
+              "tokenType": "PROCEDURE",
+              "scope": "",
+              "qualifiedName": "NAV.STEP.FORWARD"
+            }
+          ],
+          "29": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ]
+        },
+        "55": {
+          "3": [
+            {
+              "tokenText": "LTI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "7": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ],
+          "14": [
+            {
+              "tokenText": "LIMIT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "LIMIT"
+            }
+          ]
+        },
+        "56": {
+          "25": [
+            {
+              "tokenText": "%COUNT",
+              "tokenType": "ALIAS",
+              "scope": "",
+              "qualifiedName": "%COUNT"
+            }
+          ],
+          "10": [
+            {
+              "tokenText": "LOCAL_STEP",
+              "tokenType": "PROCEDURE",
+              "scope": "",
+              "qualifiedName": "LOCAL_STEP"
+            }
+          ]
+        },
+        "57": {
+          "3": [
+            {
+              "tokenText": "JMPI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "UTIL.READY",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "UTIL.READY"
+            }
+          ]
+        },
+        "58": {
+          "3": [
+            {
+              "tokenText": "JMPI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "START",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "START"
+            }
+          ]
+        },
         "65": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "66": {
+          "3": [
+            {
+              "tokenText": "JMPI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ],
+          "8": [
+            {
+              "tokenText": "START",
+              "tokenType": "LABEL",
+              "scope": "",
+              "qualifiedName": "START"
+            }
+          ]
+        },
+        "68": {
           "22": [
             {
               "tokenText": "X",
@@ -4961,7 +7386,7 @@
             }
           ]
         },
-        "67": {
+        "70": {
           "3": [
             {
               "tokenText": "SETR",
@@ -4986,7 +7411,7 @@
             }
           ]
         },
-        "68": {
+        "71": {
           "3": [
             {
               "tokenText": "IFI",
@@ -5003,7 +7428,7 @@
             }
           ]
         },
-        "69": {
+        "72": {
           "5": [
             {
               "tokenText": "RET",
@@ -5012,7 +7437,7 @@
             }
           ]
         },
-        "70": {
+        "73": {
           "3": [
             {
               "tokenText": "ADDR",
@@ -5037,7 +7462,7 @@
             }
           ]
         },
-        "71": {
+        "74": {
           "3": [
             {
               "tokenText": "RET",
@@ -5046,7 +7471,7 @@
             }
           ]
         },
-        "78": {
+        "81": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5055,7 +7480,7 @@
             }
           ]
         },
-        "80": {
+        "83": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5064,17 +7489,7 @@
             }
           ]
         },
-        "17": {
-          "71": [
-            {
-              "tokenText": "MAX_VALUE",
-              "tokenType": "CONSTANT",
-              "scope": "",
-              "qualifiedName": "MAX_VALUE"
-            }
-          ]
-        },
-        "87": {
+        "90": {
           "3": [
             {
               "tokenText": "IFI",
@@ -5091,7 +7506,7 @@
             }
           ]
         },
-        "88": {
+        "91": {
           "5": [
             {
               "tokenText": "JMPI",
@@ -5108,7 +7523,7 @@
             }
           ]
         },
-        "89": {
+        "92": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5147,25 +7562,7 @@
             }
           ]
         },
-        "26": {
-          "3": [
-            {
-              "tokenText": "ADDI",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "27": {
-          "3": [
-            {
-              "tokenText": "NOP",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "91": {
+        "94": {
           "16": [
             {
               "tokenText": "NOP",
@@ -5189,7 +7586,7 @@
             }
           ]
         },
-        "93": {
+        "96": {
           "16": [
             {
               "tokenText": "LIMIT",
@@ -5214,7 +7611,7 @@
             }
           ]
         },
-        "94": {
+        "97": {
           "7": [
             {
               "tokenText": "JMPI",
@@ -5231,7 +7628,7 @@
             }
           ]
         },
-        "96": {
+        "99": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5270,7 +7667,7 @@
             }
           ]
         },
-        "98": {
+        "101": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5309,7 +7706,109 @@
             }
           ]
         },
-        "41": {
+        "106": {
+          "16": [
+            {
+              "tokenText": "SPAN",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SPAN"
+            }
+          ]
+        },
+        "107": {
+          "16": [
+            {
+              "tokenText": "DEPTH",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "DEPTH"
+            }
+          ],
+          "23": [
+            {
+              "tokenText": "SIZE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SIZE"
+            }
+          ]
+        },
+        "108": {
+          "21": [
+            {
+              "tokenText": "SPAN",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SPAN"
+            }
+          ],
+          "14": [
+            {
+              "tokenText": "SIZE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SIZE"
+            }
+          ]
+        },
+        "110": {
+          "15": [
+            {
+              "tokenText": "UNIT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "UNIT"
+            }
+          ]
+        },
+        "111": {
+          "16": [
+            {
+              "tokenText": "SIZE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SIZE"
+            }
+          ],
+          "21": [
+            {
+              "tokenText": "SPAN",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SPAN"
+            }
+          ]
+        },
+        "112": {
+          "18": [
+            {
+              "tokenText": "UNIT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "UNIT"
+            }
+          ]
+        },
+        "113": {
+          "22": [
+            {
+              "tokenText": "TWICE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "TWICE"
+            }
+          ]
+        },
+        "124": {
+          "19": [
+            {
+              "tokenText": "SIZE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "SIZE"
+            }
+          ],
           "3": [
             {
               "tokenText": "SETI",
@@ -5319,253 +7818,97 @@
           ],
           "8": [
             {
-              "tokenText": "%COUNT",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%COUNT"
+              "tokenText": "%DR0",
+              "tokenType": "REGISTER",
+              "scope": ""
             }
           ]
         },
-        "42": {
-          "8": [
+        "125": {
+          "3": [
             {
-              "tokenText": "%COUNT",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%COUNT"
+              "tokenText": "SETI",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
             }
           ],
-          "15": [
+          "8": [
             {
-              "tokenText": "LIMIT",
+              "tokenText": "%DR1",
+              "tokenType": "REGISTER",
+              "scope": ""
+            }
+          ],
+          "13": [
+            {
+              "tokenText": "TWICE",
               "tokenType": "CONSTANT",
               "scope": "",
-              "qualifiedName": "LIMIT"
+              "qualifiedName": "TWICE"
             }
           ]
         },
-        "43": {
+        "126": {
           "3": [
             {
-              "tokenText": "NOP",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "45": {
-          "5": [
-            {
-              "tokenText": "ADDI",
+              "tokenText": "SETV",
               "tokenType": "INSTRUCTION",
               "scope": ""
             }
           ],
-          "10": [
+          "21": [
             {
-              "tokenText": "%VALUE",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%VALUE"
-            }
-          ]
-        },
-        "46": {
-          "5": [
-            {
-              "tokenText": "NOP",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "48": {
-          "3": [
-            {
-              "tokenText": "NOP",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "49": {
-          "23": [
-            {
-              "tokenText": "%VALUE",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%VALUE"
-            }
-          ],
-          "8": [
-            {
-              "tokenText": "UTIL.CLAMP",
-              "tokenType": "PROCEDURE",
-              "scope": "",
-              "qualifiedName": "UTIL.CLAMP"
-            }
-          ],
-          "41": [
-            {
-              "tokenText": "MAX_VALUE",
+              "tokenText": "SPAN",
               "tokenType": "CONSTANT",
               "scope": "",
-              "qualifiedName": "MAX_VALUE"
-            }
-          ]
-        },
-        "50": {
-          "35": [
-            {
-              "tokenText": "%POS",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%POS"
-            }
-          ],
-          "23": [
-            {
-              "tokenText": "%COUNT",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%COUNT"
+              "qualifiedName": "SPAN"
             }
           ],
           "8": [
             {
-              "tokenText": "NAV.PATROL",
-              "tokenType": "PROCEDURE",
-              "scope": "",
-              "qualifiedName": "NAV.PATROL"
-            }
-          ],
-          "45": [
-            {
-              "tokenText": "MARK",
-              "tokenType": "LABEL",
-              "scope": "",
-              "qualifiedName": "MARK"
-            }
-          ]
-        },
-        "51": {
-          "8": [
-            {
-              "tokenText": "NAV.STEP.FORWARD",
-              "tokenType": "PROCEDURE",
-              "scope": "",
-              "qualifiedName": "NAV.STEP.FORWARD"
-            }
-          ],
-          "29": [
-            {
-              "tokenText": "%COUNT",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%COUNT"
-            }
-          ]
-        },
-        "52": {
-          "3": [
-            {
-              "tokenText": "LTI",
-              "tokenType": "INSTRUCTION",
+              "tokenText": "%DR2",
+              "tokenType": "REGISTER",
               "scope": ""
-            }
-          ],
-          "7": [
-            {
-              "tokenText": "%COUNT",
-              "tokenType": "ALIAS",
-              "scope": "",
-              "qualifiedName": "%COUNT"
             }
           ],
           "14": [
             {
-              "tokenText": "LIMIT",
+              "tokenText": "SIZE",
               "tokenType": "CONSTANT",
               "scope": "",
-              "qualifiedName": "LIMIT"
+              "qualifiedName": "SIZE"
             }
           ]
         },
-        "53": {
-          "25": [
+        "127": {
+          "19": [
             {
-              "tokenText": "%COUNT",
-              "tokenType": "ALIAS",
+              "tokenText": "DEPTH",
+              "tokenType": "CONSTANT",
               "scope": "",
-              "qualifiedName": "%COUNT"
+              "qualifiedName": "DEPTH"
             }
           ],
-          "10": [
-            {
-              "tokenText": "LOCAL_STEP",
-              "tokenType": "PROCEDURE",
-              "scope": "",
-              "qualifiedName": "LOCAL_STEP"
-            }
-          ]
-        },
-        "54": {
           "3": [
             {
-              "tokenText": "JMPI",
+              "tokenText": "SETV",
               "tokenType": "INSTRUCTION",
               "scope": ""
             }
           ],
           "8": [
             {
-              "tokenText": "UTIL.READY",
-              "tokenType": "LABEL",
-              "scope": "",
-              "qualifiedName": "UTIL.READY"
-            }
-          ]
-        },
-        "55": {
-          "3": [
-            {
-              "tokenText": "JMPI",
-              "tokenType": "INSTRUCTION",
+              "tokenText": "%DR3",
+              "tokenType": "REGISTER",
               "scope": ""
             }
           ],
-          "8": [
+          "13": [
             {
-              "tokenText": "START",
-              "tokenType": "LABEL",
+              "tokenText": "SIZE",
+              "tokenType": "CONSTANT",
               "scope": "",
-              "qualifiedName": "START"
-            }
-          ]
-        },
-        "62": {
-          "3": [
-            {
-              "tokenText": "NOP",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "63": {
-          "3": [
-            {
-              "tokenText": "JMPI",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ],
-          "8": [
-            {
-              "tokenText": "START",
-              "tokenType": "LABEL",
-              "scope": "",
-              "qualifiedName": "START"
+              "qualifiedName": "SIZE"
             }
           ]
         }
@@ -5671,6 +8014,16 @@
             }
           ]
         },
+        "6": {
+          "80": [
+            {
+              "tokenText": "CEILING",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "NAV.CEILING"
+            }
+          ]
+        },
         "22": {
           "3": [
             {
@@ -5691,16 +8044,6 @@
               "tokenText": "%DR0",
               "tokenType": "REGISTER",
               "scope": "NAV.SCOUT"
-            }
-          ]
-        },
-        "6": {
-          "80": [
-            {
-              "tokenText": "CEILING",
-              "tokenType": "CONSTANT",
-              "scope": "",
-              "qualifiedName": "NAV.CEILING"
             }
           ]
         },
@@ -6060,13 +8403,296 @@
           ]
         }
       }
+    },
+    "FRAME": {
+      "REFERENCE_ROOT/lib/frame.evo": {
+        "16": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "18": {
+          "24": [
+            {
+              "tokenText": "NEXT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.NEXT"
+            }
+          ],
+          "13": [
+            {
+              "tokenText": "EXTENT",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.EXTENT"
+            }
+          ]
+        },
+        "3": {
+          "16": [
+            {
+              "tokenText": "NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.NW"
+            }
+          ]
+        },
+        "4": {
+          "16": [
+            {
+              "tokenText": "SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.SE"
+            }
+          ]
+        },
+        "5": {
+          "16": [
+            {
+              "tokenText": "MARGIN",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.MARGIN"
+            }
+          ]
+        },
+        "6": {
+          "16": [
+            {
+              "tokenText": "NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.NW"
+            }
+          ],
+          "21": [
+            {
+              "tokenText": "MARGIN",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.MARGIN"
+            }
+          ]
+        },
+        "7": {
+          "16": [
+            {
+              "tokenText": "SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.SE"
+            }
+          ],
+          "21": [
+            {
+              "tokenText": "MARGIN",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.MARGIN"
+            }
+          ]
+        },
+        "8": {
+          "16": [
+            {
+              "tokenText": "SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.SE"
+            }
+          ],
+          "21": [
+            {
+              "tokenText": "NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.NW"
+            }
+          ]
+        },
+        "9": {
+          "20": [
+            {
+              "tokenText": "OUT_NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_NW"
+            }
+          ],
+          "41": [
+            {
+              "tokenText": "OUT_NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_NW"
+            }
+          ],
+          "31": [
+            {
+              "tokenText": "OUT_SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_SE"
+            }
+          ]
+        },
+        "10": {
+          "20": [
+            {
+              "tokenText": "OUT_NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_NW"
+            }
+          ],
+          "41": [
+            {
+              "tokenText": "OUT_SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_SE"
+            }
+          ],
+          "31": [
+            {
+              "tokenText": "OUT_SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_SE"
+            }
+          ]
+        },
+        "11": {
+          "20": [
+            {
+              "tokenText": "OUT_NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_NW"
+            }
+          ],
+          "46": [
+            {
+              "tokenText": "OUT_SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_SE"
+            }
+          ],
+          "31": [
+            {
+              "tokenText": "OUT_NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_NW"
+            }
+          ]
+        },
+        "12": {
+          "20": [
+            {
+              "tokenText": "OUT_SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_SE"
+            }
+          ],
+          "46": [
+            {
+              "tokenText": "OUT_SE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_SE"
+            }
+          ],
+          "31": [
+            {
+              "tokenText": "OUT_NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.OUT_NW"
+            }
+          ]
+        },
+        "14": {
+          "6": [
+            {
+              "tokenText": "NW",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "FRAME.NW"
+            }
+          ]
+        }
+      }
     }
   },
   "sourceLineToInstructions": {
     "": {
       "REFERENCE_ROOT/main.evo": {
         "0": {
+          "128": [
+            {
+              "linearAddress": 261,
+              "opcode": "SETI",
+              "operandsAsString": "%DR4 ENERGY:100",
+              "synthetic": false
+            }
+          ],
+          "129": [
+            {
+              "linearAddress": 264,
+              "opcode": "SETI",
+              "operandsAsString": "%DR5 DATA:12",
+              "synthetic": false
+            }
+          ],
           "65": [
+            {
+              "linearAddress": 169,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            },
+            {
+              "linearAddress": 170,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "130": [
+            {
+              "linearAddress": 267,
+              "opcode": "SETV",
+              "operandsAsString": "%DR6 -6|-12",
+              "synthetic": false
+            }
+          ],
+          "66": [
+            {
+              "linearAddress": 171,
+              "opcode": "JMPI",
+              "operandsAsString": "LABELREF:8CC42",
+              "synthetic": false
+            }
+          ],
+          "131": [
+            {
+              "linearAddress": 271,
+              "opcode": "SETI",
+              "operandsAsString": "%DR7 DATA:513",
+              "synthetic": false
+            }
+          ],
+          "68": [
             {
               "linearAddress": 174,
               "opcode": "POP",
@@ -6080,7 +8706,21 @@
               "synthetic": true
             }
           ],
-          "67": [
+          "133": [
+            {
+              "linearAddress": 274,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            },
+            {
+              "linearAddress": 275,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "70": [
             {
               "linearAddress": 178,
               "opcode": "SETR",
@@ -6088,7 +8728,27 @@
               "synthetic": false
             }
           ],
-          "68": [
+          "135": [
+            {
+              "linearAddress": 276,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            },
+            {
+              "linearAddress": 277,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            },
+            {
+              "linearAddress": 278,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "71": [
             {
               "linearAddress": 181,
               "opcode": "INI",
@@ -6102,7 +8762,7 @@
               "synthetic": true
             }
           ],
-          "69": [
+          "72": [
             {
               "linearAddress": 186,
               "opcode": "PUSH",
@@ -6116,7 +8776,15 @@
               "synthetic": false
             }
           ],
-          "70": [
+          "137": [
+            {
+              "linearAddress": 279,
+              "opcode": "SETI",
+              "operandsAsString": "%DR0 DATA:6",
+              "synthetic": false
+            }
+          ],
+          "73": [
             {
               "linearAddress": 190,
               "opcode": "ADDR",
@@ -6124,7 +8792,7 @@
               "synthetic": false
             }
           ],
-          "71": [
+          "74": [
             {
               "linearAddress": 193,
               "opcode": "PUSH",
@@ -6138,7 +8806,23 @@
               "synthetic": false
             }
           ],
-          "78": [
+          "142": [
+            {
+              "linearAddress": 282,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "145": [
+            {
+              "linearAddress": 283,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "81": [
             {
               "linearAddress": 197,
               "opcode": "NOP",
@@ -6152,7 +8836,7 @@
               "synthetic": false
             }
           ],
-          "80": [
+          "83": [
             {
               "linearAddress": 199,
               "opcode": "NOP",
@@ -6166,7 +8850,23 @@
               "synthetic": false
             }
           ],
-          "87": [
+          "148": [
+            {
+              "linearAddress": 284,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "150": [
+            {
+              "linearAddress": 285,
+              "opcode": "JMPI",
+              "operandsAsString": "LABELREF:8CC42",
+              "synthetic": false
+            }
+          ],
+          "90": [
             {
               "linearAddress": 202,
               "opcode": "IFI",
@@ -6174,7 +8874,7 @@
               "synthetic": false
             }
           ],
-          "88": [
+          "91": [
             {
               "linearAddress": 205,
               "opcode": "JMPI",
@@ -6182,7 +8882,7 @@
               "synthetic": false
             }
           ],
-          "89": [
+          "92": [
             {
               "linearAddress": 207,
               "opcode": "JMPI",
@@ -6220,7 +8920,7 @@
               "synthetic": false
             }
           ],
-          "91": [
+          "94": [
             {
               "linearAddress": 216,
               "opcode": "DECR",
@@ -6252,7 +8952,7 @@
               "synthetic": false
             }
           ],
-          "93": [
+          "96": [
             {
               "linearAddress": 223,
               "opcode": "IFI",
@@ -6260,7 +8960,7 @@
               "synthetic": false
             }
           ],
-          "94": [
+          "97": [
             {
               "linearAddress": 226,
               "opcode": "JMPI",
@@ -6268,7 +8968,23 @@
               "synthetic": false
             }
           ],
-          "96": [
+          "162": [
+            {
+              "linearAddress": 290,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ],
+          "163": [
+            {
+              "linearAddress": 291,
+              "opcode": "JMPI",
+              "operandsAsString": "LABELREF:8CC42",
+              "synthetic": false
+            }
+          ],
+          "99": [
             {
               "linearAddress": 229,
               "opcode": "JMPI",
@@ -6306,7 +9022,7 @@
               "synthetic": false
             }
           ],
-          "98": [
+          "101": [
             {
               "linearAddress": 238,
               "opcode": "JMPI",
@@ -6344,7 +9060,7 @@
               "synthetic": false
             }
           ],
-          "41": [
+          "44": [
             {
               "linearAddress": 100,
               "opcode": "SETI",
@@ -6352,7 +9068,7 @@
               "synthetic": false
             }
           ],
-          "43": [
+          "46": [
             {
               "linearAddress": 107,
               "opcode": "NOP",
@@ -6372,7 +9088,7 @@
               "synthetic": false
             }
           ],
-          "45": [
+          "48": [
             {
               "linearAddress": 110,
               "opcode": "ADDI",
@@ -6386,7 +9102,7 @@
               "synthetic": false
             }
           ],
-          "46": [
+          "49": [
             {
               "linearAddress": 113,
               "opcode": "NOP",
@@ -6400,7 +9116,7 @@
               "synthetic": false
             }
           ],
-          "48": [
+          "51": [
             {
               "linearAddress": 118,
               "opcode": "NOP",
@@ -6426,7 +9142,7 @@
               "synthetic": false
             }
           ],
-          "49": [
+          "52": [
             {
               "linearAddress": 122,
               "opcode": "PUSI",
@@ -6458,7 +9174,7 @@
               "synthetic": true
             }
           ],
-          "50": [
+          "53": [
             {
               "linearAddress": 132,
               "opcode": "PUSH",
@@ -6496,7 +9212,7 @@
               "synthetic": true
             }
           ],
-          "51": [
+          "54": [
             {
               "linearAddress": 144,
               "opcode": "PUSH",
@@ -6516,7 +9232,7 @@
               "synthetic": true
             }
           ],
-          "52": [
+          "55": [
             {
               "linearAddress": 150,
               "opcode": "GETI",
@@ -6530,7 +9246,7 @@
               "synthetic": true
             }
           ],
-          "53": [
+          "56": [
             {
               "linearAddress": 155,
               "opcode": "PUSI",
@@ -6556,7 +9272,7 @@
               "synthetic": true
             }
           ],
-          "54": [
+          "57": [
             {
               "linearAddress": 164,
               "opcode": "JMPI",
@@ -6564,7 +9280,7 @@
               "synthetic": false
             }
           ],
-          "55": [
+          "58": [
             {
               "linearAddress": 166,
               "opcode": "JMPI",
@@ -6572,31 +9288,41 @@
               "synthetic": false
             }
           ],
-          "62": [
+          "124": [
             {
-              "linearAddress": 169,
-              "opcode": "NOP",
-              "operandsAsString": "",
-              "synthetic": false
-            },
-            {
-              "linearAddress": 170,
-              "opcode": "NOP",
-              "operandsAsString": "",
+              "linearAddress": 247,
+              "opcode": "SETI",
+              "operandsAsString": "%DR0 DATA:5",
               "synthetic": false
             }
           ],
-          "63": [
+          "125": [
             {
-              "linearAddress": 171,
-              "opcode": "JMPI",
-              "operandsAsString": "LABELREF:8CC42",
+              "linearAddress": 250,
+              "opcode": "SETI",
+              "operandsAsString": "%DR1 ENERGY:100",
+              "synthetic": false
+            }
+          ],
+          "126": [
+            {
+              "linearAddress": 253,
+              "opcode": "SETV",
+              "operandsAsString": "%DR2 5|11",
+              "synthetic": false
+            }
+          ],
+          "127": [
+            {
+              "linearAddress": 257,
+              "opcode": "SETV",
+              "operandsAsString": "%DR3 6|6",
               "synthetic": false
             }
           ]
         },
         "3": {
-          "26": [
+          "29": [
             {
               "linearAddress": 103,
               "opcode": "ADDI",
@@ -6604,7 +9330,7 @@
               "synthetic": false
             }
           ],
-          "27": [
+          "30": [
             {
               "linearAddress": 106,
               "opcode": "NOP",
@@ -6976,6 +9702,20 @@
           ]
         }
       }
+    },
+    "FRAME": {
+      "REFERENCE_ROOT/lib/frame.evo": {
+        "0": {
+          "16": [
+            {
+              "linearAddress": 288,
+              "opcode": "NOP",
+              "operandsAsString": "",
+              "synthetic": false
+            }
+          ]
+        }
+      }
     }
   },
   "labelValueToName": {
@@ -6991,14 +9731,17 @@
     "503499": "COUNTDOWN.CHECK",
     "261837": "MARK",
     "91665": "COUNTDOWN",
+    "677051": "EXPRESSIONS",
     "226711": "NAV.PATROL",
     "653951": "_safe_ret_0",
+    "69367": "FAR",
     "534367": "COUNTDOWN.BODY",
     "584977": "NAV.SCOUT.BLOCKED",
     "214808": "COUNTDOWN.CHECK.END",
     "938547": "NAV.SCOUT",
     "256862": "COUNTDOWN.END",
-    "601239": "UTIL.READY"
+    "601239": "UTIL.READY",
+    "202685": "FRAME.INSIDE"
   },
   "labelNameToValue": {
     "COUNTDOWN": 91665,
@@ -7010,9 +9753,11 @@
     "COUNTDOWN.CHECK": 503499,
     "COUNTDOWN.END": 256862,
     "MARK": 261837,
+    "EXPRESSIONS": 677051,
     "NAV.PATROL": 226711,
     "UTIL.CLAMP.DONE": 282209,
     "_safe_ret_0": 653951,
+    "FAR": 69367,
     "UTIL.CLAMP": 588719,
     "COUNTDOWN.BODY": 534367,
     "NAV.SCOUT.END": 652928,
@@ -7020,18 +9765,19 @@
     "RELATIVE_ROW": 790983,
     "COUNTDOWN.CHECK.END": 214808,
     "NAV.SCOUT": 938547,
-    "UTIL.READY": 601239
+    "UTIL.READY": 601239,
+    "FRAME.INSIDE": 202685
   },
   "envProps": {
     "worldShape": [
-      100,
-      100
+      128,
+      128
     ],
     "isToroidal": true,
     "strides": [
-      100,
+      128,
       1
     ],
-    "totalCells": 10000
+    "totalCells": 16384
   }
 }

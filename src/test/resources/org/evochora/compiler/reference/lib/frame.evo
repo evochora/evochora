@@ -1,0 +1,18 @@
+# Module that places a frame one margin outside two corners its importer names as positions,
+# continues its code at one of them, and places a molecule computed from both.
+.REQUIRE VALUE NW
+.REQUIRE VALUE SE
+.REQUIRE VALUE MARGIN (1|1)               # one cell outside the corners unless the importer says
+.CONST OUT_NW (NW - MARGIN)
+.CONST OUT_SE (SE + MARGIN)
+.CONST EXTENT (SE - NW)                   # the vector between the corners
+.PLACE STRUCTURE:2 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # north edge
+.PLACE STRUCTURE:2 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # south edge
+.PLACE STRUCTURE:2 OUT_NW[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # west edge
+.PLACE STRUCTURE:2 OUT_SE[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # east edge
+
+.ORG NW
+EXPORT INSIDE:
+  NOP
+.CONST NEXT @                             # the cell after the NOP
+.PLACE DATA:EXTENT[0] (NEXT + (1|0))

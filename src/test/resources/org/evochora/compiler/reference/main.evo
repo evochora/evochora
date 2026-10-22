@@ -10,7 +10,10 @@
 # constants, macros, both repeat forms and the caret shorthand, origin and direction
 # changes, every placement form, procedures with all four parameter kinds including a
 # procedure-local alias, calls across modules and through a passed-on import, a call and a
-# return guarded by a conditional, a jump to a label of another module, and control blocks.
+# return guarded by a conditional, a jump to a label of another module, control blocks,
+# compile-time expressions with every kind of value, operator and function, positions named
+# in one file and used in another, conditional compilation with computed conditions, and
+# flags and values set by the configuration.
 
 .SOURCE "lib/consts.evo"
 .IMPORT "lib/util.evo" AS UTIL
@@ -96,3 +99,66 @@ RELATIVE_ROW:
   JMPI COUNTDOWN; NOP^4; JMPI COUNTDOWN   # repeat
 .ENDCONTROL
   JMPI NAV.SCOUT; NOP^4; JMPI NAV.SCOUT.BLOCKED
+
+# Compile-time expressions: constants computed from numbers, typed values, vectors and names,
+# a value the configuration sets to a computation and one left to its computed default.
+.CONST SIZE 6
+.REQUIRE VALUE SPAN                       # set by the configuration to (SIZE * 2)
+.REQUIRE VALUE DEPTH (SIZE - 1)           # left to its default
+.CONST AREA (SIZE * SPAN)                 # 72
+.CONST UNIT ENERGY:50
+.CONST TWICE (UNIT * 2)                   # ENERGY:100
+.CONST CORNER (SIZE|SPAN)                 # 6|12
+.CONST KIND TYPE(UNIT)                    # ENERGY
+.CONST AMOUNT NUMBER(TWICE)               # 100
+.CONST BITS ((0xF0 OR 0x0F) SHL 1)        # 510
+.CONST QUOTIENT (-7 / 2)                  # -3
+.CONST REST (-7 MOD 2)                    # -1
+
+# Flags: one computed from the configured flag ROWS, conditions that compare computations,
+# test a flag the configuration sets without a value, and hold because they can be computed.
+.DEFINE HALF (ROWS / 2)                   # 2
+
+.ORG 0|90
+EXPRESSIONS:
+  SETI %DR0 DATA:(SIZE - 1)               # DATA:5
+  SETI %DR1 TWICE                         # ENERGY:100
+  SETV %DR2 (SIZE-1|SPAN-1)               # 5|11
+  SETV %DR3 SIZE|(DEPTH + 1)              # 6|6
+  SETI %DR4 KIND:AMOUNT                   # ENERGY:100
+  SETI %DR5 DATA:CORNER[1]                # DATA:12
+  SETV %DR6 (-CORNER)                     # -6|-12
+  SETI %DR7 DATA:(BITS + QUOTIENT * REST) # DATA:513
+  .REPEAT HALF
+    NOP
+  .ENDREPEAT
+  NOP^(HALF + 1)
+  .IFDEF (ROWS + 1) = 5
+    SETI %COUNT DATA:SIZE
+  .ELSEDEF
+    SETI %COUNT DATA:0
+  .ENDDEF
+  .IFDEF VERBOSE
+    NOP
+  .ENDDEF
+  .IFNDEF QUIET
+    NOP
+  .ENDDEF
+  .IFDEF (HALF * 2)
+    NOP
+  .ENDDEF
+  JMPI START
+
+# Positions: the frame module gets two corners named in this file, a label is a position, a
+# position minus a position is the vector between them, and @ is where the code continues.
+.ORG 0|100
+.IMPORT "lib/frame.evo" AS FRAME USING VALUE NW POSITION(4|104) VALUE SE POSITION(4+CORNER[0]|104+DEPTH)
+.CONST STRETCH (MARK - START)             # 0|30
+.PLACE DATA:STRETCH[1] (MARK + (2|0))     # two cells right of MARK
+.PLACE DATA:11 (FRAME.INSIDE + (0|2))     # two cells below the frame module's label
+.ORG POSITION(20|100)
+.CONST HERE @                             # 20|100
+FAR:
+  NOP
+  JMPI START
+.PLACE DATA:12 (HERE + (0|2))
