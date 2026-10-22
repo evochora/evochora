@@ -229,7 +229,7 @@ class EvaluatorTest {
     @Test
     void anOperationTheRegistryDoesNotKnowIsAnError() {
         Evaluator evaluator = new Evaluator(new OperationRegistry());
-        OperationExpression unknown = new OperationExpression("+", List.of(
+        OperationExpression unknown = new OperationExpression("+", false, List.of(
                 new LiteralExpression(new Value.Number(1), null, null), new LiteralExpression(new Value.Number(2), null, null)), null, null);
         assertThat(evaluator.evaluate(unknown, name -> new NameAnswer.Reported(), IEvaluationContext.none()))
                 .isEqualTo(new EvaluationResult.Error("Unknown operation '+'.", null));

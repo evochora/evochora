@@ -3,6 +3,8 @@ package org.evochora.compiler.frontend;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
+import org.evochora.compiler.expression.ExpressionFixture;
+import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.NameExpression;
 import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.TestRegistries;
@@ -26,6 +28,8 @@ import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.List;
 import java.util.Map;
@@ -405,19 +409,62 @@ public class ParserTest {
     }
 
     /**
-     * The text of a computation keeps the parentheses around a written vector that an operation
-     * takes, so that it reads as the computation it is; the argument of a call needs none.
+     * The text of a computation writes it as the source would: a prefix, an infix and a chain in
+     * parentheses of their own, an argument of a function or an index without them, a word
+     * operator apart from its operands, a literal vector or a negative number that an operation
+     * takes in parentheses, and a prefix among the parts of a chain without them. Read back, the
+     * text gives the same tree.
      */
-    @Test
+    @ParameterizedTest(name = "{0} is written {1}")
     @Tag("unit")
-    void theTextOfAComputationGroupsAVectorAnOperationTakes() {
+    @CsvSource(delimiter = ';', value = {
+            "(A + 1); (A+1)",
+            "(A + 1 * 2); (A+(1*2))",
+            "(A - B - C); ((A-B)-C)",
+            "(-A); (-A)",
+            "(-(A + 1)); (-(A+1))",
+            "(-(-A)); (-(-A))",
+            "((-A) + 1); ((-A)+1)",
+            "(3 - -2); (3-(-2))",
+            "(3 - -A); (3-(-A))",
+            "(NOT A); (NOT A)",
+            "(NOT (A AND B)); (NOT (A AND B))",
+            "(A AND NOT B); (A AND (NOT B))",
+            "(A / 2 MOD 3); ((A/2) MOD 3)",
+            "(A SHL 2); (A SHL 2)",
+            "A|B; (A|B)",
+            "(W-1|H-1); ((W-1)|(H-1))",
+            "(P + (0|1)); (P+(0|1))",
+            "(-(1|2)); (-(1|2))",
+            "((-1|-2) + P); ((-1|-2)+P)",
+            "(-A|B); (-A|B)",
+            "V[A + 1]; V[A+1]",
+            "((A + B)[0]); (A+B)[0]",
+            "(1|2)[0]; (1|2)[0]",
+            "NUMBER(A + 1); NUMBER(A+1)",
+            "NUMBER(-A); NUMBER(-A)",
+            "POSITION(1|2); POSITION(1|2)",
+            "POSITION(W-1|H-1); POSITION((W-1)|(H-1))",
+            "POSITION(P + (1|0)); POSITION(P+(1|0))",
+            "DATA:(W-1); DATA:(W-1)",
+            "DATA:(1|2)[0]; DATA:(1|2)[0]",
+            "TYPE(U):5; TYPE(U):5",
+            "(@ + (0|2)); (@+(0|2))",
+            "@[1]; @[1]",
+            "POSITION(@); POSITION(@)"
+    })
+    void theTextOfAComputationReadsAsTheSourceWould(String written, String text) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = parseWithOperations(
-                "SETV %DR0 (P + (0|1))\nSETI %DR1 DATA:(1|2)[0]\nSETV %DR2 (-(1|2))\nSETV %DR3 POSITION(1|2)", diagnostics);
+        InstructionNode setv = (InstructionNode) parseWithOperations("SETV %DR0 " + written, diagnostics).getFirst();
 
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(ast).extracting(node -> ((ExpressionNode) ((InstructionNode) node).arguments().get(1)).expression().text())
-                .containsExactly("(P+(0|1))", "DATA:(1|2)[0]", "-(1|2)", "POSITION(1|2)");
+        Expression tree = ((ExpressionNode) setv.arguments().get(1)).expression();
+        assertThat(tree.text()).isEqualTo(text);
+
+        InstructionNode again = (InstructionNode) parseWithOperations("SETV %DR0 " + text, diagnostics).getFirst();
+        assertThat(diagnostics.hasErrors()).as("the text read back").isFalse();
+        assertThat(ExpressionFixture.shape(((ExpressionNode) again.arguments().get(1)).expression()))
+                .as("the tree read back from the text").isEqualTo(ExpressionFixture.shape(tree));
     }
 
     /**

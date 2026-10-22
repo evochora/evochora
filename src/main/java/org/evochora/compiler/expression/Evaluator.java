@@ -151,7 +151,7 @@ public final class Evaluator {
             });
         }
         return new EvaluationResult.Partial(
-                new OperationExpression(expression.operation(), operands, expression.sourceInfo(), expression.end()), kind);
+                new OperationExpression(expression.operation(), expression.function(), operands, expression.sourceInfo(), expression.end()), kind);
     }
 
     /**

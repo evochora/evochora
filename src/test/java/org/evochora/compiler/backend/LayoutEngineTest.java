@@ -426,7 +426,7 @@ public class LayoutEngineTest {
      */
     @Test
     void aComputationReadsTheCursorOfItsLine() throws Exception {
-        org.evochora.compiler.model.expression.Expression twoRowsDown = new org.evochora.compiler.model.expression.OperationExpression("+",
+        org.evochora.compiler.model.expression.Expression twoRowsDown = new org.evochora.compiler.model.expression.OperationExpression("+", false,
                 List.of(new org.evochora.compiler.model.expression.NameExpression("@", src("main.s", 3), src("main.s", 3).plusColumns(1)),
                         new org.evochora.compiler.model.expression.LiteralExpression(new Value.Vector(List.of(0L, 2L)), src("main.s", 3),
                                 src("main.s", 3).plusColumns(5))),

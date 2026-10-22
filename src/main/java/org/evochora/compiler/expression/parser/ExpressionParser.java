@@ -392,7 +392,7 @@ public final class ExpressionParser {
          * The operation on the given operands, ending after the last token read.
          */
         private OperationExpression operation(IOperation operator, List<Expression> operands, SourceInfo at) {
-            return new OperationExpression(operator.name(), operands, at, readEnd());
+            return new OperationExpression(operator.name(), operator.notation() == Notation.FUNCTION, operands, at, readEnd());
         }
 
         /**
@@ -416,7 +416,7 @@ public final class ExpressionParser {
             case LiteralExpression literal -> new LiteralExpression(literal.value(), literal.sourceInfo(), end);
             case NameExpression name -> new NameExpression(name.name(), name.sourceInfo(), end);
             case OperationExpression operation ->
-                    new OperationExpression(operation.operation(), operation.operands(), operation.sourceInfo(), end);
+                    new OperationExpression(operation.operation(), operation.function(), operation.operands(), operation.sourceInfo(), end);
         };
     }
 

@@ -438,10 +438,10 @@ class AstPostProcessorTest {
     void aComputationOnlyTheLayoutKnowsKeepsItsTreeWithQualifiedNames() {
         SourceInfo end = new SourceInfo("test.s", 10, 20, "TEST", 0);
         ExpressionNode computation = new ExpressionNode(
-                new OperationExpression("+", List.of(new NameExpression("TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
+                new OperationExpression("+", false, List.of(new NameExpression("TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
                         new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo(), end)), createSourceInfo(), end),
                 createSourceInfo());
-        OperationExpression remaining = new OperationExpression("+", List.of(
+        OperationExpression remaining = new OperationExpression("+", false, List.of(
                 new NameExpression("TEST.TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
                 new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo(), end)), createSourceInfo(), end);
         symbolTable.recordResult(computation, ExpressionOutcome.later(remaining, Kind.POSITION));
