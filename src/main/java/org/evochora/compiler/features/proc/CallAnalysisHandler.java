@@ -31,11 +31,12 @@ import java.util.Set;
  * Semantic analysis handler for CALL instructions.
  * Validates procedure references, REF/VAL/LREF/LVAL argument types and counts.
  * <p>
- * A computation is evaluated here and its outcome recorded in the symbol table: as the target
- * of a CALL without arguments, where it stands for a literal, and as a VAL argument, where its
- * value is a number, a typed value or a vector. A REF, LREF or LVAL argument takes no
- * computation. A position, a molecule type and a value computed from a position, which only the
- * layout knows, stand nowhere, written or through a name.
+ * The target of a CALL is a name; a target of any other kind, written or computed, is of the
+ * wrong type. A computation is evaluated here and its outcome recorded in the symbol table: as
+ * a target, to report its kind, and as a VAL argument, where its value is a number, a typed
+ * value or a vector. A REF, LREF or LVAL argument takes no computation. A position, a molecule
+ * type and a value computed from a position, which only the layout knows, stand nowhere,
+ * written or through a name.
  */
 public class CallAnalysisHandler implements IAnalysisHandler {
 
@@ -59,15 +60,14 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
         boolean hasArguments = !callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
                 || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty();
-        if (callNode.procedureName() instanceof ExpressionNode target
-                && !(evaluate(target, Role.TARGET, symbolTable, diagnostics) instanceof EvaluationResult.Value)) {
+        // The target is a name; anything else, written or computed, is of the wrong type
+        AstNode targetNode = callNode.procedureName();
+        if (targetNode instanceof ExpressionNode target) {
+            evaluate(target, Role.TARGET, symbolTable, diagnostics);
             return;
         }
-        if (!(callNode.procedureName() instanceof IdentifierNode procIdentifier)) {
-            if (hasArguments) {
-                diagnostics.reportError("CALL with REF/VAL requires a procedure name.",
-                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
-            }
+        if (!(targetNode instanceof IdentifierNode procIdentifier)) {
+            reportWrongTarget(callNode, kindOf(targetNode), diagnostics);
             return;
         }
 
@@ -304,6 +304,8 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                     reportUnusable(expression, role, "TYPE", diagnostics);
                 } else if (value.value() instanceof Value.Position) {
                     reportUnusable(expression, role, "POSITION", diagnostics);
+                } else if (role == Role.TARGET) {
+                    reportUnusable(expression, role, value.value() instanceof Value.Vector ? "VECTOR" : "LITERAL", diagnostics);
                 }
             }
             case EvaluationResult.Partial partial -> {
@@ -317,6 +319,27 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             }
         }
         return result;
+    }
+
+    /**
+     * Reports a CALL target that is no name, of the kind given.
+     */
+    private static void reportWrongTarget(CallNode callNode, String kind, DiagnosticsEngine diagnostics) {
+        diagnostics.reportError("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got " + kind + ".",
+                callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+    }
+
+    /**
+     * Names the kind of a written target that is no name: a literal, a vector or a register.
+     */
+    private String kindOf(AstNode target) {
+        if (target instanceof LiteralNode literal) {
+            return literal.value() instanceof Value.Vector ? "VECTOR" : "LITERAL";
+        }
+        if (target instanceof RegisterNode register) {
+            return isLocationRegister(register.name()) ? "LOCATION_REGISTER" : "REGISTER";
+        }
+        return "LITERAL";
     }
 
     /**

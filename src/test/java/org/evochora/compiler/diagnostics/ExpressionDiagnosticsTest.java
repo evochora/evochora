@@ -117,6 +117,31 @@ class ExpressionDiagnosticsTest {
         assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got POSITION.", 13);
     }
 
+    /**
+     * The target of a CALL is a name: a number, a typed value, a vector or a register, written
+     * or computed, is of the wrong type.
+     */
+    @Test
+    void aCallTargetThatIsNoNameIsReported() throws Exception {
+        write("main.evo",
+                ".PROC X",
+                "  RET",
+                ".ENDPROC",
+                "  CALL 3",
+                "  CALL DATA:3",
+                "  CALL 1|0",
+                "  CALL %DR0",
+                "  CALL (3)",
+                "  CALL (1|2|3)");
+
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got LITERAL.", 4);
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got LITERAL.", 5);
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got VECTOR.", 6);
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got REGISTER.", 7);
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got LITERAL.", 8);
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got VECTOR.", 9);
+    }
+
     @Test
     void aJumpToALayoutValuedConstantIsReported() throws Exception {
         write("main.evo",
