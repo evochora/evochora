@@ -937,7 +937,7 @@ An expression works with five kinds of value:
 * **Number**: a whole number of 64 bits, written in any number format of [Typed Literals](#typed-literals), such as `100` or `0xFF`. A minus in front of it is its sign.
 * **Typed value**: a molecule type and a number, written as a typed literal, such as `DATA:42`.
 * **Vector**: a list of numbers, written as a vector literal, such as `1|0`. In an expression it may have any number of components; as an instruction argument it has one per dimension of the world.
-* **Molecule type**: a type on its own, such as `DATA` or `ENERGY`.
+* **Molecule type**: a type on its own, such as `DATA` or `ENERGY`, as `TYPE` gives it (see [Functions](#functions)).
 * **Position**: a place in the program (see [Positions](#positions)).
 
 A molecule type and a position never become a cell: they take part in further expressions, and an instruction argument that holds one is an error. A number is checked against what it becomes: the value of a cell in an instruction argument and in `.PLACE`, a coordinate in `.ORG`, `.DIR` and `.PLACE`, a count in `.REPEAT` and `^`. Where an instruction takes a typed literal, an expression has to give a typed value; a number alone is an error there, as a written number is.
@@ -1015,12 +1015,12 @@ A typed literal may take an expression or a name for its type or its number: `DA
 
 ### Positions
 
-Every file has a reference point: in the main file it is `0|0`, in a file brought in with `.IMPORT` or `.SOURCE` it is the place where that directive was invoked. A vector in `.ORG` or `.PLACE` counts from the reference point of its file (see [Layout Control](#layout-control)). A position is a place that is converted to the reference point of the file that uses it, so that one file can name a place and another file can use it.
+Every file has an origin: in the main file it is `0|0`, in a file brought in with `.IMPORT` or `.SOURCE` it is the place where that directive was invoked. A vector in `.ORG` or `.PLACE` counts from the origin of its file (see [Layout Control](#layout-control)). A position is a place that is converted to the origin of the file that uses it, so that one file can name a place and another file can use it.
 
 * `@` is a reserved name: the position the next code would be placed at.
 * The name of a label, a procedure or a control block is, in an expression, the position of the cell its label stands on: `(TARGET)` is the position of the label `TARGET`.
-* `POSITION(v)` is the position that lies the vector `v` away from the reference point of the file where it is written.
-* `P[0]` is a component of the position `P`, counted from the reference point of the file that uses it.
+* `POSITION(v)` is the position that lies the vector `v` away from the origin of the file where it is written.
+* `P[0]` is a component of the position `P`, counted from the origin of the file that uses it.
 * `.ORG` and `.PLACE` take a position where they take a vector: `.ORG P` continues the code at `P`.
 * **Example**: the main file brings a module in at `10|5` and gives it its own `0|0`. In the module, `P[0]` is `-10` and `P[1]` is `-5`, and `.ORG P` continues the code at `0|0` of the main file.
     ```
@@ -1033,7 +1033,7 @@ Every file has a reference point: in the main file it is `0|0`, in a file brough
     .REQUIRE VALUE P
     .ORG P
     ```
-* A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Any other operation on a position is an error.
+* A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Apart from these and the component `P[i]`, an operation on a position is an error.
 * A position, and a value computed from one, cannot be an instruction argument.
 * An expression with `@` means the place where it is written: `.CONST HERE @` is the position of the `.CONST` line, wherever `HERE` is used.
 * A label in an expression must stand above that expression.
