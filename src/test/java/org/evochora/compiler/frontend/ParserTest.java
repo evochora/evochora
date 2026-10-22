@@ -405,6 +405,22 @@ public class ParserTest {
     }
 
     /**
+     * The text of a computation keeps the parentheses around a written vector that an operation
+     * takes, so that it reads as the computation it is; the argument of a call needs none.
+     */
+    @Test
+    @Tag("unit")
+    void theTextOfAComputationGroupsAVectorAnOperationTakes() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations(
+                "SETV %DR0 (P + (0|1))\nSETI %DR1 DATA:(1|2)[0]\nSETV %DR2 (-(1|2))\nSETV %DR3 POSITION(1|2)", diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).extracting(node -> ((ExpressionNode) ((InstructionNode) node).arguments().get(1)).expression().text())
+                .containsExactly("(P+(0|1))", "DATA:(1|2)[0]", "-(1|2)", "POSITION(1|2)");
+    }
+
+    /**
      * A typed literal whose value is a computation is one computation, the typing of the type
      * and the value.
      */

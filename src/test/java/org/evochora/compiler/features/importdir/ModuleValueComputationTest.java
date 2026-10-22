@@ -100,7 +100,7 @@ class ModuleValueComputationTest {
                 assertThat(tree.expression()).isInstanceOfSatisfying(NameExpression.class, name ->
                         assertThat(name.name()).isEqualTo("WALK.P")));
         assertThat(constValueOf(ir, "WALK.Q").args().get("value")).isInstanceOfSatisfying(IrValue.Expression.class,
-                tree -> assertThat(tree.expression().text()).contains("WALK.P"));
+                tree -> assertThat(tree.expression().text()).isEqualTo("(WALK.P+(0|1))"));
     }
 
     @Test
