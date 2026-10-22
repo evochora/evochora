@@ -34,6 +34,7 @@ import org.evochora.compiler.expression.IOperationGroup;
 import org.evochora.compiler.expression.NameAnswer;
 import org.evochora.compiler.expression.OperationResult;
 import org.evochora.compiler.expression.parser.ParseResult;
+import org.evochora.compiler.frontend.parser.OperandReading;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ir.IrInstruction;
@@ -196,20 +197,25 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
-     * A top-level interface carries the {@code I} prefix, except the sealed roots of data.
+     * A top-level interface carries the {@code I} prefix, except the types that name a kind of data.
      * <p>
-     * Handler, registration and context interfaces are recognisable by name. The exceptions
-     * are the types every AST node, AST operand, IR item, IR operand and IR value implements,
-     * the value family the formats share, the outcome of a name lookup, the expression tree, and
-     * the outcomes of reading, answering and computing an expression; they name data, not a role, and are listed here so
-     * that a further exception is a decision. A nested interface is named by its owner, as in
+     * The prefix marks a role: what a feature implements (a handler, a rule, an operation), what
+     * it is handed or calls (a context, a registration), and what a node can do (a capability
+     * such as {@code ISourceLocatable}). A type that says what a value is carries no prefix: the
+     * core builds such values and their users tell them apart with a {@code switch}. No property
+     * of the code tells a role from a kind of data, so the kinds of data are listed here, and each
+     * entry is a decision: the types every AST node, AST operand, IR item, IR operand and IR value
+     * implements, the value family the formats share, the outcome of a name lookup, the expression
+     * tree, and the outcomes of reading an operand and of parsing, answering and computing an
+     * expression. A nested interface is named by its owner, as in
      * {@code IInstructionSet.Signature}, and is not covered.
      */
     @Test
     void topLevelInterfacesCarryThePrefix() {
         classes().that().areInterfaces().and().areTopLevelClasses()
                 .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class,
-                        Expression.class, OperationResult.class, EvaluationResult.class, NameAnswer.class, ParseResult.class)
+                        Expression.class, OperationResult.class, EvaluationResult.class, NameAnswer.class, ParseResult.class,
+                        OperandReading.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
                 .check(compilerClasses);
     }
