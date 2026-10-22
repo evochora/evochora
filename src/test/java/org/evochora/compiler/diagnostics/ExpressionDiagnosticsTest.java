@@ -241,7 +241,7 @@ class ExpressionDiagnosticsTest {
                 "  VEC %DR3 1|(2)",
                 "  JMPI START");
 
-        assertReportedAt("Expected number component after '|'.", 12);
+        assertReportedAt("Expected a number after '|'.", 12);
         assertThatThrownBy(() -> compile("main.evo")).hasMessageNotContaining("main.evo:13");
         assertThatThrownBy(() -> compile("main.evo"))
                 .hasMessageNotContaining("main.evo:10")
@@ -259,7 +259,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETV %DR0 1|-W",
                 "  JMPI START");
-        assertReportedAt("Expected number component after '|'.", 3);
+        assertReportedAt("Expected a number after '|'.", 3);
 
         write("main.evo",
                 ".CONST W 5",
@@ -275,7 +275,7 @@ class ExpressionDiagnosticsTest {
                 ".CONST X NW|5",
                 "START:",
                 "  JMPI START");
-        assertReportedAt("Expected a number before '|'.", 4);
+        assertReportedAt("Invalid vector component: 'NW' is a vector.", 4);
         assertThatThrownBy(() -> compile("main.evo")).hasMessageNotContaining("main.evo:3:");
     }
 

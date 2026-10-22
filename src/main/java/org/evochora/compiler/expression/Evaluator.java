@@ -156,7 +156,8 @@ public final class Evaluator {
 
     /**
      * The error for operands no signature fits. A part of a chain that does not fit is named at
-     * the part, as the kind the chain expects before or after its operator; any other operation
+     * the part: a part of the vector {@code a|b|c} by its text and the kind it is, a part of any
+     * other chain as the kind the chain expects before or after its operator. Any other operation
      * names the kinds it was given.
      */
     private static EvaluationResult mismatch(OperationExpression expression, IOperation operation, List<Kind> kinds) {
@@ -168,6 +169,10 @@ public final class Evaluator {
                         .filter(kind -> kind != null)
                         .toList();
                 if (!expected.isEmpty() && !expected.contains(kinds.get(i))) {
+                    if (OperationRegistry.VECTOR.equals(operation.name())) {
+                        return new EvaluationResult.Error("Invalid vector component: '" + expression.operands().get(i).text()
+                                + "' is " + described(kinds.get(i)) + ".", expression.operands().get(i).sourceInfo());
+                    }
                     return new EvaluationResult.Error("Expected a " + lower(expected.getFirst())
                             + (i == 0 ? " before '" : " after '") + operation.name() + "'.",
                             expression.operands().get(i).sourceInfo());
@@ -175,6 +180,19 @@ public final class Evaluator {
             }
         }
         return new EvaluationResult.Error(invalidOperands(operation.name(), kinds), expression.sourceInfo());
+    }
+
+    /**
+     * Names a kind as the specification names the kinds of value, with its article.
+     */
+    private static String described(Kind kind) {
+        return switch (kind) {
+            case NUMBER -> "a number";
+            case TYPED -> "a typed value";
+            case VECTOR -> "a vector";
+            case TYPE -> "a molecule type";
+            case POSITION -> "a position";
+        };
     }
 
     /**

@@ -135,8 +135,8 @@ class EvaluatorTest {
     @Test
     void aChainTakesNumbersOnly() {
         Map<String, NameAnswer> nw = Map.of("NW", new NameAnswer.Value(new Value.Vector(List.of(1L, 2L))));
-        assertThat(error("5|NW", nw)).isEqualTo("Expected a number after '|'.");
-        assertThat(error("NW|5", nw)).isEqualTo("Expected a number before '|'.");
+        assertThat(error("5|NW", nw)).isEqualTo("Invalid vector component: 'NW' is a vector.");
+        assertThat(error("NW|5", nw)).isEqualTo("Invalid vector component: 'NW' is a vector.");
     }
 
     @Test

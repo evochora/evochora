@@ -262,9 +262,13 @@ public class Parser implements IParsingContext {
         if (numberLength > 0 && typeAt(current + numberLength) == TokenType.PIPE) {
             Token first = peek();
             List<Long> values = new ArrayList<>();
-            values.add(signedNumber("Expected number component for vector."));
+            // The branch is taken only where a number stands, so the first one is always there
+            SignedNumber firstNumber = SignedNumber.at(tokens, current).orElseThrow(() ->
+                    new IllegalStateException("A vector began where no number stands."));
+            for (int i = 0; i < firstNumber.length(); i++) advance();
+            values.add(firstNumber.value());
             while(match(TokenType.PIPE)) {
-                values.add(signedNumber("Expected number component after '|'."));
+                values.add(signedNumber("Expected a number after '|'."));
             }
             return new LiteralNode(new Value.Vector(values), first.source());
         }
