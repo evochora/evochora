@@ -32,7 +32,6 @@ public class DefineHandler implements IPreProcessorHandler {
         int start = preProcessor.getCurrentIndex();
         Token directive = preProcessor.peek();
         DirectiveLine line = preProcessor.lineOf(start);
-        ConfiguredFlags.check(preProcessor, preProcessorContext);
         Flags flags = preProcessorContext.flags();
 
         if (!line.startsStatement()) {

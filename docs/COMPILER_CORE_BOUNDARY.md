@@ -101,7 +101,7 @@ enum whose eight members are named after individual features, mapped exhaustivel
 the core at exactly one place: `ProgramIdentity` takes the defines into the program's identity as
 a key of the compilation's variant and attaches no meaning to their names or values.
 `sourceRoots` is read by the core. The core upper-cases the names, rejects two keys that are one
-name, seeds the two flag stores, one per read-time phase, from the defines without giving the
+name, reports a name that is no flag name or that nothing may define, seeds the two flag stores, one per read-time phase, from the defines without giving the
 flags a meaning, and hands the options to the contexts of Phases 1 and 2 as before.
 
 A token carries two fields of provenance that the core uses only as keys — in the token map, in

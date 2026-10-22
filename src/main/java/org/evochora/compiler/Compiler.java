@@ -177,6 +177,11 @@ public class Compiler implements ICompiler {
         // from the configuration and pass the same definitions in the same order
         Map<String, String> reservedNames = featureRegistry.operations().reservedNames();
 
+        // The configured flags are checked once, against the configuration, whatever the program reads
+        Flags.configurationErrors(effectiveOptions.defines(), reservedNames)
+                .forEach(message -> diagnostics.reportError(message, "", 0));
+        failOnErrors(diagnostics);
+
         // Phase 1: Lexer — finds the files and tokenizes each of them once; the main file's tokens
         // become the stream, and the text of every value of the options is tokenized on its own
         Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions,

@@ -447,32 +447,7 @@ class ConditionalExpansionTest {
         assertThat(unconfigured.texts()).containsExactly("JMPI", "END");
     }
 
-    @Test
-    void aConfiguredFlagThatIsNoNameIsReportedOnce() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty(), "GOOD", OptionalLong.empty()), List.of(),
-                ".IFDEF GOOD",
-                "  NOP",
-                ".ENDDEF",
-                ".DEFINE OTHER",
-                ".IFDEF OTHER",
-                ".ENDDEF");
 
-        assertThat(result.errors()).containsExactly(":0: Configured flag 'NO-NAME' is not a valid name:"
-                + " a flag name consists of letters, digits and _ and begins with a letter or _");
-        assertThat(result.texts()).containsExactly("NOP");
-    }
-
-    @Test
-    void aConfiguredFlagWithAReservedNameIsReportedAgainstTheConfiguration() {
-        Expansion result = expandWith(Map.of("SHL", OptionalLong.of(1), "NUMBER", OptionalLong.empty()), List.of(),
-                ".IFDEF SHL",
-                "  NOP",
-                ".ENDDEF");
-
-        assertThat(result.errors()).containsExactly(
-                ":0: Configured flag 'NUMBER' is a function and cannot be defined.",
-                ":0: Configured flag 'SHL' is an operator and cannot be defined.");
-    }
 
     @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {

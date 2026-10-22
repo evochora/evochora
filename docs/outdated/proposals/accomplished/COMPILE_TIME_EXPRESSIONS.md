@@ -387,9 +387,8 @@ rewritten.
   flag store stays, at first, where it is today: one per read-time phase in the state the feature
   keeps on the context, spanning the whole scan. When computing at read time comes (step 9), it
   becomes a class of the phase-free `frontend` root package, created by the core for each read-time
-  phase and seeded from the configured flags, so that both phases start alike and pass the same
-  `.DEFINE` and `.UNDEF` in the same order; `conditional` fills them and reports invalid configured
-  names. Both contexts then offer `valueLength(tokens)`, the length of the one value at the start of
+  phase and seeded from the configured flags, whose names it checks first, so that both phases
+  start alike and pass the same `.DEFINE` and `.UNDEF` in the same order; `conditional` fills them. Both contexts then offer `valueLength(tokens)`, the length of the one value at the start of
   the tokens, by the rule of what a computation is that the parser uses too, and `evaluate(tokens)`:
   parser and evaluator with a resolution over the store, `Partial` an error; the lexer's form reports nothing, the preprocessor's reports, as the
   scan reports nothing about conditionals today. `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` call it in
@@ -737,8 +736,9 @@ What the built code does beyond the solution text:
   part (a number, a typed value, a vector, a molecule type, a position); "Expected a number after
   '|'." comes from the parser. A configured value that is no operand carries the parser's reason
   ("Configured value 'W' = (1: expected ')'."), and every error of the configuration is printed
-  without a file or line; a configured flag with a reserved name is reported there as `.DEFINE`
-  reports it ("Configured flag 'SHL' is an operator and cannot be defined."). A range of `.PLACE` with a step that is not positive, or an end below its
+  without a file or line. The core checks the configured flags once, before the first phase, whatever
+  the program reads: a name that is no flag name, and a reserved name as `.DEFINE` reports it
+  ("Configured flag 'SHL' is an operator and cannot be defined."). A range of `.PLACE` with a step that is not positive, or an end below its
   start, is reported ("End 1 of a range must be at least its start 5."). A vector argument is
   checked against the world's dimensions where it becomes cells, and the emitter's own check reports
   an internal error.

@@ -1,6 +1,8 @@
 package org.evochora.compiler.frontend;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -28,15 +30,18 @@ public final class Flags {
     private final Map<String, String> reservedNames;
 
     private Flags(Map<String, String> reservedNames) {
+        this.reservedNames = byKey(reservedNames);
+    }
+
+    private static Map<String, String> byKey(Map<String, String> reservedNames) {
         Map<String, String> reserved = new HashMap<>();
         reservedNames.forEach((name, what) -> reserved.put(key(name), what));
-        this.reservedNames = Map.copyOf(reserved);
+        return Map.copyOf(reserved);
     }
 
     /**
      * Creates the flags as the configuration sets them. The configured names are taken as they
-     * are, valid or not, reserved or not; a name that is no identifier can never be named by a
-     * directive.
+     * are; {@link #configurationErrors} is how the compiler checks them first.
      *
      * @param defines       The flags of the compilation's options, name to optional value.
      * @param reservedNames The names nothing may define, as the symbol table takes them: each
@@ -48,6 +53,32 @@ public final class Flags {
         Flags flags = new Flags(reservedNames);
         defines.forEach((name, value) -> flags.entries.put(key(name), new Entry(value, CONFIGURATION)));
         return flags;
+    }
+
+    /**
+     * Checks the flags the configuration sets: a name that is no flag name, and a name nothing
+     * may define, as {@link #define} rejects it.
+     *
+     * @param defines       The flags of the compilation's options, name to optional value.
+     * @param reservedNames The names nothing may define, as {@link #of} takes them.
+     * @return One message per name that fails, in the order of the names; empty when all pass.
+     */
+    public static List<String> configurationErrors(Map<String, OptionalLong> defines,
+                                                   Map<String, String> reservedNames) {
+        Map<String, String> reserved = byKey(reservedNames);
+        List<String> errors = new ArrayList<>();
+        defines.keySet().stream().sorted().forEach(name -> {
+            String what = reserved.get(key(name));
+            if (!isName(name)) {
+                errors.add("Configured flag '" + name + "' is not a valid name: a flag name consists of"
+                        + " letters, digits and _ and begins with a letter or _");
+            } else if (what != null) {
+                errors.add(what.isEmpty()
+                        ? "Configured flag '" + name + "' cannot be defined."
+                        : "Configured flag '" + name + "' is " + what + " and cannot be defined.");
+            }
+        });
+        return errors;
     }
 
     /**
