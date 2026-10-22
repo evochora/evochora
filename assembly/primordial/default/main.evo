@@ -5,7 +5,8 @@
 # the behaviors it takes from the library, and the main loop that chooses among them. How a
 # behavior is taken into the loop stands in LIB:behavior/README.md.
 #
-# Extent: the shell measures 102 x 72 cells, walls included.
+# Extent: the body measures WIDTH x HEIGHT cells; the reproduction behavior places the shell
+# around it, 102 x 72 cells walls included, and a label on each of its corner cells.
 
 # ----------------------------
 # Values, set from the configuration with values { ... } in the organism's entry
@@ -17,33 +18,21 @@
                                                    # lie well above their sum
 
 # ----------------------------
+# The body
+# ----------------------------
+.CONST WIDTH  100                        # Columns of the body
+.CONST HEIGHT 70                         # Rows of the body
+
+# ----------------------------
 # Register aliases (main loop only)
 # ----------------------------
 .REG %ER     %DR0   # Energy, read once per round
 .REG %SR     %DR1   # Entropy, read once per round
 .REG %RESULT %DR2   # What the behavior called last reported
 
-# ----------------------------
-# STRUCTURE shell, with a label on the body cell diagonally inside each corner
-#
-# The wall is one molecule throughout, corners included: nothing in it is unique, so a lost
-# cell can be written back. The labels sit inside, on body cells, and are copied with the
-# body like any other cell.
-# ----------------------------
-.PLACE STRUCTURE:100 -1..100|-1      # North edge, corners included
-.PLACE STRUCTURE:100 -1..100|70      # South edge, corners included
-.PLACE STRUCTURE:100 -1|0..69        # West edge
-.PLACE STRUCTURE:100 100|0..69       # East edge
-
-.ORG 99|0
-NE_CORNER:
-.ORG 99|69
-SE_CORNER:
-.ORG 0|69
-SW_CORNER:
-
-.ORG 0|0
-NW_CORNER: JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4   # The IP starts on this label, one cell before the jump
+# The IP starts on 0|0, on the label the reproduction behavior places there, one cell before the jump
+.ORG 1|0
+JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4
 
 # ===========================================================================
 # MAIN LOOP - one block per behavior, in the order of their priority
@@ -67,7 +56,7 @@ MAIN_LOOP: NOP^2
   JMPI END; NOP^4; JMPI END; NOP^4
 .CASE OPEN
   SETI %RESULT CODE:0; NOP^2              # Silence counts as "not acted"
-  CALL REPRODUCE.STEP REF %RESULT LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^2 # One unit: an edge, a row or the birth
+  CALL REPRODUCE.STEP REF %RESULT; NOP^2  # One unit: an edge, a row or the birth
   JFI %RESULT DATA:0 MAIN_LOOP; NOP^2     # Acted: the round starts again
 .ENDCONTROL
   JMPI HARVESTING; NOP^4; JMPI HARVESTING; NOP^4
@@ -85,4 +74,4 @@ MAIN_LOOP: NOP^2
 .IMPORT "LIB:behavior/harvest/random-run.evo" AS HARVEST
 
 .ORG 0|@+2
-.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY
+.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|HEIGHT-1)

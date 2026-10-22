@@ -1,11 +1,8 @@
 # behavior/reproduce/shell-first.evo
 # Reproduction: the child's shell first, its body afterwards.
 #
-# STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW does one unit of work per call: an edge of the
-# child's shell, a row of its body, or the birth.
-#
-# Parameters: the labels on the body cells diagonally inside the four corners of the main file's
-# shell, north-west, north-east, south-east, south-west.
+# STEP REF RESULT does one unit of work per call: an edge of the child's shell, a row of its body,
+# or the birth.
 #
 # Result:
 #   DATA:0               an edge, a row or the birth was done
@@ -23,9 +20,14 @@
 # Value CHILD_ENERGY, without default: the energy the child is given. A birth needs CHILD_ENERGY
 # and UNIT_ENERGY, so a gate that sends the main loop here has to lie above their sum.
 #
-# Requires of the main file: a shell of one STRUCTURE molecule around the whole body, with a label
-# on the body cell diagonally inside each corner, passed as the four parameters. UNIT_ENERGY has to
-# cover an edge of that shell, and ENTROPY_ROOM has to lie below the configured max-entropy.
+# Values BODY_NW and BODY_SE, without default: the positions of the north-west and the south-east
+# cell of the whole body, in the main file written as POSITION(...).
+#
+# Places outside its extent: the body's shell, one STRUCTURE molecule thick, one cell outside the
+# two corners, and a label on each of the body's four corner cells.
+#
+# Requires of the main file: the four corner cells of the body empty. UNIT_ENERGY has to cover an
+# edge of the shell, and ENTROPY_ROOM has to lie below the configured max-entropy.
 #
 # The data pointers carry no meaning after a return.
 #
@@ -35,6 +37,8 @@
 # Values and constants
 # ----------------------------
 .REQUIRE VALUE CHILD_ENERGY              # What the child is given at birth
+.REQUIRE VALUE BODY_NW                   # Position of the body's north-west cell
+.REQUIRE VALUE BODY_SE                   # Position of the body's south-east cell
 
 .CONST UNIT_ENERGY  DATA:20000           # At least this much before an edge or a row, and besides CHILD_ENERGY before the birth
 .CONST ENTROPY_ROOM DATA:45000           # Above this a foreign cell is not taken: taking it costs entropy
@@ -76,17 +80,47 @@ EXPORT .CONST PAUSED_FORK_FAILED DATA:5
 .ENDDEF
 .ENDMACRO
 
+# ----------------------------
+# STRUCTURE shell around the body, with a label on each of the body's corner cells
+#
+# The wall is one molecule throughout, corners included: nothing in it is unique, so a lost
+# cell can be written back. The labels sit inside, on body cells, and are copied with the
+# body like any other cell.
+# ----------------------------
+.CONST OUT_NW (BODY_NW - (1|1))          # The shell's north-west cell
+.CONST OUT_SE (BODY_SE + (1|1))          # The shell's south-east cell
+
+.PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # North edge, corners included
+.PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # South edge, corners included
+.PLACE STRUCTURE:100 OUT_NW[0]|(OUT_NW[1] + 1)..(OUT_SE[1] - 1)      # West edge
+.PLACE STRUCTURE:100 OUT_SE[0]|(OUT_NW[1] + 1)..(OUT_SE[1] - 1)      # East edge
+
+.ORG POSITION(BODY_SE[0]|BODY_NW[1])
+NE_CORNER:
+.ORG BODY_SE
+SE_CORNER:
+.ORG POSITION(BODY_NW[0]|BODY_SE[1])
+SW_CORNER:
+.ORG BODY_NW
+NW_CORNER:
+
 # ===========================================================================
 # STEP - the phase that is due, one unit of it
 # ===========================================================================
 .ORG 0|0
-EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
+EXPORT .PROC STEP REF RESULT
 
   # State that outlives a call
   .REG %PHASE     %SDR0   # Which phase is due; 0, or never written, for a fresh attempt
   .REG %DIRMASK   %SDR1   # Reproduction direction as a bitmask
   .REG %DIRVEC    %SDR2   # ...and as a unit vector
   .REG %CHILDNW   %SLR0   # North-west corner of the child's shell, once it stands
+
+  # The body's corners, resolved at every call
+  .REG %NW_CORNER %PLR0
+  .REG %NE_CORNER %PLR1
+  .REG %SE_CORNER %PLR2
+  .REG %SW_CORNER %PLR3
 
   # Working registers, gone with the return
   .REG %E         %PDR0   # Energy
@@ -97,6 +131,8 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   STEP_ENTER: NOP^2
     NRG %E; NOP^2                           # Energy before the unit
     JLTI %E UNIT_ENERGY STEP_LOW; NOP^2     # Too little for a unit: return before anything is changed
+    LRLI %NW_CORNER NW_CORNER; LRLI %NE_CORNER NE_CORNER; NOP^2 # The body's corners, empty where no label is found
+    LRLI %SE_CORNER SE_CORNER; LRLI %SW_CORNER SW_CORNER; NOP^2
     SMRI DATA:1; NOP^2                      # Everything written from here belongs to the child
     JMPI PHASES; NOP^4; JMPI PHASES; NOP^4
 
@@ -116,7 +152,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     JMPI STEP_AFTER; NOP^4; JMPI STEP_AFTER
   .ORG 0|@+2
   .CASE BODY
-    CALL COPY_BODY REF RESULT REF %PHASE LVAL CNW LVAL %CHILDNW; NOP^4 # One row
+    CALL COPY_BODY REF RESULT REF %PHASE LVAL %NW_CORNER LVAL %CHILDNW; NOP^4 # One row
     JMPI STEP_AFTER; NOP^4; JMPI STEP_AFTER; NOP^4
   .CASE BIRTH
     NRG %E; SUBI %E CHILD_ENERGY; NOP^2     # What is left after the child is given its share...
@@ -133,7 +169,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETI %DIRMASK DATA:15; NOP^2            # All four directions to choose from
     RBIR %DIRMASK %DIRMASK; NOP^2           # Draw one of them
     B2VR %DIRVEC %DIRMASK; NOP^2            # ...and keep it as a vector too
-    JNSL CNW STEP_NO_CORNER; NOP^2          # The body is copied from the north-west label in every direction
+    JNSL %NW_CORNER STEP_NO_CORNER; NOP^2   # The body is copied from the north-west label in every direction
     JMPI CORNERS; NOP^4; JMPI CORNERS; NOP^4
 
   # The walk runs clockwise and starts at the corner whose first edge points the way the copy
@@ -146,25 +182,25 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     JMPI NORTH; NOP^4; JMPI NORTH
   .ORG 0|@+2
   .CASE EAST
-    JNSL CNE STEP_NO_CORNER; NOP^2          # East needs the north-west and north-east corners
-    ADPI DATA:0; SKLR CNW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the north-west corner
-    ADPI DATA:1; SKLR CNE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the north-east corner
+    JNSL %NE_CORNER STEP_NO_CORNER; NOP^2   # East needs the north-west and north-east corners
+    ADPI DATA:0; SKLR %NW_CORNER; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the north-west corner
+    ADPI DATA:1; SKLR %NE_CORNER; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the north-east corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER; NOP^4
   .CASE SOUTH
-    JNSL CNE STEP_NO_CORNER; JNSL CSE STEP_NO_CORNER; NOP^2 # South needs north-east and south-east
-    ADPI DATA:0; SKLR CNE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the north-east corner
-    ADPI DATA:1; SKLR CSE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the south-east corner
+    JNSL %NE_CORNER STEP_NO_CORNER; JNSL %SE_CORNER STEP_NO_CORNER; NOP^2 # South needs north-east and south-east
+    ADPI DATA:0; SKLR %NE_CORNER; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the north-east corner
+    ADPI DATA:1; SKLR %SE_CORNER; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the south-east corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER
   .ORG 0|@+2
   .CASE WEST
-    JNSL CSE STEP_NO_CORNER; JNSL CSW STEP_NO_CORNER; NOP^2 # West needs south-east and south-west
-    ADPI DATA:0; SKLR CSE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the south-east corner
-    ADPI DATA:1; SKLR CSW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the south-west corner
+    JNSL %SE_CORNER STEP_NO_CORNER; JNSL %SW_CORNER STEP_NO_CORNER; NOP^2 # West needs south-east and south-west
+    ADPI DATA:0; SKLR %SE_CORNER; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the south-east corner
+    ADPI DATA:1; SKLR %SW_CORNER; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the south-west corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER; NOP^4
   .CASE NORTH
-    JNSL CSW STEP_NO_CORNER; NOP^2          # North needs south-west and north-west
-    ADPI DATA:0; SKLR CSW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the south-west corner
-    ADPI DATA:1; SKLR CNW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the north-west corner
+    JNSL %SW_CORNER STEP_NO_CORNER; NOP^2   # North needs south-west and north-west
+    ADPI DATA:0; SKLR %SW_CORNER; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the south-west corner
+    ADPI DATA:1; SKLR %NW_CORNER; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the north-west corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER
   .ENDCONTROL
 
