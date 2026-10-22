@@ -70,15 +70,17 @@ public final class LayoutContext {
     private final Map<Integer, SourceInfo> sourceMap = new HashMap<>();
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private final Map<String, Occupant> occupied = new HashMap<>();
+    private Occupant[] lowest;
+    private Occupant[] highest;
     private final Map<String, Value> namedValues = new HashMap<>();
     private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private int linearAddress = 0;
 
     /**
-     * What sits in a cell already: how the item is named in a conflict message, and where in
-     * the source it came from.
+     * What sits in a cell already: how the item is named in a conflict message, where in the
+     * source it came from, and the coordinate relative to the program origin it was placed at.
      */
-    private record Occupant(String description, SourceInfo source) {
+    private record Occupant(String description, SourceInfo source, int[] coordinate) {
         String location() {
             return SourceInfo.position(source);
         }
@@ -408,7 +410,7 @@ public final class LayoutContext {
     }
 
     private void placeAtCurrent(String description, SourceInfo src) throws CompilationException {
-        String coordKey = occupy(currentPos, new Occupant(description, src));
+        String coordKey = occupy(currentPos, new Occupant(description, src, Nd.copy(currentPos)));
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
         coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
@@ -429,32 +431,93 @@ public final class LayoutContext {
      * @throws CompilationException if the cell is already occupied.
      */
     public void placeObject(int[] coord, PlacedMolecule molecule, String description, SourceInfo src) throws CompilationException {
-        occupy(coord, new Occupant(description, src));
+        occupy(coord, new Occupant(description, src, Nd.copy(coord)));
         initialWorldObjects.put(Nd.copy(coord), molecule);
     }
 
     /**
-     * Claims a cell for an item, or reports whose it already is. A coordinate with more or
+     * Claims a cell for an item, or reports why it cannot have it. A coordinate with more or
      * fewer dimensions than the world cannot name a cell, and is reported with the item's position.
+     * <p>
+     * Cells are claimed by the cell of the world a coordinate lands on, which the environment
+     * computes from the coordinate as a vector from the program origin: on a toroidal world two
+     * coordinates a world size apart land on one cell, wherever the program starts, since a start
+     * position moves every coordinate alike. On a bounded world two coordinates a world size or
+     * more apart along an axis cannot both lie in the world, wherever the program starts; the
+     * coordinates lowest and highest along each axis are kept to tell. Whether the program lies
+     * in the world at the start position it is given is checked where that position is known,
+     * when the simulation places the organism.
      *
-     * @return The cell's key in the occupancy tables.
+     * @return The key of the coordinate relative to the program origin.
      */
     private String occupy(int[] coord, Occupant occupant) throws CompilationException {
-        if (envProps != null && envProps.getWorldShape() != null && coord.length != envProps.getWorldShape().length) {
+        initialize();
+        int[] shape = envProps.getWorldShape();
+        if (coord.length != shape.length) {
             throw new CompilationException(String.format("%s: Coordinate %s has %d components, the world has %d dimensions.",
-                    occupant.location(), Arrays.toString(coord), coord.length, envProps.getWorldShape().length));
+                    occupant.location(), Arrays.toString(coord), coord.length, shape.length));
         }
-        String coordKey = coordToStringKey(coord);
-        Occupant existing = occupied.get(coordKey);
+        String cellKey = coordToStringKey(envProps.getTargetCoordinate(new int[shape.length], coord));
+        Occupant existing = occupied.get(cellKey);
         if (existing != null) {
+            if (Arrays.equals(existing.coordinate(), coord)) {
+                throw new CompilationException(String.format(
+                    "Address conflict: Coordinate %s is already occupied by %s at %s. " +
+                    "Cannot place new item at %s.",
+                    Arrays.toString(coord), existing.description(), existing.location(), occupant.location()
+                ));
+            }
             throw new CompilationException(String.format(
-                "Address conflict: Coordinate %s is already occupied by %s at %s. " +
+                "Address conflict: Coordinate %s lands on the cell of %s, which is already occupied by %s at %s. " +
                 "Cannot place new item at %s.",
-                Arrays.toString(coord), existing.description(), existing.location(), occupant.location()
+                Arrays.toString(coord), Arrays.toString(existing.coordinate()), existing.description(),
+                existing.location(), occupant.location()
             ));
         }
-        occupied.put(coordKey, occupant);
-        return coordKey;
+        if (!envProps.isToroidal()) {
+            requireWithinWorldSize(occupant, shape);
+        }
+        occupied.put(cellKey, occupant);
+        return coordToStringKey(coord);
+    }
+
+    /**
+     * Checks a coordinate of a bounded world against the lowest and the highest coordinate along
+     * each axis claimed so far, and makes it one of them where it lies beyond.
+     */
+    private void requireWithinWorldSize(Occupant occupant, int[] shape) throws CompilationException {
+        if (lowest == null) {
+            lowest = new Occupant[shape.length];
+            highest = new Occupant[shape.length];
+        }
+        int[] coord = occupant.coordinate();
+        for (int axis = 0; axis < shape.length; axis++) {
+            if (lowest[axis] == null) {
+                lowest[axis] = occupant;
+                highest[axis] = occupant;
+                continue;
+            }
+            requireApartLessThanWorld(occupant, lowest[axis], axis, shape[axis]);
+            requireApartLessThanWorld(occupant, highest[axis], axis, shape[axis]);
+            if (coord[axis] < lowest[axis].coordinate()[axis]) {
+                lowest[axis] = occupant;
+            }
+            if (coord[axis] > highest[axis].coordinate()[axis]) {
+                highest[axis] = occupant;
+            }
+        }
+    }
+
+    private static void requireApartLessThanWorld(Occupant occupant, Occupant other, int axis, int size)
+            throws CompilationException {
+        long apart = Math.abs((long) occupant.coordinate()[axis] - other.coordinate()[axis]);
+        if (apart >= size) {
+            throw new CompilationException(String.format(
+                "World size exceeded: Coordinate %s lies %d cells from %s, occupied by %s at %s, along axis %d; "
+                + "the bounded world has %d cells along it. Cannot place new item at %s.",
+                Arrays.toString(occupant.coordinate()), apart, Arrays.toString(other.coordinate()),
+                other.description(), other.location(), axis, size, occupant.location()));
+        }
     }
 
     /**

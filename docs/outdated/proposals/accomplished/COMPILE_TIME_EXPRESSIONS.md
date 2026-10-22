@@ -759,6 +759,11 @@ What the built code does beyond the solution text:
 - **Constant values of aliases.** A constant or a value that is only another name for a definition
   the layout computes shows that definition's value in `constantValues`, not its qualified name;
   a constant that names a label keeps the label's name.
+- **Cells across the edge of the world.** The layout claims a cell by the cell of the world the
+  environment computes, so cells a world size apart meet on a toroidal world, and two cells a world
+  size or more apart along an axis are reported on a bounded one; `.PLACE` places each molecule as
+  it reaches it, with a 64-bit counter, so a range far longer than the world stops at its first
+  impossible cell instead of exhausting memory.
 - **The tokenizer.** A number with a base prefix ends before `..`, so a range can be written in
   hexadecimal (`0x1F..0x20`).
 - **The post-processor.** Its replacements are keyed by node identity, as the symbol table's

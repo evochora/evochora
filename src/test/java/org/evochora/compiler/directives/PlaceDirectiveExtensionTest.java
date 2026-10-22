@@ -3,9 +3,12 @@ package org.evochora.compiler.directives;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.List;
 
@@ -13,6 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class PlaceDirectiveExtensionTest {
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
 
     private final EnvironmentProperties testEnvProps = new EnvironmentProperties(new int[]{100, 100}, true);
 
@@ -148,5 +156,39 @@ public class PlaceDirectiveExtensionTest {
         assertThatThrownBy(() -> compiler.compile(source, "test.s", testEnvProps))
             .isInstanceOf(CompilationException.class)
             .hasMessageContaining("Invalid operands for ':': number and number.");
+    }
+
+    /** A toroidal world of 128 cells along each axis. */
+    private static final EnvironmentProperties TORUS = new EnvironmentProperties(new int[]{128, 128}, true);
+
+    /** A bounded world of 128 cells along each axis. */
+    private static final EnvironmentProperties BOUNDED = new EnvironmentProperties(new int[]{128, 128}, false);
+
+
+    @Test
+    @Tag("unit")
+    void cellsThatPassOneAnotherAcrossTheWrapAreAccepted() throws CompilationException {
+        ProgramArtifact artifact = new Compiler().compile(List.of(".PLACE DATA:1 0:3:200|0"), "test.s", TORUS);
+
+        assertThat(artifact.initialWorldObjects()).hasSize(67);
+    }
+
+
+    /**
+     * A range far longer than the world stops at the first cell that cannot be placed, on either
+     * kind of world, and a range up to the largest coordinate does not count past it.
+     */
+    @Test
+    @Tag("unit")
+    @Timeout(10)
+    void aRangeLongerThanTheWorldStopsAtItsFirstImpossibleCell() {
+        Compiler compiler = new Compiler();
+
+        assertThatThrownBy(() -> compiler.compile(List.of(".PLACE DATA:1 0..2147483647|0"), "test.s", TORUS))
+            .isInstanceOf(CompilationException.class)
+            .hasMessageContaining("Coordinate [128, 0] lands on the cell of [0, 0]");
+        assertThatThrownBy(() -> compiler.compile(List.of(".PLACE DATA:1 0..2000000000|0"), "test.s", BOUNDED))
+            .isInstanceOf(CompilationException.class)
+            .hasMessageContaining("World size exceeded: Coordinate [128, 0] lies 128 cells from [0, 0]");
     }
 }

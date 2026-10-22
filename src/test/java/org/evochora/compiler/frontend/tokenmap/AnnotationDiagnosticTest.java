@@ -1,10 +1,10 @@
 package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.Compiler;
-import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * the structural completeness of the resulting ProgramArtifact.
  */
 @Tag("unit")
-class AnnotationDiagnosticTest extends CompilerTestBase {
+class AnnotationDiagnosticTest {
+
+    /** A world the primordial fits in, so that it does not overlap itself across the wrap. */
+    private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{1024, 1024}, true);
 
     @BeforeAll
     static void init() {
@@ -33,7 +36,7 @@ class AnnotationDiagnosticTest extends CompilerTestBase {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(assemblyRoot, null)));
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile("classic/main.evo", testEnvProps, options);
+        ProgramArtifact artifact = compiler.compile("classic/main.evo", ENV, options);
 
         assertNotNull(artifact.programId(), "programId must be present");
         assertNotNull(artifact.sources(), "sources must be present");

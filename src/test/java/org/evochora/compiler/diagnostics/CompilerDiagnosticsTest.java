@@ -600,6 +600,69 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:5");
     }
 
+    /**
+     * On a toroidal world a coordinate a world size from another lands on its cell, wherever the
+     * program starts: code laid over code across the wrap is a conflict like code laid over code.
+     */
+    @Test
+    void codeLaidOverCodeAcrossTheWrapNamesBothLines() throws Exception {
+        write("main.evo",
+                ".ORG 0|0",
+                "START:",
+                "  NOP",
+                ".ORG 100|0",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [100, 0] lands on the cell of [0, 0], which is already occupied by a label at")
+                .hasMessageContaining("main.evo:2")
+                .hasMessageContaining("main.evo:5");
+    }
+
+    @Test
+    void aPlacementLaidOverItselfAcrossTheWrapNamesItsLine() throws Exception {
+        write("main.evo",
+                ".PLACE DATA:5 0:2:100|5",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [100, 5] lands on the cell of [0, 5], which is already occupied by a .PLACE at")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    /**
+     * On a bounded world two cells a world size or more apart along an axis cannot both lie in
+     * it, wherever the program starts; cells one less apart can.
+     */
+    @Test
+    void cellsTooFarApartForABoundedWorldNameBothLines() throws Exception {
+        EnvironmentProperties bounded = new EnvironmentProperties(new int[]{100, 100}, false);
+        write("main.evo",
+                ".PLACE DATA:5 -1|0",
+                "START:",
+                "  NOP",
+                ".ORG 99|0",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo", bounded))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("World size exceeded: Coordinate [99, 0] lies 100 cells from [-1, 0], occupied by a .PLACE at")
+                .hasMessageContaining("the bounded world has 100 cells along it")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:5");
+
+        write("main.evo",
+                ".PLACE DATA:5 -1|0",
+                "START:",
+                "  NOP",
+                ".ORG 98|0",
+                "  NOP");
+        compile("main.evo", bounded);
+    }
+
     @Test
     void aMacroOfAnImportedModuleIsNotAMacroInTheImportingFile() throws Exception {
         write("lib.evo",
@@ -1403,8 +1466,12 @@ class CompilerDiagnosticsTest {
     }
 
     private void compile(String fileName) throws Exception {
+        compile(fileName, ENV);
+    }
+
+    private void compile(String fileName, EnvironmentProperties env) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)));
-        new Compiler().compile(fileName, ENV, options);
+        new Compiler().compile(fileName, env, options);
     }
 
     /**

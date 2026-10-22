@@ -450,21 +450,6 @@ class SimulationEngineTest {
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
     }
 
-    @Test
-    void constructor_shouldRejectCodeThatOverwritesItselfAfterWrappingAToroidalWorld() throws IOException {
-        Path program = writeProgram("wrapping.evo", """
-                .ORG 0|0
-                SETI %DR0 DATA:1
-                .ORG 32|0
-                SETI %DR0 DATA:2
-                """);
-        Config config = placementConfig("TORUS", organism(program, 0, 0));
-
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> new SimulationEngine("test-engine", config, resources));
-        assertTrue(exception.getMessage().contains("overlap"), exception.getMessage());
-        assertTrue(exception.getMessage().contains("owned by organism 1"), exception.getMessage());
-    }
 
     @Test
     void constructor_shouldRejectOrganismsWhoseCodeOverlaps() throws IOException {
