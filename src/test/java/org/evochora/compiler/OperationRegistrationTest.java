@@ -89,8 +89,8 @@ class OperationRegistrationTest {
     void theNameOfAnOperationCannotBeDefined() {
         Compiler compiler = TestRegistries.compilerWith(registering(ExpressionFixture.min(), new AtomicReference<>()));
 
-        assertThatThrownBy(() -> compiler.compile(List.of(".CONST MIN DATA:1", "START:", "  NOP"), "main.evo"))
+        assertThatThrownBy(() -> compiler.compile(List.of("# A comment line.", ".CONST MIN DATA:1", "START:", "  NOP"), "main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'MIN' is a function and cannot be defined.");
+                .hasMessageContaining("main.evo:2: 'MIN' is a function and cannot be defined.");
     }
 }

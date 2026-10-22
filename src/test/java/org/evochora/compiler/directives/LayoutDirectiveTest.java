@@ -151,7 +151,7 @@ public class LayoutDirectiveTest {
     @Tag("unit")
     void testOrgDirectiveRejectsASignAfterTheMarker() {
         // Arrange
-        String source = ".ORG 0|@+-2";
+        String source = "# A comment line.\n.ORG 0|@+-2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
@@ -160,7 +160,7 @@ public class LayoutDirectiveTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("carries no sign of its own");
+        assertThat(diagnostics.summary()).contains("<memory>:2: A component marked with '@+' or '@-' carries no sign of its own.");
     }
 
     /**
@@ -214,7 +214,7 @@ public class LayoutDirectiveTest {
     @Tag("unit")
     void testDirDirectiveRejectsWhatIsNeitherDirectionNorRotation() {
         // Arrange
-        String source = ".DIR %DR0";
+        String source = "# A comment line.\n.DIR %DR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
@@ -223,7 +223,7 @@ public class LayoutDirectiveTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a vector literal or a rotation after .DIR.");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Expected a vector literal or a rotation after .DIR.");
         assertThat(ast).isEmpty();
     }
 
@@ -343,12 +343,12 @@ public class LayoutDirectiveTest {
     @Tag("unit")
     void testOrgReportsAMissingAndAnOverlongComponent() {
         DiagnosticsEngine missing = new DiagnosticsEngine();
-        assertThat(parse(".ORG 1|", missing)).isEmpty();
-        assertThat(missing.summary()).contains("Expected a number after .ORG.");
+        assertThat(parse("# A comment line.\n.ORG 1|", missing)).isEmpty();
+        assertThat(missing.summary()).contains("<memory>:2: Expected a number after .ORG.");
 
         DiagnosticsEngine overlong = new DiagnosticsEngine();
-        assertThat(parse(".ORG 1 2|3", overlong)).isEmpty();
-        assertThat(overlong.summary()).contains("Unexpected '2'.");
+        assertThat(parse("# A comment line.\n.ORG 1 2|3", overlong)).isEmpty();
+        assertThat(overlong.summary()).contains("<memory>:2: Unexpected '2'.");
     }
 
     /**
@@ -411,8 +411,8 @@ public class LayoutDirectiveTest {
     @Tag("unit")
     void testPlaceReportsAMissingBound() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        assertThat(parse(".PLACE DATA:1 1..|0", diagnostics)).isEmpty();
-        assertThat(diagnostics.summary()).contains("Expected a number for the end of the range.");
+        assertThat(parse("# A comment line.\n.PLACE DATA:1 1..|0", diagnostics)).isEmpty();
+        assertThat(diagnostics.summary()).contains("<memory>:2: Expected a number for the end of the range.");
     }
 
     private static ParserStatementRegistry registry() {

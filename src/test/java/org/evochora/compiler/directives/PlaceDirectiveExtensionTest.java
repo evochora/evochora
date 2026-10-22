@@ -106,11 +106,11 @@ public class PlaceDirectiveExtensionTest {
     @Test
     @Tag("unit")
     void testPlaceWithWildcardNoContext() {
-        String source = ".PLACE STRUCTURE:1 *|2";
+        List<String> source = List.of("# A comment line.", ".PLACE STRUCTURE:1 *|2");
         Compiler compiler = new Compiler();
-        assertThatThrownBy(() -> compiler.compile(List.of(source), "test.s", null))
+        assertThatThrownBy(() -> compiler.compile(source, "test.s", null))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("'*' in .PLACE needs a world shape.");
+            .hasMessageContaining("test.s:2: '*' in .PLACE needs a world shape.");
     }
 
     @Test
@@ -141,11 +141,11 @@ public class PlaceDirectiveExtensionTest {
     @Test
     @Tag("unit")
     void testPlaceWithAnUndefinedNameBeforeTheColon() {
-        String source = ".PLACE FOOD:1 5|5";
+        List<String> source = List.of("# A comment line.", ".PLACE FOOD:1 5|5");
         Compiler compiler = new Compiler();
-        assertThatThrownBy(() -> compiler.compile(List.of(source), "test.s", testEnvProps))
+        assertThatThrownBy(() -> compiler.compile(source, "test.s", testEnvProps))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("'FOOD' is not defined.");
+            .hasMessageContaining("test.s:2: 'FOOD' is not defined.");
     }
 
     @Test
@@ -155,7 +155,7 @@ public class PlaceDirectiveExtensionTest {
         Compiler compiler = new Compiler();
         assertThatThrownBy(() -> compiler.compile(source, "test.s", testEnvProps))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("Invalid operands for ':': number and number.");
+            .hasMessageContaining("test.s:2: Invalid operands for ':': number and number.");
     }
 
     /** A toroidal world of 128 cells along each axis. */
@@ -184,11 +184,13 @@ public class PlaceDirectiveExtensionTest {
     void aRangeLongerThanTheWorldStopsAtItsFirstImpossibleCell() {
         Compiler compiler = new Compiler();
 
-        assertThatThrownBy(() -> compiler.compile(List.of(".PLACE DATA:1 0..2147483647|0"), "test.s", TORUS))
+        assertThatThrownBy(() -> compiler.compile(List.of("# A comment line.", ".PLACE DATA:1 0..2147483647|0"), "test.s", TORUS))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("Coordinate [128, 0] lands on the cell of [0, 0]");
-        assertThatThrownBy(() -> compiler.compile(List.of(".PLACE DATA:1 0..2000000000|0"), "test.s", BOUNDED))
+            .hasMessageContaining("Coordinate [128, 0] lands on the cell of [0, 0]")
+            .hasMessageFindingMatch("by a \\.PLACE at \\S*test\\.s:2\\. Cannot place new item at \\S*test\\.s:2\\.");
+        assertThatThrownBy(() -> compiler.compile(List.of("# A comment line.", ".PLACE DATA:1 0..2000000000|0"), "test.s", BOUNDED))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("World size exceeded: Coordinate [128, 0] lies 128 cells from [0, 0]");
+            .hasMessageContaining("World size exceeded: Coordinate [128, 0] lies 128 cells from [0, 0]")
+            .hasMessageFindingMatch("by a \\.PLACE at \\S*test\\.s:2, along axis 0; .* Cannot place new item at \\S*test\\.s:2\\.");
     }
 }

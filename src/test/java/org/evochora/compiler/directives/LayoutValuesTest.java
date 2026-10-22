@@ -46,12 +46,13 @@ class LayoutValuesTest {
     @Test
     void aLabelBelowTheLineIsAForwardReference() {
         assertThatThrownBy(() -> compile(
+                "# A comment line.",
                 ".PLACE DATA:1 (NW + (0|1))",
                 ".ORG 2|2",
                 "NW:",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Forward reference to 'NW'.");
+                .hasMessageContaining("layout.evo:2: Forward reference to 'NW'.");
     }
 
     @Test

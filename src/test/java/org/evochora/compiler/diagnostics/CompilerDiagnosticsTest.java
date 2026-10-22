@@ -616,8 +616,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Coordinate [100, 0] lands on the cell of [0, 0], which is already occupied by a label at")
-                .hasMessageContaining("main.evo:2")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageFindingMatch("by a label at \\S*main\\.evo:2\\. Cannot place new item at \\S*main\\.evo:5\\.");
     }
 
     @Test
@@ -630,7 +629,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Coordinate [100, 5] lands on the cell of [0, 5], which is already occupied by a .PLACE at")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageFindingMatch("by a \\.PLACE at \\S*main\\.evo:1\\. Cannot place new item at \\S*main\\.evo:1\\.");
     }
 
     /**
@@ -650,9 +649,8 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo", bounded))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("World size exceeded: Coordinate [99, 0] lies 100 cells from [-1, 0], occupied by a .PLACE at")
-                .hasMessageContaining("the bounded world has 100 cells along it")
-                .hasMessageContaining("main.evo:1")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageFindingMatch("by a \\.PLACE at \\S*main\\.evo:1, along axis 0; "
+                        + "the bounded world has 100 cells along it\\. Cannot place new item at \\S*main\\.evo:5\\.");
 
         write("main.evo",
                 ".PLACE DATA:5 -1|0",

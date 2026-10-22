@@ -124,10 +124,11 @@ class LayoutComputationTest {
     @Test
     void aStepOfZeroIsReported() {
         assertThatThrownBy(() -> compile(
+                "# A comment line.",
                 ".PLACE DATA:1 10:0:20|5",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Step 0 of a range must be positive.");
+                .hasMessageContaining("layout.evo:2: Step 0 of a range must be positive.");
     }
 
     /**
@@ -137,24 +138,27 @@ class LayoutComputationTest {
     @Test
     void aRangeWhoseEndLiesBelowItsStartIsReported() {
         assertThatThrownBy(() -> compile(
+                "# A comment line.",
                 ".PLACE DATA:1 5..1|0",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("End 1 of a range must be at least its start 5.");
+                .hasMessageContaining("layout.evo:2: End 1 of a range must be at least its start 5.");
         assertThatThrownBy(() -> compile(
+                "# A comment line.",
                 ".PLACE DATA:1 10:2:(2*2)|0",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("End 4 of a range must be at least its start 10.");
+                .hasMessageContaining("layout.evo:2: End 4 of a range must be at least its start 10.");
     }
 
     @Test
     void aNegativeStepIsReported() {
         assertThatThrownBy(() -> compile(
+                "# A comment line.",
                 ".PLACE DATA:1 10:(-2):20|5",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Step -2 of a range must be positive.");
+                .hasMessageContaining("layout.evo:2: Step -2 of a range must be positive.");
     }
 
     @Test
@@ -164,7 +168,7 @@ class LayoutComputationTest {
                 ".ORG V|0",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected a number.");
+                .hasMessageContaining("layout.evo:2: Expected a number.");
     }
 
     @Test
@@ -174,7 +178,7 @@ class LayoutComputationTest {
                 ".DIR N",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected a vector.");
+                .hasMessageContaining("layout.evo:2: Expected a vector.");
     }
 
     /**
@@ -184,12 +188,13 @@ class LayoutComputationTest {
     @Test
     void aLabelInAnOriginIsAForwardReference() {
         assertThatThrownBy(() -> compile(
+                "# A comment line.",
                 ".ORG NW",
                 "NOP",
                 "NW:",
                 "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Forward reference to 'NW'.");
+                .hasMessageContaining("layout.evo:2: Forward reference to 'NW'.");
     }
 
     /**
@@ -198,9 +203,9 @@ class LayoutComputationTest {
      */
     @Test
     void aComponentBeyondACoordinateIsReported() {
-        assertThatThrownBy(() -> compile(".PLACE DATA:1 4294967296|0"))
+        assertThatThrownBy(() -> compile("# A comment line.", ".PLACE DATA:1 4294967296|0"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 4294967296 out of range for a coordinate.");
+                .hasMessageContaining("layout.evo:2: Value 4294967296 out of range for a coordinate.");
     }
 
     /**
@@ -216,9 +221,9 @@ class LayoutComputationTest {
 
     @Test
     void aSingleNumberIsOneComponentTooFewInATwoDimensionalWorld() {
-        assertThatThrownBy(() -> compile(".ORG 5", "NOP"))
+        assertThatThrownBy(() -> compile("# A comment line.", ".ORG 5", "NOP"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Origin [5] has 1 components, the world has 2 dimensions.");
+                .hasMessageContaining("layout.evo:2: Origin [5] has 1 components, the world has 2 dimensions.");
     }
 
     @Test
@@ -241,7 +246,7 @@ class LayoutComputationTest {
                 ".CONST WALL 100",
                 ".PLACE WALL 1|0"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected a typed literal (e.g. DATA:5) for .PLACE.");
+                .hasMessageContaining("layout.evo:2: Expected a typed literal (e.g. DATA:5) for .PLACE.");
     }
 
     /**
@@ -261,9 +266,9 @@ class LayoutComputationTest {
 
     @Test
     void aMoleculeWhoseLayoutValueIsANumberIsReported() {
-        assertThatThrownBy(() -> compile(".PLACE (@[0]) 0|0"))
+        assertThatThrownBy(() -> compile("# A comment line.", ".PLACE (@[0]) 0|0"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected a typed literal (e.g. DATA:5) for .PLACE.");
+                .hasMessageContaining("layout.evo:2: Expected a typed literal (e.g. DATA:5) for .PLACE.");
     }
 
     private static boolean codeAt(ProgramArtifact artifact, int... coordinate) {

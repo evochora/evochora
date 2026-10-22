@@ -64,7 +64,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(@[0])");
 
-        assertReported("Argument 2 for instruction 'SETI' is computed from a position.", 2);
+        assertReportedAt("Argument 2 for instruction 'SETI' is computed from a position.", 2);
     }
 
     /**
@@ -317,7 +317,7 @@ class ExpressionDiagnosticsTest {
                 ".CONST X (TARGET)",
                 "  JMPI X");
 
-        assertReported("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got POSITION.", 4);
+        assertReportedAt("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got POSITION.", 4);
     }
 
     @Test
@@ -326,7 +326,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(%DR1+1)");
 
-        assertReported("Register '%DR1' cannot be used in an expression.", 2);
+        assertReportedAt("Register '%DR1' cannot be used in an expression.", 2);
     }
 
     @Test
@@ -336,7 +336,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(COUNTER+1)");
 
-        assertReported("Register 'COUNTER' cannot be used in an expression.", 3);
+        assertReportedAt("Register 'COUNTER' cannot be used in an expression.", 3);
     }
 
     @Test
@@ -346,7 +346,7 @@ class ExpressionDiagnosticsTest {
                 ".ORG %spot",
                 "  NOP");
 
-        assertReported("Register '%spot' cannot be used in an expression.", 2);
+        assertReportedAt("Register '%spot' cannot be used in an expression.", 2);
     }
 
     @Test
@@ -359,7 +359,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(LIB+1)");
 
-        assertReported("'LIB' cannot be used as a value.", 3);
+        assertReportedAt("'LIB' cannot be used as a value.", 3);
     }
 
     @Test
@@ -368,7 +368,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(FOO+1)");
 
-        assertReported("'FOO' is not defined.", 2);
+        assertReportedAt("'FOO' is not defined.", 2);
     }
 
     @Test
@@ -377,7 +377,7 @@ class ExpressionDiagnosticsTest {
                 ".CONST A (B+1)",
                 ".CONST B 1");
 
-        assertReported("'B' is not defined.", 1);
+        assertReportedAt("'B' is not defined.", 1);
     }
 
     @Test
@@ -387,7 +387,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  NOP");
 
-        assertReported("Division by zero.", 1);
+        assertReportedAt("Division by zero.", 1);
     }
 
     @Test
@@ -399,7 +399,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  CALL P REF (1+1)");
 
-        assertReported("Invalid argument: '(1+1)' for REF is a computation; expected a register.", 5);
+        assertReportedAt("Invalid argument: '(1+1)' for REF is a computation; expected a register.", 5);
     }
 
     @Test
@@ -409,7 +409,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 T");
 
-        assertReported("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got TYPE.", 3);
+        assertReportedAt("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got TYPE.", 3);
     }
 
     @Test
@@ -418,7 +418,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(1 +)");
 
-        assertReported("Expected an expression after '+'.", 2);
+        assertReportedAt("Expected an expression after '+'.", 2);
     }
 
     /**
@@ -428,13 +428,6 @@ class ExpressionDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("main.evo:" + line + ": " + message);
-    }
-
-    private void assertReported(String message, int line) {
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(message)
-                .hasMessageContaining("main.evo:" + line);
     }
 
     private void write(String fileName, String... lines) throws Exception {
