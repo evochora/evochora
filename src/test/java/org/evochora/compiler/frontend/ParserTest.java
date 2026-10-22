@@ -443,6 +443,24 @@ public class ParserTest {
     }
 
     /**
+     * A vector with a name or a computation among its parts is a computation outside parentheses;
+     * a vector of numbers stays a literal, and an operator without parentheses ends the vector.
+     */
+    @Test
+    @Tag("unit")
+    void aVectorWithANameOrAComputationAmongItsPartsIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations("SETV %DR0 W|H\nSETV %DR1 1|(2)\nSETV %DR2 1|0\nSETV %DR3 W-1|H", diagnostics);
+
+        assertThat(((OperationExpression) ((ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1)).expression())
+                .operation()).isEqualTo("|");
+        assertThat(((OperationExpression) ((ExpressionNode) ((InstructionNode) ast.get(1)).arguments().get(1)).expression())
+                .operation()).isEqualTo("|");
+        assertThat(((InstructionNode) ast.get(2)).arguments().get(1)).isInstanceOf(LiteralNode.class);
+        assertThat(((InstructionNode) ast.get(3)).arguments()).hasSize(3);
+    }
+
+    /**
      * The cursor alone is a computation, a name the layout knows; a typed literal with a number
      * stays a literal.
      */

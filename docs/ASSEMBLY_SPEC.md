@@ -1001,7 +1001,7 @@ An expression has one of three forms; an operand of any other form is a literal 
 * A component of a vector: `CORNER[0]`.
 * A parenthesis: `(WIDTH - 1)`.
 
-A typed literal may take an expression or a name for its type or its number: `DATA:(WIDTH - 1)`, `DATA:AREA`, `TYPE(UNIT):7`. Inside parentheses, the parentheses of a function and the brackets of a component, spaces are free.
+A typed literal may take an expression or a name for its type or its number: `DATA:(WIDTH - 1)`, `DATA:AREA`, `TYPE(UNIT):7`. A vector may take one for any of its numbers: `WIDTH|HEIGHT`, `1|(HEIGHT - 1)`. Inside parentheses, the parentheses of a function and the brackets of a component, spaces are free.
 
 * **Examples**:
     ```

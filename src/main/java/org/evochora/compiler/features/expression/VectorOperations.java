@@ -29,7 +29,7 @@ final class VectorOperations implements IOperationGroup {
     @Override
     public List<IOperation> operations() {
         return List.of(
-                new DefinedOperation("|", Notation.CHAIN, Level.CHAIN,
+                new DefinedOperation(OperationRegistry.VECTOR, Notation.CHAIN, Level.CHAIN,
                         List.of(new Signature(List.of(Kind.NUMBER), true, Kind.VECTOR)),
                         (operands, context) -> {
                             List<Long> components = new ArrayList<>(operands.size());

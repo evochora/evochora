@@ -88,9 +88,9 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    evaluator of computations, the rule of which tokens form one (`Computation`) and the rule of
    where their results are noted (`ValueNotes`); every phase that computes uses them. The
    machinery knows an operation by its notation and its level, which it fixes (`Notation`,
-   `Level`), and names two operations itself: the index `[]`, which the parser reads at a
-   bracket, and the typing `:`, which the parser reads after a molecule type and whose result the
-   notes show at its parts. Which operations exist, and what they compute, is the `expression`
+   `Level`), and names three operations itself: the index `[]`, which the parser reads at a
+   bracket, the typing `:`, which the parser reads after a molecule type, and the vector `|`,
+   whose parts the shared rule reads; the notes show the result of the last two at their parts. Which operations exist, and what they compute, is the `expression`
    feature's.
 
 Smaller instances: the tokenizer emits a colon token for `:` (label and typing); `Symbol.Type` is a closed

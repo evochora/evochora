@@ -130,7 +130,8 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
      * Tells how many tokens the argument at an index takes: one value in the forms the
      * preprocessor context reads, a number with its sign, a name, a written literal or a
      * computation, or else a single token, such as a register. A vector stays one argument even
-     * where a component is no number, each component a {@code |} and one value or token, so that
+     * where a component is no number, each component a {@code |} and one value or token, with a
+     * {@code -} before it, so that
      * the parser reports the component where the argument is used rather than the number of
      * arguments being wrong.
      *
@@ -156,7 +157,9 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
                 if (length >= line.size()) {
                     break;
                 }
-                length += Math.max(1, preProcessorContext.valueLength(line.subList(length, line.size())));
+                int sign = line.get(length).type() == TokenType.SYMBOL && "-".equals(line.get(length).text())
+                        && length + 1 < line.size() ? 1 : 0;
+                length += sign + Math.max(1, preProcessorContext.valueLength(line.subList(length + sign, line.size())));
             }
             return length;
         }

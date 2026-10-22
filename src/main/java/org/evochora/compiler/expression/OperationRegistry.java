@@ -45,6 +45,9 @@ public final class OperationRegistry {
      */
     public static final String TYPING = ":";
 
+    /** The name of the vector of parts, {@code a|b|c}, which the tokenizer reads as its own token. */
+    public static final String VECTOR = "|";
+
     private final Map<Key, Overloads> operations = new LinkedHashMap<>();
 
     /**

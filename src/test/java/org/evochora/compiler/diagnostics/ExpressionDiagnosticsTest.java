@@ -219,9 +219,9 @@ class ExpressionDiagnosticsTest {
     }
 
     /**
-     * A macro argument takes the forms of an operand: a typing with a name or a computation is
-     * one argument, and a vector with a component that is no number stays one argument, so that
-     * the component is reported where it is used.
+     * A macro argument takes the forms of an operand: a typing or a vector with a name or a
+     * computation is one argument, and a vector with a part that is no operand form, such as a
+     * minus before a name, stays one argument, so that the part is reported where it is used.
      */
     @Test
     void aMacroArgumentTakesTheFormsOfAnOperand() throws Exception {
@@ -237,13 +237,46 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  PUT %DR0 DATA:N",
                 "  PUT %DR1 TYPE(U):7",
-                "  VEC %DR2 1|(2)",
+                "  VEC %DR2 1|-N",
+                "  VEC %DR3 1|(2)",
                 "  JMPI START");
 
         assertReportedAt("Expected number component after '|'.", 12);
+        assertThatThrownBy(() -> compile("main.evo")).hasMessageNotContaining("main.evo:13");
         assertThatThrownBy(() -> compile("main.evo"))
                 .hasMessageNotContaining("main.evo:10")
                 .hasMessageNotContaining("main.evo:11");
+    }
+
+    /**
+     * A vector outside parentheses takes names and computations as its parts, but a part is no
+     * operator, no vector and no sign before a name.
+     */
+    @Test
+    void aVectorTakesNamesAndComputationsAsItsParts() throws Exception {
+        write("main.evo",
+                ".CONST W 5",
+                "START:",
+                "  SETV %DR0 1|-W",
+                "  JMPI START");
+        assertReportedAt("Expected number component after '|'.", 3);
+
+        write("main.evo",
+                ".CONST W 5",
+                "START:",
+                "  SETV %DR1 W-1|W",
+                "  JMPI START");
+        assertReportedAt("Instruction 'SETV' expects 2 argument(s), but got 3.", 3);
+
+        write("main.evo",
+                ".CONST W 5",
+                ".CONST NW 1|2",
+                ".CONST V W|(W-1)",
+                ".CONST X NW|5",
+                "START:",
+                "  JMPI START");
+        assertReportedAt("Expected a number before '|'.", 4);
+        assertThatThrownBy(() -> compile("main.evo")).hasMessageNotContaining("main.evo:3:");
     }
 
     @Test

@@ -19,6 +19,8 @@ import java.util.List;
  * number part its number. An operand that is a literal shows nothing, since it is written as it
  * is, and so does a name, whose value the Source View shows as that of every constant. Only the
  * top node is looked at: a typing inside a bigger computation is a part of it like any other.
+ * A vector {@code a|b|c} is the notation of a vector in the same way: it shows nothing itself,
+ * and each of its parts that is an operation shows its own component.
  * A note whose position stands in no file is left out, as a source view cannot show it.
  */
 public final class ValueNotes {
@@ -32,7 +34,8 @@ public final class ValueNotes {
      * @param expression The computation.
      * @param value      Its value.
      * @return The notes, in the order of their positions; empty if none is shown.
-     * @throws IllegalStateException if the top node is the typing and the value is no typed value.
+     * @throws IllegalStateException if the top node is the typing and the value is no typed value,
+     *                               or the vector and the value is no vector.
      */
     public static List<PositionedNote> of(Expression expression, Value value) {
         List<PositionedNote> notes = new ArrayList<>();
@@ -42,10 +45,21 @@ public final class ValueNotes {
             }
             notePart(notes, typing.operands().get(0), typed.type());
             notePart(notes, typing.operands().get(1), Long.toString(typed.number()));
+        } else if (expression instanceof OperationExpression chain && isChain(chain)) {
+            if (!(value instanceof Value.Vector vector)) {
+                throw new IllegalStateException("The vector " + chain.text() + " gave no vector: " + value.text());
+            }
+            for (int i = 0; i < chain.operands().size(); i++) {
+                notePart(notes, chain.operands().get(i), Long.toString(vector.components().get(i)));
+            }
         } else {
             note(notes, expression.end(), value.text());
         }
         return List.copyOf(notes);
+    }
+
+    private static boolean isChain(OperationExpression operation) {
+        return OperationRegistry.VECTOR.equals(operation.operation());
     }
 
     private static boolean isTyping(OperationExpression operation) {

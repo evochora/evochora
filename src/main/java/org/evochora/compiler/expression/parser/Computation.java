@@ -13,9 +13,11 @@ import java.util.Locale;
  * {@link ExpressionParser} reads: a parenthesis, or a name or a number followed by a call or an
  * index, each with any calls and indexes directly after it; a typing {@code type : value} whose
  * type is a name or such a form and whose value is such a form, a name or a number with its
- * sign; or the cursor {@code @} with any indexes after it. A number or a name written alone is
- * no computation, nor is a typed literal written out, a molecule type of the instruction set
- * before the colon and a number with its sign after it. Every phase that reads an operand or
+ * sign; the cursor {@code @} with any indexes after it; or a vector {@code a|b|c} whose parts
+ * are each a number with its sign or one of these forms or a name, at least one of them not a
+ * number. A number or a name written alone is no computation, nor is a typed literal written
+ * out, a molecule type of the instruction set before the colon and a number with its sign after
+ * it, nor a vector of numbers. Every phase that reads an operand or
  * the value of a directive asks here where a computation begins and how far it reaches, so that
  * the phases agree on what a computation is.
  */
@@ -49,6 +51,10 @@ public final class Computation {
             int value = typedValueLengthAt(tokens, index + 2);
             return value > 0 ? 2 + value : 0;
         }
+        int chain = chainLengthAt(tokens, index);
+        if (chain > 0) {
+            return chain;
+        }
         if (type == TokenType.IDENTIFIER && INameResolution.CURSOR.equals(tokens.get(index).text())) {
             return 1 + suffixLength(tokens, index + 1);
         }
@@ -73,6 +79,45 @@ public final class Computation {
             return 1 + suffixLength(tokens, index + 1);
         }
         return signedNumberLength(tokens, index);
+    }
+
+    /**
+     * Tells how many tokens a vector at the given position takes whose parts are each a part as
+     * {@link #partLengthAt} reads it, at least one of them not a number; 0 if none stands there.
+     */
+    private int chainLengthAt(List<Token> tokens, int index) {
+        int first = partLengthAt(tokens, index);
+        if (first == 0 || typeAt(tokens, index + first) != TokenType.PIPE) {
+            return 0;
+        }
+        boolean computed = signedNumberLength(tokens, index) != first;
+        int length = first;
+        while (typeAt(tokens, index + length) == TokenType.PIPE) {
+            int part = partLengthAt(tokens, index + length + 1);
+            if (part == 0) {
+                return 0;
+            }
+            computed |= signedNumberLength(tokens, index + length + 1) != part;
+            length += 1 + part;
+        }
+        return computed ? length : 0;
+    }
+
+    /**
+     * Tells how many tokens one part of a vector at the given position takes: a number with its
+     * sign, a name, the cursor or a computed value, each with any calls and indexes after it; 0
+     * if none stands there.
+     */
+    private int partLengthAt(List<Token> tokens, int index) {
+        int value = valueLengthAt(tokens, index);
+        if (value > 0) {
+            return value;
+        }
+        int number = signedNumberLength(tokens, index);
+        if (number > 0) {
+            return number;
+        }
+        return typeAt(tokens, index) == TokenType.IDENTIFIER ? 1 + suffixLength(tokens, index + 1) : 0;
     }
 
     /**

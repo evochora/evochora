@@ -102,6 +102,23 @@ class NotesIntegrationTest {
     }
 
     /**
+     * A vector is noted only at its parts that compute, as a typing is: a name shows its
+     * constant's value in the source view, and a number is written as it is.
+     */
+    @Test
+    void aVectorIsNotedOnlyAtThePartsThatCompute() throws Exception {
+        write("main.evo",
+                ".CONST W 5",
+                ".CONST H 7",
+                "SETV %DR0 W|(H-1)",
+                "SETV %DR1 1|(2)");
+
+        ProgramArtifact artifact = compile();
+
+        assertThat(artifact.sources().get(0).notes()).containsExactly(new Note(0, 3, 18, "[=6]"));
+    }
+
+    /**
      * A value a module requires, computed at the import line, is noted there with the position
      * it stands for.
      */

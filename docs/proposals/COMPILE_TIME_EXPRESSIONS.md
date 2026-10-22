@@ -115,7 +115,9 @@ number (with its sign), a name, a register, a vector of numbers `3|5`, a typed l
 two new forms that end visibly, a call `NAME(…)` and an index `V[…]`; a typing with a name on either
 side computes like a call does, `DATA:MASKED`, `WALL_TYPE:7`, `WALL_TYPE:WALL_NUMBER`, and so does
 a typed literal whose value is a call, an index or a parenthesis, `DATA:(WIDTH-1)`, `DATA:MIN(ROWS, 8)`,
-`DATA:V[0]`; only a molecule type with a number, `DATA:5`, `DATA:-5`, is the literal of today.
+`DATA:V[0]`; only a molecule type with a number, `DATA:5`, `DATA:-5`, is the literal of today. A
+vector with a name or one of these forms among its parts computes the same way, `WIDTH|HEIGHT`,
+`1|(HEIGHT-1)`; only a vector of numbers, `3|5`, is the literal of today.
 Inside parentheses, inside the parentheses of a call and inside the brackets of an index, spaces are
 free and everything computes:
 
@@ -265,8 +267,8 @@ cannot be defined.` · at start-up: `Operation '^' is a preprocessor directive.`
 **The visualizer** shows the source as written and, behind each computation, its result as a yellow
 note `[=99|69]`, the way it shows a flag's state behind its name wherever a directive reads the flag;
 a constant keeps the value behind its name, inside a computation and a layout-valued one included.
-The typing `T:n` shows no note of its own; a part of it that computes shows its result at its end, a
-name its value as every constant.
+The typing `T:n` and the vector `a|b|c` show no note of their own; a part of them that computes shows
+its result at its end, a name its value as every constant.
 
 ### The architecture
 
