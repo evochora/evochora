@@ -113,14 +113,14 @@ NOP^ROWS
 .PLACE DATA:10 -1..2|-1
 #<
 
-#> needs: proc
+#> needs: proc, label
 .PROC IDLE
 .ENDPROC
 .PROC TAKES_ALL REF R VAL V LREF L LVAL LV
 .ENDPROC
 #<
 
-#> needs: control
+#> needs: control, label
 .CONTROL LINGER
 .CASE AGAIN
 .ENDCONTROL

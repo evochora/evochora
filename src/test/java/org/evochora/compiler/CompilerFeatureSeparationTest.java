@@ -23,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
@@ -30,10 +31,12 @@ import static org.assertj.core.api.Assertions.catchThrowable;
  * <p>
  * The program is divided into blocks, each opened by a comment {@code #> needs:} with the
  * features the block needs and closed by a comment {@code #<}; what stands outside every block
- * needs no feature. The program compiles with every feature. Without one feature, the program as
- * it is fails with a message, never with an internal error, and every place the message names
- * lies in a block that needs that feature; the program without those blocks compiles. Without
- * any feature, the program fails the same way, and what stands outside every block compiles.
+ * needs no feature. The program compiles with every feature. A feature is left out together
+ * with the features that require it ({@link ICompilerFeature#requires()}), since a compiler
+ * without what a feature requires is refused. Without them, the program as it is fails with a
+ * message, never with an internal error, and every place the message names lies in a block that
+ * needs one of them; the program without those blocks compiles. Without any feature, the program
+ * fails the same way, and what stands outside every block compiles.
  * <p>
  * A failure names a hidden dependency: a block that needs a feature it does not name, or a part
  * of the core or of another feature that cannot do without the feature left out.
@@ -77,21 +80,83 @@ class CompilerFeatureSeparationTest {
         assertThat(needed).containsExactlyInAnyOrderElementsOf(names);
     }
 
+    @Test
+    void aBlockThatNeedsAFeatureNeedsWhatTheFeatureRequires() throws Exception {
+        for (Block block : blocks(ReferenceProgram.directory())) {
+            for (ICompilerFeature feature : StandardFeatures.all()) {
+                if (block.needs().contains(feature.name())) {
+                    assertThat(block.needs())
+                            .as("block at %s:%d needs %s", block.file().getFileName(), block.firstLine(), feature.name())
+                            .containsAll(namesOf(feature.requires()));
+                }
+            }
+        }
+    }
+
+    @TestFactory
+    Stream<DynamicTest> aCompilerWithoutWhatAFeatureRequiresIsRefused() {
+        return StandardFeatures.all().stream().filter(feature -> !feature.requires().isEmpty())
+                .flatMap(feature -> feature.requires().stream().map(required -> DynamicTest.dynamicTest(
+                        feature.name() + " without " + required.getSimpleName(), () -> {
+                            List<ICompilerFeature> features = new ArrayList<>(StandardFeatures.all());
+                            // Every other feature that requires the same is left out too, so that
+                            // the refusal names this one
+                            features.removeIf(other -> required.isInstance(other)
+                                    || (other.getClass() != feature.getClass() && other.requires().contains(required)));
+                            assertThatThrownBy(() -> new Compiler(features))
+                                    .isInstanceOf(IllegalArgumentException.class)
+                                    .hasMessageContaining("'" + feature.name() + "'")
+                                    .hasMessageContaining(required.getSimpleName());
+                        })));
+    }
+
     @TestFactory
     Stream<DynamicTest> withoutEachFeatureTheProgramFailsAtItsBlocksAndCompilesWithoutThem(@TempDir Path temp)
             throws Exception {
         Path root = ReferenceProgram.directory();
         List<Block> blocks = blocks(root);
         return featureNames().stream().map(name -> DynamicTest.dynamicTest("without " + name, () -> {
+            Set<String> left = withWhatRequiresIt(name);
             List<ICompilerFeature> features = new ArrayList<>(StandardFeatures.all());
-            features.removeIf(feature -> feature.name().equals(name));
+            features.removeIf(feature -> left.contains(feature.name()));
+            java.util.function.Predicate<Block> needsALeftFeature =
+                    block -> block.needs().stream().anyMatch(left::contains);
 
-            assertFailsInBlocks(features, root, blocks.stream().filter(block -> block.needs().contains(name)).toList());
+            assertFailsInBlocks(features, root, blocks.stream().filter(needsALeftFeature).toList());
 
             Path copy = Files.createDirectory(temp.resolve(name));
-            copyWithout(root, copy, blocks, block -> block.needs().contains(name));
+            copyWithout(root, copy, blocks, needsALeftFeature);
             assertThatCode(() -> compile(features, copy)).doesNotThrowAnyException();
         }));
+    }
+
+    /**
+     * Names a feature together with every feature that requires it, directly or through
+     * another.
+     */
+    private static Set<String> withWhatRequiresIt(String name) {
+        Set<String> left = new LinkedHashSet<>(Set.of(name));
+        boolean grown = true;
+        while (grown) {
+            grown = false;
+            for (ICompilerFeature feature : StandardFeatures.all()) {
+                if (!left.contains(feature.name()) && namesOf(feature.requires()).stream().anyMatch(left::contains)) {
+                    left.add(feature.name());
+                    grown = true;
+                }
+            }
+        }
+        return left;
+    }
+
+    private static Set<String> namesOf(Set<Class<? extends ICompilerFeature>> classes) {
+        Set<String> names = new LinkedHashSet<>();
+        for (ICompilerFeature feature : StandardFeatures.all()) {
+            if (classes.contains(feature.getClass())) {
+                names.add(feature.name());
+            }
+        }
+        return names;
     }
 
     @Test

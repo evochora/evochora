@@ -59,8 +59,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The main compiler implementation. This class orchestrates the entire compilation
@@ -81,11 +81,22 @@ public class Compiler implements ICompiler {
 
     /**
      * Creates a compiler with the given features, which tests use to put a feature of their
-     * own next to the standard ones.
+     * own next to the standard ones, or to leave one out.
      *
      * @param features The features to register, in order.
+     * @throws IllegalArgumentException if a feature requires a feature that is not among them.
      */
     Compiler(List<ICompilerFeature> features) {
+        Set<Class<?>> present = new HashSet<>();
+        features.forEach(feature -> present.add(feature.getClass()));
+        for (ICompilerFeature feature : features) {
+            for (Class<? extends ICompilerFeature> required : feature.requires()) {
+                if (!present.contains(required)) {
+                    throw new IllegalArgumentException("Feature '" + feature.name() + "' requires the feature "
+                            + required.getSimpleName() + ", which is not among the compiler's features.");
+                }
+            }
+        }
         this.features = features;
     }
 

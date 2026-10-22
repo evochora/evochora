@@ -2,6 +2,9 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
+import org.evochora.compiler.features.ctx.CtxFeature;
+
+import java.util.Set;
 
 /**
  * Feature registration for dependency injection between modules. The feature owns both ends of
@@ -17,6 +20,16 @@ import org.evochora.compiler.IFeatureRegistrationContext;
  * line or at the requirement's line), and emission (the values of value requirements).
  */
 public class ImportFeature implements ICompilerFeature {
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Requires {@link CtxFeature}: the module context an imported module is wrapped in.
+     */
+    @Override
+    public Set<Class<? extends ICompilerFeature>> requires() {
+        return Set.of(CtxFeature.class);
+    }
+
     @Override
     public String name() {
         return "importdir"; // "import" is a Java reserved word; name matches the package name

@@ -16,7 +16,7 @@ EXPORT ENTRY:
 EXPORT .CONST TOTAL COUNT
 #<
 
-#> needs: importdir, ctx, proc, instruction
+#> needs: importdir, ctx, proc, instruction, label
 EXPORT .PROC SERVE REF RESULT
   ADDI RESULT DATA:1
   RET

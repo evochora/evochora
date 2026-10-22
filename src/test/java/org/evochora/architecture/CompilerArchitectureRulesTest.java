@@ -7,8 +7,10 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
-import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -50,8 +52,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Enforces the structure of the compiler described in the <em>Compiler</em> section of
- * {@code AGENTS.md}: a feature-agnostic core, features that know neither each other nor any
- * state, three data formats that do not reach into one another, and phases that meet only in
+ * {@code AGENTS.md}: a feature-agnostic core, features that know each other only where one
+ * declares that it requires another and that hold no state, three data formats that do not reach into one another, and phases that meet only in
  * {@code Compiler}.
  * <p>
  * Each rule here is the enforceable form of one sentence of that section. A rule fires naming
@@ -134,17 +136,60 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
-     * No feature references another feature.
+     * A feature references another feature only where it declares that it requires it: from its
+     * feature class, in {@link ICompilerFeature#requires()}, to the feature class it requires.
      * <p>
      * A feature is the unit of change. A handler that needs another feature's work reads it from
      * the phase's input data, never from the other feature's classes; otherwise a change to one
-     * feature spreads into the next.
+     * feature spreads into the next. A feature that builds on another names it in one place, and
+     * the rule reads that declaration rather than a list of its own, so what is allowed is
+     * exactly what the features declare.
      */
     @Test
-    void featuresDoNotReferenceEachOther() {
-        slices().matching(FEATURES + ".(*)..")
-                .should().notDependOnEachOther()
+    void featuresReferenceOnlyTheFeaturesTheyRequire() {
+        Map<Class<?>, Set<Class<? extends ICompilerFeature>>> declared = new HashMap<>();
+        StandardFeatures.all().forEach(feature -> declared.put(feature.getClass(), feature.requires()));
+
+        classes().that().resideInAPackage(FEATURES + "..")
+                .should(referenceOtherFeaturesOnlyAsDeclared(declared))
                 .check(compilerClasses);
+    }
+
+    private static ArchCondition<JavaClass> referenceOtherFeaturesOnlyAsDeclared(
+            Map<Class<?>, Set<Class<? extends ICompilerFeature>>> declared) {
+        return new ArchCondition<>("reference another feature only from its feature class to a feature class it requires") {
+            @Override
+            public void check(JavaClass origin, ConditionEvents events) {
+                String own = featureOf(origin);
+                for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                    JavaClass target = dependency.getTargetClass();
+                    String other = featureOf(target);
+                    if (other == null || other.equals(own)) {
+                        continue;
+                    }
+                    boolean allowed = declared.containsKey(origin.reflect())
+                            && declared.get(origin.reflect()).contains(target.reflect());
+                    if (!allowed) {
+                        events.add(SimpleConditionEvent.violated(dependency, dependency.getDescription()));
+                    }
+                }
+            }
+        };
+    }
+
+    /**
+     * Names the feature a class belongs to: the package directly below the features package, or
+     * none for a class outside it.
+     */
+    private static String featureOf(JavaClass clazz) {
+        String prefix = FEATURES + ".";
+        String packageName = clazz.getPackageName();
+        if (!packageName.startsWith(prefix)) {
+            return null;
+        }
+        String rest = packageName.substring(prefix.length());
+        int dot = rest.indexOf('.');
+        return dot < 0 ? rest : rest.substring(0, dot);
     }
 
     /**

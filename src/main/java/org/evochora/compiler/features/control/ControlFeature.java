@@ -2,6 +2,7 @@ package org.evochora.compiler.features.control;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
+import org.evochora.compiler.features.label.LabelFeature;
 import org.evochora.compiler.frontend.BlockKind;
 
 import java.util.Set;
@@ -13,6 +14,16 @@ import java.util.Set;
  * the converters that turn the block and its cases into labels around their code.
  */
 public class ControlFeature implements ICompilerFeature {
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Requires {@link LabelFeature}: the names of a block are labels, which a jump resolves through.
+     */
+    @Override
+    public Set<Class<? extends ICompilerFeature>> requires() {
+        return Set.of(LabelFeature.class);
+    }
 
     @Override
     public String name() { return "control"; }

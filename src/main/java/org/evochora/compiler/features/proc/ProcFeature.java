@@ -2,6 +2,7 @@ package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
+import org.evochora.compiler.features.label.LabelFeature;
 import org.evochora.compiler.frontend.BlockKind;
 
 import java.util.Set;
@@ -12,6 +13,16 @@ import java.util.Set;
  * post-processing, IR generation, emission rules, linking, and emission contribution.
  */
 public class ProcFeature implements ICompilerFeature {
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Requires {@link LabelFeature}: a procedure is a label, which a call resolves through.
+     */
+    @Override
+    public Set<Class<? extends ICompilerFeature>> requires() {
+        return Set.of(LabelFeature.class);
+    }
 
     @Override
     public String name() { return "proc"; }

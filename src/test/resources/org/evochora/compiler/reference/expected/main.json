@@ -122,14 +122,14 @@
         ".PLACE DATA:10 -1..2|-1",
         "#\u003c",
         "",
-        "#\u003e needs: proc",
+        "#\u003e needs: proc, label",
         ".PROC IDLE",
         ".ENDPROC",
         ".PROC TAKES_ALL REF R VAL V LREF L LVAL LV",
         ".ENDPROC",
         "#\u003c",
         "",
-        "#\u003e needs: control",
+        "#\u003e needs: control, label",
         ".CONTROL LINGER",
         ".CASE AGAIN",
         ".ENDCONTROL",
@@ -817,7 +817,7 @@
         "EXPORT .CONST TOTAL COUNT",
         "#\u003c",
         "",
-        "#\u003e needs: importdir, ctx, proc, instruction",
+        "#\u003e needs: importdir, ctx, proc, instruction, label",
         "EXPORT .PROC SERVE REF RESULT",
         "  ADDI RESULT DATA:1",
         "  RET",
@@ -955,26 +955,6 @@
     }
   ],
   "expansions": {
-    "1": {
-      "calledAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 53,
-        "columnNumber": 1,
-        "placement": "",
-        "expansion": 0
-      },
-      "definedAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 49,
-        "columnNumber": 8,
-        "placement": "",
-        "expansion": 0
-      },
-      "name": "NOTHING",
-      "bindings": [],
-      "leftOut": [],
-      "notes": []
-    },
     "2": {
       "calledAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
@@ -1001,6 +981,26 @@
           "argument": "2"
         }
       ],
+      "leftOut": [],
+      "notes": []
+    },
+    "1": {
+      "calledAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 53,
+        "columnNumber": 1,
+        "placement": "",
+        "expansion": 0
+      },
+      "definedAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 49,
+        "columnNumber": 8,
+        "placement": "",
+        "expansion": 0
+      },
+      "name": "NOTHING",
+      "bindings": [],
       "leftOut": [],
       "notes": []
     },
@@ -7646,43 +7646,43 @@
     }
   },
   "callSiteBindings": {
-    "243": {
-      "1280": 256,
+    "170": {
       "1281": 257,
-      "1024": 0
-    },
-    "187": {
-      "1024": 3
-    },
-    "230": {
+      "1025": 1,
+      "1280": 256,
       "1024": 0
     },
     "291": {
       "1024": 0
     },
-    "170": {
-      "1025": 1,
-      "1281": 257,
-      "1024": 0,
-      "1280": 256
-    },
-    "275": {
+    "230": {
       "1024": 0
     },
-    "156": {
-      "1280": 256,
+    "187": {
+      "1024": 3
+    },
+    "243": {
       "1281": 257,
+      "1280": 256,
+      "1024": 0
+    },
+    "83": {
+      "1024": 1024
+    },
+    "281": {
       "1024": 0
     },
     "199": {
       "1280": 256,
       "1024": 0
     },
-    "281": {
+    "156": {
+      "1281": 257,
+      "1280": 256,
       "1024": 0
     },
-    "83": {
-      "1024": 1024
+    "275": {
+      "1024": 0
     }
   },
   "linearAddressToCoord": {
