@@ -7,6 +7,7 @@ import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.symbols.SymbolTableResolution;
 import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.symbols.ExpressionOutcome;
@@ -33,12 +34,10 @@ import java.util.Set;
  * A computation is evaluated here and its outcome recorded in the symbol table: as the target
  * of a CALL without arguments, where it stands for a literal, and as a VAL argument, where its
  * value is a number, a typed value or a vector. A REF, LREF or LVAL argument takes no
- * computation, and nowhere does a value only the layout knows stand, written or through a name.
+ * computation. A position, a molecule type and a value computed from a position, which only the
+ * layout knows, stand nowhere, written or through a name.
  */
 public class CallAnalysisHandler implements IAnalysisHandler {
-
-    /** The message for a value only the layout knows, where an argument is expected. */
-    private static final String LAYOUT_VALUE = "A layout value cannot be used as an instruction argument.";
 
     private final IInstructionSet isa;
     private final Evaluator evaluator;
@@ -61,7 +60,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         boolean hasArguments = !callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
                 || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty();
         if (callNode.procedureName() instanceof ExpressionNode target
-                && !(evaluate(target, symbolTable, diagnostics) instanceof EvaluationResult.Value)) {
+                && !(evaluate(target, Role.TARGET, symbolTable, diagnostics) instanceof EvaluationResult.Value)) {
             return;
         }
         if (!(callNode.procedureName() instanceof IdentifierNode procIdentifier)) {
@@ -120,7 +119,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             if (valArg instanceof RegisterNode) continue;
             if (valArg instanceof LiteralNode) continue;
             if (valArg instanceof ExpressionNode expression) {
-                evaluate(expression, symbolTable, diagnostics);
+                evaluate(expression, Role.VAL, symbolTable, diagnostics);
                 continue;
             }
             if (valArg instanceof IdentifierNode idNode) {
@@ -244,7 +243,12 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         Meaning meaning = meaningOf(resolved.symbol().node(), idNode, st);
         if (accepted.contains(meaning) || meaning == Meaning.UNRESOLVED) return;
         if (meaning == Meaning.LAYOUT_VALUE) {
-            report(LAYOUT_VALUE, idNode.sourceInfo(), diag);
+            boolean isPosition = st.chainEndOf(idNode)
+                    .flatMap(end -> st.definitionValueOf(end.node()))
+                    .map(outcome -> outcome.kind() == Kind.POSITION).orElse(false);
+            diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: "
+                            + (isPosition ? "it is a position." : "it is computed from a position."),
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (meaning == Meaning.NONE) {
             diag.reportError("'" + idNode.text() + "' is not a register or a label and cannot be a CALL argument.",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
@@ -277,27 +281,34 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     }
 
     /**
+     * Where a computation stands in a CALL: as its target, or as a VAL argument.
+     */
+    private enum Role { TARGET, VAL }
+
+    /**
      * Evaluates a computation that stands for a literal, records its outcome, and reports what
-     * keeps it from being one: a molecule type, a position, a value only the layout knows, or the
-     * error of the computation.
+     * keeps it from being one: a molecule type, a position, a value computed from a position,
+     * which only the layout knows, or the error of the computation. The target is reported as
+     * the first argument of the CALL instruction, a VAL argument as what VAL takes.
      *
      * @return The result of the evaluation.
      */
-    private EvaluationResult evaluate(ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+    private EvaluationResult evaluate(ExpressionNode expression, Role role, SymbolTable symbolTable,
+                                      DiagnosticsEngine diagnostics) {
         EvaluationResult result = evaluator.evaluate(expression.expression(),
                 new SymbolTableResolution(symbolTable), IEvaluationContext.none());
         switch (result) {
             case EvaluationResult.Value value -> {
                 symbolTable.recordResult(expression, ExpressionOutcome.of(value.value()));
                 if (value.value() instanceof Value.Type) {
-                    report("A molecule type cannot be used as an instruction argument.", expression.sourceInfo(), diagnostics);
+                    reportUnusable(expression, role, "TYPE", diagnostics);
                 } else if (value.value() instanceof Value.Position) {
-                    report("A position cannot be used as an instruction argument.", expression.sourceInfo(), diagnostics);
+                    reportUnusable(expression, role, "POSITION", diagnostics);
                 }
             }
             case EvaluationResult.Partial partial -> {
                 symbolTable.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
-                report(LAYOUT_VALUE, expression.sourceInfo(), diagnostics);
+                reportUnusable(expression, role, partial.kind() == Kind.POSITION ? "POSITION" : null, diagnostics);
             }
             case EvaluationResult.Error error ->
                     report(error.reason(), error.at() != null ? error.at() : expression.sourceInfo(), diagnostics);
@@ -306,6 +317,23 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             }
         }
         return result;
+    }
+
+    /**
+     * Reports a computation whose value cannot stand where it stands: of the kind given, a
+     * molecule type or a position, or, without a kind, computed from a position.
+     */
+    private static void reportUnusable(ExpressionNode expression, Role role, String kind, DiagnosticsEngine diagnostics) {
+        String message = switch (role) {
+            case TARGET -> kind != null
+                    ? "Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got " + kind + "."
+                    : "Argument 1 for instruction 'CALL' is computed from a position.";
+            case VAL -> kind == null
+                    ? "Cannot pass '" + expression.expression().text() + "' as VAL argument: it is computed from a position."
+                    : "Cannot pass " + ("TYPE".equals(kind) ? "a molecule type" : "a position")
+                            + " as VAL argument: VAL takes a register, a literal or a vector.";
+        };
+        report(message, expression.sourceInfo(), diagnostics);
     }
 
     private static void report(String message, SourceInfo at, DiagnosticsEngine diagnostics) {

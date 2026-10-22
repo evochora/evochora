@@ -940,13 +940,13 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * A computation only the layout can compute is no operand.
+     * A value computed from a position is no operand.
      */
     @Test
     @Tag("unit")
     void aLayoutValueIsNoOperand() {
         assertThat(analyze("SETI %DR0 DATA:(@[0])")).singleElement().satisfies(d -> {
-            assertThat(d.message()).isEqualTo("A layout value cannot be used as an instruction argument.");
+            assertThat(d.message()).isEqualTo("Argument 2 for instruction 'SETI' is computed from a position.");
             assertThat(d.lineNumber()).isEqualTo(1);
         });
     }
@@ -962,7 +962,7 @@ public class SemanticAnalyzerTest {
                 ".LABEL TARGET NOP",
                 ".CONST X (TARGET)",
                 "JMPI X")).singleElement().satisfies(d -> {
-            assertThat(d.message()).isEqualTo("A layout value cannot be used as an instruction argument.");
+            assertThat(d.message()).isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got POSITION.");
             assertThat(d.lineNumber()).isEqualTo(3);
         });
     }

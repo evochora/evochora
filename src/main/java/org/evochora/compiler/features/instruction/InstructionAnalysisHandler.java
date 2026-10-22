@@ -7,6 +7,7 @@ import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.symbols.SymbolTableResolution;
 import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
@@ -32,14 +33,11 @@ import java.util.Optional;
  * This involves checking the instruction's arity, argument types, and other constraints.
  * <p>
  * A computation in an operand is evaluated here and its outcome recorded in the symbol table.
- * Its value is checked against the slot as a written literal is; a value only the layout knows,
- * a position or a molecule type is no operand, and a name that stands for a value only the
- * layout knows is none either, at a label slot too: a computed position is never a jump target.
+ * Its value is checked against the slot as a written literal is. A position and a molecule type
+ * are of the wrong type for every slot; a value computed from a position, which only the layout
+ * knows, is no argument either, written or through a name, at a label slot too.
  */
 public class InstructionAnalysisHandler implements IAnalysisHandler {
-
-    /** The message for a value only the layout knows, where an operand is expected. */
-    private static final String LAYOUT_VALUE = "A layout value cannot be used as an instruction argument.";
 
     private final IInstructionSet isa;
     private final Evaluator evaluator;
@@ -126,7 +124,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             }
             case EvaluationResult.Partial partial -> {
                 symbolTable.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
-                report(LAYOUT_VALUE, expression.sourceInfo(), diagnostics);
+                reportLayoutValue(partial.kind(), slot, diagnostics);
             }
             case EvaluationResult.Error error ->
                     report(error.reason(), error.at() != null ? error.at() : expression.sourceInfo(), diagnostics);
@@ -151,9 +149,10 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     if (end.isEmpty()) {
                         return;
                     }
-                    if (end.get().symbol() != null && symbolTable.definitionValueOf(end.get().node())
-                            .map(outcome -> outcome.remaining() != null).orElse(false)) {
-                        report(LAYOUT_VALUE, idNode.sourceInfo(), diagnostics);
+                    Optional<ExpressionOutcome> laidOut = end.get().symbol() == null ? Optional.empty()
+                            : symbolTable.definitionValueOf(end.get().node()).filter(outcome -> outcome.remaining() != null);
+                    if (laidOut.isPresent()) {
+                        reportLayoutValue(laidOut.get().kind(), slot, diagnostics);
                         return;
                     }
                     AstNode bound = end.get().symbol() != null
@@ -196,8 +195,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      */
     private static void checkValue(Value value, SourceInfo at, Slot slot, DiagnosticsEngine diagnostics) {
         switch (value) {
-            case Value.Type type -> report("A molecule type cannot be used as an instruction argument.", at, diagnostics);
-            case Value.Position position -> report("A position cannot be used as an instruction argument.", at, diagnostics);
+            case Value.Type type -> reportWrongType(slot, "TYPE", diagnostics);
+            case Value.Position position -> reportWrongType(slot, "POSITION", diagnostics);
             case Value.Vector vector -> reportWrongType(slot, ArgKind.VECTOR, diagnostics);
             case Value.Typed typed -> reportWrongType(slot, ArgKind.LITERAL, diagnostics);
             case Value.Number number -> {
@@ -212,6 +211,36 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 }
             }
         }
+    }
+
+    /**
+     * Reports a value only the layout knows: a position as of the wrong type, any other value as
+     * computed from a position.
+     */
+    private static void reportLayoutValue(Kind kind, Slot slot, DiagnosticsEngine diagnostics) {
+        if (kind == Kind.POSITION) {
+            reportWrongType(slot, "POSITION", diagnostics);
+            return;
+        }
+        diagnostics.reportError(
+                String.format("Argument %d for instruction '%s' is computed from a position.",
+                        slot.index() + 1, slot.instruction().opcode()),
+                slot.instruction().sourceInfo().fileName(),
+                slot.instruction().sourceInfo().lineNumber()
+        );
+    }
+
+    /**
+     * Reports a value that is of no argument kind at all, a position or a molecule type, as of
+     * the wrong type, named by its kind.
+     */
+    private static void reportWrongType(Slot slot, String actualType, DiagnosticsEngine diagnostics) {
+        diagnostics.reportError(
+                String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
+                        slot.index() + 1, slot.instruction().opcode(), slot.expected(), actualType),
+                slot.instruction().sourceInfo().fileName(),
+                slot.instruction().sourceInfo().lineNumber()
+        );
     }
 
     private static void reportWrongType(Slot slot, ArgKind actualType, DiagnosticsEngine diagnostics) {

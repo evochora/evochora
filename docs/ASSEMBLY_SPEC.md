@@ -1034,7 +1034,7 @@ Every file has a reference point: in the main file it is `0|0`, in a file brough
     .ORG P
     ```
 * A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Any other operation on a position is an error.
-* A position cannot be an instruction argument; an instruction reaches a place through its label, as `JMPI TARGET` does.
+* A position, and a value computed from one, cannot be an instruction argument.
 * An expression with `@` means the place where it is written: `.CONST HERE @` is the position of the `.CONST` line, wherever `HERE` is used.
 * A label in an expression must stand above that expression.
 * In `.ORG 0|@+2`, `@+` is the marker of `.ORG` (see [Layout Control](#layout-control)), not `@` plus 2; the same holds for `@-` and for the markers of `.DIR`.

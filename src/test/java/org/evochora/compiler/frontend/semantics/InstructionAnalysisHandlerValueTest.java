@@ -60,7 +60,7 @@ class InstructionAnalysisHandlerValueTest {
         handler.analyze(seti(new IdentifierNode("P", SRC)), symbolTable, diagnostics);
 
         assertThat(diagnostics.getDiagnostics()).extracting(Diagnostic::message)
-                .containsExactly("A position cannot be used as an instruction argument.");
+                .containsExactly("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got POSITION.");
     }
 
     @Test
@@ -70,7 +70,7 @@ class InstructionAnalysisHandlerValueTest {
         handler.analyze(seti(new IdentifierNode("T", SRC)), symbolTable, diagnostics);
 
         assertThat(diagnostics.getDiagnostics()).extracting(Diagnostic::message)
-                .containsExactly("A molecule type cannot be used as an instruction argument.");
+                .containsExactly("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got TYPE.");
     }
 
     @Test

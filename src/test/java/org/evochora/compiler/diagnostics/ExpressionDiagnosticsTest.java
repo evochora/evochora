@@ -63,7 +63,58 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 DATA:(@[0])");
 
-        assertReported("A layout value cannot be used as an instruction argument.", 2);
+        assertReported("Argument 2 for instruction 'SETI' is computed from a position.", 2);
+    }
+
+    /**
+     * A position and a value computed from one are no instruction argument, written or through a
+     * name; a position is of the wrong type, a value computed from one is reported as such.
+     */
+    @Test
+    void positionsAndValuesComputedFromThemAreNoArgument() throws Exception {
+        write("main.evo",
+                "P:",
+                "  NOP",
+                "Q:",
+                "  NOP",
+                ".CONST D (Q - P)",
+                "  SETV %DR0 (Q - P)",
+                "  SETV %DR1 D",
+                "  SETV %DR2 (P)",
+                "  SETV %DR3 @");
+
+        assertReportedAt("Argument 2 for instruction 'SETV' is computed from a position.", 6);
+        assertReportedAt("Argument 2 for instruction 'SETV' is computed from a position.", 7);
+        assertReportedAt("Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got POSITION.", 8);
+        assertReportedAt("Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got POSITION.", 9);
+    }
+
+    /**
+     * The CALL target and a VAL argument report a position, a molecule type and a value computed
+     * from a position each in the words of their place.
+     */
+    @Test
+    void callArgumentsComputedFromPositionsAreReported() throws Exception {
+        write("main.evo",
+                "P:",
+                "  NOP",
+                "Q:",
+                "  NOP",
+                ".CONST D (Q - P)",
+                ".PROC X VAL A",
+                "  RET",
+                ".ENDPROC",
+                "  CALL X VAL (Q - P)",
+                "  CALL X VAL D",
+                "  CALL X VAL (P)",
+                "  CALL X VAL TYPE(DATA:1)",
+                "  CALL (P)");
+
+        assertReportedAt("Cannot pass '(Q-P)' as VAL argument: it is computed from a position.", 9);
+        assertReportedAt("Cannot pass 'D' as VAL argument: it is computed from a position.", 10);
+        assertReportedAt("Cannot pass a position as VAL argument: VAL takes a register, a literal or a vector.", 11);
+        assertReportedAt("Cannot pass a molecule type as VAL argument: VAL takes a register, a literal or a vector.", 12);
+        assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got POSITION.", 13);
     }
 
     @Test
@@ -74,7 +125,7 @@ class ExpressionDiagnosticsTest {
                 ".CONST X (TARGET)",
                 "  JMPI X");
 
-        assertReported("A layout value cannot be used as an instruction argument.", 4);
+        assertReported("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got POSITION.", 4);
     }
 
     @Test
@@ -156,7 +207,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 T");
 
-        assertReported("A molecule type cannot be used as an instruction argument.", 3);
+        assertReported("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got TYPE.", 3);
     }
 
     @Test
@@ -166,6 +217,15 @@ class ExpressionDiagnosticsTest {
                 "  SETI %DR0 DATA:(1 +)");
 
         assertReported("Expected an expression after '+'.", 2);
+    }
+
+    /**
+     * Asserts that the compilation fails and reports the message at the line, the two together.
+     */
+    private void assertReportedAt(String message, int line) {
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:" + line + ": " + message);
     }
 
     private void assertReported(String message, int line) {
