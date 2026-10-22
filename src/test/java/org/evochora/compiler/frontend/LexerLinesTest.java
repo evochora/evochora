@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend;
 
-import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.CompilerOptions;
