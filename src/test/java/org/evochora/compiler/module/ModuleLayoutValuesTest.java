@@ -140,6 +140,29 @@ class ModuleLayoutValuesTest {
     }
 
     /**
+     * A placement of one single value in a module imported at 5|5: a vector is that place counted
+     * from the module's origin, a given position is that place of the program.
+     */
+    @Test
+    void aSinglePlacedVectorCountsFromTheModulesOriginAndAPositionDoesNot() throws Exception {
+        write("lib.evo",
+                ".REQUIRE VALUE P",
+                ".CONST V 1|2",
+                ".PLACE DATA:1 V",
+                ".PLACE DATA:2 P",
+                "NOP");
+        write("main.evo",
+                ".ORG 5|5",
+                ".IMPORT \"lib.evo\" AS LIB USING VALUE P POSITION(30|40)");
+
+        ProgramArtifact artifact = compile(Map.of());
+
+        assertThat(artifact.initialWorldObjects().entrySet().stream()
+                .map(entry -> Arrays.toString(entry.getKey()) + "=" + entry.getValue().value()))
+                .containsExactlyInAnyOrder("[6, 7]=1", "[30, 40]=2");
+    }
+
+    /**
      * A {@code .SOURCE}d file keeps the placement of the file that takes it in: its label is a
      * position of the program, while a vector {@code .ORG} in it counts from the file's own origin.
      */
