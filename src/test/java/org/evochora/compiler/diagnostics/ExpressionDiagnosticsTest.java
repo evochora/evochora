@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -110,11 +111,40 @@ class ExpressionDiagnosticsTest {
                 "  CALL X VAL TYPE(DATA:1)",
                 "  CALL (P)");
 
-        assertReportedAt("Cannot pass '(Q-P)' as VAL argument: it is computed from a position.", 9);
-        assertReportedAt("Cannot pass 'D' as VAL argument: it is computed from a position.", 10);
-        assertReportedAt("Cannot pass a position as VAL argument: VAL takes a register, a literal or a vector.", 11);
-        assertReportedAt("Cannot pass a molecule type as VAL argument: VAL takes a register, a literal or a vector.", 12);
+        assertReportedAt("Invalid argument: '(Q-P)' for VAL is computed from a position; expected a register, a typed literal or a vector.", 9);
+        assertReportedAt("Invalid argument: 'D' for VAL is computed from a position; expected a register, a typed literal or a vector.", 10);
+        assertReportedAt("Invalid argument: 'P' for VAL is a position; expected a register, a typed literal or a vector.", 11);
+        assertReportedAt("Invalid argument: 'TYPE(DATA:1)' for VAL is a molecule type; expected a register, a typed literal or a vector.", 12);
         assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got POSITION.", 13);
+    }
+
+    /**
+     * A VAL argument becomes a cell, so a number has to carry a molecule type there, as in an
+     * instruction argument: written, through a constant or computed alike. A molecule type
+     * through a constant is reported as it is when written or computed.
+     */
+    @Test
+    void aValArgumentWithoutATypeIsReported() throws Exception {
+        write("main.evo",
+                ".CONST N 5",
+                ".CONST K TYPE(DATA:1)",
+                ".CONST T DATA:5",
+                ".PROC X VAL A",
+                "  RET",
+                ".ENDPROC",
+                "  CALL X VAL 5",
+                "  CALL X VAL N",
+                "  CALL X VAL (N + 1)",
+                "  CALL X VAL K",
+                "  CALL X VAL T",
+                "  CALL X VAL (T * 2)");
+
+        assertReportedAt("Invalid argument: '5' for VAL is a number without a type; expected a register, a typed literal or a vector.", 7);
+        assertReportedAt("Invalid argument: 'N' for VAL is a number without a type; expected a register, a typed literal or a vector.", 8);
+        assertReportedAt("Invalid argument: '(N+1)' for VAL is a number without a type; expected a register, a typed literal or a vector.", 9);
+        assertReportedAt("Invalid argument: 'K' for VAL is a molecule type; expected a register, a typed literal or a vector.", 10);
+        assertThatThrownBy(() -> compile("main.evo"))
+                .satisfies(e -> assertThat(e.getMessage().lines()).hasSize(4));
     }
 
     /**
@@ -359,7 +389,7 @@ class ExpressionDiagnosticsTest {
                 "START:",
                 "  CALL P REF (1+1)");
 
-        assertReported("Cannot pass a computation as REF argument: REF takes a register.", 5);
+        assertReported("Invalid argument: '(1+1)' for REF is a computation; expected a register.", 5);
     }
 
     @Test

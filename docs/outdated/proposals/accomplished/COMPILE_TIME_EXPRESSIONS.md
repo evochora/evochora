@@ -257,8 +257,8 @@ that failed; the spec explains the rules, the message does not:
 parentheses.` · `'FOO' is not defined.` (and the symbol table's other texts) · `'X' cannot be used as
 a value.` · `Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got POSITION.`
 (a position or a molecule type, `… got TYPE.`, in an operand or a label slot) · `Argument 2 for
-instruction 'SETI' is computed from a position.` · `Cannot pass 'D' as VAL argument: it is computed
-from a position.` ·
+instruction 'SETI' is computed from a position.` · `Invalid argument: 'D' for VAL is computed from
+a position; expected a register, a typed literal or a vector.` ·
 `'X' has no value.` (a flag set without a value, in a computation) · `Invalid operands for ':': typed and number.` (a defined name that is no molecule type before `:`; an undefined one reports `'FOO' is not defined.`)
 · `Division by zero.` · `Integer overflow.` · `Type mismatch: ENERGY and DATA.` · `Invalid operands
 for '*': vector and vector.` · `Invalid vector component: 'NW' is a vector.` · `Index 3 out of bounds
@@ -729,9 +729,14 @@ What the built code does beyond the solution text:
   with flags."), and a flag name is noted wherever a directive reads it.
 - **Positions in instruction arguments.** A position, and a number or a vector computed from one,
   is rejected in an instruction argument and as a `VAL` argument ("Argument 2 for instruction 'SETI'
-  is computed from a position.", "Cannot pass 'D' as VAL argument: it is computed from a position.");
+  is computed from a position.", "Invalid argument: 'D' for VAL is computed from a position; expected
+  a register, a typed literal or a vector.");
   a `CALL` target that is no name, written or computed, is of the wrong type. The reason stands in
-  the row "Labels".
+  the row "Labels". A number without a type is rejected as a `VAL` argument, written, through a
+  constant or computed, as it is in an instruction argument ("Invalid argument: '5' for VAL is a
+  number without a type; expected a register, a typed literal or a vector."), and so is a molecule
+  type through a constant. Every message about an argument of a `CALL` has this form, the kind of
+  error first, then the argument as written, what it is, and what its kind expects.
 - **Messages.** "Invalid vector component: 'NW' is a vector." names the text and the kind of the
   part (a number, a typed value, a vector, a molecule type, a position); "Expected a number after
   '|'." comes from the parser. A configured value that is no operand carries the parser's reason

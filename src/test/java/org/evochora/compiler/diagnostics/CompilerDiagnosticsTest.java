@@ -738,7 +738,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("REF argument '%POS' is a location register, expected a data register.")
+                .hasMessageContaining("Invalid argument: '%POS' for REF is a location register; expected a data register.")
                 .hasMessageContaining("main.evo:6");
     }
 
@@ -757,7 +757,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'LIB' is not a register or a label and cannot be a CALL argument.")
+                .hasMessageContaining("Invalid argument: 'LIB' for REF is not a register or a label; expected a data register.")
                 .hasMessageContaining("main.evo:6");
     }
 
@@ -1250,7 +1250,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass a literal as REF argument: REF takes a register.")
+                .hasMessageContaining("Invalid argument: 'DATA:1' for REF is a literal; expected a register.")
                 .hasMessageContaining("main.evo:5");
     }
 
@@ -1265,7 +1265,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass '%DR0' as LREF argument: it is not a location register.")
+                .hasMessageContaining("Invalid argument: '%DR0' for LREF is not a location register; expected a location register.")
                 .hasMessageContaining("main.evo:5");
     }
 
@@ -1292,7 +1292,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("VAL argument 'START' is a label, expected a register, a literal or a vector.")
+                .hasMessageContaining("Invalid argument: 'START' for VAL is a label; expected a register, a typed literal or a vector.")
                 .hasMessageContaining("main.evo:5");
     }
 
@@ -1307,7 +1307,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass a literal as LVAL argument: LVAL takes a location register or a label.")
+                .hasMessageContaining("Invalid argument: 'DATA:1' for LVAL is a literal; expected a location register or a label.")
                 .hasMessageContaining("main.evo:5");
     }
 

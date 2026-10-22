@@ -154,7 +154,7 @@ public class IrGeneratorTest {
     void generatesIrForNewCallSyntax() {
         String src = """
             .PROC myProc REF rA VAL v1
-                CALL myProc REF %DR1 VAL 42
+                CALL myProc REF %DR1 VAL DATA:42
             .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
@@ -176,7 +176,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.valOperands().size());
         assertInstanceOf(IrLiteral.class, callInstruction.valOperands().get(0));
-        assertEquals(new Value.Number(42), ((IrLiteral) callInstruction.valOperands().get(0)).value());
+        assertEquals(new Value.Typed("DATA", 42), ((IrLiteral) callInstruction.valOperands().get(0)).value());
     }
 
     @Test

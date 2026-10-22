@@ -357,7 +357,7 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 * `JMPS`: Jumps to the label whose value is popped from the stack.
   `CALL <Label> [REF %reg ...] [VAL %reg|Literal|Vector ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
-    - `VAL`: Passes registers, literal values or vectors by value. Modifications are local.
+    - `VAL`: Passes registers, typed literals or vectors by value. Modifications are local.
     - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
     - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time, as `PSLI` does: a label that matches nothing, or whose cell belongs to another organism, is passed as no position.
     - **Example**:

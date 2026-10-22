@@ -574,7 +574,7 @@ public class SemanticAnalyzerTest {
                 ".PROC myProc REF rA VAL v1",
                 "  RET",
                 ".ENDPROC",
-                "CALL myProc REF %DR1 VAL 123"
+                "CALL myProc REF %DR1 VAL DATA:123"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
@@ -608,7 +608,7 @@ public class SemanticAnalyzerTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Cannot pass a literal as REF argument: REF takes a register."));
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Invalid argument: '123' for REF is a literal; expected a register."));
     }
 
     @Test
