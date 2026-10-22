@@ -81,9 +81,16 @@ public class LayoutEngineTest {
     }
 
     /**
-     * Builds a {@code core:org} directive with one mark per component.
+     * Builds a {@code core:org} directive with one mark per component, none counting backwards.
      */
     private static IrDirective org(int[] components, boolean[] relative, SourceInfo source) {
+        return org(components, relative, new boolean[relative.length], source);
+    }
+
+    /**
+     * Builds a {@code core:org} directive with one mark and one direction per component.
+     */
+    private static IrDirective org(int[] components, boolean[] relative, boolean[] backward, SourceInfo source) {
         Map<String, IrValue> args = new HashMap<>();
         args.put("components", new IrValue.ListVal(java.util.Arrays.stream(components)
                 .mapToObj(c -> (IrValue) new IrValue.Literal(new Value.Number(c))).toList()));
@@ -92,6 +99,11 @@ public class LayoutEngineTest {
             marks.add(new IrValue.Bool(marked));
         }
         args.put("relative", new IrValue.ListVal(List.copyOf(marks)));
+        List<IrValue> directions = new ArrayList<>(backward.length);
+        for (boolean back : backward) {
+            directions.add(new IrValue.Bool(back));
+        }
+        args.put("backward", new IrValue.ListVal(List.copyOf(directions)));
         return new IrDirective("core", "org", args, source);
     }
 
@@ -221,6 +233,7 @@ public class LayoutEngineTest {
         orgArgs.put("components", new IrValue.ListVal(List.of(new IrValue.Literal(new Value.Number(4294967296L)),
                 new IrValue.Literal(new Value.Number(0L)))));
         orgArgs.put("relative", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
+        orgArgs.put("backward", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
         assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "org", orgArgs, src("main.s", 1)), seti(2))))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Value 4294967296 out of range for a coordinate.")
@@ -310,13 +323,14 @@ public class LayoutEngineTest {
     }
 
     /**
-     * Both components may be marked, and the marker's sign decides the direction.
+     * Both components may be marked, and the marker's sign decides the direction: the written
+     * value counts backwards where the marker is {@code @-}.
      */
     @Test
     void markedComponentsCountForwardsAndBackwards() throws Exception {
         LayoutResult res = layout(List.of(
                 org(new int[]{5, 10}, new boolean[]{false, false}, src("main.s", 1)),
-                org(new int[]{2, -3}, new boolean[]{true, true}, src("main.s", 2)),
+                org(new int[]{2, 3}, new boolean[]{true, true}, new boolean[]{false, true}, src("main.s", 2)),
                 seti(3)));
 
         assertThat(res.linearAddressToCoord().get(0)).containsExactly(7, 7);
@@ -376,6 +390,7 @@ public class LayoutEngineTest {
         Map<String, IrValue> args = new HashMap<>();
         args.put("components", new IrValue.ListVal(List.of(whole)));
         args.put("relative", new IrValue.ListVal(List.of(new IrValue.Bool(false))));
+        args.put("backward", new IrValue.ListVal(List.of(new IrValue.Bool(false))));
         return new IrDirective("core", "org", args, source);
     }
 

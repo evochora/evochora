@@ -18,12 +18,14 @@ import java.util.List;
  * <p>
  * A directive of one component may give the whole origin: a position is that place of the
  * program and becomes the cursor as it is; a vector counts from the base position of the
- * enclosing module context or, where the component was marked relative, from the layout cursor.
+ * enclosing module context or, where the component was marked relative, from the layout cursor,
+ * backwards where the marker was {@code @-}.
  * Otherwise every component is a number, a single one as a vector of one component, taken from
  * the base position or, marked relative, from the cursor along its own axis.
  * <p>
- * The directive carries the components under {@code components} and, under {@code relative},
- * one flag per component. Both are required, and the flags are as many as the components.
+ * The directive carries the components under {@code components} and, under {@code relative} and
+ * {@code backward}, one flag per component each. All three are required, and the flags are as many
+ * as the components.
  */
 public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 	/**
@@ -33,6 +35,7 @@ public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 	public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
 		List<IrValue> components = ((IrValue.ListVal) directive.args().get("components")).elements();
 		List<IrValue> relative = ((IrValue.ListVal) directive.args().get("relative")).elements();
+		List<IrValue> backward = ((IrValue.ListVal) directive.args().get("backward")).elements();
 		SourceInfo src = directive.source();
 
 		if (components.size() == 1) {
@@ -44,6 +47,9 @@ public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 			}
 			if (whole instanceof Value.Vector) {
 				int[] comps = checked(Nd.coordinate(whole, src), context, src);
+				if (((IrValue.Bool) backward.getFirst()).value()) {
+					comps = Arrays.stream(comps).map(c -> -c).toArray();
+				}
 				// A vector is a place relative to the origin of the module, or to the cursor when marked
 				context.setCurrentPos(Nd.add(marked ? context.currentPos() : context.basePos(), comps));
 				return;
@@ -69,7 +75,8 @@ public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 			boolean marked = ((IrValue.Bool) relative.get(i)).value();
 			// A relative component continues from where the last cell was placed; an absolute one
 			// counts from the position the enclosing module was placed at.
-			newPos[i] = (marked ? cursor[i] : basePos[i]) + comps[i];
+			int offset = ((IrValue.Bool) backward.get(i)).value() ? -comps[i] : comps[i];
+			newPos[i] = (marked ? cursor[i] : basePos[i]) + offset;
 		}
 		context.setCurrentPos(newPos);
 	}

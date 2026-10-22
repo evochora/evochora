@@ -18,11 +18,14 @@ import java.util.List;
  * @param relative   One entry per component, {@code true} where the component was written with
  *                   the relative marker and counts from the layout cursor instead of the origin of
  *                   the enclosing module.
+ * @param backward   One entry per component, {@code true} where the marker was {@code @-}: the
+ *                   component, as written, counts backwards from the cursor.
  * @param sourceInfo The source location of the directive.
  */
 public record OrgNode(
         List<OperandNode> components,
         List<Boolean> relative,
+        List<Boolean> backward,
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
 
@@ -32,6 +35,7 @@ public record OrgNode(
     public OrgNode {
         components = List.copyOf(components);
         relative = List.copyOf(relative);
+        backward = List.copyOf(backward);
     }
 
     @Override
@@ -45,6 +49,6 @@ public record OrgNode(
      */
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
-        return new OrgNode(newChildren.stream().map(child -> (OperandNode) child).toList(), relative, sourceInfo);
+        return new OrgNode(newChildren.stream().map(child -> (OperandNode) child).toList(), relative, backward, sourceInfo);
     }
 }

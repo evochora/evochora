@@ -115,7 +115,8 @@ public class LayoutDirectiveTest {
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(true, true);
-        assertThat(numbers(org.components())).containsExactly(-3L, 2L);
+        assertThat(org.backward()).containsExactly(true, false);
+        assertThat(numbers(org.components())).containsExactly(3L, 2L);
     }
 
     /**
@@ -138,7 +139,8 @@ public class LayoutDirectiveTest {
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(true, false, true);
-        assertThat(numbers(org.components())).containsExactly(-3L, -1L, 2L);
+        assertThat(org.backward()).containsExactly(true, false, false);
+        assertThat(numbers(org.components())).containsExactly(3L, -1L, 2L);
     }
 
     /**
@@ -327,9 +329,10 @@ public class LayoutDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(false, true);
+        assertThat(org.backward()).containsExactly(false, true);
         assertThat(org.components().get(0)).isInstanceOf(IdentifierNode.class);
         ExpressionNode marked = (ExpressionNode) org.components().get(1);
-        assertThat(marked.expression().text()).isEqualTo("-(ROW+1)");
+        assertThat(marked.expression().text()).isEqualTo("(ROW+1)");
         assertThat(marked.end().columnNumber()).isEqualTo(17);
     }
 

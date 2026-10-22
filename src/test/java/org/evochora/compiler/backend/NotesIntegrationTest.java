@@ -178,6 +178,27 @@ class NotesIntegrationTest {
     }
 
     /**
+     * The marker {@code @-} is syntax of {@code .ORG}, outside the computation after it: the
+     * computation is noted with the value written, and a name after the marker gets no note of
+     * its own.
+     */
+    @Test
+    void aComputationAfterTheBackwardMarkerIsNotedWithTheValueWritten() throws Exception {
+        write("main.evo",
+                ".CONST A 2",
+                ".ORG 0|9",
+                "NOP",
+                ".ORG 0|@-(A+1)",
+                "NOP",
+                ".ORG 0|@-A",
+                "NOP");
+
+        ProgramArtifact artifact = compile();
+
+        assertThat(artifact.sources().get(0).notes()).containsExactly(new Note(0, 4, 15, "[=3]"));
+    }
+
+    /**
      * A computation the preprocessor computes at read time is noted right after its last token,
      * a name in parentheses included; a flag name written alone is noted with its value; a
      * number written alone gets no note.

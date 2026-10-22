@@ -753,6 +753,9 @@ What the built code does beyond the solution text:
 - **Notes.** Every node of the tree carries its end, so a note stands right after the token it
   belongs to; the renderer no longer scans for the place. A typing shows notes only at its parts
   that compute.
+- **The marker `@-` of `.ORG`.** It stays syntax of the directive: the node and the IR carry one
+  direction per component next to the relative flag, and the layout subtracts the value as
+  written, so a computation after the marker is noted with the value written.
 - **The tokenizer.** A number with a base prefix ends before `..`, so a range can be written in
   hexadecimal (`0x1F..0x20`).
 - **The post-processor.** Its replacements are keyed by node identity, as the symbol table's

@@ -6,15 +6,7 @@ import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.ExpressionNode;
-import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
-import org.evochora.compiler.model.expression.Expression;
-import org.evochora.compiler.model.expression.LiteralExpression;
-import org.evochora.compiler.model.expression.NameExpression;
-import org.evochora.compiler.model.expression.OperationExpression;
-import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
@@ -55,6 +47,7 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
 
         List<OperandNode> components = new ArrayList<>();
         List<Boolean> relative = new ArrayList<>();
+        List<Boolean> backward = new ArrayList<>();
         boolean failed = false;
         for (List<Token> piece : DirectiveLine.pieces(operands, Set.of(TokenType.PIPE), Set.of())) {
             boolean marked = piece.size() >= 2 && isCursor(piece.get(0)) && isSign(piece.get(1));
@@ -69,11 +62,11 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
                 failed = true;
                 continue;
             }
-            boolean backward = marked && isSymbol(piece.get(1), "-");
-            components.add(backward ? negated(operand.get(), rest.getLast()) : operand.get());
+            components.add(operand.get());
             relative.add(marked);
+            backward.add(marked && isSymbol(piece.get(1), "-"));
         }
-        return failed ? null : new OrgNode(components, relative, directive.source());
+        return failed ? null : new OrgNode(components, relative, backward, directive.source());
     }
 
     /**
@@ -88,28 +81,6 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
         return context.readOperand(piece);
     }
 
-    /**
-     * The operand of a component the marker {@code @-} counts backwards: a number negated, and
-     * any other operand under the sign operator, which the analysis and the layout compute. The
-     * computation ends where the operand ends, right after its last token.
-     */
-    private static OperandNode negated(OperandNode operand, Token last) {
-        if (operand instanceof LiteralNode literal && literal.value() instanceof Value.Number number) {
-            return new LiteralNode(new Value.Number(-number.value()), literal.sourceInfo());
-        }
-        Expression inner = switch (operand) {
-            case LiteralNode literal -> new LiteralExpression(literal.value(), literal.sourceInfo(), last.after());
-            case IdentifierNode name -> new NameExpression(name.text(), name.sourceInfo(), last.after());
-            case ExpressionNode expression -> expression.expression();
-            default -> null;
-        };
-        if (inner == null) {
-            // A register stays as it is, for the analysis to report
-            return operand;
-        }
-        return new ExpressionNode(new OperationExpression("-", List.of(inner), operand.sourceInfo(), inner.end()),
-                operand.sourceInfo());
-    }
 
     private static boolean isCursor(Token token) {
         return token.type() == TokenType.IDENTIFIER && token.text().equals(INameResolution.CURSOR);
