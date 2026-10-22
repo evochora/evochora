@@ -218,6 +218,18 @@ public class PreProcessorContext {
     }
 
     /**
+     * Tells how many tokens the one value at the start of the given tokens takes, in the forms
+     * {@link #evaluate} reads: a number with its sign, a flag name or a computation, so that a
+     * directive that finds its value on a line can tell where the value ends.
+     *
+     * @param tokens The tokens, not empty.
+     * @return The number of tokens of the value at the start, or 0 if none stands there.
+     */
+    public int valueLength(List<Token> tokens) {
+        return values.valueLength(tokens);
+    }
+
+    /**
      * Computes a number at read time: the tokens of one value, a number, a flag name or a
      * computation, read with the operations of the compilation, every name a flag of
      * {@link #flags()} with its value. An error is reported to the diagnostics of the

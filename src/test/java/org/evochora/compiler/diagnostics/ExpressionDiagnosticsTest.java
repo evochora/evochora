@@ -166,6 +166,58 @@ class ExpressionDiagnosticsTest {
         assertReportedAt("A position cannot be used in a computation with flags.", 6);
     }
 
+    /**
+     * A value with flags is one number, flag name or computation, in .DEFINE, .IFDEF, .REPEAT
+     * and ^ alike: what stands after it is reported, so that a minus is a sign and an operator
+     * needs parentheses, as everywhere.
+     */
+    @Test
+    void aValueWithFlagsIsOneOperand() throws Exception {
+        write("main.evo",
+                ".DEFINE W 3",
+                ".DEFINE X 2 -1",
+                ".DEFINE Y W-1",
+                ".IFDEF W + 1 = 4",
+                "  NOP",
+                ".ENDDEF",
+                ".REPEAT W-1",
+                "  NOP",
+                ".ENDREPEAT",
+                "START:",
+                "  NOP^W-1",
+                "  JMPI START");
+
+        assertReportedAt("Unexpected '-'.", 2);
+        assertReportedAt("Unexpected '-'.", 3);
+        assertReportedAt("Unexpected '+'.", 4);
+        assertReportedAt("Unexpected '-'.", 7);
+        assertReportedAt("Unexpected '-'.", 11);
+    }
+
+    /**
+     * The forms of a value with flags compile: a number with its sign, a flag name and a
+     * computation in parentheses, on either side of a comparison.
+     */
+    @Test
+    void theFormsOfAValueWithFlagsCompile() throws Exception {
+        write("main.evo",
+                ".DEFINE W 3",
+                ".DEFINE A -5",
+                ".DEFINE B (W - 1)",
+                ".DEFINE C W",
+                ".IFDEF W = (A + 8)",
+                "  NOP",
+                ".ENDDEF",
+                ".REPEAT (W * 2)",
+                "  NOP",
+                ".ENDREPEAT",
+                "START:",
+                "  NOP^(W-1)",
+                "  JMPI START");
+
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
     @Test
     void aJumpToALayoutValuedConstantIsReported() throws Exception {
         write("main.evo",

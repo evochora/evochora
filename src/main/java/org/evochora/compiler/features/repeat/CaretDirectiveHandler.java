@@ -35,7 +35,7 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume ^
 
-        List<Token> countTokens = RepeatCount.at(preProcessor, preProcessor.getCurrentIndex());
+        List<Token> countTokens = RepeatCount.at(preProcessor, preProcessorContext, preProcessor.getCurrentIndex());
         if (countTokens.isEmpty()) {
             // No count stands at the cursor, so this reports the missing count
             preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");

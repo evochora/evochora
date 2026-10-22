@@ -15,8 +15,10 @@ import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.NameExpression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
@@ -100,13 +102,19 @@ public final class ReadTimeValues {
     }
 
     /**
-     * Reads the tokens of one value as a number: a number, a flag name or a computation. A
-     * computation that needs a position, which only the layout knows, is an error here.
+     * Reads the tokens of one value as a number: a number with its sign, a flag name or a
+     * computation in one of the forms {@link Computation} recognises. A token after that one
+     * value is an error, as is a computation that needs a position, which only the layout knows.
      *
      * @param tokens The tokens of the value, as the directive delimits them.
      * @return The number, or the error the phase may report.
      */
     public Reading read(List<Token> tokens) {
+        int length = valueLength(tokens);
+        if (length > 0 && length < tokens.size()) {
+            Token extra = tokens.get(length);
+            return new Reading.Failed("Unexpected '" + extra.text() + "'.", extra.source());
+        }
         return switch (parser.parse(tokens)) {
             case ParseResult.Failed failed -> new Reading.Failed(failed.message(), failed.at());
             case ParseResult.Parsed parsed -> switch (evaluator.evaluate(parsed.expression(), this::resolve,
@@ -121,6 +129,41 @@ public final class ReadTimeValues {
                         "A computation at read time reported an error at a definition, though no name answers so.");
             };
         };
+    }
+
+    /**
+     * Tells how many tokens the one operand at the start takes, in the forms of an operand: a
+     * computation, a vector of numbers, a typed literal, a number with its sign or a name; 0
+     * when none of them stands there, which the parser then reports. A vector and a typed
+     * literal are read in full so that the result, which is no number, is reported as such.
+     *
+     * @param tokens The tokens, not empty.
+     * @return The number of tokens the operand at the start takes, or 0.
+     */
+    public int valueLength(List<Token> tokens) {
+        int computed = computation.lengthAt(tokens, 0);
+        if (computed > 0) {
+            return computed;
+        }
+        Optional<SignedNumber> number = SignedNumber.at(tokens, 0);
+        if (number.isPresent()) {
+            int length = number.get().length();
+            while (length < tokens.size() && tokens.get(length).type() == TokenType.PIPE) {
+                Optional<SignedNumber> component = SignedNumber.at(tokens, length + 1);
+                if (component.isEmpty()) {
+                    return length;
+                }
+                length += 1 + component.get().length();
+            }
+            return length;
+        }
+        if (tokens.get(0).type() != TokenType.IDENTIFIER) {
+            return 0;
+        }
+        if (tokens.size() > 1 && tokens.get(1).type() == TokenType.COLON) {
+            return SignedNumber.at(tokens, 2).map(typed -> 2 + typed.length()).orElse(1);
+        }
+        return 1;
     }
 
     /**
