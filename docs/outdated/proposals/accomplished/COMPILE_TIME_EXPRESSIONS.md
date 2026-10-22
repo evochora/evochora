@@ -756,6 +756,9 @@ What the built code does beyond the solution text:
 - **The marker `@-` of `.ORG`.** It stays syntax of the directive: the node and the IR carry one
   direction per component next to the relative flag, and the layout subtracts the value as
   written, so a computation after the marker is noted with the value written.
+- **Constant values of aliases.** A constant or a value that is only another name for a definition
+  the layout computes shows that definition's value in `constantValues`, not its qualified name;
+  a constant that names a label keeps the label's name.
 - **The tokenizer.** A number with a base prefix ends before `..`, so a range can be written in
   hexadecimal (`0x1F..0x20`).
 - **The post-processor.** Its replacements are keyed by node identity, as the symbol table's
