@@ -103,13 +103,13 @@ public interface IParsingContext {
     /**
      * Reads a list of tokens apart from the token stream as exactly one operand, as
      * {@link #expression()} reads one. Nothing is reported: the caller knows what the tokens were
-     * meant to be and says so in its own words.
+     * meant to be and reports a failure in its own words, with the reason it is given.
      *
      * @param tokens The tokens, ending with an end of file.
-     * @return The operand, or empty when the tokens are none, hold more than one operand, or end
-     *         before one is complete.
+     * @return The operand, or the reason the tokens are none: the parser's message for the first
+     *         problem, or for a token after one complete operand.
      */
-    Optional<OperandNode> operandOf(List<Token> tokens);
+    OperandReading operandOf(List<Token> tokens);
 
     /**
      * Reads a list of tokens apart from the token stream as exactly one operand, as

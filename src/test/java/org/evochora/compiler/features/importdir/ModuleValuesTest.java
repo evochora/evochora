@@ -431,17 +431,22 @@ class ModuleValuesTest {
 
     @Test
     void aConfiguredValueOfTwoOperandsIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:1 DATA:2", "Configured value 'STEPS' = DATA:1 DATA:2: not an operand.");
+        assertConfiguredValueIsNoOperand("DATA:1 DATA:2", "Configured value 'STEPS' = DATA:1 DATA:2: unexpected 'DATA'.");
     }
 
     @Test
     void aConfiguredValueWithASemicolonIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:1; NOP", "Configured value 'STEPS' = DATA:1; NOP: not an operand.");
+        assertConfiguredValueIsNoOperand("DATA:1; NOP", "Configured value 'STEPS' = DATA:1; NOP: unexpected ';'.");
+    }
+
+    @Test
+    void aConfiguredValueThatEndsTooEarlyIsReportedWithTheParsersReason() throws Exception {
+        assertConfiguredValueIsNoOperand("DATA:(1", "Configured value 'STEPS' = DATA:(1: expected ')'.");
     }
 
     @Test
     void aConfiguredValueTheLexerRejectsIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:2\"0", "Configured value 'STEPS': not an operand.");
+        assertConfiguredValueIsNoOperand("DATA:2\"0", "Configured value 'STEPS': expected an operand.");
     }
 
     /**

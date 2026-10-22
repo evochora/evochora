@@ -444,18 +444,28 @@ public class Parser implements IParsingContext {
      * its own, so that nothing it finds reaches this parser's reports.
      */
     @Override
-    public Optional<OperandNode> operandOf(List<Token> operandTokens) {
+    public OperandReading operandOf(List<Token> operandTokens) {
         if (operandTokens.isEmpty() || operandTokens.getFirst().type() == TokenType.END_OF_FILE) {
-            return Optional.empty();
+            return new OperandReading.Failed("Expected an operand.");
         }
-        Parser reader = new Parser(operandTokens, new DiagnosticsEngine(), statementRegistry, rootAliasChain, values,
-                operations, isa);
+        DiagnosticsEngine found = new DiagnosticsEngine();
+        Parser reader = new Parser(operandTokens, found, statementRegistry, rootAliasChain, values, operations, isa);
+        OperandNode operand = null;
         try {
-            OperandNode operand = reader.expression();
-            return operand != null && reader.isAtEnd() ? Optional.of(operand) : Optional.empty();
+            operand = reader.expression();
         } catch (ErrorRecoveryException incomplete) {
-            return Optional.empty();
+            // The parser reported why the operand is incomplete
         }
+        if (found.hasErrors()) {
+            return new OperandReading.Failed(found.getDiagnostics().getFirst().message());
+        }
+        if (operand == null) {
+            return new OperandReading.Failed("Expected an operand.");
+        }
+        if (!reader.isAtEnd()) {
+            return new OperandReading.Failed("Unexpected '" + reader.peek().text() + "'.");
+        }
+        return new OperandReading.Read(operand);
     }
 
     /**

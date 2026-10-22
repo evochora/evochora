@@ -7,11 +7,11 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.frontend.parser.IParsingContext;
+import org.evochora.compiler.frontend.parser.OperandReading;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 /**
  * Parses the {@code .REQUIRE} directive.
@@ -117,13 +117,14 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         List<Token> configuredTokens = configuredValue(context, name);
         if (configuredTokens != null) {
             configuredText = ConfiguredValues.textOf(configuredTokens);
-            Optional<OperandNode> operand = context.operandOf(configuredTokens);
-            if (operand.isEmpty()) {
-                context.getDiagnostics().reportError(
-                        ConfiguredValues.message(name.text(), configuredText, "Not an operand."), "", 0);
-                return null;
+            switch (context.operandOf(configuredTokens)) {
+                case OperandReading.Failed failed -> {
+                    context.getDiagnostics().reportError(
+                            ConfiguredValues.message(name.text(), configuredText, failed.reason()), "", 0);
+                    return null;
+                }
+                case OperandReading.Read read -> configured = read.operand();
             }
-            configured = operand.get();
         }
         return new ValueRequirementNode(name.text(), new IdentifierNode(name.text(), name.source()),
                 defaultValue, configured, configuredText, exported, name.source());

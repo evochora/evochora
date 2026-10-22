@@ -11,6 +11,7 @@ import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
+import org.evochora.compiler.frontend.parser.OperandReading;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
@@ -522,7 +523,8 @@ public class ParserTest {
 
         Optional<OperandNode> read = parser.readOperand(computation);
         assertThat(read).get().isInstanceOf(ExpressionNode.class);
-        assertThat(parser.operandOf(TestLexers.tokenizer("1 2", lexing).scanTokens())).isEmpty();
+        assertThat(parser.operandOf(TestLexers.tokenizer("1 2", lexing).scanTokens()))
+                .isEqualTo(new OperandReading.Failed("Unexpected '2'."));
         assertThat(diagnostics.hasErrors()).isFalse();
 
         assertThat(parser.readOperand(twoOperands)).isEmpty();
