@@ -142,6 +142,30 @@ class ExpressionDiagnosticsTest {
         assertReportedAt("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got VECTOR.", 9);
     }
 
+    /**
+     * A computation with flags cannot use a position, which only the layout knows, in any of
+     * the directives that compute with flags.
+     */
+    @Test
+    void aPositionInAComputationWithFlagsIsReported() throws Exception {
+        write("main.evo",
+                ".DEFINE A POSITION(1|0)",
+                ".DEFINE B (POSITION(1|0)[0])",
+                ".REPEAT POSITION(1|0)[0]",
+                "  NOP",
+                ".ENDREPEAT",
+                ".IFDEF POSITION(1|0)[0] = 1",
+                "  NOP",
+                ".ENDDEF",
+                "START:",
+                "  JMPI START");
+
+        assertReportedAt("A position cannot be used in a computation with flags.", 1);
+        assertReportedAt("A position cannot be used in a computation with flags.", 2);
+        assertReportedAt("A position cannot be used in a computation with flags.", 3);
+        assertReportedAt("A position cannot be used in a computation with flags.", 6);
+    }
+
     @Test
     void aJumpToALayoutValuedConstantIsReported() throws Exception {
         write("main.evo",

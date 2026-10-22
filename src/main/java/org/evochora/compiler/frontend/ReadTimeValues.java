@@ -100,7 +100,8 @@ public final class ReadTimeValues {
     }
 
     /**
-     * Reads the tokens of one value as a number: a number, a flag name or a computation.
+     * Reads the tokens of one value as a number: a number, a flag name or a computation. A
+     * computation that needs a position, which only the layout knows, is an error here.
      *
      * @param tokens The tokens of the value, as the directive delimits them.
      * @return The number, or the error the phase may report.
@@ -114,8 +115,8 @@ public final class ReadTimeValues {
                         ? new Reading.Number(number.value(), formOf(tokens, parsed.expression()))
                         : new Reading.Failed("Expected a number.", tokens.getFirst().source());
                 case EvaluationResult.Error error -> new Reading.Failed(error.reason(), error.at());
-                case EvaluationResult.Partial partial -> throw new IllegalStateException(
-                        "A computation at read time left a part for a later phase, though no name answers 'later'.");
+                case EvaluationResult.Partial partial ->
+                        new Reading.Failed("A position cannot be used in a computation with flags.", tokens.getFirst().source());
                 case EvaluationResult.Reported reported -> throw new IllegalStateException(
                         "A computation at read time reported an error at a definition, though no name answers so.");
             };
