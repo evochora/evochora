@@ -4,7 +4,9 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -12,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
@@ -95,7 +96,7 @@ class DataInstructionCompilerTest extends CompilerTestBase {
      * a vector that never becomes cells may have any length.
      */
     @Test
-    void aVectorArgumentWithoutOneComponentPerDimensionIsReported() {
+    void aVectorArgumentWithoutOneComponentPerDimensionIsReported() throws Exception {
         for (List<String> lines : List.of(
                 List.of("SETV %DR2 1|2|3"),
                 List.of("SETV %DR2 (1|2|3)"),
@@ -104,8 +105,9 @@ class DataInstructionCompilerTest extends CompilerTestBase {
                     .isInstanceOf(CompilationException.class)
                     .hasMessageContaining("long_vector.s:" + lines.size() + ": Expected a vector with 2 components.");
         }
-        assertThatCode(() -> compiler.compile(List.of(".CONST V 1|2|3", "SETI %DR0 DATA:V[2]"), "long_vector.s", testEnvProps))
-                .doesNotThrowAnyException();
+        ProgramArtifact indexed = compiler.compile(List.of(".CONST V 1|2|3", "SETI %DR0 DATA:V[2]"), "long_vector.s", testEnvProps);
+        assertThat(indexed.machineCodeLayout().values()).extracting(Molecule::fromInt)
+                .contains(new Molecule(Config.TYPE_DATA, 3, 0));
     }
 
     @Test

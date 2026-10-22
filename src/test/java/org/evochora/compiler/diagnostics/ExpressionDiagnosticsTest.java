@@ -3,9 +3,12 @@ package org.evochora.compiler.diagnostics;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -55,7 +58,10 @@ class ExpressionDiagnosticsTest {
                 "  CALL P VAL DATA:(AREA+1)",
                 "  JMPI START");
 
-        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+        ProgramArtifact artifact = compile("main.evo");
+
+        assertThat(artifact.machineCodeLayout().values()).extracting(Molecule::fromInt)
+                .as("the computed VAL argument the call pushes").contains(new Molecule(Config.TYPE_DATA, 7001, 0));
     }
 
     @Test
@@ -434,8 +440,8 @@ class ExpressionDiagnosticsTest {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
 
-    private void compile(String fileName) throws Exception {
+    private ProgramArtifact compile(String fileName) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)));
-        new Compiler().compile(fileName, ENV, options);
+        return new Compiler().compile(fileName, ENV, options);
     }
 }
