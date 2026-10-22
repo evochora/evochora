@@ -153,7 +153,7 @@ public class CompileCommandTest {
         for (String form : List.of("A=+3", "A=0o8", "A=--3", "A=0x", "A=-")) {
             assertThatThrownBy(() -> CompileCommand.parseDefines(List.of(form)))
                 .describedAs(form)
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not an integer");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not a number");
         }
     }
 
@@ -170,7 +170,7 @@ public class CompileCommandTest {
             int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "--define", form);
 
             assertThat(exitCode).describedAs(form).isEqualTo(2);
-            assertThat(err.toString()).contains("not an integer");
+            assertThat(err.toString()).contains("not a number");
         }
     }
 
@@ -197,7 +197,7 @@ public class CompileCommandTest {
     @Test
     void testDefineRejectsAValueThatIsNoIntegerANameGivenTwiceAndAMissingName() {
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A=two")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not an integer");
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not a number");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A", "A=2")))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("given twice");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("=2")))
@@ -245,7 +245,7 @@ public class CompileCommandTest {
         int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "--define", "A=x");
 
         assertThat(exitCode).isEqualTo(2);
-        assertThat(err.toString()).contains("not an integer");
+        assertThat(err.toString()).contains("not a number");
     }
 
     @Test
