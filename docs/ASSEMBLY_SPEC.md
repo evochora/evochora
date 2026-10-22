@@ -958,9 +958,9 @@ An operator binds tighter than every operator in the rows below it. Parentheses 
 
 * A typed value combined with a number keeps its type; two typed values combine only if their types are equal.
 * A vector is added to and subtracted from a vector of the same length, and multiplied and divided by a number; nothing else.
-* `/` rounds towards zero, `MOD` has the sign of its left operand and `SHR` keeps the sign of the number it shifts, as the instructions `DIV*`, `MOD*` and `SHR*` do.
+* `/` rounds towards zero, `MOD` has the sign of its left operand, `SHR` keeps the sign of the number it shifts and `SHL` drops the bits it shifts out, as the instructions `DIV*`, `MOD*`, `SHR*` and `SHL*` do.
 * `AND`, `OR`, `XOR`, `SHL` and `SHR` take numbers only. Next to `*`, `/`, `MOD`, `+`, `-`, `|` or another of these five they need parentheses; next to themselves they are read from left to right.
-* Division by zero, a result beyond 64 bits, a shift by less than 0 or more than 63 bits and a component outside the vector are errors.
+* Division by zero, an arithmetic result beyond 64 bits, a shift by less than 0 or more than 63 bits and a component outside the vector are errors.
 * **Examples**:
     * `(2 + 3 * 4)` (The number 14)
     * `(ENERGY:50 * 2)` (The typed value `ENERGY:100`)
