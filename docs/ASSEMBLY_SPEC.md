@@ -1018,7 +1018,7 @@ A typed literal may take an expression or a name for its type or its number: `DA
 Every file has a reference point: in the main file it is `0|0`, in a file brought in with `.IMPORT` or `.SOURCE` it is the place where that directive was invoked. A vector in `.ORG` or `.PLACE` counts from the reference point of its file (see [Layout Control](#layout-control)). A position is a place that is converted to the reference point of the file that uses it, so that one file can name a place and another file can use it.
 
 * `@` is a reserved name: the position the next code would be placed at.
-* The name of a label, a procedure or a control block is, in an expression, the position of the statement after it: `(TARGET)` is the position of the label `TARGET`.
+* The name of a label, a procedure or a control block is, in an expression, the position of the cell its label stands on: `(TARGET)` is the position of the label `TARGET`.
 * `POSITION(v)` is the position that lies the vector `v` away from the reference point of the file where it is written.
 * `P[0]` is a component of the position `P`, counted from the reference point of the file that uses it.
 * `.ORG` and `.PLACE` take a position where they take a vector: `.ORG P` continues the code at `P`.
