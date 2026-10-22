@@ -1,7 +1,8 @@
 # Compile-Time Expressions
 
-**Status: READY FOR THE MAINTAINER — designed point by point with the maintainer; four focused and
-one full architecture review worked in.**
+**Status: ACCOMPLISHED — implemented in two pull requests, the prerequisites as #212 (2026-10-21) and the
+expressions on branch `feature/expressions` (2026-10-21 to 2026-10-22), in the twelve steps below; see
+*Outcome* at the end.**
 
 ## Problem
 
@@ -61,7 +62,7 @@ positions as a value kind, `@` as the cursor, the lexer as the phase that finds 
 | Question | Taken | Not taken, and why |
 |---|---|---|
 | Notation | infix with mathematical precedence, `NAME(a, b)`, `V[i]` | a Scheme-like `(MIN A B)` with every computation parenthesised: long expressions unreadable; a `NAME(a b)` without commas: "a hybrid of both worlds" |
-| Where a computation may stand without parentheses | nowhere: a computation stands in parentheses; free are the forms the language has today plus a call and an index access | "spaces separate operands, parentheses allow spaces": needs a whitespace flag on every token and a rule set the maintainer found hard to keep in mind; "maximal munch of operator characters" (Swift, Haskell): `A*-1` becomes an unknown operator `*-` |
+| Where a computation may stand without parentheses | nowhere: a computation stands in parentheses; free are the forms the language has today, a call and an index access, and a typed literal or a vector with names or these forms as its parts | "spaces separate operands, parentheses allow spaces": needs a whitespace flag on every token and a rule set the maintainer found hard to keep in mind; "maximal munch of operator characters" (Swift, Haskell): `A*-1` becomes an unknown operator `*-` |
 | A call is a name directly followed by `(` | the tokenizer gives such a `(` its own token type, `CALL_PARENTHESIS`, which survives a macro substitution | "the parser compares columns": a macro argument keeps the columns of the call site, a body token those of the body, so `DATA:V[0]` with `V` substituted is no index any more; "calls and index accesses only inside parentheses": `OUT_NW[0]..OUT_SE[0]` would need a pair of parentheses around every piece |
 | Minus | always an operator, unary or binary by position; no negative number tokens | "`-` before a digit is part of the number": `(A-1)` needs the parser to split a token |
 | Value kinds | number (64-bit), typed value, vector, molecule type, position; typed ∘ number keeps the type, equal types combine, different types are an error ("full" rule) | "typed values compute only through `NUMBER()`": more to write, nothing safer |
@@ -203,11 +204,13 @@ the module uses them as if they were its own:
 # default/main.evo
 .CONST WIDTH 100
 .CONST HEIGHT 70
-.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|HEIGHT-1)
 .ORG 1|0
-START:
-  …
+JMPI MAIN_LOOP; …
+…
   CALL REPRODUCE.STEP REF %RESULT
+…
+.ORG 0|@+2
+.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING … VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|HEIGHT-1)
 
 # LIB:behavior/reproduce/shell-first.evo
 .REQUIRE VALUE BODY_NW
@@ -216,25 +219,27 @@ START:
 .CONST OUT_SE (BODY_SE + (1|1))
 .PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]      # north edge
 …
-.CONST SIZE (BODY_SE - BODY_NW)
-.ORG BODY_NW
-CNW:
+.ORG POSITION(BODY_SE[0]|BODY_NW[1])
+NE_CORNER:
 …
-.ORG (BODY_NW + (1|SIZE[1]))                              # the body's bottom row, which the main file leaves free
-STEP:
+.ORG BODY_NW
+NW_CORNER:
+.ORG 0|0
+EXPORT .PROC STEP REF RESULT
 …
 ```
 
 The layout puts `.ORG BODY_NW` at `0|0` of the main file wherever the module was imported, because
 `BODY_NW` is that place of the program, and `OUT_NW[0]` is the column of that corner relative to the
-module's origin, computed when the layout reaches the `.PLACE`. A module hands a position on to a
-module of its own unchanged (`USING VALUE X BODY_NW`); a position a module exports is right in the
-importer too. A row whose length a flag decides is measured by a label at its end. A `.ORG` to a
-position moves the cursor, and the cursor stays there: after the last corner the behavior puts its
-code at a place of the body it names from the corners and the main file leaves free, here the
-bottom row; its own origin is the cell the import line stood at, `0|0` of the main file, where
-`CNW` already stands, since a label occupies a cell. Whatever the main file places after the
-import line counts from where the module left the cursor.
+module's origin, computed when the layout reaches the `.PLACE`; `POSITION(BODY_SE[0]|BODY_NW[1])`
+counts from the module's origin as its components do, and is the north-east corner. A module hands a
+position on to a module of its own unchanged (`USING VALUE X BODY_NW`); a position a module exports
+is right in the importer too. A row whose length a flag decides is measured by a label at its end. A
+`.ORG` to a position moves the cursor, and the cursor stays there: after the last corner the behavior
+returns with `.ORG 0|0` to its own origin, the cell the import line stood at, and puts its code
+there. The main file starts its code at `1|0`, beside the corner label on `0|0`, and imports the
+behavior below its own code. Whatever the main file places after the import line counts from where
+the module left the cursor.
 
 **Flags and configuration.** `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` compute with numbers and flags;
 `.IFDEF X` alone keeps meaning "set", true with or without a value and false when unset; `.IFDEF
@@ -242,8 +247,8 @@ import line counts from where the module left the cursor.
 flag in it defined with a value, and otherwise reports what any computation reports ("'A' is not a
 flag.", "'A' has no value."); `.IFNDEF` takes a name, as today. `--define NAME=INTEGER` stays a number; a flag that depends on
 another is written in the program, `.DEFINE HALF (ROWS/2)`. `--value NAME=(WIDTH-1)` takes what
-`.CONST` takes, with the names of the main program. An error in a configured value is reported
-against the configuration, naming it, without a file or line.
+`.CONST` takes, with the names of the main program above the `.REQUIRE VALUE` line. An error in a
+configured value is reported against the configuration, naming it, without a file or line.
 
 **Error messages.** One sentence with the standard term, names quoted, the position at the node
 that failed; the spec explains the rules, the message does not:
@@ -384,8 +389,9 @@ rewritten.
   becomes a class of the phase-free `frontend` root package, created by the core for each read-time
   phase and seeded from the configured flags, so that both phases start alike and pass the same
   `.DEFINE` and `.UNDEF` in the same order; `conditional` fills them and reports invalid configured
-  names. Both contexts then offer `evaluate(tokens)`: parser and evaluator with a resolution over the
-  store, `Partial` an error; the lexer's form reports nothing, the preprocessor's reports, as the
+  names. Both contexts then offer `valueLength(tokens)`, the length of the one value at the start of
+  the tokens, by the rule of what a computation is that the parser uses too, and `evaluate(tokens)`:
+  parser and evaluator with a resolution over the store, `Partial` an error; the lexer's form reports nothing, the preprocessor's reports, as the
   scan reports nothing about conditionals today. `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` call it in
   the preprocessor, the scan handlers of `.DEFINE` and `.IFDEF` in the lexer, so that a sign is read
   by the one parser everywhere. Three behaviours change on purpose, each with a test: `;` separates
@@ -397,12 +403,11 @@ rewritten.
   operand)`, which ends where its tree ends, as the tree's nodes carry their end; the bracketed part
   cut to the matching bracket and handed to the expression parser. `.PLACE` reads its literal with `expression()` first, as today, and then
   cuts its placements at its separators (`,`, `|`, `..`, `:`), outside brackets, with a method of
-  `DirectiveLine`; `.ORG` and `.DIR` cut at `|`; each piece is read with a reporting form of
-  `operandOf`, which reports through the parser's diagnostics and ends the piece with an end-of-file
-  token; `.ORG BODY_NW` is one piece whose value is a position. `MacroExpansionHandler` groups
-  arguments by today's token patterns, extended to a sign before a number, also after every `|` of a
-  vector, a `CALL_PARENTHESIS` or `[` after an atom up to the matching bracket, a parenthesis up to
-  its match, and a typed form whose value is any of these.
+  `DirectiveLine`; `.ORG` and `.DIR` cut at `|`; each piece is read with `readOperand`, the
+  reporting form of `operandOf`, which reports through the parser's diagnostics and ends the piece
+  with an end-of-file token; `.ORG BODY_NW` is one piece whose value is a position.
+  `MacroExpansionHandler` reads each argument in the forms of an operand, by the preprocessor
+  context's `valueLength`: a minus before a value is its sign, and a vector is one argument.
 - *Phase 4:* the analysis handlers of `instruction`, `proc`, `constdir`, `importdir` and the new
   ones of `org`, `dir` and `place` evaluate their operands through the bridge, with the registry they
   took at registration, check the kind against their slot with today's messages, and record the
@@ -433,8 +438,8 @@ rewritten.
   own replacement of the slot's name from overriding it, and a configured value reaches phase 6 that
   way although it is no child. `ImportNode`, `OrgNode`, `DirNode` and `PlaceNode` get
   `reconstructWithChildren`, so that the replacements reach them.
-- *Phase 7:* `IrValue.Expression(Expression, end position)` is the variant for a `Partial` in a
-  directive argument; the end position serves the note. `IrGenContext.convertValue(OperandNode)`
+- *Phase 7:* `IrValue.Expression(Expression)` is the variant for a `Partial` in a directive
+  argument; the note takes its place from the end the tree's nodes carry. `IrGenContext.convertValue(OperandNode)`
   maps a literal, a qualified name and an `ExpressionNode` to `IrValue`s; the directive converters
   call it. `convertOperand` treats an `ExpressionNode` as a defect. `const_value` and
   `importdir value` carry the `Partial` of a layout-valued definition or the self-name of a bound
@@ -468,8 +473,8 @@ rewritten.
   equal notes kept once. Copies a `.REPEAT` makes carry no instance, so the notes of a repeated body
   share their positions: equal notes are kept once, different ones all shown. Proto and
   renderer are unchanged.
-- *Configuration:* `operandOf` reads a configured value through the same operand reader; configured
-  flags stay numbers.
+- *Configuration:* `operandOf` reads a configured value through the same operand reader and returns
+  the operand or the reason it is none, the parser's first diagnostic; configured flags stay numbers.
 
 **Rules and tests.** AGENTS.md: the shared types are `SourceInfo` and `Expression`; four operand
 forms (register, literal, name, expression) and three IR operand forms (register, literal, label
@@ -487,8 +492,9 @@ also covers every class implementing `IOperation` or `IOperationGroup`; `Express
 `Kind`, the operation's result, the evaluator's result, the answer and the context join the
 exceptions of the naming test and `IOperation` and `IOperationGroup` carry the prefix; the phase
 lists lose `frontend.module`; the backend test forbids `compiler.expression.parser..` and
-`compiler.expression.symbols..`. Documents: `ASSEMBLY_SPEC.md` gets a section "Expressions" under
-"Data Types and Literals" with a sub-section "Positions", "Labels as Literals" goes, the directives
+`compiler.expression.symbols..`. Documents: `ASSEMBLY_SPEC.md` gets a section "Compile-Time Expressions" of its own,
+with sub-sections on values, operators, functions, names, where an expression stands, positions and
+computing with flags; "Labels as Literals" goes, the directives
 name an operand, `.ORG` names the space before the marker's sign; `COMPILER_IR_SPEC.md` lists
 `Literal` and `Expression` and drops the placement types; `COMPILER_CORE_BOUNDARY.md` updates the
 introduction of what the core holds (expressions join the symbol table and the instruction set, the
@@ -506,7 +512,8 @@ with these exceptions, each of them a defect made visible: a number beyond 20 bi
 instead of a silent truncation; a label where a vector is expected is a type error instead of a
 wrong cell; a number without a type that reaches an operand through a constant is an error, as the
 written one is today; a `#` inside a string of an import path is part of the path. A program that
-defined a name an operation has, or `@`, would be reported; none does. Configurations keep working.
+defined a name an operation has, or `@`, would be reported; none does. The default primordial
+changes on purpose in step 12. Configurations keep working.
 Flags change from `int` to `long` with step 2.
 
 New for the programmer: computed constants, operands, places and repeat counts; typed constants in
@@ -516,10 +523,10 @@ time; the compiler is exact where the runtime is tolerant, and the two never com
 
 ## Pitfalls
 
-- **`WIDTH-1|HEIGHT-1` without parentheses** is no computation: the operand reader takes `WIDTH`
-  as one operand, then a vector beginning with `-1|`, and reports "Expected a number after '|'." at
-  `HEIGHT`. Nothing is read silently as a different computation; precedence exists only inside
-  parentheses.
+- **`WIDTH-1|HEIGHT-1` without parentheses** is no computation: outside parentheses a minus before
+  a number is its sign, so the line holds more operands than the instruction takes, and the argument
+  count reports it. Nothing is read silently as a different computation; precedence exists only
+  inside parentheses.
 - **`(BODY_NW - 1|1)` and `(@ + 0|2)`** read as `(BODY_NW - 1) | 1` and `(@ + 0) | 2` because `|` is
   the widest level, and report "Invalid operands for '-': position and number."; the vector is
   written `(BODY_NW - (1|1))`, `(@ + (0|2))`.
@@ -527,10 +534,10 @@ time; the compiler is exact where the runtime is tolerant, and the two never com
   `(0|(@[1]+2))`. The syntax `.ORG 0|@+2` is unaffected.
 - **`NW|5` with a vector constant `NW`** is an error, not a three-dimensional vector; the chain's
   signature wants numbers. That is the case that decided the chain notation.
-- **`.ORG 0|0` and `.ORG POSITION(0|0)`** are the same place in the main file and different places
-  in a module: a vector is relative to the origin the line counts from, a position is a place of
-  the program. The spec says this sentence at `.ORG`. In a `.SOURCE`d file both count from the
-  file's own origin, as `.ORG` does today.
+- **`.ORG 0|0` and `.ORG BODY_NW`** are different places in a module whose importer hands it
+  `BODY_NW` as `POSITION(0|0)`: a vector, and a `POSITION(v)` written in the module, count from the
+  module's origin, while a position handed in is the place the importer named. In a `.SOURCE`d file
+  a vector and a `POSITION(v)` count from the file's own origin, as `.ORG` does.
 - **`EXPORT .CONST TOP (OUT_NW[1])`** is a number, the row of the corner relative to the module's
   origin; used in the main file it is that number and nothing else, as `.CONST ROWS 70` would be.
   `USING VALUE ROW (@[1])` is the cursor's row relative to the importer's origin, and in the module
@@ -539,12 +546,11 @@ time; the compiler is exact where the runtime is tolerant, and the two never com
   origin of the line; a `.PLACE` with it in a module imported below `0|0` is the test of step 8, as
   is `.CONST X (@ + (0|2))` used by `.ORG X` in such a module.
 - **A `.ORG` to a position leaves the cursor there.** `.PLACE` moves no cursor, but each corner
-  label needs a cell, so the `.ORG` before it does; after the last corner the cursor stands on the
-  east edge. The behavior returns to its own origin with `.ORG 0|0` before its code, as the main file
-  of the default primordial does today after its corner labels (`main.evo:45`) and as the behavior
-  already does before `STEP` (`shell-first.evo:82`). `.POP_CTX` restores the base and the direction
-  of the importer, not the cursor, so code placed after an import line continues from where the
-  module left the cursor, as it does today after an included file.
+  label needs a cell, so the `.ORG` before it does; after the last corner the cursor stands beside
+  the north-west corner, inside the body. The behavior returns to its own origin with `.ORG 0|0`
+  before `STEP`. `.POP_CTX` restores the base and the direction of the importer, not the cursor, so
+  code placed after an import line continues from where the module left the cursor, as it does
+  today after an included file.
 - **Node identity.** Results are recorded per `ExpressionNode` instance; phase 6 walks the AST phase
   4 saw and looks up before it rebuilds, and phase 5 rebuilds nothing. A future phase between them
   that rebuilt the tree would lose the entries — the same constraint `getNodeScope` has today.
@@ -683,8 +689,8 @@ the maintainer decides when the code exists.
 11. **Documents.** `ASSEMBLY_SPEC.md`, `COMPILER_IR_SPEC.md`, `COMPILER_CORE_BOUNDARY.md`,
     `CLI_USAGE.md`, AGENTS.md, under the documentation rules of AGENTS.md, the diff read by the
     maintainer before the commit.
-12. **The brief for the primordial.** Carried out in the primordial session, after the second pull
-    request: the reproduction behavior owns the shell and the four corner labels, placed before its
+12. **The brief for the primordial.** Carried out on the branch of the second pull request: the
+    reproduction behavior owns the shell and the four corner labels, placed before its
     own code and followed by a vector `.ORG` back to its origin, `STEP REF RESULT` loads the corners
     itself (`LRLI %PLR0..3`), the main file starts its code at `1|0`, imports with
     `USING VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|HEIGHT-1)` as its last line or
@@ -705,3 +711,48 @@ depends on the place; token types written as whole words. Rejected with reason: 
 cell above; `SIZEOF`/`STARTOF`; a rotation function now; a `$` marker for flag names (parked, issue
 #210); renaming "flag" (kept; "symbol" and "macro" clash with the project's words); "Lexing" as the
 phase's name (phases are named after their class).
+
+## Outcome
+
+Implemented in the twelve steps above, the first four as the pull request of the prerequisites,
+steps 5 to 12 on one branch, every step verified by the session before its commit. A full review
+by four agents followed the last step; its findings were decided one by one with the maintainer.
+What the built code does beyond the solution text:
+
+- **Operands outside parentheses.** A typed literal takes a name, a call, an index or a parenthesis
+  for its type or its number (`DATA:AREA`, `TYPE(UNIT):7`), and a vector takes them for any of its
+  parts (`WIDTH|HEIGHT`, `1|(HEIGHT-1)`); only a molecule type with a number and a vector of numbers
+  stay the literals of today. A macro argument is read in the same forms, so a vector is one
+  argument and a minus before a value its sign.
+- **Read time.** `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` read one value, by the rule of what a
+  computation is that the parser uses too; what follows it is reported ("Unexpected '-'."). A
+  position in a computation with flags is reported ("A position cannot be used in a computation
+  with flags."), and a flag name is noted wherever a directive reads it.
+- **Positions in instruction arguments.** A position, and a number or a vector computed from one,
+  is rejected in an instruction argument and as a `VAL` argument ("Argument 2 for instruction 'SETI'
+  is computed from a position.", "Cannot pass 'D' as VAL argument: it is computed from a position.");
+  a `CALL` target that is no name, written or computed, is of the wrong type. The reason stands in
+  the row "Labels".
+- **Messages.** "Invalid vector component: 'NW' is a vector." names the text and the kind of the
+  part (a number, a typed value, a vector, a molecule type, a position); "Expected a number after
+  '|'." comes from the parser. A configured value that is no operand carries the parser's reason
+  ("Configured value 'W' = (1: expected ')'."), and every error of the configuration is printed
+  without a file or line. A range of `.PLACE` with a step that is not positive, or an end below its
+  start, is reported ("End 1 of a range must be at least its start 5."). A vector argument is
+  checked against the world's dimensions where it becomes cells, and the emitter's own check reports
+  an internal error.
+- **Notes.** Every node of the tree carries its end, so a note stands right after the token it
+  belongs to; the renderer no longer scans for the place. A typing shows notes only at its parts
+  that compute.
+- **The tokenizer.** A number with a base prefix ends before `..`, so a range can be written in
+  hexadecimal (`0x1F..0x20`).
+- **The post-processor.** Its replacements are keyed by node identity, as the symbol table's
+  records are, so two equal nodes stay two places in the tree.
+- **Documents.** The specification has a section "Compile-Time Expressions"; `.PLACE` counts its
+  coordinates from the origin of the current file; a name in an expression stands for the cell its
+  label stands on; the shift right instructions are described as arithmetic, as the runtime does.
+- **Programs.** The reference program of the compiler's output-equivalence test computes in every
+  form, with flags and values set as the configuration sets them, in a world of `128x128`. The
+  default primordial's reproduction behavior owns the shell and the four corner labels
+  (`NW_CORNER`, `NE_CORNER`, `SE_CORNER`, `SW_CORNER`), placed from the two positions the main file
+  hands it; `STEP` loads the corners into location registers itself.
