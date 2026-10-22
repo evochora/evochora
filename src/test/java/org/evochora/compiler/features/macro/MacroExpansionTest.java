@@ -174,6 +174,24 @@ class MacroExpansionTest {
         assertThat(result.texts()).containsExactly("SETI", "-", "3", "DATA", ":", "-", "5");
     }
 
+    /**
+     * Whether a parenthesis opens a call is decided where the body is read: a parameter written
+     * against it is a call of the function the argument names, one written apart is not.
+     */
+    @Test
+    void aParameterWrittenAgainstAParenthesisIsCalled() {
+        Expansion result = expand(
+                ".MACRO APPLY F X",
+                "  SETI %DR0 F(X)",
+                "  SETI %DR1 F (X)",
+                ".ENDMACRO",
+                "APPLY NUMBER ENERGY:5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.tokens.stream().filter(t -> t.text().equals("(")).map(Token::type))
+                .containsExactly(TokenType.CALL_PARENTHESIS, TokenType.OPEN_PARENTHESIS);
+    }
+
     @Test
     void substitutesParenthesisAndCallArgumentsAsOneArgumentEach() {
         Expansion result = expand(
