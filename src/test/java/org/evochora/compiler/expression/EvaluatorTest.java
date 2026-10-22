@@ -91,8 +91,12 @@ class EvaluatorTest {
     }
 
     @Test
-    void aNumberDoesNotTakeTheTypeOfTheRightOperand() {
-        assertThat(error("2 * UNIT", UNIT)).isEqualTo("Invalid operands for '*': number and typed.");
+    void aTypedValueKeepsItsTypeWithANumberInFront() {
+        assertThat(value("2 * UNIT", UNIT)).isEqualTo(new Value.Typed("ENERGY", 100));
+        assertThat(value("1 - UNIT", UNIT)).isEqualTo(new Value.Typed("ENERGY", -49));
+        assertThat(value("100 / UNIT", UNIT)).isEqualTo(new Value.Typed("ENERGY", 2));
+        assertThat(value("120 MOD UNIT", UNIT)).isEqualTo(new Value.Typed("ENERGY", 20));
+        assertThat(value("1 + UNIT", UNIT)).isEqualTo(new Value.Typed("ENERGY", 51));
     }
 
     @Test

@@ -65,7 +65,7 @@ positions as a value kind, `@` as the cursor, the lexer as the phase that finds 
 | Where a computation may stand without parentheses | nowhere: a computation stands in parentheses; free are the forms the language has today, a call and an index access, and a typed literal or a vector with names or these forms as its parts | "spaces separate operands, parentheses allow spaces": needs a whitespace flag on every token and a rule set the maintainer found hard to keep in mind; "maximal munch of operator characters" (Swift, Haskell): `A*-1` becomes an unknown operator `*-` |
 | A call is a name directly followed by `(` | the tokenizer gives such a `(` its own token type, `CALL_PARENTHESIS`, which survives a macro substitution | "the parser compares columns": a macro argument keeps the columns of the call site, a body token those of the body, so `DATA:V[0]` with `V` substituted is no index any more; "calls and index accesses only inside parentheses": `OUT_NW[0]..OUT_SE[0]` would need a pair of parentheses around every piece |
 | Minus | always an operator, unary or binary by position; no negative number tokens | "`-` before a digit is part of the number": `(A-1)` needs the parser to split a token |
-| Value kinds | number (64-bit), typed value, vector, molecule type, position; typed ∘ number keeps the type, equal types combine, different types are an error ("full" rule) | "typed values compute only through `NUMBER()`": more to write, nothing safer |
+| Value kinds | number (64-bit), typed value, vector, molecule type, position; typed ∘ number keeps the type on either side, equal types combine, different types are an error ("full" rule) | "typed values compute only through `NUMBER()`": more to write, nothing safer |
 | Molecule type | a value kind of its own, `Value.Type` | "typed value carries the type as text, `TYPE(x):n` a special form": `TYPE` would be the one function that is not a function |
 | Position | a value kind of its own: a place, as a vector from the origin of the program (the main file's origin, the organism's start position at run time); every jump target is one, `@` is the cursor's, `POSITION(v)` makes one from a vector relative to the origin the line counts from; a position is computed in the layout, where it arises | "a vector": `.CONST EAST 1\|0` and a label are both vectors, so a value handed to a module or exported from it could not be told from a displacement; "forbid exporting and passing positions": the shell would depend on every import line subtracting its own `@`; "a position carries its module and the layout converts between frames": the layout would learn what a placement is, a coupling the core boundary lists and that no change may deepen, and nothing needs it once a position is a program-origin vector |
 | Vector construction `a\|b\|c` | a chain notation: all adjacent `\|` form one operation over all parts; every part has to be a number | "`\|` as binary concatenation": `NW\|5` with a vector constant `NW` becomes a legal three-dimensional vector and hides a kind confusion, undetected in a three-dimensional world |
@@ -164,7 +164,7 @@ argument, and nowhere else.
 | chain | `a\|b\|c` | a vector of the parts, each a number with its sign |
 | unordered | `AND`, `OR`, `XOR`, `SHL`, `SHR` | one operator with itself left to right; next to a different infix or chain operator only in parentheses |
 
-Typed with number keeps the type (`UNIT * 2` is `ENERGY:100`); two typed values combine only with
+Typed with number keeps the type, on either side (`UNIT * 2` and `2 * UNIT` are `ENERGY:100`); two typed values combine only with
 equal types; a vector adds to and subtracts from a vector of the same length, multiplies and divides
 by a number, and nothing else; a number alone where an operand wants a literal is an error, as it is
 today when written, and no longer slips through a constant. A position plus or minus a vector is a
@@ -349,7 +349,7 @@ and the backend's architecture test forbids them by name:
 
 **The `expression` feature** (`features/expression`, the sixteenth standard feature) registers the
 lexer symbols `+`, `*`, `/`; the five operation groups — `Arithmetic` (`+ - * / MOD` and the sign,
-with the full rule as three signatures each), `Bitwise` (`AND OR XOR SHL SHR` on `UNORDERED`, `NOT`
+with the full rule as four signatures each), `Bitwise` (`AND OR XOR SHL SHR` on `UNORDERED`, `NOT`
 as prefix), `Vector` (`|` as a chain with the repeated signature "number…", `[]`, vector with vector,
 vector with number), `Typing` (`:`, `TYPE`, `NUMBER`), `Position` (position with vector, position
 with position, `[]` on a position, `POSITION`). It registers no phase handler: the core phases read
@@ -723,6 +723,9 @@ What the built code does beyond the solution text:
   parts (`WIDTH|HEIGHT`, `1|(HEIGHT-1)`); only a molecule type with a number and a vector of numbers
   stay the literals of today. A macro argument is read in the same forms, so a vector is one
   argument and a minus before a value its sign.
+- **A number in front of a typed value.** The arithmetic takes a number on either side of a typed
+  value, `(2 * UNIT)` as `(UNIT * 2)` and `(1 - UNIT)` too, as the specification's rule says and as
+  a vector does.
 - **Read time.** `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` read one value, by the rule of what a
   computation is that the parser uses too; what follows it is reported ("Unexpected '-'."). A
   position in a computation with flags is reported ("A position cannot be used in a computation
