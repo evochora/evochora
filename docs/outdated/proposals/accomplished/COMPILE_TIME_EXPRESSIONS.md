@@ -354,7 +354,7 @@ as prefix), `Vector` (`|` as a chain with the repeated signature "number…", `[
 vector with number), `Typing` (`:`, `TYPE`, `NUMBER`), `Position` (position with vector, position
 with position, `[]` on a position, `POSITION`). It registers no phase handler: the core phases read
 the recorded result of an `ExpressionNode` themselves. Without the feature no computation inside parentheses is accepted; it
-is indispensable, as the instruction feature is, and the probe of the core boundary names it so.
+is indispensable to a program that computes, which `CompilerFeatureSeparationTest` shows.
 
 **The tokenizer** gets fixed token types `OPEN_PARENTHESIS`, `CLOSE_PARENTHESIS`, `OPEN_BRACKET`,
 `CLOSE_BRACKET`, `COMMA`, and `CALL_PARENTHESIS` for a `(` that touches the word before it; `-` is
@@ -771,8 +771,16 @@ What the built code does beyond the solution text:
 - **Documents.** The specification has a section "Compile-Time Expressions"; `.PLACE` counts its
   coordinates from the origin of the current file; a name in an expression stands for the cell its
   label stands on; the shift right instructions are described as arithmetic, as the runtime does.
-- **Programs.** The reference program of the compiler's output-equivalence test computes in every
-  form, with flags and values set as the configuration sets them, in a world of `128x128`. The
+  The core boundary document keeps only the couplings it accepts: the separation test below
+  replaces its feature table and its probe, and the kinds computations fix stand in AGENTS.md
+  under "Fixed Kinds".
+- **Programs.** The reference program is rebuilt of blocks, each naming the features it needs:
+  one block per feature with what it does alone, and blocks that join features, every
+  computation among them, with flags and values set as the configuration sets them.
+  `CompilerFeatureSeparationTest` compiles it without each feature and proves that the core and
+  the features are kept apart; a feature declares what it builds on in `requires()`
+  (`importdir` and `source` require `ctx`, `proc` and `control` require `label`), and the
+  architecture rule allows exactly those references between features. The
   default primordial's reproduction behavior owns the shell and the four corner labels
   (`NW_CORNER`, `NE_CORNER`, `SE_CORNER`, `SW_CORNER`), placed from the two positions the main file
   hands it; `STEP` loads the corners into location registers itself.
