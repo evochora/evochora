@@ -218,6 +218,34 @@ class ExpressionDiagnosticsTest {
         assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
+    /**
+     * A macro argument takes the forms of an operand: a typing with a name or a computation is
+     * one argument, and a vector with a component that is no number stays one argument, so that
+     * the component is reported where it is used.
+     */
+    @Test
+    void aMacroArgumentTakesTheFormsOfAnOperand() throws Exception {
+        write("main.evo",
+                ".CONST N 5",
+                ".CONST U ENERGY:5",
+                ".MACRO PUT R V",
+                "  SETI R V",
+                ".ENDMACRO",
+                ".MACRO VEC R V",
+                "  SETV R V",
+                ".ENDMACRO",
+                "START:",
+                "  PUT %DR0 DATA:N",
+                "  PUT %DR1 TYPE(U):7",
+                "  VEC %DR2 1|(2)",
+                "  JMPI START");
+
+        assertReportedAt("Expected number component after '|'.", 12);
+        assertThatThrownBy(() -> compile("main.evo"))
+                .hasMessageNotContaining("main.evo:10")
+                .hasMessageNotContaining("main.evo:11");
+    }
+
     @Test
     void aJumpToALayoutValuedConstantIsReported() throws Exception {
         write("main.evo",
