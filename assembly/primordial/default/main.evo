@@ -1,12 +1,12 @@
 # default/main.evo
 # Primordial organism built from the library
 #
-# This file is all a primordial built from the library consists of: the shell around the body,
-# the behaviors it takes from the library, and the main loop that chooses among them. How a
-# behavior is taken into the loop stands in LIB:behavior/README.md.
+# This file is all a primordial built from the library consists of: the behaviors it takes from
+# the library, and the main loop that chooses among them. How a behavior is taken into the loop
+# stands in LIB:behavior/README.md.
 #
 # Extent: the body measures WIDTH x HEIGHT cells; the reproduction behavior places the shell
-# around it, 102 x 72 cells walls included, and a label on each of its corner cells.
+# around it, and a label on each of the body's corner cells.
 
 # ----------------------------
 # Values, set from the configuration with values { ... } in the organism's entry

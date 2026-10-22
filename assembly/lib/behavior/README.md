@@ -65,7 +65,7 @@ The header of a behavior names what someone needs to take it into a main loop, a
 - the flags and values it reads, and how they depend on each other,
 - what the position of a data pointer means after a return, where it means something,
 - what the behavior requires of the main file,
-- what it places in the body outside its extent, and the condition that puts on the main file,
+- what it places outside its extent, in or around the body, and the condition that puts on the main file,
 - its extent in the body, for each variant the flags select.
 
 ## Names
