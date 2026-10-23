@@ -8,6 +8,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
@@ -188,8 +189,8 @@ public class BitwiseInstruction extends Instruction {
                 case "EQU" -> scalarResult = ~(s1.toScalarValue() ^ s2.toScalarValue());
                 case "ADN" -> scalarResult = s1.toScalarValue() & ~s2.toScalarValue();
                 case "ORN" -> scalarResult = s1.toScalarValue() | ~s2.toScalarValue();
-                case "SHL" -> scalarResult = s1.toScalarValue() << s2.toScalarValue();
-                case "SHR" -> scalarResult = s1.toScalarValue() >> s2.toScalarValue();
+                case "SHL" -> scalarResult = ValueBounds.shiftLeft(s1.toScalarValue(), s2.toScalarValue());
+                case "SHR" -> scalarResult = ValueBounds.shiftRight(s1.toScalarValue(), s2.toScalarValue());
                 default -> {
                     organism.instructionFailed("Unknown bitwise operation: " + opName);
                     return;
@@ -219,7 +220,7 @@ public class BitwiseInstruction extends Instruction {
             if (!(amtObj instanceof Integer) || !(valObj instanceof Integer)) { organism.instructionFailed("ROTS requires scalars."); return; }
             Molecule val = org.evochora.runtime.model.Molecule.fromInt((Integer) valObj);
             Molecule amt = org.evochora.runtime.model.Molecule.fromInt((Integer) amtObj);
-            int rotated = rotate(val.toScalarValue(), amt.toScalarValue());
+            int rotated = ValueBounds.rotate(val.toScalarValue(), amt.toScalarValue());
             organism.pushData(new Molecule(val.type(), rotated).toInt());
             return;
         }
@@ -238,7 +239,7 @@ public class BitwiseInstruction extends Instruction {
         } else {
             amt = org.evochora.runtime.model.Molecule.fromInt((Integer) opAmt.value());
         }
-        int rotated = rotate(val.toScalarValue(), amt.toScalarValue());
+        int rotated = ValueBounds.rotate(val.toScalarValue(), amt.toScalarValue());
         if (opVal.rawSourceId() != -1) {
             if (!writeOperand(opVal.rawSourceId(), new Molecule(val.type(), rotated).toInt())) {
                 return;
@@ -246,15 +247,6 @@ public class BitwiseInstruction extends Instruction {
         } else {
             organism.instructionFailed("ROT destination must be a register.");
         }
-    }
-
-    private int rotate(int value, int amount) {
-        int width = Config.VALUE_BITS;
-        int mask = (1 << width) - 1;
-        int v = value & mask;
-        int k = amount % width;
-        if (k < 0) k += width;
-        return ((v << k) | (v >>> (width - k))) & mask;
     }
 
     private void handlePopCount(String opName, List<Operand> operands) {
