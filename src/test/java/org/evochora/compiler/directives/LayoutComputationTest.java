@@ -52,6 +52,25 @@ class LayoutComputationTest {
         assertThat(codeAt(artifact, 1, 2)).isTrue();
     }
 
+    /**
+     * A marker before a whole vector counts every component from the cursor, as a marker before
+     * each component does.
+     */
+    @Test
+    void aMarkerBeforeAWholeVectorCountsEveryComponentFromTheCursor() throws Exception {
+        ProgramArtifact artifact = compile(
+                ".ORG 0|0",
+                "NOP",
+                ".ORG @+(0|2)",
+                "NOP",
+                ".ORG @-(0|1)",
+                "NOP");
+
+        // The first NOP took 0|0, so the cursor stood at 1|0; the second took 1|2, so it stood at 2|2.
+        assertThat(codeAt(artifact, 1, 2)).as("forwards from 1|0").isTrue();
+        assertThat(codeAt(artifact, 2, 1)).as("backwards from 2|2").isTrue();
+    }
+
     @Test
     void theComponentOfTheCursorIsANumber() throws Exception {
         ProgramArtifact artifact = compile(
