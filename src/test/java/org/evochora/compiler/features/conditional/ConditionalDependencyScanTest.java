@@ -186,6 +186,25 @@ class ConditionalDependencyScanTest {
     }
 
     @Test
+    void theScanFollowsADefaultAsThePreprocessorDoes() throws Exception {
+        Files.writeString(root.resolve("lib.evo"), "NOP\n");
+        String main = String.join("\n",
+                ".DEFINE DEFAULT WITH_LIB",
+                ".IFDEF WITH_LIB",
+                "  .IMPORT \"lib.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP");
+
+        Scan unconfigured = scan(main, Map.of());
+        Scan switchedOff = scan(main, Map.of("WITH_LIB", FlagSetting.off()));
+
+        assertThat(unconfigured.diagnostics.hasErrors()).as(unconfigured.diagnostics.summary()).isFalse();
+        assertThat(unconfigured.modules()).containsExactly("lib.evo", "main.evo");
+        assertThat(switchedOff.diagnostics.hasErrors()).as(switchedOff.diagnostics.summary()).isFalse();
+        assertThat(switchedOff.modules()).containsExactly("main.evo");
+    }
+
+    @Test
     void anUndefRemovesTheFlagForTheScan() throws Exception {
         String main = String.join("\n",
                 ".UNDEF A",

@@ -1,7 +1,9 @@
 package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.Flags;
+import org.evochora.compiler.model.token.Token;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -16,6 +18,18 @@ import java.util.OptionalLong;
 final class FlagDefinition {
 
     private FlagDefinition() {
+    }
+
+    /**
+     * Reports whether the operands of a {@code .DEFINE} begin with the {@code DEFAULT} option,
+     * which makes the definition a default of the flag named after it.
+     *
+     * @param operands The operands of the directive.
+     * @return {@code true} when the first operand is the name {@code DEFAULT}, in any case.
+     */
+    static boolean isDefault(List<Token> operands) {
+        return !operands.isEmpty() && Condition.isNameToken(operands.get(0))
+                && operands.get(0).text().equalsIgnoreCase(Flags.DEFAULT_OPTION);
     }
 
     /**

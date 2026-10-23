@@ -10,24 +10,36 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * Lexer-phase handler for {@code .DEFINE NAME [value]}: sets the flag for the lines read after
- * it, its value computed as the preprocessor computes it, so that the files of a conditional
- * block are found as the preprocessor keeps them. A line the preprocessor would reject, a
- * directive that does not begin a statement and a value that cannot be computed included, sets
- * nothing; the preprocessor reports it.
+ * Lexer-phase handler for {@code .DEFINE NAME [value]} and {@code .DEFINE DEFAULT NAME [value]}:
+ * defines the flag for the lines read after it by the rules the preprocessor applies, its value
+ * computed as the preprocessor computes it, so that the files of a conditional block are found as
+ * the preprocessor keeps them. The plain form sets the flag and is rejected for a flag the
+ * configuration switched off; the default form yields to whatever is decided about the flag
+ * already. A line the preprocessor would reject, a directive that does not begin a statement and
+ * a value that cannot be computed included, sets nothing; the preprocessor reports it.
  */
 public class DefineScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handle(DirectiveLine line, IDependencyScanContext ctx) {
-        List<Token> operands = line.operands();
+        boolean isDefault = FlagDefinition.isDefault(line.operands());
+        List<Token> operands = isDefault
+                ? line.operands().subList(1, line.operands().size())
+                : line.operands();
         if (!line.startsStatement() || operands.isEmpty() || !Condition.isNameToken(operands.get(0))) {
             return;
         }
         Optional<OptionalLong> value = operands.size() == 1
                 ? Optional.of(OptionalLong.empty())
                 : ctx.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
-        value.ifPresent(v -> FlagDefinition.define(ctx.flags(), operands.get(0).text(), v,
-                "at " + ctx.sourcePath() + ":" + ctx.lineNumber()));
+        String name = operands.get(0).text();
+        String origin = "at " + ctx.sourcePath() + ":" + ctx.lineNumber();
+        value.ifPresent(v -> {
+            if (isDefault) {
+                FlagDefinition.defineDefault(ctx.flags(), name, v, origin);
+            } else {
+                FlagDefinition.define(ctx.flags(), name, v, origin);
+            }
+        });
     }
 }

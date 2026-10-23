@@ -13,12 +13,17 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * Handles {@code .DEFINE NAME [value]}, which sets a flag in the {@link Flags} of the
- * preprocessor run, from this point of the token stream on. The value is a number, a flag name
- * or a computation, computed now with the flags as they are; one that cannot be computed is
- * reported by the context, and the flag is not set. The directive begins a statement, which the
- * value ends, and is removed with it. A flag that is already set may be defined again only with
- * the same definition, and a name nothing may define is rejected.
+ * Handles {@code .DEFINE NAME [value]} and {@code .DEFINE DEFAULT NAME [value]}, which define a
+ * flag in the {@link Flags} of the preprocessor run, from this point of the token stream on. The
+ * value is a number, a flag name or a computation, computed now with the flags as they are; one
+ * that cannot be computed is reported by the context, and the flag is not set. The directive
+ * begins a statement, which the value ends, and is removed with it. A name nothing may define is
+ * rejected in both forms.
+ * <p>
+ * The plain form sets the flag: a flag that is already set may be defined again only with the
+ * same definition, and a flag the configuration switched off is rejected. The default form
+ * yields to whatever is decided about the flag already: it sets a flag that is free and leaves a
+ * flag that is set or switched off as it is.
  * <p>
  * A constant, a value used in code, is a different concept and is written {@code .CONST}; the
  * message for a {@code .DEFINE} that names no flag says so.
@@ -45,18 +50,25 @@ public class DefineHandler implements IPreProcessorHandler {
         }
 
         String error = null;
-        List<Token> operands = line.operands();
+        boolean isDefault = FlagDefinition.isDefault(line.operands());
+        String form = isDefault ? ".DEFINE " + Flags.DEFAULT_OPTION : ".DEFINE";
+        List<Token> operands = isDefault
+                ? line.operands().subList(1, line.operands().size())
+                : line.operands();
         if (operands.isEmpty()) {
-            error = ".DEFINE needs a flag name";
+            error = form + " needs a flag name";
         } else if (!Condition.isNameToken(operands.get(0))) {
-            error = ".DEFINE needs a flag name, found '" + operands.get(0).text() + "'" + CONSTANT;
+            error = form + " needs a flag name, found '" + operands.get(0).text() + "'" + CONSTANT;
         } else {
             Optional<OptionalLong> value = operands.size() == 1
                     ? Optional.of(OptionalLong.empty())
                     : preProcessorContext.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
             if (value.isPresent()) {
-                error = FlagDefinition.define(flags, operands.get(0).text(), value.get(),
-                        "at " + directive.source().fileName() + ":" + directive.source().lineNumber()).orElse(null);
+                String name = operands.get(0).text();
+                String origin = "at " + directive.source().fileName() + ":" + directive.source().lineNumber();
+                error = (isDefault
+                        ? FlagDefinition.defineDefault(flags, name, value.get(), origin)
+                        : FlagDefinition.define(flags, name, value.get(), origin)).orElse(null);
             }
         }
         if (error != null) {

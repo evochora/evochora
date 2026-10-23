@@ -63,6 +63,27 @@ class ConditionalCompilationTest {
     }
 
     @Test
+    void aDefaultIncludesASourceUnlessTheConfigurationSwitchesTheFlagOff() throws Exception {
+        write("shell.evo",
+                "  NOP");
+        write("main.evo",
+                ".DEFINE DEFAULT SHELL",
+                "START:",
+                ".IFDEF SHELL",
+                "  .SOURCE \"shell.evo\"",
+                ".ENDDEF",
+                "  NOP");
+
+        ProgramArtifact withShell = compile("main.evo", Map.of());
+        ProgramArtifact withoutShell = compile("main.evo", Map.of("SHELL", FlagSetting.off()));
+
+        assertThat(resolvedPaths(withShell)).anySatisfy(path -> assertThat(path).endsWith("shell.evo"));
+        assertThat(withShell.machineCodeLayout()).hasSize(LABEL + 2);
+        assertThat(resolvedPaths(withoutShell)).noneSatisfy(path -> assertThat(path).endsWith("shell.evo"));
+        assertThat(withoutShell.machineCodeLayout()).hasSize(LABEL + 1);
+    }
+
+    @Test
     void aSourceAndAnImportInASkippedBranchAreNeverLoaded() throws Exception {
         write("main.evo",
                 "START:",

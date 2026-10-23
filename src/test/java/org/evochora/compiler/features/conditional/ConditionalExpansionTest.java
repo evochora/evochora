@@ -427,11 +427,9 @@ class ConditionalExpansionTest {
     }
 
     @Test
-    void theIfndefDefaultYieldsToTheConfiguration() {
+    void aDefaultYieldsToTheConfiguration() {
         String[] program = {
-                ".IFNDEF REDUNDANCY",
-                "  .DEFINE REDUNDANCY 1",
-                ".ENDDEF",
+                ".DEFINE DEFAULT REDUNDANCY 1",
                 ".IFDEF REDUNDANCY >= 2",
                 "  NOP",
                 ".ELSEDEF",
@@ -440,11 +438,105 @@ class ConditionalExpansionTest {
 
         Expansion configured = expandWith(Map.of("redundancy", FlagSetting.set(2)), List.of(), program);
         Expansion unconfigured = expand(program);
+        Expansion switchedOff = expandWith(Map.of("REDUNDANCY", FlagSetting.off()), List.of(), program);
 
         assertThat(configured.errors()).isEmpty();
         assertThat(configured.texts()).containsExactly("NOP");
         assertThat(unconfigured.errors()).isEmpty();
         assertThat(unconfigured.texts()).containsExactly("JMPI", "END");
+        assertThat(switchedOff.errors()).isEmpty();
+        assertThat(switchedOff.texts()).containsExactly("JMPI", "END");
+    }
+
+    @Test
+    void aSwitchedOffFlagIsNotDefined() {
+        Expansion result = expandWith(Map.of("SHELL", FlagSetting.off()), List.of(),
+                ".IFNDEF SHELL",
+                "  NOP",
+                ".ENDDEF",
+                ".IFDEF SHELL",
+                "  JMPI END",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultComputesItsValue() {
+        Expansion result = expand(
+                ".DEFINE ROWS 4",
+                ".DEFINE DEFAULT HALF (ROWS / 2)",
+                ".IFDEF HALF = 2",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultYieldsToAnEarlierDefinitionOfTheProgram() {
+        Expansion result = expand(
+                ".DEFINE LEVEL 3",
+                ".DEFINE DEFAULT LEVEL 1",
+                ".IFDEF LEVEL = 3",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aPlainDefineOfASwitchedOffFlagIsRejectedAndTheFlagStaysOff() {
+        Expansion result = expandWith(Map.of("SHELL", FlagSetting.off()), List.of(),
+                ".DEFINE SHELL",
+                ".IFDEF SHELL",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).hasSize(1);
+        assertThat(result.errors().get(0))
+                .startsWith(MAIN + ":1: Cannot define flag SHELL: the configuration switched it off");
+        assertThat(result.texts()).isEmpty();
+    }
+
+    @Test
+    void anUndefFreesASwitchedOffFlagForAPlainDefine() {
+        Expansion result = expandWith(Map.of("SHELL", FlagSetting.off()), List.of(),
+                ".UNDEF SHELL",
+                ".DEFINE SHELL",
+                ".IFDEF SHELL",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultWithoutAFlagNameIsReported() {
+        Expansion result = expand(
+                ".DEFINE DEFAULT",
+                ".DEFINE DEFAULT 42",
+                "NOP");
+
+        assertThat(result.errors()).containsExactly(
+                MAIN + ":1: .DEFINE DEFAULT needs a flag name",
+                MAIN + ":2: .DEFINE DEFAULT needs a flag name, found '42'; a constant is written .CONST");
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultOfTheNameDefaultIsRejected() {
+        Expansion result = expand(
+                ".DEFINE DEFAULT DEFAULT",
+                "NOP");
+
+        assertThat(result.errors()).containsExactly(
+                MAIN + ":1: 'DEFAULT' is the default option of .DEFINE and cannot be defined.");
+        assertThat(result.texts()).containsExactly("NOP");
     }
 
 
