@@ -575,7 +575,11 @@ public class SymbolTable {
      */
     private record Lookup(Resolution resolution, Scope scope) {
         static Lookup missing(String explanation) {
-            return new Lookup(new Resolution.Missing(explanation), null);
+            return new Lookup(new Resolution.Missing(explanation, false), null);
+        }
+
+        static Lookup undefined() {
+            return new Lookup(new Resolution.Missing("the name is not defined.", true), null);
         }
     }
 
@@ -618,12 +622,12 @@ public class SymbolTable {
         if (dot < 0) {
             Scope scope = enclosingScopeOf(from, name.toUpperCase(), filedUnder);
             if (scope == null) {
-                return Lookup.missing("the name is not defined.");
+                return Lookup.undefined();
             }
             return found(scope, name.toUpperCase(), filedUnder, module);
         }
         if (dot == 0) {
-            return Lookup.missing("the name is not defined.");
+            return Lookup.undefined();
         }
         // Explanations quote the segments as the program wrote them; lookups use the key
         String first = name.substring(0, dot);
@@ -647,7 +651,7 @@ public class SymbolTable {
             return descendInto(symbol, first, remainder, filedUnder, from, module);
         }
         if (module == null) {
-            return Lookup.missing("the name is not defined.");
+            return Lookup.undefined();
         }
         return Lookup.missing("'" + first + "' is neither a name nor an alias of this module.");
     }

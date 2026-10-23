@@ -37,9 +37,6 @@ import java.util.Optional;
  */
 public final class SymbolTableResolution implements INameResolution {
 
-    /** The explanation the symbol table gives for a plain name it does not hold. */
-    private static final String NOT_DEFINED = "the name is not defined.";
-
     private final SymbolTable symbols;
 
     /**
@@ -94,7 +91,7 @@ public final class SymbolTableResolution implements INameResolution {
     }
 
     private static String notDefined(String name, Resolution.Missing missing) {
-        if (NOT_DEFINED.equals(missing.explanation())) {
+        if (missing.undefined()) {
             return "'" + name + "' is not defined.";
         }
         return "Cannot use '" + name + "' in an expression: " + missing.explanation();
