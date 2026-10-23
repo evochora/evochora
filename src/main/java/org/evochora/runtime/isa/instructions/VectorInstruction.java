@@ -123,7 +123,7 @@ public class VectorInstruction extends Instruction {
         int vi = vector[axis1];
         int vj = vector[axis2];
         rotated[axis1] = vj;
-        rotated[axis2] = -vi;
+        rotated[axis2] = ValueBounds.saturate(-(long) vi);
         writeOperand(vecReg, rotated);
     }
 
@@ -159,7 +159,7 @@ public class VectorInstruction extends Instruction {
         int vi = vector[axis1];
         int vj = vector[axis2];
         rotated[axis1] = vj;
-        rotated[axis2] = -vi;
+        rotated[axis2] = ValueBounds.saturate(-(long) vi);
         organism.pushData(rotated);
     }
 
