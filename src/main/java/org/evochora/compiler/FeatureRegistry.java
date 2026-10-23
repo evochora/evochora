@@ -27,6 +27,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -96,6 +97,25 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 */
 	public FeatureRegistry(IInstructionSet isa) {
 		this.isa = isa;
+	}
+
+	/**
+	 * Checks that every feature of a compiler finds the features it requires among them.
+	 *
+	 * @param features The features of a compiler.
+	 * @throws IllegalArgumentException if a feature requires a feature that is not among them.
+	 */
+	public static void checkRequirements(List<ICompilerFeature> features) {
+		Set<Class<?>> present = new HashSet<>();
+		features.forEach(feature -> present.add(feature.getClass()));
+		for (ICompilerFeature feature : features) {
+			for (Class<? extends ICompilerFeature> required : feature.requires()) {
+				if (!present.contains(required)) {
+					throw new IllegalArgumentException("Feature '" + feature.name() + "' requires the feature "
+							+ required.getSimpleName() + ", which is not among the compiler's features.");
+				}
+			}
+		}
 	}
 
 	/**

@@ -58,10 +58,8 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The main compiler implementation. This class orchestrates the entire compilation
@@ -88,16 +86,7 @@ public class Compiler implements ICompiler {
      * @throws IllegalArgumentException if a feature requires a feature that is not among them.
      */
     Compiler(List<ICompilerFeature> features) {
-        Set<Class<?>> present = new HashSet<>();
-        features.forEach(feature -> present.add(feature.getClass()));
-        for (ICompilerFeature feature : features) {
-            for (Class<? extends ICompilerFeature> required : feature.requires()) {
-                if (!present.contains(required)) {
-                    throw new IllegalArgumentException("Feature '" + feature.name() + "' requires the feature "
-                            + required.getSimpleName() + ", which is not among the compiler's features.");
-                }
-            }
-        }
+        FeatureRegistry.checkRequirements(features);
         this.features = features;
     }
 
@@ -185,8 +174,6 @@ public class Compiler implements ICompiler {
         features.forEach(f -> f.register(featureRegistry));
         featureRegistry.validate();
 
-        // The two read-time phases each keep flags of their own, seeded alike, so that both start
-        // from the configuration and pass the same definitions in the same order
         ReservedNames reservedNames = featureRegistry.operations().reservedNames();
 
         // The configured flags are checked once, against the configuration, whatever the program reads
@@ -206,6 +193,8 @@ public class Compiler implements ICompiler {
                 featureRegistry.lexerSymbols());
 
         // Phase 2: Preprocessing (includes, macros)
+        // The preprocessor keeps flags of its own, seeded like the Lexer's, so that both read-time
+        // phases start from the configuration and pass the same definitions in the same order
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, graph.tokens(), graph.lines(),
                 programName, mainFilePath, effectiveOptions, featureRegistry.operations(), isa,
                 Flags.of(effectiveOptions.defines(), reservedNames), diagnostics);
