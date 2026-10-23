@@ -63,8 +63,9 @@ public final class ExpressionParser {
     /**
      * Reads the tokens of one computation.
      *
-     * @param tokens The tokens, ending at the end of the list or at an end-of-file token; the
-     *               parentheses that mark a computation in an operand are not among them.
+     * @param tokens The tokens, ending at the end of the list or at an end-of-file token; a
+     *               computation that stands in parentheses comes with them, read as a
+     *               parenthesis {@code (a)}.
      * @return The tree, or the error with the position of the token at fault.
      */
     public ParseResult parse(List<Token> tokens) {
