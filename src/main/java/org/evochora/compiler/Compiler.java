@@ -182,7 +182,7 @@ public class Compiler implements ICompiler {
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         FeatureRegistry featureRegistry = new FeatureRegistry(isa);
         features.forEach(f -> f.register(featureRegistry));
-        featureRegistry.operations().validate(preprocessorWords(featureRegistry));
+        featureRegistry.validate();
 
         // The two read-time phases each keep flags of their own, seeded alike, so that both start
         // from the configuration and pass the same definitions in the same order
@@ -344,16 +344,6 @@ public class Compiler implements ICompiler {
         } catch (java.nio.file.InvalidPathException e) {
             throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
         }
-    }
-
-    /**
-     * The words the preprocessor acts on: the directives of its handlers and every word of its
-     * block kinds.
-     */
-    private static Set<String> preprocessorWords(FeatureRegistry featureRegistry) {
-        Set<String> words = new HashSet<>(featureRegistry.preprocessorHandlers().keySet());
-        featureRegistry.preprocessorBlocks().forEach(block -> words.addAll(block.kind().words()));
-        return words;
     }
 
     /**

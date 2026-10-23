@@ -98,6 +98,19 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		this.isa = isa;
 	}
 
+	/**
+	 * Checks what can be checked only once every feature has registered: no operation of
+	 * computations is named like a word the preprocessor acts on, a directive of its handlers or a
+	 * word of its block kinds.
+	 *
+	 * @throws IllegalStateException if an operation is named like such a word.
+	 */
+	public void validate() {
+		Set<String> words = new LinkedHashSet<>(preprocessorHandlers.keySet());
+		preprocessorBlocks.forEach(block -> words.addAll(block.kind().words()));
+		operations.validate(words);
+	}
+
 	// --- IFeatureRegistrationContext implementation (write side) ---
 
 	@Override
