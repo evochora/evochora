@@ -41,6 +41,10 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 
 Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. The equality tests (`IF*`, `IN*` and their jumps) compare the molecule: two values are equal if they are value-compatible and hold the same number, and *not equal* in every other case, a type mismatch included. The order comparisons (`GT*`, `LT*`, `GET*`, `LET*`, the probabilistic ones and their jumps) compare the numbers alone, whatever the types. No comparison fails on its operands. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*` and their jumps) and type scans (`SNT*`) match types exactly.
 
+#### Value width and range
+
+A molecule's value is `VALUE_BITS` bits wide: this is the *value width*. Read as a number, it is signed, and the numbers that fit are the *value range*. Arithmetic saturates: a result that would leave the range is held at the nearest end, and no instruction fails for it. Bitwise instructions work on the pattern within the width; a bit shifted past the edge is gone. The instructions are described in [Arithmetic Operations](#arithmetic-operations) and [Bitwise Operations](#bitwise-operations).
+
 ### Ownership
 
 Any grid cell can be "owned" by an organism. This ownership is tracked separately from the molecule in the cell and is crucial for certain instructions like `SEEK` or `PEEK`, which behave differently depending on whether the target cell is owned by the acting organism, a foreign organism, or is unowned. Movement treats an occupied unowned cell like a foreign one; costs are configured separately for all three cases.
@@ -272,7 +276,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 
 ### Arithmetic Operations
 
-These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support component-wise vector arithmetic.
+These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support component-wise vector arithmetic. Every result saturates at the ends of the value range, vector components and products included; the computation itself is exact.
 
 * `ADDR %REG1 %REG2`, `ADDI %REG1 <Literal>`, `ADDS`: Performs addition.
 * `SUBR %REG1 %REG2`, `SUBI %REG1 <Literal>`, `SUBS`: Performs subtraction.
@@ -291,7 +295,7 @@ These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support
 
 ### Bitwise Operations
 
-These instructions operate on the number of a scalar.
+These instructions operate on the bit pattern of a scalar within the value width; the result keeps the type of the first operand.
 
 * `ANDR %REG1 %REG2`, `ANDI %REG1 <Literal>`, `ANDS`: Bitwise AND.
 * `ORR %REG1 %REG2`, `ORI %REG1 <Literal>`, `ORS`: Bitwise OR.
@@ -304,6 +308,7 @@ These instructions operate on the number of a scalar.
 * `NOT %REG`, `NOTS`: Bitwise NOT.
 * `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
 * `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Arithmetic shift right, the sign is kept. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+  - The amount is taken literally: a shift by the value width or more moves every bit out, leaving zero (left) or the sign fill (right). A negative amount shifts the other way.
 
 #### Rotation and Bit Utilities
 
@@ -312,7 +317,7 @@ These operate on the lower VALUE_BITS of the scalar and preserve the molecule ty
 * `ROTR %VAL_REG %AMT_REG`, `ROTI %VAL_REG <Amount>`, `ROTS`: Rotate bits.
   - The signed amount determines direction: positive rotates left, negative rotates right.
   - `ROTS` pops `<Amt>` then `<Val>` from the Data Stack and pushes the rotated result. All stack ops are destructive.
-  - Rotations by 0 or by the full bit-width leave the value unchanged.
+  - The amount is taken modulo the value width: rotations by 0 or by the full width leave the value unchanged.
 * `PCNR %DEST_REG %SRC_REG`, `PCNS`: Population count (number of set bits in the lower VALUE_BITS).
   - `PCNR` writes the count into `%DEST_REG` with the same type as `%SRC_REG`.
   - `PCNS` pops a scalar and pushes the count with type `DATA`.
