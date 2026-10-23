@@ -164,7 +164,8 @@ class ModuleLayoutValuesTest {
 
     /**
      * A {@code .SOURCE}d file keeps the placement of the file that takes it in: its label is a
-     * position of the program, while a vector {@code .ORG} in it counts from the file's own origin.
+     * position of the program, a position the main file gives it stays that place, while a vector
+     * {@code .ORG} and {@code POSITION(v)} in it count from the file's own origin.
      */
     @Test
     void aSourcedFileUsesALabelAGivenPositionAndAVectorOrigin() throws Exception {
@@ -173,8 +174,13 @@ class ModuleLayoutValuesTest {
                 ".ORG 0|2",
                 "NOP",
                 ".ORG (HERE + (2|0))",
+                "NOP",
+                ".ORG P",
+                "NOP",
+                ".ORG POSITION(0|4)",
                 "NOP");
         write("main.evo",
+                ".CONST P POSITION(1|1)",
                 ".ORG 5|5",
                 ".SOURCE \"part.evo\"",
                 ".ORG (HERE + (1|0))",
@@ -185,7 +191,10 @@ class ModuleLayoutValuesTest {
         assertThat(labelAt(artifact, "HERE", 5, 5)).isTrue();
         assertThat(codeAt(artifact, 5, 7)).as("the vector 0|2 from the file's origin").isTrue();
         assertThat(codeAt(artifact, 7, 5)).as("two columns right of the label, in the file").isTrue();
+        assertThat(codeAt(artifact, 1, 1)).as("the position the main file gives").isTrue();
+        assertThat(codeAt(artifact, 5, 9)).as("POSITION(0|4) from the file's origin").isTrue();
         assertThat(codeAt(artifact, 6, 5)).as("one column right of the label, in the main file").isTrue();
+        assertThat(artifact.machineCodeLayout()).hasSize(6);
     }
 
     @Test
