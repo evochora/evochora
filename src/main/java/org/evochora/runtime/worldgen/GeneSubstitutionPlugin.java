@@ -39,8 +39,8 @@ import org.slf4j.LoggerFactory;
  * stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits of the hash. Every other
  * type carries a plain number and uses the general strategy:
  * scale-proportional perturbation of the signed value, {@code delta = max(1,
- * round(|value|^exponent))} with the type's own exponent, a result past an end of the value
- * range held at that end ({@link ValueBounds#saturate(long)}).
+ * round(|value|^exponent))} with the type's own exponent, the result brought into the value
+ * range as the instruction set brings a computed number ({@link ValueBounds#bound(long)}).
  * <p>
  * <strong>Selection:</strong> Every type registered in {@link org.evochora.runtime.model.MoleculeTypeRegistry}
  * has a selection weight, read from the plugin configuration under the type's name. A type without
@@ -627,9 +627,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * <p>
      * The perturbation runs on the sign-extended value, so a stored {@code -1} moves by one rather
      * than by the delta belonging to its unsigned pattern. The sum is computed at full width and
-     * a result past an end of the value range is held at that end
-     * ({@link ValueBounds#saturate(long)}), as the instruction set holds the result of arithmetic
-     * on these values: a value at an end moves inward or stays, it never crosses to the other end.
+     * brought into the value range by {@link ValueBounds#bound(long)}, the rule the instruction set
+     * applies to the result of arithmetic on these values, so a mutation and a computation agree on
+     * what a number past an end of the range becomes.
      * <p>
      * Input and output are the raw pattern of the value field, as for every mutator in this class:
      * the caller compares the returned pattern against the sampled one to detect a no-op.
@@ -642,7 +642,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         int value = Molecule.extractSignedValue(rawValue);
         int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(value), exponent)));
         int offset = random.nextInt(2 * delta + 1) - delta;
-        return ValueBounds.saturate((long) value + offset) & Config.VALUE_MASK;
+        return ValueBounds.bound((long) value + offset) & Config.VALUE_MASK;
     }
 
     /**

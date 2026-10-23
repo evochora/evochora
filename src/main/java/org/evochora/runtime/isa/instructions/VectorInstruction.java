@@ -17,8 +17,8 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
  * Implements n-dimensional vector manipulation instructions, including VGET, VSET, VBLD,
  * bit-to-vector/vector-to-bit conversions, and vector rotation.
  * <p>
- * A component taken out of a vector as a scalar is held within the value range by
- * {@link ValueBounds#saturate(long)}.
+ * A component taken out of a vector as a scalar, and a component a rotation negates, is brought
+ * into the value range by {@link ValueBounds#bound(long)}.
  */
 public class VectorInstruction extends Instruction {
 
@@ -123,7 +123,7 @@ public class VectorInstruction extends Instruction {
         int vi = vector[axis1];
         int vj = vector[axis2];
         rotated[axis1] = vj;
-        rotated[axis2] = ValueBounds.saturate(-(long) vi);
+        rotated[axis2] = ValueBounds.bound(-(long) vi);
         writeOperand(vecReg, rotated);
     }
 
@@ -159,7 +159,7 @@ public class VectorInstruction extends Instruction {
         int vi = vector[axis1];
         int vj = vector[axis2];
         rotated[axis1] = vj;
-        rotated[axis2] = ValueBounds.saturate(-(long) vi);
+        rotated[axis2] = ValueBounds.bound(-(long) vi);
         organism.pushData(rotated);
     }
 
@@ -319,7 +319,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        writeOperand(destReg, new Molecule(Config.TYPE_DATA, ValueBounds.saturate(vector[index])).toInt());
+        writeOperand(destReg, new Molecule(Config.TYPE_DATA, ValueBounds.bound(vector[index])).toInt());
     }
 
     private void handleVectorGetStack(List<Operand> operands) {
@@ -346,7 +346,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        organism.pushData(new Molecule(Config.TYPE_DATA, ValueBounds.saturate(vector[index])).toInt());
+        organism.pushData(new Molecule(Config.TYPE_DATA, ValueBounds.bound(vector[index])).toInt());
     }
 
     private void handleVectorSet(List<Operand> operands) {

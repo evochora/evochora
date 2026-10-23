@@ -8,13 +8,15 @@ import org.evochora.runtime.Config;
  * A value is {@link Config#VALUE_BITS} wide and read in two's complement, so it lies between
  * {@link #MIN_VALUE} and {@link #MAX_VALUE}. Everything that holds a value — a cell, a data
  * register, a component of a vector — holds one in this range, and this class is the only place
- * that knows the rules for leaving it:
+ * that knows the rules for leaving it. There are two kinds of operation, and each caller states
+ * which kind it is by the method it calls; what the kind does at the edge is decided here alone:
  * <ul>
  *   <li><strong>Quantities saturate.</strong> A computed number — a sum, a product, a negation,
  *       a mutated literal — is computed at full width, and only the result an organism sees is
- *       held at the nearest end of the range ({@link #saturate(long)}). Energy and entropy behave
- *       the same way at their limits, and so does a physical quantity: a number that grows past
- *       the largest value stays the largest value, it does not turn into the smallest one.</li>
+ *       brought into the range ({@link #bound(long)}), by being held at the nearest end. Energy
+ *       and entropy behave the same way at their limits, and so does a physical quantity: a number
+ *       that grows past the largest value stays the largest value, it does not turn into the
+ *       smallest one.</li>
  *   <li><strong>Patterns keep their width.</strong> A bitwise operation works on the bit pattern
  *       of the value field. A shift takes its amount literally: a bit shifted out of the field is
  *       gone, and an amount at or beyond the width leaves only the fill
@@ -39,13 +41,13 @@ public final class ValueBounds {
     }
 
     /**
-     * Holds a computed number within the value range.
+     * Brings a computed number into the value range, as the rule for quantities says: a number
+     * inside the range is itself, a number outside it is held at the end it went past.
      *
      * @param value The number, computed at full width.
-     * @return The number itself if it lies in the range, otherwise the end of the range it went
-     *         past.
+     * @return The number as the organism sees it.
      */
-    public static int saturate(long value) {
+    public static int bound(long value) {
         if (value > MAX_VALUE) {
             return MAX_VALUE;
         }

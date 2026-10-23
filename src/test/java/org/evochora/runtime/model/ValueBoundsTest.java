@@ -34,21 +34,21 @@ class ValueBoundsTest {
     @Test
     @Tag("unit")
     void aNumberInTheRangeIsKept() {
-        assertThat(ValueBounds.saturate(0)).isZero();
-        assertThat(ValueBounds.saturate(-1)).isEqualTo(-1);
-        assertThat(ValueBounds.saturate(MAX)).isEqualTo(MAX);
-        assertThat(ValueBounds.saturate(MIN)).isEqualTo(MIN);
+        assertThat(ValueBounds.bound(0)).isZero();
+        assertThat(ValueBounds.bound(-1)).isEqualTo(-1);
+        assertThat(ValueBounds.bound(MAX)).isEqualTo(MAX);
+        assertThat(ValueBounds.bound(MIN)).isEqualTo(MIN);
     }
 
     @Test
     @Tag("unit")
     void aNumberPastAnEndStaysAtThatEnd() {
-        assertThat(ValueBounds.saturate((long) MAX + 1)).isEqualTo(MAX);
-        assertThat(ValueBounds.saturate((long) MIN - 1)).isEqualTo(MIN);
-        assertThat(ValueBounds.saturate(Long.MAX_VALUE)).isEqualTo(MAX);
-        assertThat(ValueBounds.saturate(Long.MIN_VALUE)).isEqualTo(MIN);
-        assertThat(ValueBounds.saturate((long) MAX * MAX)).isEqualTo(MAX);
-        assertThat(ValueBounds.saturate((long) MIN * MAX)).isEqualTo(MIN);
+        assertThat(ValueBounds.bound((long) MAX + 1)).isEqualTo(MAX);
+        assertThat(ValueBounds.bound((long) MIN - 1)).isEqualTo(MIN);
+        assertThat(ValueBounds.bound(Long.MAX_VALUE)).isEqualTo(MAX);
+        assertThat(ValueBounds.bound(Long.MIN_VALUE)).isEqualTo(MIN);
+        assertThat(ValueBounds.bound((long) MAX * MAX)).isEqualTo(MAX);
+        assertThat(ValueBounds.bound((long) MIN * MAX)).isEqualTo(MIN);
     }
 
     /**
@@ -58,8 +58,8 @@ class ValueBoundsTest {
     @Test
     @Tag("unit")
     void negationAndMagnitudeOfTheSmallestValueEndAtTheLargest() {
-        assertThat(ValueBounds.saturate(-(long) MIN)).isEqualTo(MAX);
-        assertThat(ValueBounds.saturate(Math.abs((long) MIN))).isEqualTo(MAX);
+        assertThat(ValueBounds.bound(-(long) MIN)).isEqualTo(MAX);
+        assertThat(ValueBounds.bound(Math.abs((long) MIN))).isEqualTo(MAX);
     }
 
     @Test

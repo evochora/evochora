@@ -16,8 +16,9 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
  * Handles all arithmetic instructions, including scalar and vector operations.
  * It supports different operand sources like registers, immediate values, and the stack.
  * <p>
- * Every computation runs at full width, and the result is held within the value range by
- * {@link ValueBounds#saturate(long)}, a scalar as well as each component of a vector.
+ * Every computation runs at full width, and the result is brought into the value range by
+ * {@link ValueBounds#bound(long)}, a scalar as well as each component of a vector; what a number
+ * past an end of the range becomes is decided there.
  */
 public class ArithmeticInstruction extends Instruction {
 
@@ -140,8 +141,8 @@ public class ArithmeticInstruction extends Instruction {
             String opName = getName().substring(0, 3); // "ADDR" -> "ADD"
 
             switch (opName) {
-                case "ADD" -> { for (int i = 0; i < v1.length; i++) resVec[i] = ValueBounds.saturate((long) v1[i] + v2[i]); }
-                case "SUB" -> { for (int i = 0; i < v1.length; i++) resVec[i] = ValueBounds.saturate((long) v1[i] - v2[i]); }
+                case "ADD" -> { for (int i = 0; i < v1.length; i++) resVec[i] = ValueBounds.bound((long) v1[i] + v2[i]); }
+                case "SUB" -> { for (int i = 0; i < v1.length; i++) resVec[i] = ValueBounds.bound((long) v1[i] - v2[i]); }
                 default -> {
                     organism.instructionFailed("Unsupported vector operation: " + getName());
                     return;
@@ -190,7 +191,7 @@ public class ArithmeticInstruction extends Instruction {
                     return;
                 }
             }
-            result = new Molecule(s1.type(), ValueBounds.saturate(scalarResult)).toInt();
+            result = new Molecule(s1.type(), ValueBounds.bound(scalarResult)).toInt();
         } else {
             organism.instructionFailed("Mismatched or invalid operand types for arithmetic operation.");
             return;
@@ -254,12 +255,12 @@ public class ArithmeticInstruction extends Instruction {
         if (a.length != b.length) { this.organism.instructionFailed("Vector dimensions must match for DOT."); return 0; }
         long sum = 0;
         for (int i = 0; i < a.length; i++) sum += (long)a[i] * (long)b[i];
-        return ValueBounds.saturate(sum);
+        return ValueBounds.bound(sum);
     }
 
     private int cross2d(int[] a, int[] b) {
         if (a.length < 2 || b.length < 2) { this.organism.instructionFailed("CRS requires 2D vectors."); return 0; }
-        return ValueBounds.saturate((long) a[0] * b[1] - (long) a[1] * b[0]);
+        return ValueBounds.bound((long) a[0] * b[1] - (long) a[1] * b[0]);
     }
 
     private void handleUnaryOperation(List<Operand> operands) {
@@ -280,10 +281,10 @@ public class ArithmeticInstruction extends Instruction {
 
         String opName = getName().substring(0, 3); // "NEGR" -> "NEG"
         switch (opName) {
-            case "NEG" -> resultValue = ValueBounds.saturate(-(long) value);
-            case "ABS" -> resultValue = ValueBounds.saturate(Math.abs((long) value));
-            case "INC" -> resultValue = ValueBounds.saturate((long) value + 1);
-            case "DEC" -> resultValue = ValueBounds.saturate((long) value - 1);
+            case "NEG" -> resultValue = ValueBounds.bound(-(long) value);
+            case "ABS" -> resultValue = ValueBounds.bound(Math.abs((long) value));
+            case "INC" -> resultValue = ValueBounds.bound((long) value + 1);
+            case "DEC" -> resultValue = ValueBounds.bound((long) value - 1);
             case "SGN" -> resultValue = Integer.compare(value, 0);
             default -> {
                 organism.instructionFailed("Unknown unary operation: " + getName());
