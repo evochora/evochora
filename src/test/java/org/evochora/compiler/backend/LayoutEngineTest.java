@@ -234,17 +234,15 @@ public class LayoutEngineTest {
                 new IrValue.Literal(new Value.Number(0L)))));
         orgArgs.put("relative", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
         orgArgs.put("backward", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
-        assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "org", orgArgs, src("main.s", 1)), seti(2))))
+        assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "org", orgArgs, src("main.s", 3)), seti(2))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 4294967296 out of range for a coordinate.")
-                .hasMessageContaining("main.s:1");
+                .hasMessageContaining("main.s:3: Value 4294967296 out of range for a coordinate.");
 
         Map<String, IrValue> dirArgs = new HashMap<>();
         dirArgs.put("direction", new IrValue.Literal(new Value.Vector(List.of(0L, -4294967296L))));
         assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "dir", dirArgs, src("main.s", 2)), seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value -4294967296 out of range for a coordinate.")
-                .hasMessageContaining("main.s:2");
+                .hasMessageContaining("main.s:2: Value -4294967296 out of range for a coordinate.");
     }
 
     @Test
@@ -257,8 +255,7 @@ public class LayoutEngineTest {
                 new IrDirective("core", "dir", args, src("main.s", 2)),
                 seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Direction [1, 0, 0] has 3 components, the world has 2 dimensions.")
-                .hasMessageContaining("main.s:2");
+                .hasMessageContaining("main.s:2: Direction [1, 0, 0] has 3 components, the world has 2 dimensions.");
     }
 
     /**
@@ -272,22 +269,22 @@ public class LayoutEngineTest {
                 rotation(true, 1, 1, src("main.s", 2)),
                 seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("needs two different axes, both are 1")
-                .hasMessageContaining("main.s:2");
+                .hasMessageContaining("main.s:2: A rotation plane needs two different axes, both are 1.");
 
         assertThatThrownBy(() -> layout(List.of(
                 org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
                 rotation(true, 0, 5, src("main.s", 2)),
                 seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Axis 5 is not an axis of a 2-dimensional world.");
+                .hasMessageContaining("main.s:2: Axis 5 is not an axis of a 2-dimensional world.");
 
         assertThatThrownBy(() -> layout(List.of(
                 org(new int[]{0}, new boolean[]{false}, src("main.s", 1)),
                 rotation(true, 0, 1, src("main.s", 2)),
                 seti(3)), new int[]{32}))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("one-dimensional world");
+                .hasMessageContaining("main.s:2: A rotation needs a plane, which a one-dimensional world does not have. "
+                        + "Write the direction out instead.");
     }
 
     /**
@@ -377,10 +374,10 @@ public class LayoutEngineTest {
     @Test
     void aWrongNumberOfComponentsIsReported() {
         assertThatThrownBy(() -> layout(List.of(
-                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 1)),
-                seti(2))))
+                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 2)),
+                seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Origin [0, 0, 0] has 3 components, the world has 2 dimensions.");
+                .hasMessageContaining("main.s:2: Origin [0, 0, 0] has 3 components, the world has 2 dimensions.");
     }
 
     /**
@@ -446,10 +443,9 @@ public class LayoutEngineTest {
      */
     @Test
     void aNameInTheLayoutIsAForwardReference() {
-        assertThatThrownBy(() -> layout(List.of(orgTo(new IrValue.Str("NW"), src("main.s", 1)), seti(2))))
+        assertThatThrownBy(() -> layout(List.of(orgTo(new IrValue.Str("NW"), src("main.s", 2)), seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Forward reference to 'NW'.")
-                .hasMessageContaining("main.s:1");
+                .hasMessageContaining("main.s:2: Forward reference to 'NW'.");
     }
 
     /**

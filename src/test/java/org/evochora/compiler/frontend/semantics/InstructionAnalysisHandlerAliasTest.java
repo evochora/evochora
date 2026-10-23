@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
@@ -34,7 +35,7 @@ class InstructionAnalysisHandlerAliasTest {
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
-    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0, "TEST", 0);
+    private static final SourceInfo SRC = new SourceInfo("test.s", 2, 0, "TEST", 0);
 
     @BeforeAll
     static void initInstructionSet() {
@@ -90,8 +91,8 @@ class InstructionAnalysisHandlerAliasTest {
         handler.analyze(instr, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("but got LOCATION_REGISTER"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got LOCATION_REGISTER.");
     }
 
     @Test
@@ -106,8 +107,8 @@ class InstructionAnalysisHandlerAliasTest {
         handler.analyze(instr, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("but got REGISTER"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Argument 1 for instruction 'CRLR' has the wrong type. Expected LOCATION_REGISTER, but got REGISTER.");
     }
 
     @Test
@@ -121,7 +122,7 @@ class InstructionAnalysisHandlerAliasTest {
         handler.analyze(instr, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("cannot be an instruction argument"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: 'MATH' is not a value, a register or a label and cannot be an instruction argument.");
     }
 }

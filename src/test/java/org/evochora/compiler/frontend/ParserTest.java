@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
@@ -9,7 +10,6 @@ import org.evochora.compiler.model.expression.NameExpression;
 import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
@@ -273,7 +273,7 @@ public class ParserTest {
     @Tag("unit")
     void testParserExportBeforeAnInstructionIsReported() {
         // Arrange
-        String source = "EXPORT NOP";
+        String source = "# A comment line.\nEXPORT NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
@@ -281,7 +281,7 @@ public class ParserTest {
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
         // Assert
-        assertThat(diagnostics.summary()).contains("EXPORT is not supported before 'NOP'.");
+        assertThat(diagnostics.summary()).contains("<memory>:2: EXPORT is not supported before 'NOP'.");
         assertThat(ast).singleElement().isInstanceOf(InstructionNode.class);
     }
 
@@ -551,10 +551,8 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         parseWithOperations("NOP\nSETI %DR0 (A +)", diagnostics);
 
-        assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
-            assertThat(d.message()).isEqualTo("Expected an expression after '+'.");
-            assertThat(d.lineNumber()).isEqualTo(2);
-        });
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("<memory>:2: Expected an expression after '+'.");
     }
 
     /**
@@ -564,9 +562,10 @@ public class ParserTest {
     @Tag("unit")
     void aParserWithoutOperationsReportsAnOperatorAsUnexpected() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        new Parser(TestLexers.tokenizer("SETI %DR0 (A+1)", diagnostics).scanTokens(), diagnostics, registry()).parse();
+        new Parser(TestLexers.tokenizer("# A comment line.\nSETI %DR0 (A+1)", diagnostics).scanTokens(), diagnostics, registry()).parse();
 
-        assertThat(diagnostics.getDiagnostics()).extracting(Diagnostic::message).containsExactly("Unexpected '+'.");
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("<memory>:2: Unexpected '+'.");
     }
 
     /**
@@ -592,8 +591,8 @@ public class ParserTest {
 
         assertThat(parser.readOperand(twoOperands)).isEmpty();
         assertThat(parser.readOperand(broken)).isEmpty();
-        assertThat(diagnostics.getDiagnostics()).extracting(Diagnostic::message)
-                .containsExactly("Unexpected '2'.", "Expected an expression after '-'.");
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("<memory>:1: Unexpected '2'.", "<memory>:1: Expected an expression after '-'.");
     }
 
     private static List<Token> withoutEnd(List<Token> tokens) {

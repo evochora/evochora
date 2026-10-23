@@ -249,7 +249,7 @@ public class RepeatDirectiveTest {
     @Tag("unit")
     void testStatementOnTheRepeatLineIsRejected() {
         // Arrange
-        String source = "JMPI START; .REPEAT 3 NOP; .ENDREPEAT; JMPI END";
+        String source = "# A comment line.\nJMPI START; .REPEAT 3 NOP; .ENDREPEAT; JMPI END";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
@@ -259,7 +259,8 @@ public class RepeatDirectiveTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("NOP^3");
+        assertThat(diagnostics.summary()).contains("<memory>:2: .REPEAT takes only its count on its line and opens a block closed by .ENDREPEAT; "
+                + "a single statement is repeated as NOP^3");
         assertThat(expandedTokens.stream().map(Token::text).toList())
                 .doesNotContain(".REPEAT", "NOP", ".ENDREPEAT")
                 .containsSubsequence("JMPI", "START", "JMPI", "END");
@@ -486,7 +487,7 @@ public class RepeatDirectiveTest {
     @Tag("unit")
     void testCaretBodyRejectsATopLevelOnlyDirective() {
         // Arrange
-        String source = ".REQUIRE MODULE \"lib.evo\" AS LIB^2\nNOP\n";
+        String source = "# A comment line.\n.REQUIRE MODULE \"lib.evo\" AS LIB^2\nNOP\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
@@ -496,7 +497,7 @@ public class RepeatDirectiveTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains(".REQUIRE may not stand inside a .REPEAT body");
+        assertThat(diagnostics.summary()).contains("<memory>:2: .REQUIRE may not stand inside a .REPEAT body; the body opened at <memory>:2");
         // The block is left behind unexpanded, and the walk goes on after it.
         assertThat(expandedTokens.stream().map(Token::text).toList())
                 .containsSubsequence(".REPEAT", ".REQUIRE", ".ENDREPEAT", "NOP")

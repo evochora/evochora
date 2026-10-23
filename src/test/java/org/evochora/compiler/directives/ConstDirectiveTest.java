@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeAll;
 import java.util.List;
 import java.util.Objects;
 
+import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -123,7 +124,7 @@ public class ConstDirectiveTest {
     @Test
     @Tag("unit")
     void testConstWithADotInItsNameIsReported() {
-        String source = ".CONST X.Y DATA:1";
+        String source = "# A comment line.\n.CONST X.Y DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
@@ -133,7 +134,8 @@ public class ConstDirectiveTest {
                 .analyze(ast);
 
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+                .satisfies(d -> assertThat(located(d))
+                        .isEqualTo("<memory>:2: Cannot define 'X.Y': a name is one segment and may not contain a dot."));
     }
 
     /**

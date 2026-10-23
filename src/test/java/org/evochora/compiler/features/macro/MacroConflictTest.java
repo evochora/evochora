@@ -32,11 +32,13 @@ class MacroConflictTest {
     @Tag("integration")
     void conflictingMacroDefinitions_throwsError() throws Exception {
         Files.writeString(tempDir.resolve("macros_v1.evo"),
+                "# A comment line.\n" +
                 ".MACRO FOO\n" +
                 "  NOP\n" +
                 ".ENDMACRO\n");
 
         Files.writeString(tempDir.resolve("macros_v2.evo"),
+                "# A comment line.\n" +
                 ".MACRO FOO\n" +
                 "  SETI %DR0 DATA:42\n" +
                 ".ENDMACRO\n");
@@ -52,7 +54,7 @@ class MacroConflictTest {
 
         assertThatThrownBy(() -> compiler.compile("main.evo", null, options))
                 .isInstanceOf(Exception.class)
-                .hasMessageContaining("Cannot define macro 'FOO' differently at")
-                .hasMessageContaining("with another body");
+                .hasMessageFindingMatch("macros_v2\\.evo:2: Cannot define macro 'FOO' differently at \\S*macros_v2\\.evo:2: "
+                        + "first defined at \\S*macros_v1\\.evo:2 with another body\\.");
     }
 }

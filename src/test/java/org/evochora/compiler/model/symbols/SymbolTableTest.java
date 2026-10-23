@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.SourceInfo;
@@ -153,10 +154,8 @@ class SymbolTableTest {
         Optional<Symbol> existing = dotted.define(new Symbol("X.Y", new SourceInfo(MAIN, 4, 1, "", 0), Symbol.Type.LABEL));
 
         assertThat(existing).isEmpty();
-        assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
-            assertThat(d.lineNumber()).isEqualTo(4);
-            assertThat(d.message()).contains("'X.Y'").contains("a name is one segment");
-        });
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly(MAIN + ":4: Cannot define 'X.Y': a name is one segment and may not contain a dot.");
         assertThat(dotted.resolve("X.Y", new SourceInfo(MAIN, 5, 1, "", 0)).found()).isEmpty();
     }
 
@@ -173,10 +172,10 @@ class SymbolTableTest {
         reserving.define(new Symbol("Min", new SourceInfo(MAIN, 4, 1, "", 0), Symbol.Type.CONSTANT));
         reserving.define(new Symbol("@", new SourceInfo(MAIN, 5, 1, "", 0), Symbol.Type.CONSTANT));
 
-        assertThat(diagnostics.getDiagnostics()).extracting(d -> d.message())
-                .containsExactly("'shl' is an operator and cannot be defined.", "'Min' is a function and cannot be defined.",
-                        "'@' cannot be defined.");
-        assertThat(diagnostics.getDiagnostics().getFirst().lineNumber()).isEqualTo(3);
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly(MAIN + ":3: 'shl' is an operator and cannot be defined.",
+                        MAIN + ":4: 'Min' is a function and cannot be defined.",
+                        MAIN + ":5: '@' cannot be defined.");
         assertThat(reserving.resolve("SHL", new SourceInfo(MAIN, 6, 1, "", 0)).found()).isEmpty();
     }
 }

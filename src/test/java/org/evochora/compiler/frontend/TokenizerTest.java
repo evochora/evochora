@@ -229,13 +229,13 @@ public class TokenizerTest {
     void testCharacterWithoutSymbolKeepsThePlainMessage() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = TestLexers.tokenizer("NOP ?", diagnostics);
+        Tokenizer lexer = TestLexers.tokenizer("# A comment line.\nNOP ?", diagnostics);
 
         // Act
         lexer.scanTokens();
 
         // Assert
-        assertThat(diagnostics.summary()).contains("Unexpected character: ?");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Unexpected character: ?");
     }
 
     /**
@@ -308,11 +308,11 @@ public class TokenizerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         // Act
-        new Tokenizer("< 1", diagnostics, "<memory>", new RuntimeInstructionSetAdapter(), registry.lexerSymbols()).scanTokens();
+        new Tokenizer("# A comment line.\n< 1", diagnostics, "<memory>", new RuntimeInstructionSetAdapter(), registry.lexerSymbols()).scanTokens();
 
         // Assert
         assertThat(diagnostics.summary())
-                .contains("Unexpected character '<'; the symbol beginning with it is '<='");
+                .contains("<memory>:2: Unexpected character '<'; the symbol beginning with it is '<='");
     }
 
     /**

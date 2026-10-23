@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.features.instruction.InstructionAnalysisHandler;
@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("unit")
 class InstructionAnalysisHandlerValueTest {
 
-    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0, "TEST", 0);
+    private static final SourceInfo SRC = new SourceInfo("test.s", 2, 0, "TEST", 0);
 
     private InstructionAnalysisHandler handler;
     private SymbolTable symbolTable;
@@ -59,8 +59,8 @@ class InstructionAnalysisHandlerValueTest {
 
         handler.analyze(seti(new IdentifierNode("P", SRC)), symbolTable, diagnostics);
 
-        assertThat(diagnostics.getDiagnostics()).extracting(Diagnostic::message)
-                .containsExactly("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got POSITION.");
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got POSITION.");
     }
 
     @Test
@@ -69,8 +69,8 @@ class InstructionAnalysisHandlerValueTest {
 
         handler.analyze(seti(new IdentifierNode("T", SRC)), symbolTable, diagnostics);
 
-        assertThat(diagnostics.getDiagnostics()).extracting(Diagnostic::message)
-                .containsExactly("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got TYPE.");
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got TYPE.");
     }
 
     @Test

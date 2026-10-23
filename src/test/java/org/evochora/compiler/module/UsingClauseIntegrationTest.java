@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.CompilerOptions;
@@ -7,7 +8,6 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -94,13 +94,13 @@ class UsingClauseIntegrationTest {
                 ".REQUIRE MODULE \"dep.evo\" AS DEP\nNOP\n");
 
         // main.evo: imports lib but does NOT provide a USING clause
-        String mainSource = ".IMPORT \"lib.evo\" AS LIB\nNOP\n";
+        String mainSource = "# A comment line.\n.IMPORT \"lib.evo\" AS LIB\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "DEP", "add USING MODULE <module> AS");
+        assertErrorReported(diagnostics, mainPath + ":2: Cannot import LIB: it requires 'DEP'; add USING MODULE <module> AS DEP to the import.");
     }
 
     @Test
@@ -110,13 +110,13 @@ class UsingClauseIntegrationTest {
                 ".REQUIRE MODULE \"dep.evo\" AS DEP\nNOP\n");
 
         // main.evo: uses UNKNOWN as source alias (not a known import in main)
-        String mainSource = ".IMPORT \"lib.evo\" AS LIB USING MODULE UNKNOWN AS DEP\nNOP\n";
+        String mainSource = "# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING MODULE UNKNOWN AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "UNKNOWN", "neither an import nor a requirement");
+        assertErrorReported(diagnostics, mainPath + ":2: USING source 'UNKNOWN' is neither an import nor a requirement of the current module.");
     }
 
     @Test
@@ -127,13 +127,13 @@ class UsingClauseIntegrationTest {
                 ".REQUIRE MODULE \"dep.evo\" AS DEP\nNOP\n");
 
         // main.evo: provides D as WRONG_NAME, but lib requires DEP
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS WRONG_NAME\nNOP\n";
+        String mainSource = "# A comment line.\n.IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS WRONG_NAME\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "WRONG_NAME", "does not match any .REQUIRE");
+        assertErrorReported(diagnostics, mainPath + ":3: USING target 'WRONG_NAME' does not match any .REQUIRE in the imported module.");
     }
 
     @Test
@@ -171,7 +171,7 @@ class UsingClauseIntegrationTest {
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "B", "add USING MODULE <module> AS");
+        assertErrorReported(diagnostics, mainPath + ":3: Cannot import LIB: it requires 'B'; add USING MODULE <module> AS B to the import.");
     }
 
     @Test
@@ -365,17 +365,8 @@ class UsingClauseIntegrationTest {
         return reg;
     }
 
-    private void assertErrorContaining(DiagnosticsEngine diagnostics, String... substrings) {
-        List<Diagnostic> errors = diagnostics.getDiagnostics().stream()
-                .filter(d -> d.type() == Diagnostic.Type.ERROR)
-                .toList();
-        assertThat(errors).anyMatch(error -> {
-            String msg = error.message();
-            for (String sub : substrings) {
-                if (!msg.toLowerCase().contains(sub.toLowerCase())) return false;
-            }
-            return true;
-        });
+    private void assertErrorReported(DiagnosticsEngine diagnostics, String located) {
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located).contains(located);
     }
 
     @SuppressWarnings("unchecked")

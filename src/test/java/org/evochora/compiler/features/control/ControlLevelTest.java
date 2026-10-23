@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.control;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
@@ -95,7 +96,7 @@ class ControlLevelTest {
                 "JMPI WALK.BLOCKED");
 
         assertThat(analyzed.errors()).containsExactly(
-                "5: Cannot use 'WALK.BLOCKED' as an argument: 'BLOCKED' of WALK is not marked EXPORT.");
+                "main.evo:5: Cannot use 'WALK.BLOCKED' as an argument: 'BLOCKED' of WALK is not marked EXPORT.");
     }
 
     @Test
@@ -149,7 +150,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "3: Cannot define label 'END': the name is already used at main.evo:5.");
+                "main.evo:3: Cannot define label 'END': the name is already used at main.evo:5.");
     }
 
     @Test
@@ -163,7 +164,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "4: Cannot define case 'BLOCKED': the name is already used at main.evo:2.");
+                "main.evo:4: Cannot define case 'BLOCKED': the name is already used at main.evo:2.");
     }
 
     @Test
@@ -177,7 +178,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "4: Cannot define block 'WALK': the name is already used at main.evo:1.");
+                "main.evo:4: Cannot define block 'WALK': the name is already used at main.evo:1.");
     }
 
     @Test
@@ -191,7 +192,7 @@ class ControlLevelTest {
                 "JMPI WALK.L");
 
         assertThat(analyzed.errors()).containsExactly(
-                "6: Cannot use 'WALK.L' as an argument: 'L' of WALK is not marked EXPORT.");
+                "main.evo:6: Cannot use 'WALK.L' as an argument: 'L' of WALK is not marked EXPORT.");
     }
 
     @Test
@@ -219,7 +220,7 @@ class ControlLevelTest {
                 "SETI %DR0 WALK.N");
 
         assertThat(analyzed.errors()).containsExactly(
-                "5: Cannot use 'WALK.N' as an argument: 'N' of WALK is not marked EXPORT.");
+                "main.evo:5: Cannot use 'WALK.N' as an argument: 'N' of WALK is not marked EXPORT.");
     }
 
     @Test
@@ -246,7 +247,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "2: .IMPORT may stand only at the module level.");
+                "main.evo:2: .IMPORT may stand only at the module level.");
     }
 
     @Test
@@ -259,7 +260,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "2: .PROC may stand only at the module level.");
+                "main.evo:2: .PROC may stand only at the module level.");
     }
 
     // --- helpers ---
@@ -314,7 +315,7 @@ class ControlLevelTest {
                 ".ENDCONTROL",
                 "INCR %TMP");
 
-        assertThat(analyzed.errors()).containsExactly("9: Cannot use '%TMP' as an argument: the name is not defined.");
+        assertThat(analyzed.errors()).containsExactly("main.evo:9: Cannot use '%TMP' as an argument: the name is not defined.");
         Analyzed inside = analyze(
                 ".CONTROL WALK",
                 "  .REG %TMP %DR1",
@@ -342,11 +343,11 @@ class ControlLevelTest {
                     .orElseThrow(() -> new AssertionError("No token '" + text + "' on line " + line));
         }
 
-        /** The errors, each as {@code line: message}. */
+        /** The errors, each as {@code file:line: message}. */
         List<String> errors() {
             return diagnostics.getDiagnostics().stream()
                     .filter(d -> d.type() == Diagnostic.Type.ERROR)
-                    .map(d -> d.lineNumber() + ": " + d.message())
+                    .map(TestDiagnostics::located)
                     .toList();
         }
 

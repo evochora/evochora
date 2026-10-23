@@ -1,8 +1,8 @@
 package org.evochora.compiler.features.importdir;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -90,7 +90,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("UNKNOWN", "neither an import nor a requirement");
+        assertErrorReported(MAIN_FILE + ":2: USING source 'UNKNOWN' is neither an import nor a requirement of the current module.");
     }
 
     @Test
@@ -104,7 +104,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("WRONG_NAME", "does not match any .REQUIRE");
+        assertErrorReported(MAIN_FILE + ":2: USING target 'WRONG_NAME' does not match any .REQUIRE in the imported module.");
     }
 
     @Test
@@ -115,7 +115,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("DEP", "add USING MODULE <module> AS");
+        assertErrorReported(MAIN_FILE + ":2: Cannot import LIB: it requires 'DEP'; add USING MODULE <module> AS DEP to the import.");
     }
 
     @Test
@@ -155,7 +155,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("EXTRA", "add USING MODULE <module> AS");
+        assertErrorReported(MAIN_FILE + ":2: Cannot import LIB: it requires 'EXTRA'; add USING MODULE <module> AS EXTRA to the import.");
     }
 
     // --- Helper methods ---
@@ -172,13 +172,13 @@ class ImportAnalysisHandlerTest {
     }
 
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
-        SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20, "", 0);
+        SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 2, 20, "", 0);
         return new ImportNode(path, alias, usings, List.of(), false, sourceInfo);
     }
 
     private ImportNode.UsingClause usingClause(String sourceAlias, String targetAlias) {
-        SourceInfo sourceSourceInfo = new SourceInfo(MAIN_FILE, 1, 30, "", 0);
-        SourceInfo targetSourceInfo = new SourceInfo(MAIN_FILE, 1, 40, "", 0);
+        SourceInfo sourceSourceInfo = new SourceInfo(MAIN_FILE, 2, 30, "", 0);
+        SourceInfo targetSourceInfo = new SourceInfo(MAIN_FILE, 2, 40, "", 0);
         return new ImportNode.UsingClause(sourceAlias, targetAlias, sourceSourceInfo, targetSourceInfo);
     }
 
@@ -188,17 +188,7 @@ class ImportAnalysisHandlerTest {
                 .isFalse();
     }
 
-    private void assertErrorContaining(String... substrings) {
-        assertThat(diagnostics.hasErrors()).isTrue();
-        List<Diagnostic> errors = diagnostics.getDiagnostics().stream()
-                .filter(d -> d.type() == Diagnostic.Type.ERROR)
-                .toList();
-        assertThat(errors).anyMatch(error -> {
-            String msg = error.message();
-            for (String sub : substrings) {
-                if (!msg.toLowerCase().contains(sub.toLowerCase())) return false;
-            }
-            return true;
-        });
+    private void assertErrorReported(String located) {
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located).contains(located);
     }
 }

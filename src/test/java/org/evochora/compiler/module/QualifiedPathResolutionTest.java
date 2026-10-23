@@ -51,7 +51,7 @@ class QualifiedPathResolutionTest {
 
         assertThatCode(() -> compileMain("  PSLI UTIL.CLAMP.DONE"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot use 'UTIL.CLAMP.DONE' as an argument: 'DONE' of UTIL.CLAMP is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot use 'UTIL.CLAMP.DONE' as an argument: 'DONE' of UTIL.CLAMP is not marked EXPORT.");
     }
 
     @Test
@@ -60,7 +60,7 @@ class QualifiedPathResolutionTest {
 
         assertThatCode(() -> compileMain("  PSLI UTIL.CLAMP.TO_MIN"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot use 'UTIL.CLAMP.TO_MIN' as an argument: 'CLAMP' of UTIL is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot use 'UTIL.CLAMP.TO_MIN' as an argument: 'CLAMP' of UTIL is not marked EXPORT.");
     }
 
     @Test
@@ -69,7 +69,7 @@ class QualifiedPathResolutionTest {
 
         assertThatCode(() -> compileMain("  PSLI UTIL.NOPE"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot use 'UTIL.NOPE' as an argument: 'UTIL' has no member 'NOPE'.");
+                .hasMessageContaining("main.evo:2: Cannot use 'UTIL.NOPE' as an argument: 'UTIL' has no member 'NOPE'.");
     }
 
     @Test
@@ -86,7 +86,7 @@ class QualifiedPathResolutionTest {
 
         assertThatCode(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.STEP.FORWARD': alias 'STEP' of NAV is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot call 'NAV.STEP.FORWARD': alias 'STEP' of NAV is not marked EXPORT.");
     }
 
     /**

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
+import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
@@ -139,63 +140,63 @@ public class ImportDirectiveTest {
     @Tag("unit")
     void aUsingWithoutAKindWordReportsTheMissingModule() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MATH AS CALC", diagnostics);
+        List<AstNode> ast = parse("# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING MATH AS CALC", diagnostics);
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after USING; found 'MATH'."));
+                .satisfies(d -> assertThat(located(d)).isEqualTo("<memory>:2: Expected MODULE or VALUE after USING; found 'MATH'."));
     }
 
     @Test
     @Tag("unit")
     void aValueGroupWithoutAValueIsReported() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING VALUE STEPS", diagnostics);
+        List<AstNode> ast = parse("# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING VALUE STEPS", diagnostics);
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected a value after VALUE STEPS."));
+                .satisfies(d -> assertThat(located(d)).isEqualTo("<memory>:2: Expected a value after VALUE STEPS."));
     }
 
     @Test
     @Tag("unit")
     void aValueGroupEndedByAKindWordIsReported() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING VALUE STEPS MODULE A AS B", diagnostics);
+        List<AstNode> ast = parse("# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING VALUE STEPS MODULE A AS B", diagnostics);
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected a value after VALUE STEPS."));
+                .satisfies(d -> assertThat(located(d)).isEqualTo("<memory>:2: Expected a value after VALUE STEPS."));
     }
 
     @Test
     @Tag("unit")
     void aKindWordWithoutAGroupIsReported() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE", diagnostics);
+        List<AstNode> ast = parse("# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING MODULE", diagnostics);
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected <source> AS <target> after MODULE."));
+                .satisfies(d -> assertThat(located(d)).isEqualTo("<memory>:2: Expected <source> AS <target> after MODULE."));
 
         DiagnosticsEngine valueDiagnostics = new DiagnosticsEngine();
-        List<AstNode> valueAst = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS B VALUE", valueDiagnostics);
+        List<AstNode> valueAst = parse("# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING MODULE A AS B VALUE", valueDiagnostics);
 
         assertThat(valueAst).isEmpty();
         assertThat(valueDiagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected <name> <value> after VALUE."));
+                .satisfies(d -> assertThat(located(d)).isEqualTo("<memory>:2: Expected <name> <value> after VALUE."));
     }
 
     @Test
     @Tag("unit")
     void aSecondUsingOnOneImportIsReported() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X USING MODULE B AS Y", diagnostics);
+        List<AstNode> ast = parse("# A comment line.\n.IMPORT \"lib.evo\" AS LIB USING MODULE A AS X USING MODULE B AS Y", diagnostics);
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message())
-                        .isEqualTo("USING stands once on an import; a further list begins with its kind word."));
+                .satisfies(d -> assertThat(located(d))
+                        .isEqualTo("<memory>:2: USING stands once on an import; a further list begins with its kind word."));
     }
 
     private static ImportNode parseOne(String source) {

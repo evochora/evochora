@@ -95,6 +95,7 @@ class PassedOnRequirementTest {
                 ""));
 
         Files.writeString(tempDir.resolve("main.evo"), String.join("\n",
+                "# A comment line.",
                 ".IMPORT \"bottom.evo\" AS BOTTOM USING MODULE NOWHERE AS MATH",
                 "  NOP",
                 ""));
@@ -102,7 +103,7 @@ class PassedOnRequirementTest {
         assertThatCode(this::compileMain)
                 .as("a name that is neither imported nor required cannot satisfy anything")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("NOWHERE");
+                .hasMessageContaining("main.evo:2: USING source 'NOWHERE' is neither an import nor a requirement of the current module.");
     }
 
     @Test

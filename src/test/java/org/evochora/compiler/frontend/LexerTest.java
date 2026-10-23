@@ -193,7 +193,7 @@ public class LexerTest {
     @Tag("integration")
     void sourceFileContainingImportReportsError() throws Exception {
         Path incFile = tempDir.resolve("inc.evo");
-        Files.writeString(incFile, ".IMPORT \"other.evo\" AS OTHER\n");
+        Files.writeString(incFile, "# A comment line.\n.IMPORT \"other.evo\" AS OTHER\n");
 
         String mainSource = ".SOURCE \"inc.evo\"\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -204,7 +204,9 @@ public class LexerTest {
         lexer.read(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains(".IMPORT");
+        assertThat(diagnostics.summary())
+                .contains("inc.evo:2: .IMPORT not allowed in a .SOURCE file")
+                .contains("inc.evo:2: Module file not found: other.evo");
     }
 
     @Test

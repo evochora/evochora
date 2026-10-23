@@ -98,7 +98,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveWithInvalidRegister() {
-        String source = ".REG COUNTER %DR" + Config.NUM_DATA_REGISTERS;
+        String source = "# A comment line.\n.REG COUNTER %DR" + Config.NUM_DATA_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -107,7 +107,8 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Register '%DR" + Config.NUM_DATA_REGISTERS
+                + "' is out of bounds. Valid range: %DR0-%DR" + (Config.NUM_DATA_REGISTERS - 1) + ".");
     }
 
     /**
@@ -116,7 +117,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectivePdrOutsideProcIsRejected() {
-        String source = ".REG COUNTER %PDR0";
+        String source = "# A comment line.\n.REG COUNTER %PDR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -125,7 +126,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is only available inside a procedure");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Register '%PDR0' is only available inside a procedure.");
     }
 
     /**
@@ -134,7 +135,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectivePlrOutsideProcIsRejected() {
-        String source = ".REG %POS %PLR0";
+        String source = "# A comment line.\n.REG %POS %PLR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -143,7 +144,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is only available inside a procedure");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Register '%PLR0' is only available inside a procedure.");
     }
 
     /**
@@ -152,7 +153,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveFlrIsForbidden() {
-        String source = ".REG %LOC_PARAM %FLR0";
+        String source = "# A comment line.\n.REG %LOC_PARAM %FLR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -161,7 +162,8 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is reserved for procedure parameters");
+        assertThat(diagnostics.summary()).contains(
+                "<memory>:2: Register '%FLR0' is reserved for procedure parameters. Use the parameter's name instead.");
     }
 
     /**
@@ -170,7 +172,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveFdrIsForbidden() {
-        String source = ".REG PARAM %FDR0";
+        String source = "# A comment line.\n.REG PARAM %FDR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -179,7 +181,8 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is reserved for procedure parameters");
+        assertThat(diagnostics.summary()).contains(
+                "<memory>:2: Register '%FDR0' is reserved for procedure parameters. Use the parameter's name instead.");
     }
 
     /**
@@ -272,7 +275,8 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Register '%PDR" + Config.NUM_PDR_REGISTERS
+                + "' is out of bounds. Valid range: %PDR0-%PDR" + (Config.NUM_PDR_REGISTERS - 1) + ".");
     }
 
     /**
@@ -356,7 +360,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveLrOutOfBounds() {
-        String source = ".REG POSITION %LR" + Config.NUM_LOCATION_REGISTERS;
+        String source = "# A comment line.\n.REG POSITION %LR" + Config.NUM_LOCATION_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -365,7 +369,8 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Register '%LR" + Config.NUM_LOCATION_REGISTERS
+                + "' is out of bounds. Valid range: %LR0-%LR" + (Config.NUM_LOCATION_REGISTERS - 1) + ".");
     }
 
     /**
@@ -375,7 +380,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveUnknownBank() {
-        String source = ".REG X %XYZ0";
+        String source = "# A comment line.\n.REG X %XYZ0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -384,7 +389,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register after the alias name in .REG");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Expected a register after the alias name in .REG.");
     }
 
     /**
@@ -394,7 +399,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveInvalidRegisterIndex() {
-        String source = ".REG X %DRabc";
+        String source = "# A comment line.\n.REG X %DRabc";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -403,7 +408,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register after the alias name in .REG");
+        assertThat(diagnostics.summary()).contains("<memory>:2: Expected a register after the alias name in .REG.");
     }
 
     /**
@@ -413,7 +418,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegAliasWithADotInItsNameIsReported() {
-        String source = ".REG %X.Y %DR0";
+        String source = "# A comment line.\n.REG %X.Y %DR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
@@ -425,7 +430,8 @@ public class RegDirectiveTest {
                 .analyze(ast);
 
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).contains("'%X.Y'").contains("a name is one segment"));
+                .satisfies(d -> assertThat(d.toString())
+                        .contains("<memory>:2: Cannot define '%X.Y': a name is one segment and may not contain a dot."));
     }
 
     private static ParserStatementRegistry registry() {

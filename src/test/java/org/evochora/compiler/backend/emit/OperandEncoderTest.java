@@ -75,10 +75,10 @@ class OperandEncoderTest {
         long beyond = (1L << (Config.VALUE_BITS - 1));
         assertThatThrownBy(() -> encoder.encodeOperand(new IrLiteral(new Value.Typed("DATA", beyond)), SRC))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value " + beyond + " out of range for a cell (" + -beyond + " to " + (beyond - 1) + ").");
+                .hasMessageContaining("test.evo:3: Value " + beyond + " out of range for a cell (" + -beyond + " to " + (beyond - 1) + ").");
         assertThatThrownBy(() -> encoder.encodeOperand(new IrLiteral(new Value.Vector(List.of(0L, -beyond - 1))), SRC))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("out of range for a cell");
+                .hasMessageContaining("test.evo:3: Value " + (-beyond - 1) + " out of range for a cell (" + -beyond + " to " + (beyond - 1) + ").");
     }
 
     @Test
@@ -106,7 +106,6 @@ class OperandEncoderTest {
     void unknownMoleculeTypeIsReportedAtTheInstruction() {
         assertThatThrownBy(() -> encoder.encodeOperand(new IrLiteral(new Value.Typed("NO_SUCH_TYPE", 1)), SRC))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("test.evo:3")
-                .hasMessageContaining("NO_SUCH_TYPE");
+                .hasMessageContaining("test.evo:3: Unknown molecule type: NO_SUCH_TYPE");
     }
 }

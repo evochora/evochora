@@ -342,7 +342,7 @@ class MacroExpansionTest {
                 "INC %DR0 %DR1");
 
         assertThat(result.diagnostics.hasErrors()).isTrue();
-        assertThat(result.diagnostics.summary()).contains("Macro 'INC' expects 1 arguments, but got 2");
+        assertThat(result.diagnostics.summary()).contains("<memory>:4: Macro 'INC' expects 1 arguments, but got 2");
         assertThat(result.texts()).isEmpty();
     }
 

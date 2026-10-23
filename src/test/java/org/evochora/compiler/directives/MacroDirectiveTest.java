@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.Flags;
 import java.util.Map;
@@ -85,15 +86,15 @@ public class MacroDirectiveTest {
     @Test
     @Tag("unit")
     void aReservedNameCannotBeAMacroNameOrAParameterName() {
-        assertThat(macroErrors(".MACRO number X", "  NOP", ".ENDMACRO"))
-                .containsExactly("'number' is a function and cannot be a macro name.");
-        assertThat(macroErrors(".MACRO SHL X", "  NOP", ".ENDMACRO"))
-                .containsExactly("'SHL' is an operator and cannot be a macro name.");
-        assertThat(macroErrors(".MACRO @ X", "  NOP", ".ENDMACRO"))
-                .containsExactly("'@' cannot be a macro name.");
-        assertThat(macroErrors(".MACRO SET TYPE @", "  NOP", ".ENDMACRO"))
-                .containsExactly("'TYPE' is a function and cannot be a parameter name.",
-                        "'@' cannot be a parameter name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO number X", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: 'number' is a function and cannot be a macro name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO SHL X", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: 'SHL' is an operator and cannot be a macro name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO @ X", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: '@' cannot be a macro name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO SET TYPE @", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: 'TYPE' is a function and cannot be a parameter name.",
+                        "<memory>:2: '@' cannot be a parameter name.");
     }
 
     private static List<String> macroErrors(String... lines) {
@@ -105,6 +106,6 @@ public class MacroDirectiveTest {
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         new PreProcessor(tokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), context)
                 .expand();
-        return diagnostics.getDiagnostics().stream().map(d -> d.message()).toList();
+        return diagnostics.getDiagnostics().stream().map(TestDiagnostics::located).toList();
     }
 }

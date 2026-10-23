@@ -68,7 +68,7 @@ class DataInstructionCompilerTest extends CompilerTestBase {
         List<String> lines = List.of("LBL:", "SETV %DR0 LBL");
         assertThatThrownBy(() -> compiler.compile(lines, "setv_label.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
+                .hasMessageContaining("setv_label.s:2: Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
     }
 
     @Test
@@ -76,7 +76,7 @@ class DataInstructionCompilerTest extends CompilerTestBase {
         List<String> lines = List.of("LBL:", "PUSV LBL");
         assertThatThrownBy(() -> compiler.compile(lines, "pusv_label.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Argument 1 for instruction 'PUSV' has the wrong type. Expected VECTOR, but got LABEL.");
+                .hasMessageContaining("pusv_label.s:2: Argument 1 for instruction 'PUSV' has the wrong type. Expected VECTOR, but got LABEL.");
     }
 
     /**
@@ -84,10 +84,10 @@ class DataInstructionCompilerTest extends CompilerTestBase {
      */
     @Test
     void aLiteralBeyondACellIsReported() {
-        List<String> lines = List.of("SETI %DR0 DATA:1048576");
+        List<String> lines = List.of("# A comment line.", "SETI %DR0 DATA:1048576");
         assertThatThrownBy(() -> compiler.compile(lines, "big_literal.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+                .hasMessageContaining("big_literal.s:2: Value 1048576 out of range for a cell (-524288 to 524287).");
     }
 
     /**
@@ -112,10 +112,10 @@ class DataInstructionCompilerTest extends CompilerTestBase {
 
     @Test
     void aPlacedValueBeyondACellIsReported() {
-        List<String> lines = List.of(".PLACE STRUCTURE:1048576 1|1");
+        List<String> lines = List.of("# A comment line.", ".PLACE STRUCTURE:1048576 1|1");
         assertThatThrownBy(() -> compiler.compile(lines, "big_place.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+                .hasMessageContaining("big_place.s:2: Value 1048576 out of range for a cell (-524288 to 524287).");
     }
 
     @Test

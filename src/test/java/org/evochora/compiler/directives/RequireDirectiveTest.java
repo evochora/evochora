@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
+import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -155,7 +156,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void aRequireWithoutAKindWordReportsTheMissingModule() {
-        String source = ".REQUIRE \"d.evo\" AS D";
+        String source = "# A comment line.\n.REQUIRE \"d.evo\" AS D";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -165,10 +166,8 @@ public class RequireDirectiveTest {
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> {
-                    assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after .REQUIRE; found '\"d.evo\"'.");
-                    assertThat(d.lineNumber()).isEqualTo(1);
-                });
+                .satisfies(d -> assertThat(located(d))
+                        .isEqualTo("<memory>:2: Expected MODULE or VALUE after .REQUIRE; found '\"d.evo\"'."));
     }
 
 

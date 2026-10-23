@@ -102,8 +102,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(this::compile)
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'STEPS' of WALK is not marked EXPORT.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot use 'WALK.STEPS' as an argument: 'STEPS' of WALK is not marked EXPORT.");
     }
 
     /**
@@ -136,6 +135,7 @@ class ModuleValuesTest {
     @Test
     void anUndefinedDefaultIsReportedEvenWhenTheImportBindsTheValue() throws Exception {
         write("walk.evo",
+                "# A comment line.",
                 ".REQUIRE VALUE STEPS NOPE",
                 "  SETI %DR0 STEPS");
         write("main.evo",
@@ -145,8 +145,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(() -> compile())
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
-                .hasMessageContaining("walk.evo:1")
+                .hasMessageContaining("walk.evo:2: Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain("Internal error"));
     }
 
@@ -407,14 +406,14 @@ class ModuleValuesTest {
     @Test
     void aConfiguredNameTheMainProgramHasNotDefinedIsReportedAtTheRequirement() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".REQUIRE VALUE STEPS DATA:10",
                 "START:",
                 "  SETI %DR0 STEPS");
 
         assertThatThrownBy(() -> compile(Map.of("STEPS", "NOPE")))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Cannot require value 'STEPS' from 'NOPE': the name is not defined.");
     }
 
     /**
