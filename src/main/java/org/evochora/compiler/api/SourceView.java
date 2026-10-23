@@ -1,6 +1,8 @@
 package org.evochora.compiler.api;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -8,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * The source files of a compilation as a source view shows them: one entry per inclusion and
@@ -17,7 +20,8 @@ import java.util.Set;
  * A record at a position belongs to the instance that is no inclusion under the position's
  * instance number, or else to the entry of the position's placement, file and instance. The
  * numbers of such instances are never those of an entry, so a record belongs to one of them at
- * most. Equal records are kept once; different records at one position stand side by side.
+ * most. Records stand in the order of their positions; equal records are kept once, and
+ * different records at one position stand side by side, in the order they were given.
  *
  * @param sources    One entry per inclusion of a file.
  * @param expansions Every instance of injected tokens that is no inclusion, by its number.
@@ -25,11 +29,12 @@ import java.util.Set;
 public record SourceView(List<SourceFile> sources, Map<Integer, Expansion> expansions) {
 
     /**
-     * Makes the record immutable by copying the list and the map.
+     * Makes the record immutable by copying the list and the map, the instances in the order of
+     * their numbers.
      */
     public SourceView {
         sources = List.copyOf(sources);
-        expansions = Map.copyOf(expansions);
+        expansions = Collections.unmodifiableMap(new TreeMap<>(expansions));
     }
 
     /**
@@ -66,9 +71,9 @@ public record SourceView(List<SourceFile> sources, Map<Integer, Expansion> expan
 
     /**
      * Returns this view with the given regions and notes added to the entries and instances they
-     * belong to, after the records each holds already. A record equal to one held or given before
-     * it is kept once; records that differ stand side by side, in the order they were first held
-     * or given.
+     * belong to, with the records each holds already, in the order of their positions. A record
+     * equal to one held or given before it is kept once; records that differ at one position stand
+     * side by side, in the order they were first held or given.
      *
      * @param leftOut The regions of lines left out.
      * @param notes   The notes.
@@ -109,13 +114,13 @@ public record SourceView(List<SourceFile> sources, Map<Integer, Expansion> expan
         for (SourceFile entry : sources) {
             String key = entryKey(entry.placement(), entry.resolvedPath(), entry.instance());
             newSources.add(entry.withRecords(
-                    joined(entry.leftOut(), regionsByEntry.getOrDefault(key, List.of())),
-                    joined(entry.notes(), notesByEntry.getOrDefault(key, List.of()))));
+                    joined(entry.leftOut(), regionsByEntry.getOrDefault(key, List.of()), REGION_ORDER),
+                    joined(entry.notes(), notesByEntry.getOrDefault(key, List.of()), NOTE_ORDER)));
         }
         Map<Integer, Expansion> newExpansions = new LinkedHashMap<>();
         expansions.forEach((instance, expansion) -> newExpansions.put(instance, expansion.withRecords(
-                joined(expansion.leftOut(), regionsByInstance.getOrDefault(instance, List.of())),
-                joined(expansion.notes(), notesByInstance.getOrDefault(instance, List.of())))));
+                joined(expansion.leftOut(), regionsByInstance.getOrDefault(instance, List.of()), REGION_ORDER),
+                joined(expansion.notes(), notesByInstance.getOrDefault(instance, List.of()), NOTE_ORDER))));
         return new SourceView(newSources, newExpansions);
     }
 
@@ -126,16 +131,27 @@ public record SourceView(List<SourceFile> sources, Map<Integer, Expansion> expan
         }
     }
 
+    /** Regions by the line of their directive, then by their first line. */
+    private static final Comparator<SourceFile.LeftOut> REGION_ORDER =
+            Comparator.comparingInt(SourceFile.LeftOut::directiveLine).thenComparingInt(SourceFile.LeftOut::from);
+
+    /** Notes by line, then by column. */
+    private static final Comparator<SourceFile.Note> NOTE_ORDER =
+            Comparator.comparingInt(SourceFile.Note::line).thenComparingInt(SourceFile.Note::column);
+
     /**
-     * The records held followed by the added ones, each distinct record once.
+     * The records held and the added ones, each distinct record once, in the order of their
+     * positions; records at one position keep the order they were held or given in.
      */
-    private static <T> List<T> joined(List<T> held, List<T> added) {
+    private static <T> List<T> joined(List<T> held, List<T> added, Comparator<T> order) {
         if (added.isEmpty()) {
             return held;
         }
         Set<T> all = new LinkedHashSet<>(held);
         all.addAll(added);
-        return List.copyOf(all);
+        List<T> sorted = new ArrayList<>(all);
+        sorted.sort(order);
+        return List.copyOf(sorted);
     }
 
     private Set<String> entryKeys() {

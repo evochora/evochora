@@ -386,6 +386,12 @@
       "notes": [
         {
           "expansion": 0,
+          "line": 59,
+          "column": 19,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
           "line": 61,
           "column": 13,
           "text": "[\u003d2]"
@@ -452,18 +458,6 @@
         },
         {
           "expansion": 0,
-          "line": 166,
-          "column": 13,
-          "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
-          "line": 59,
-          "column": 19,
-          "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
           "line": 87,
           "column": 13,
           "text": "[\u003d4]"
@@ -476,6 +470,12 @@
         },
         {
           "expansion": 0,
+          "line": 166,
+          "column": 13,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
           "line": 174,
           "column": 14,
           "text": "[\u003d2]"
@@ -485,36 +485,6 @@
           "line": 177,
           "column": 10,
           "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
-          "line": 304,
-          "column": 19,
-          "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
-          "line": 307,
-          "column": 15,
-          "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
-          "line": 311,
-          "column": 25,
-          "text": "[\u003d1]"
-        },
-        {
-          "expansion": 0,
-          "line": 312,
-          "column": 18,
-          "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
-          "line": 314,
-          "column": 19,
-          "text": "[\u003d4]"
         },
         {
           "expansion": 0,
@@ -614,39 +584,39 @@
         },
         {
           "expansion": 0,
+          "line": 304,
+          "column": 19,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
+          "line": 307,
+          "column": 15,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
+          "line": 311,
+          "column": 25,
+          "text": "[\u003d1]"
+        },
+        {
+          "expansion": 0,
+          "line": 312,
+          "column": 18,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
+          "line": 314,
+          "column": 19,
+          "text": "[\u003d4]"
+        },
+        {
+          "expansion": 0,
           "line": 319,
           "column": 17,
           "text": "[\u003d40]"
-        },
-        {
-          "expansion": 0,
-          "line": 336,
-          "column": 20,
-          "text": "[\u003d8]"
-        },
-        {
-          "expansion": 0,
-          "line": 336,
-          "column": 33,
-          "text": "[\u003d12]"
-        },
-        {
-          "expansion": 0,
-          "line": 342,
-          "column": 32,
-          "text": "[\u003d5]"
-        },
-        {
-          "expansion": 0,
-          "line": 343,
-          "column": 27,
-          "text": "[\u003d17]"
-        },
-        {
-          "expansion": 0,
-          "line": 347,
-          "column": 96,
-          "text": "[\u003d7]"
         },
         {
           "expansion": 0,
@@ -674,15 +644,45 @@
         },
         {
           "expansion": 0,
+          "line": 336,
+          "column": 20,
+          "text": "[\u003d8]"
+        },
+        {
+          "expansion": 0,
+          "line": 336,
+          "column": 33,
+          "text": "[\u003d12]"
+        },
+        {
+          "expansion": 0,
           "line": 337,
           "column": 31,
           "text": "[\u003d600|13]"
         },
         {
           "expansion": 0,
+          "line": 342,
+          "column": 32,
+          "text": "[\u003d5]"
+        },
+        {
+          "expansion": 0,
+          "line": 343,
+          "column": 27,
+          "text": "[\u003d17]"
+        },
+        {
+          "expansion": 0,
           "line": 347,
           "column": 73,
           "text": "[\u003d640|20]"
+        },
+        {
+          "expansion": 0,
+          "line": 347,
+          "column": 96,
+          "text": "[\u003d7]"
         },
         {
           "expansion": 0,
@@ -955,6 +955,26 @@
     }
   ],
   "expansions": {
+    "1": {
+      "calledAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 53,
+        "columnNumber": 1,
+        "placement": "",
+        "expansion": 0
+      },
+      "definedAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 49,
+        "columnNumber": 8,
+        "placement": "",
+        "expansion": 0
+      },
+      "name": "NOTHING",
+      "bindings": [],
+      "leftOut": [],
+      "notes": []
+    },
     "2": {
       "calledAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
@@ -1010,26 +1030,6 @@
           "argument": "DATA:1"
         }
       ],
-      "leftOut": [],
-      "notes": []
-    },
-    "1": {
-      "calledAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 53,
-        "columnNumber": 1,
-        "placement": "",
-        "expansion": 0
-      },
-      "definedAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 49,
-        "columnNumber": 8,
-        "placement": "",
-        "expansion": 0
-      },
-      "name": "NOTHING",
-      "bindings": [],
       "leftOut": [],
       "notes": []
     }
@@ -7646,43 +7646,43 @@
     }
   },
   "callSiteBindings": {
-    "243": {
+    "83": {
+      "1024": 1024
+    },
+    "156": {
+      "1024": 0,
       "1280": 256,
-      "1281": 257,
-      "1024": 0
+      "1281": 257
+    },
+    "170": {
+      "1024": 0,
+      "1025": 1,
+      "1280": 256,
+      "1281": 257
     },
     "187": {
       "1024": 3
     },
-    "230": {
-      "1024": 0
-    },
-    "291": {
-      "1024": 0
-    },
-    "170": {
-      "1025": 1,
-      "1281": 257,
+    "199": {
       "1024": 0,
       "1280": 256
     },
+    "230": {
+      "1024": 0
+    },
+    "243": {
+      "1024": 0,
+      "1280": 256,
+      "1281": 257
+    },
     "275": {
-      "1024": 0
-    },
-    "156": {
-      "1280": 256,
-      "1281": 257,
-      "1024": 0
-    },
-    "199": {
-      "1280": 256,
       "1024": 0
     },
     "281": {
       "1024": 0
     },
-    "83": {
-      "1024": 1024
+    "291": {
+      "1024": 0
     }
   },
   "linearAddressToCoord": {
