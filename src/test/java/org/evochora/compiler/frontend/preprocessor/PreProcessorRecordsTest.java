@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
@@ -91,15 +92,12 @@ class PreProcessorRecordsTest {
     @Test
     void aRecordThatNamesNeitherAnEntryNorAnExpansionIsAnInternalError() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        PreProcessorResult result = run(diagnostics, pp -> {
+
+        assertThatThrownBy(() -> run(diagnostics, pp -> {
             pp.note(new SourceInfo(MAIN, 1, 1, "", 0), "kept");
             pp.note(new SourceInfo(MAIN, 3, 1, "OTHER", 0), "elsewhere");
-        });
-
-        assertThat(result.view().sources().get(0).notes()).containsExactly(new Note(0, 1, 1, "kept"));
-        assertThat(diagnostics.summary())
-                .contains(MAIN + ":3: Internal error: 1 record(s) of the source view name neither a source entry"
-                        + " nor an expansion.");
+        })).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("a note at " + MAIN + ":3");
     }
 
     @Test

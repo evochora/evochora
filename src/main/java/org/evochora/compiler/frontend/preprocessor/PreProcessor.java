@@ -14,7 +14,6 @@ import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -113,44 +112,10 @@ public class PreProcessor {
                 current++;
             }
         }
-        SourceView view = new SourceView(entries, expansions);
-        List<SourceInfo> lost = new ArrayList<>();
         notes.addAll(ppContext.notes());
-        List<PositionedNote> keptNotes = kept(view, notes, PositionedNote::at, lost);
-        List<PositionedLeftOut> keptRegions = kept(view, leftOut, PreProcessor::placeOf, lost);
-        if (!lost.isEmpty()) {
-            diagnostics.reportError("Internal error: " + lost.size()
-                    + " record(s) of the source view name neither a source entry nor an expansion.",
-                    lost.get(0).fileName(), lost.get(0).lineNumber());
-        }
-        return new PreProcessorResult(tokens, view.withRecords(keptRegions, keptNotes));
-    }
-
-    /**
-     * Returns the records that have a place in the view, in the order they were recorded, and
-     * adds the positions of the others to the lost ones: a record that names neither an entry
-     * nor an expansion is a defect of the compiler.
-     */
-    private static <T> List<T> kept(SourceView view, Set<T> recorded, Function<T, SourceInfo> position,
-                                    List<SourceInfo> lost) {
-        List<T> kept = new ArrayList<>(recorded.size());
-        for (T record : recorded) {
-            SourceInfo at = position.apply(record);
-            if (view.holds(at.placement(), at.fileName(), at.expansion())) {
-                kept.add(record);
-            } else {
-                lost.add(at);
-            }
-        }
-        return kept;
-    }
-
-    /**
-     * The position of the directive line that owns a region, as a record of the view is placed.
-     */
-    private static SourceInfo placeOf(PositionedLeftOut region) {
-        return new SourceInfo(region.fileName(), region.region().directiveLine(), 0, region.placement(),
-                region.region().expansion());
+        SourceView view = new SourceView(entries, expansions)
+                .withRecords(new ArrayList<>(leftOut), new ArrayList<>(notes));
+        return new PreProcessorResult(tokens, view);
     }
 
     /**
