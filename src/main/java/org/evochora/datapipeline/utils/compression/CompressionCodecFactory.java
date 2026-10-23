@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.utils.compression;
 
 import com.typesafe.config.Config;
+import java.util.Locale;
 
 /**
  * Factory for creating compression codecs from Typesafe Config.
@@ -103,7 +104,7 @@ public class CompressionCodecFactory {
             );
         }
 
-        String codecName = compressionConfig.getString("codec").toLowerCase();
+        String codecName = compressionConfig.getString("codec").toLowerCase(Locale.ROOT);
 
         return switch (codecName) {
             case "zstd" -> new ZstdCodec(compressionConfig);

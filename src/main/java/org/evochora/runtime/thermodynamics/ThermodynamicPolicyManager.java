@@ -3,6 +3,7 @@ package org.evochora.runtime.thermodynamics;
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.evochora.runtime.isa.Instruction;
@@ -169,7 +170,7 @@ public class ThermodynamicPolicyManager {
                     // Support comma-separated instruction names (e.g. "ADD, SUB, MUL")
                     String[] instructionNames = key.split(",");
                     for (String name : instructionNames) {
-                        String cleanName = name.trim().toUpperCase();
+                        String cleanName = name.trim().toUpperCase(Locale.ROOT);
                         instructionPolicies.put(cleanName, policy);
                         LOG.debug("Registered policy {} for instruction {}", policy.getClass().getSimpleName(), cleanName);
                     }

@@ -8,6 +8,7 @@ import java.nio.channels.Channels;
 import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -134,7 +135,7 @@ public class VideoRenderEngine {
         }
 
         // Resolve output file and format
-        String format = options.format.toLowerCase();
+        String format = options.format.toLowerCase(Locale.ROOT);
         File outputFile = resolveOutputFile(format);
 
         // Start ffmpeg
@@ -681,7 +682,7 @@ public class VideoRenderEngine {
                     + options.endTick + ")");
             return false;
         }
-        if (!SUPPORTED_FORMATS.contains(options.format.toLowerCase())) {
+        if (!SUPPORTED_FORMATS.contains(options.format.toLowerCase(Locale.ROOT))) {
             System.err.println("Unknown format '" + options.format + "' for --format; supported: "
                     + String.join(", ", SUPPORTED_FORMATS));
             return false;
@@ -720,7 +721,7 @@ public class VideoRenderEngine {
      */
     private static String overlayClassName(String name) {
         return "org.evochora.cli.rendering.overlay."
-            + name.substring(0, 1).toUpperCase() + name.substring(1).toLowerCase()
+            + name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1).toLowerCase(Locale.ROOT)
             + "OverlayRenderer";
     }
 
@@ -918,7 +919,7 @@ public class VideoRenderEngine {
     static File withExtension(File file, String format) {
         String name = file.getName();
         int lastDot = name.lastIndexOf('.');
-        String extension = lastDot > 0 ? name.substring(lastDot + 1).toLowerCase() : "";
+        String extension = lastDot > 0 ? name.substring(lastDot + 1).toLowerCase(Locale.ROOT) : "";
 
         if (extension.equals(format)) {
             return file;

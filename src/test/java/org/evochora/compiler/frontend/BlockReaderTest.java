@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import java.util.Locale;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
@@ -272,7 +273,7 @@ class BlockReaderTest {
     private static Read read(List<Token> tokens, int opener, boolean fileRule, Predicate<Token> prefix) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         BlockReader reader = new BlockReader(
-                word -> Optional.ofNullable(KINDS.get(word.toUpperCase())), fileRule, prefix, diagnostics);
+                word -> Optional.ofNullable(KINDS.get(word.toUpperCase(Locale.ROOT))), fileRule, prefix, diagnostics);
         return new Read(reader.read(tokens, opener), diagnostics);
     }
 

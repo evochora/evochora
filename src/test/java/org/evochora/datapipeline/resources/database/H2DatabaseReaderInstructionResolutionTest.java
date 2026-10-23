@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.Connection;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.evochora.datapipeline.TestMetadataHelper;
@@ -233,7 +234,7 @@ class H2DatabaseReaderInstructionResolutionTest {
     private void setupDatabaseWithSamplingInterval(int samplingInterval) throws Exception {
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
-            String schemaName = "SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_");
+            String schemaName = "SIM_" + runId.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9_]", "_");
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"");
             conn.createStatement().execute("SET SCHEMA \"" + schemaName + "\"");
 

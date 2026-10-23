@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -241,7 +242,7 @@ class H2DatabaseOrganismWriteTest {
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        try (ResultSet rs = conn.getMetaData().getTables(null, null, tableName.toUpperCase(), null)) {
+        try (ResultSet rs = conn.getMetaData().getTables(null, null, tableName.toUpperCase(Locale.ROOT), null)) {
             return rs.next();
         }
     }

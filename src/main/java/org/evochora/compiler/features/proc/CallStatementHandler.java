@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import java.util.Locale;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
@@ -71,6 +72,6 @@ public class CallStatementHandler implements IParserStatementHandler {
     }
 
     private static boolean isParamKeyword(String text) {
-        return PARAM_KEYWORDS.contains(text.toUpperCase());
+        return PARAM_KEYWORDS.contains(text.toUpperCase(Locale.ROOT));
     }
 }

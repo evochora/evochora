@@ -163,7 +163,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void preprocessor(String name, IPreProcessorHandler handler) {
-		String key = name.toUpperCase();
+		String key = name.toUpperCase(Locale.ROOT);
 		guardDuplicate(preprocessorHandlers, key, "preprocessor handler");
 		preprocessorHandlers.put(key, handler);
 	}
@@ -175,12 +175,12 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void preprocessorTopLevelOnly(String directive) {
-		preprocessorTopLevelOnly.add(directive.toUpperCase());
+		preprocessorTopLevelOnly.add(directive.toUpperCase(Locale.ROOT));
 	}
 
 	@Override
 	public void parserStatement(String keyword, IParserStatementHandler handler) {
-		String key = keyword.toUpperCase();
+		String key = keyword.toUpperCase(Locale.ROOT);
 		guardDuplicate(parserStatementHandlers, key, "parser statement handler");
 		parserStatementHandlers.put(key, handler);
 	}
@@ -235,7 +235,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void layoutHandler(String namespace, String name, ILayoutDirectiveHandler handler) {
-		String key = (namespace + ":" + name).toLowerCase();
+		String key = (namespace + ":" + name).toLowerCase(Locale.ROOT);
 		guardDuplicate(layoutHandlers, key, "layout handler");
 		layoutHandlers.put(key, handler);
 	}
@@ -247,7 +247,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler) {
-		String key = (namespace + ":" + name).toLowerCase();
+		String key = (namespace + ":" + name).toLowerCase(Locale.ROOT);
 		guardDuplicate(linkingDirectiveHandlers, key, "linking directive handler");
 		linkingDirectiveHandlers.put(key, handler);
 	}

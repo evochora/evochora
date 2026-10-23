@@ -1,5 +1,7 @@
 package org.evochora.compiler.api;
 
+import java.util.Locale;
+
 /**
  * The one rule by which the path of a name is formed: the path of the level the name is
  * defined on, a dot, and the name in upper case; on the compilation root, which has no path,
@@ -22,7 +24,7 @@ public final class QualifiedNames {
      * @return The path of the name, upper-cased.
      */
     public static String join(String levelPath, String name) {
-        String key = name.toUpperCase();
+        String key = name.toUpperCase(Locale.ROOT);
         return levelPath != null && !levelPath.isEmpty() ? levelPath + "." + key : key;
     }
 }

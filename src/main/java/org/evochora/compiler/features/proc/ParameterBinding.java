@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import java.util.Locale;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
@@ -41,6 +42,6 @@ public record ParameterBinding(String targetRegister) implements AstNode, IIdent
      */
     @Override
     public AstNode bind(IdentifierNode reference) {
-        return new RegisterNode(targetRegister, reference.text().toUpperCase(), reference.sourceInfo());
+        return new RegisterNode(targetRegister, reference.text().toUpperCase(Locale.ROOT), reference.sourceInfo());
     }
 }

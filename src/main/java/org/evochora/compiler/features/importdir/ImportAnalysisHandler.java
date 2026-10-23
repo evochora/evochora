@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.symbols.ComputationAnalysis;
@@ -52,7 +53,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ImportNode importNode = (ImportNode) node;
-        String alias = importNode.alias().toUpperCase();
+        String alias = importNode.alias().toUpperCase(Locale.ROOT);
 
         ModuleScope currentModScope = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).orElse(null);
         if (currentModScope == null) {
@@ -81,8 +82,8 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         Map<String, Boolean> valueRequirements = record.valueRequirements();
 
         for (ImportNode.UsingClause using : importNode.usings()) {
-            String sourceAlias = using.sourceAlias().toUpperCase();
-            String targetAlias = using.targetAlias().toUpperCase();
+            String sourceAlias = using.sourceAlias().toUpperCase(Locale.ROOT);
+            String targetAlias = using.targetAlias().toUpperCase(Locale.ROOT);
 
             // A USING source is either a module this one imported, or one it was given itself:
             // a requirement received from above can be handed on, so that the choice of what
@@ -121,7 +122,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         }
 
         for (ImportNode.ValueBinding binding : importNode.values()) {
-            if (importedModScope != null && !valueRequirements.containsKey(binding.name().toUpperCase())) {
+            if (importedModScope != null && !valueRequirements.containsKey(binding.name().toUpperCase(Locale.ROOT))) {
                 diagnostics.reportError(
                         "USING VALUE '" + binding.name()
                                 + "' does not match any .REQUIRE VALUE in the imported module.",

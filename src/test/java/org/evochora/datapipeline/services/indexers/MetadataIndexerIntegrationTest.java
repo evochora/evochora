@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -224,14 +225,14 @@ class MetadataIndexerIntegrationTest {
     private void assertSchemaExists(String schemaName) throws Exception {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword);
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '" + schemaName.toUpperCase() + "'")) {
+             ResultSet rs = stmt.executeQuery("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '" + schemaName.toUpperCase(Locale.ROOT) + "'")) {
             assertTrue(rs.next(), "Schema '" + schemaName + "' should exist.");
         }
     }
 
     private void assertMetadataInDatabase(String schemaName, SimulationMetadata expectedMetadata) throws Exception {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)) {
-            conn.setSchema(schemaName.toUpperCase());
+            conn.setSchema(schemaName.toUpperCase(Locale.ROOT));
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery("SELECT \"key\", \"value\" FROM metadata WHERE \"key\" = 'simulation_info'")) {
 

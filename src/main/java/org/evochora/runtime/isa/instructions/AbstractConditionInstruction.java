@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.Locale;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
@@ -95,8 +96,8 @@ public abstract class AbstractConditionInstruction extends Instruction {
         declareDecidesOnFailure(negatedName);
         TEST_BY_ID.put(Instruction.getInstructionIdByName(name).intValue(), new Test(condition, false));
         TEST_BY_ID.put(Instruction.getInstructionIdByName(negatedName).intValue(), new Test(condition, true));
-        NEGATION_BY_NAME.put(name.toUpperCase(), negatedName.toUpperCase());
-        NEGATION_BY_NAME.put(negatedName.toUpperCase(), name.toUpperCase());
+        NEGATION_BY_NAME.put(name.toUpperCase(Locale.ROOT), negatedName.toUpperCase(Locale.ROOT));
+        NEGATION_BY_NAME.put(negatedName.toUpperCase(Locale.ROOT), name.toUpperCase(Locale.ROOT));
     }
 
     /**
@@ -127,7 +128,7 @@ public abstract class AbstractConditionInstruction extends Instruction {
      * @return the name of its negation, or empty if the name is not a conditional opcode
      */
     protected static Optional<String> negationByName(String opcodeName) {
-        return Optional.ofNullable(NEGATION_BY_NAME.get(opcodeName.toUpperCase()));
+        return Optional.ofNullable(NEGATION_BY_NAME.get(opcodeName.toUpperCase(Locale.ROOT)));
     }
 
     /**

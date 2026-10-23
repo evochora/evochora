@@ -1,6 +1,7 @@
 package org.evochora.runtime.isa;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -58,8 +59,8 @@ class ConditionalNegationTest {
             String negation = ConditionalSkipInstruction.negationOf(name).orElseThrow();
             assertThat(ConditionalSkipInstruction.negationOf(negation))
                     .as("negation of the negation of %s", name)
-                    .contains(name.toUpperCase());
-            assertThat(negation).as("%s is not its own negation", name).isNotEqualTo(name.toUpperCase());
+                    .contains(name.toUpperCase(Locale.ROOT));
+            assertThat(negation).as("%s is not its own negation", name).isNotEqualTo(name.toUpperCase(Locale.ROOT));
         }
     }
 

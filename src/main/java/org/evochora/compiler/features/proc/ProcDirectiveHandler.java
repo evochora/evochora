@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import java.util.Locale;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.parser.IParserBlockHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
@@ -56,7 +57,7 @@ public class ProcDirectiveHandler implements IParserBlockHandler {
         Map<String, List<ProcedureNode.ParamDecl>> parametersByKeyword = Map.of(
                 "REF", refParameters, "VAL", valParameters, "LREF", lrefParameters, "LVAL", lvalParameters);
         while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER)) {
-            String keyword = context.peek().text().toUpperCase();
+            String keyword = context.peek().text().toUpperCase(Locale.ROOT);
             List<ProcedureNode.ParamDecl> target = parametersByKeyword.get(keyword);
             if (target == null) {
                 context.getDiagnostics().reportError("Unexpected '" + context.peek().text() + "' in .PROC: expected REF, VAL, LREF or LVAL.", procName.source().fileName(), procName.source().lineNumber());
@@ -89,6 +90,6 @@ public class ProcDirectiveHandler implements IParserBlockHandler {
     }
 
     private static boolean isParamKeyword(String text) {
-        return PARAM_KEYWORDS.contains(text.toUpperCase());
+        return PARAM_KEYWORDS.contains(text.toUpperCase(Locale.ROOT));
     }
 }

@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services.analytics.plugins;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -76,7 +77,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
             .distinct()
             .collect(Collectors.toMap(
                 familyClass -> familyClass,
-                familyClass -> familyClass.getSimpleName().replace("Instruction", "").toLowerCase()
+                familyClass -> familyClass.getSimpleName().replace("Instruction", "").toLowerCase(Locale.ROOT)
             ));
 
         for (InstructionInfo info : instructionSet) {

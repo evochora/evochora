@@ -2,6 +2,7 @@ package org.evochora.runtime.worldgen;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigValue;
+import java.util.Locale;
 import org.evochora.runtime.isa.Instruction;
 
 import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap;
@@ -84,7 +85,7 @@ public final class InstructionWeights {
                 Config opcodes = family.getConfig("opcodes");
                 for (Map.Entry<String, ConfigValue> entry : opcodes.root().entrySet()) {
                     String name = entry.getKey();
-                    Integer opcodeId = Instruction.getInstructionIdByName(name.toUpperCase());
+                    Integer opcodeId = Instruction.getInstructionIdByName(name.toUpperCase(Locale.ROOT));
                     if (opcodeId == null) {
                         throw new IllegalArgumentException(where + " " + className + ": '" + name + "' is no opcode.");
                     }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -187,7 +188,7 @@ class H2DatabaseReaderProcedureNameResolutionTest {
     private void setupDatabase(boolean withLabelMap) throws Exception {
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
-            String schemaName = "SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_");
+            String schemaName = "SIM_" + runId.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9_]", "_");
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"");
             conn.createStatement().execute("SET SCHEMA \"" + schemaName + "\"");
 

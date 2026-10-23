@@ -1,6 +1,7 @@
 // src/main/java/org/evochora/world/Molecule.java
 package org.evochora.runtime.model;
 
+import java.util.Locale;
 import org.evochora.runtime.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -319,7 +320,7 @@ public record Molecule(int type, int value, int marker) {
                 "Invalid molecule format: '" + spec + "'. Expected 'TYPE:VALUE' (e.g., 'ENERGY:100')");
         }
 
-        String typeStr = parts[0].toUpperCase().trim();
+        String typeStr = parts[0].toUpperCase(Locale.ROOT).trim();
         int value;
         try {
             value = Integer.parseInt(parts[1].trim());

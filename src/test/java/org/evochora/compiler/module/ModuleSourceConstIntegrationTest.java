@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import java.util.Locale;
 import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.TestSymbolTables;
@@ -287,7 +288,7 @@ class ModuleSourceConstIntegrationTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().toLowerCase().contains("circular")))
+                .anyMatch(d -> d.message().toLowerCase(Locale.ROOT).contains("circular")))
                 .as("Expected circular .SOURCE error")
                 .isTrue();
     }

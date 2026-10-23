@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.utils;
 
+import java.util.Locale;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -107,7 +108,7 @@ class H2SchemaUtilTest {
         String schemaName = H2SchemaUtil.toSchemaName(runId);
         
         assertEquals("SIM_LOWERCASE_UPPERCASE_MIXED", schemaName);
-        assertEquals(schemaName, schemaName.toUpperCase());
+        assertEquals(schemaName, schemaName.toUpperCase(Locale.ROOT));
     }
 
     @Test

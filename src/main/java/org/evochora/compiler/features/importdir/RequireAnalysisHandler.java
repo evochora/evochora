@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -78,7 +79,7 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
         }
         SourceInfo at = valueNode.sourceInfo();
         OperandNode bound = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain())
-                .flatMap(scope -> scope.record(Requirements.class, Requirements::none).boundValue(valueNode.name().toUpperCase()))
+                .flatMap(scope -> scope.record(Requirements.class, Requirements::none).boundValue(valueNode.name().toUpperCase(Locale.ROOT)))
                 .orElse(null);
         // A default or a configured value that is a name is a use of that name here, bound or
         // not: it is defined before this line, whatever the importer binds

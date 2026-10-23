@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import java.util.Locale;
 import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.SignedNumber;
@@ -91,7 +92,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         List<Expansion.Binding> bindings = new ArrayList<>(macro.parameters().size());
         for (int i = 0; i < macro.parameters().size(); i++) {
             Token parameter = macro.parameters().get(i);
-            argMap.put(parameter.text().toUpperCase(), actualArgs.get(i));
+            argMap.put(parameter.text().toUpperCase(Locale.ROOT), actualArgs.get(i));
             bindings.add(new Expansion.Binding(parameter.text(), asWritten(actualArgs.get(i))));
         }
 
@@ -109,7 +110,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
             Token written = writtenInBody(bodyToken);
             Token replaced = new Token(written.type(), written.text(), written.value(),
                     inExpansion(written.source(), expansion));
-            List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
+            List<Token> replacement = argMap.get(bodyToken.text().toUpperCase(Locale.ROOT));
             if (replacement == null) {
                 expandedBody.add(bodyToken.replaces().isEmpty() ? bodyToken.with(replaced.source())
                         : replacing(bodyToken, replaced));

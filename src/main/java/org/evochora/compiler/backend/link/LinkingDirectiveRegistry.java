@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.link;
 
+import java.util.Locale;
 import org.evochora.compiler.model.ir.IrDirective;
 
 import java.util.HashMap;
@@ -30,7 +31,7 @@ public final class LinkingDirectiveRegistry {
 	 * @param handler The handler for the directive.
 	 */
 	public void register(String namespace, String name, ILinkingDirectiveHandler handler) {
-		handlers.put((namespace + ":" + name).toLowerCase(), handler);
+		handlers.put((namespace + ":" + name).toLowerCase(Locale.ROOT), handler);
 	}
 
 	/**
@@ -49,7 +50,7 @@ public final class LinkingDirectiveRegistry {
 	 * @return An optional containing the handler, or empty if not found.
 	 */
 	public Optional<ILinkingDirectiveHandler> get(IrDirective dir) {
-		return Optional.ofNullable(handlers.get((dir.namespace() + ":" + dir.name()).toLowerCase()));
+		return Optional.ofNullable(handlers.get((dir.namespace() + ":" + dir.name()).toLowerCase(Locale.ROOT)));
 	}
 
 	/**

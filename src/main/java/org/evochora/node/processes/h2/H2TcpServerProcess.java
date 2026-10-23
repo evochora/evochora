@@ -3,6 +3,7 @@ package org.evochora.node.processes.h2;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.evochora.node.processes.AbstractProcess;
@@ -159,7 +160,7 @@ public class H2TcpServerProcess extends AbstractProcess {
         }
         
         // H2 error messages for port conflicts
-        message = message.toLowerCase();
+        message = message.toLowerCase(Locale.ROOT);
         return message.contains("port") 
             || message.contains("bind") 
             || message.contains("address already in use");

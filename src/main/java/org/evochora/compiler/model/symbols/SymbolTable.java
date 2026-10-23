@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import java.util.Locale;
 import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
@@ -249,7 +250,7 @@ public class SymbolTable {
      */
     public Scope enterScope(String segment) {
         guardFrozen();
-        String key = segment.toUpperCase();
+        String key = segment.toUpperCase(Locale.ROOT);
         String path = QualifiedNames.join(currentScope == rootScope ? currentAliasChain : currentScope.name, key);
         Scope newScope = new Scope(currentScope, path);
         currentScope = newScope;
@@ -399,7 +400,7 @@ public class SymbolTable {
             diagnostics.reportError(rejection.get(), symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
             return Optional.empty();
         }
-        String name = symbol.name().toUpperCase();
+        String name = symbol.name().toUpperCase(Locale.ROOT);
         String file = symbol.sourceInfo().fileName();
 
         // In module context, the symbol is filed under the module placement rather than the file
@@ -600,11 +601,11 @@ public class SymbolTable {
     private Lookup lookUp(String name, String filedUnder, Scope from, ModuleScope module) {
         int dot = name.indexOf('.');
         if (dot < 0) {
-            Scope scope = enclosingScopeOf(from, name.toUpperCase(), filedUnder);
+            Scope scope = enclosingScopeOf(from, name.toUpperCase(Locale.ROOT), filedUnder);
             if (scope == null) {
                 return Lookup.undefined();
             }
-            return found(scope, name.toUpperCase(), filedUnder, module);
+            return found(scope, name.toUpperCase(Locale.ROOT), filedUnder, module);
         }
         if (dot == 0) {
             return Lookup.undefined();
@@ -612,7 +613,7 @@ public class SymbolTable {
         // Explanations quote the segments as the program wrote them; lookups use the key
         String first = name.substring(0, dot);
         String remainder = name.substring(dot + 1);
-        String firstKey = first.toUpperCase();
+        String firstKey = first.toUpperCase(Locale.ROOT);
 
         // An alias of the module level leads into the module it names; any other name the
         // scopes hold leads into the scope its symbol opened.
@@ -705,7 +706,7 @@ public class SymbolTable {
      */
     private Lookup descendScope(Scope level, String levelName, String remainder, String filedUnder, Scope from, ModuleScope module) {
         String segment = firstSegment(remainder);
-        String key = segment.toUpperCase();
+        String key = segment.toUpperCase(Locale.ROOT);
         Map<String, Symbol> perFile = level.symbols.get(key);
         Symbol symbol = perFile != null ? perFile.get(filedUnder) : null;
         if (symbol == null) {
@@ -740,7 +741,7 @@ public class SymbolTable {
             return Lookup.missing(moduleName + " is not a module of this compilation.");
         }
         String segment = firstSegment(remainder);
-        String key = segment.toUpperCase();
+        String key = segment.toUpperCase(Locale.ROOT);
         boolean last = segment.length() == remainder.length();
         Symbol symbol = modScope.symbols().get(key);
         if (symbol == null) {

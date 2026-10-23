@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.database.h2;
 
+import java.util.Locale;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -168,7 +169,7 @@ class StrategyErrorHandlingTest {
      * Resolves the schema name for the given runId (same logic as H2SchemaUtil).
      */
     private String resolveSchemaName(String runId) {
-        return "SIM_" + runId.replaceAll("[^a-zA-Z0-9]", "_").toUpperCase();
+        return "SIM_" + runId.replaceAll("[^a-zA-Z0-9]", "_").toUpperCase(Locale.ROOT);
     }
 
     private void insertCorruptedChunk(String runId, long tick) throws SQLException {
