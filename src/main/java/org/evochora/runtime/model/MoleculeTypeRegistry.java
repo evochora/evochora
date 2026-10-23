@@ -221,7 +221,7 @@ public final class MoleculeTypeRegistry {
      *
      * @return Unmodifiable map of type ID to type name. The keys carry the type bits at their
      *         position within a packed molecule and are therefore multiples of
-     *         {@code 1 << Config.TYPE_SHIFT} (e.g., {0: "CODE", 1048576: "DATA", ...})
+     *         {@code 1 << Config.TYPE_SHIFT}, with CODE at 0
      */
     public static Map<Integer, String> getAllTypes() {
         return Collections.unmodifiableMap(TYPE_TO_NAME);

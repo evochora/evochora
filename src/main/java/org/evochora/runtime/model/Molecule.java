@@ -90,8 +90,8 @@ public record Molecule(int type, int value, int marker) {
      * Extracts the sign-extended value component from a packed molecule integer.
      * <p>
      * The value occupies the lowest {@link Config#VALUE_BITS} bits in two's complement. The raw bit
-     * pattern on its own is unsigned, so a stored {@code -1} reads as {@code 1048575} unless it is
-     * sign-extended. This method is the single place where that conversion is implemented.
+     * pattern on its own is unsigned, so a stored {@code -1} reads as a large positive number unless
+     * it is sign-extended. This method is the single place where that conversion is implemented.
      * <p>
      * It is static and takes the packed integer rather than a {@code Molecule}, so that callers on
      * the instruction-execution path can read the value without allocating a record.

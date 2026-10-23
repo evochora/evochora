@@ -9,6 +9,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
@@ -235,23 +236,32 @@ public class StateInstruction extends Instruction {
         organism.setActiveDp(organism.getIpBeforeFetch());
     }
 
+    /**
+     * Hands the organism its energy as a value. The register itself may stand past the value range
+     * for the length of one instruction, since a limit is checked only at the end of a tick, so
+     * what the organism reads is brought into the range like every other number it sees.
+     */
     private void handleNrg(String opName, List<Operand> operands) {
         if ("NRGS".equals(opName)) {
-            organism.pushData(new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
+            organism.pushData(new Molecule(Config.TYPE_DATA, ValueBounds.bound(organism.getEr())).toInt());
         } else {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NRG."); return; }
             int targetReg = operands.get(0).rawSourceId();
-            writeOperand(targetReg, new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
+            writeOperand(targetReg, new Molecule(Config.TYPE_DATA, ValueBounds.bound(organism.getEr())).toInt());
         }
     }
 
+    /**
+     * Hands the organism its entropy as a value, brought into the value range as
+     * {@link #handleNrg} does for energy.
+     */
     private void handleNtr(String opName, List<Operand> operands) {
         if ("NTRS".equals(opName)) {
-            organism.pushData(new Molecule(Config.TYPE_DATA, organism.getSr()).toInt());
+            organism.pushData(new Molecule(Config.TYPE_DATA, ValueBounds.bound(organism.getSr())).toInt());
         } else {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NTR."); return; }
             int targetReg = operands.get(0).rawSourceId();
-            writeOperand(targetReg, new Molecule(Config.TYPE_DATA, organism.getSr()).toInt());
+            writeOperand(targetReg, new Molecule(Config.TYPE_DATA, ValueBounds.bound(organism.getSr())).toInt());
         }
     }
 

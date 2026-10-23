@@ -7,6 +7,7 @@ import org.evochora.runtime.isa.Instruction;
 
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -230,6 +231,56 @@ public class VMBitwiseInstructionTest {
         sim.tick();
         int valR = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(valR).isEqualTo(8 >> 2);
+    }
+
+    /**
+     * A left shift takes its amount literally: the bits shifted out of the value field are gone,
+     * and an amount at or beyond the width, also one beyond the width of a Java {@code int},
+     * leaves the empty pattern.
+     */
+    @Test
+    @Tag("unit")
+    void shlrPastTheWidthLeavesTheEmptyPattern() {
+        assertThat(shiftByRegister("SHLR", 3, Config.VALUE_BITS - 1)).isEqualTo(ValueBounds.MIN_VALUE);
+        assertThat(shiftByRegister("SHLR", 3, Config.VALUE_BITS)).isZero();
+        assertThat(shiftByRegister("SHLR", 3, Integer.SIZE)).isZero();
+    }
+
+    /**
+     * A right shift keeps the sign, and an amount at or beyond the width leaves only the fill.
+     */
+    @Test
+    @Tag("unit")
+    void shrrPastTheWidthLeavesOnlyTheSignFill() {
+        assertThat(shiftByRegister("SHRR", ValueBounds.MAX_VALUE, Config.VALUE_BITS)).isZero();
+        assertThat(shiftByRegister("SHRR", -8, Config.VALUE_BITS)).isEqualTo(-1);
+        assertThat(shiftByRegister("SHRR", -8, Integer.SIZE + 1)).isEqualTo(-1);
+    }
+
+    /**
+     * A negative amount shifts in the other direction by its magnitude.
+     */
+    @Test
+    @Tag("unit")
+    void aNegativeShiftAmountShiftsTheOtherWay() {
+        assertThat(shiftByRegister("SHLR", 12, -2)).isEqualTo(3);
+        assertThat(shiftByRegister("SHRR", 3, -2)).isEqualTo(12);
+    }
+
+    /**
+     * Shifts a DATA value held in the first data register by an amount held in the second one.
+     *
+     * @param name The register variant of the shift, {@code SHLR} or {@code SHRR}.
+     * @param value The value to shift.
+     * @param amount The shift amount.
+     * @return The value the first data register holds afterwards.
+     */
+    private int shiftByRegister(String name, int value, int amount) {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, value).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, amount).toInt());
+        placeInstruction(name, 0, 1);
+        sim.tick();
+        return Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
     }
 
     /**

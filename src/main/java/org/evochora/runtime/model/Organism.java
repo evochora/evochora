@@ -86,7 +86,7 @@ public class Organism {
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
-    /** Sentinel labelHash for Main-level persistent state. Outside the 20-bit labelHash range. */
+    /** Sentinel labelHash for Main-level persistent state. Outside the range of a label hash, which is a raw value pattern. */
     public static final int MAIN_LEVEL_LABEL_HASH = -1;
     /** Which procedure's persistent register state is currently active in the flat array. */
     private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;
@@ -137,7 +137,9 @@ public class Organism {
      *
      * @param id The unique identifier for this organism.
      * @param startIp The initial coordinate of the Instruction Pointer (IP).
-     * @param initialEnergy The starting energy (ER) of the organism.
+     * @param initialEnergy The starting energy (ER) of the organism. Energy enters the register
+     *                      through this value as it does through every later gain, so it is held at
+     *                      {@code max-energy} the same way.
      * @param simulation The simulation instance this organism belongs to.
      */
     Organism(int id, int[] startIp, int initialEnergy, Simulation simulation) {
@@ -159,7 +161,7 @@ public class Organism {
         this.maxSkipsPerTick = orgConfig.hasPath("max-skips-per-tick")
                 ? orgConfig.getInt("max-skips-per-tick") : 100;
 
-        this.er = initialEnergy;
+        this.er = Math.min(initialEnergy, this.maxEnergy);
         this.sr = 0;
         this.mr = 0;
         this.simulation = simulation;
@@ -187,7 +189,7 @@ public class Organism {
      *
      * @param simulation The simulation instance.
      * @param startIp The initial coordinate of the Instruction Pointer.
-     * @param initialEnergy The starting energy.
+     * @param initialEnergy The starting energy, held at {@code max-energy} like every energy gain.
      * @return A newly created Organism.
      */
     public static Organism create(Simulation simulation, int[] startIp, int initialEnergy) {

@@ -9,12 +9,17 @@ import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Implements n-dimensional vector manipulation instructions, including VGET, VSET, VBLD,
  * bit-to-vector/vector-to-bit conversions, and vector rotation.
+ * <p>
+ * Every component of a vector in a register lies in the value range: a component a rotation negates
+ * is brought into it by {@link ValueBounds#bound(long)}, and a component taken out as a scalar is
+ * handed out as it is.
  */
 public class VectorInstruction extends Instruction {
 
@@ -119,7 +124,7 @@ public class VectorInstruction extends Instruction {
         int vi = vector[axis1];
         int vj = vector[axis2];
         rotated[axis1] = vj;
-        rotated[axis2] = -vi;
+        rotated[axis2] = ValueBounds.bound(-(long) vi);
         writeOperand(vecReg, rotated);
     }
 
@@ -155,7 +160,7 @@ public class VectorInstruction extends Instruction {
         int vi = vector[axis1];
         int vj = vector[axis2];
         rotated[axis1] = vj;
-        rotated[axis2] = -vi;
+        rotated[axis2] = ValueBounds.bound(-(long) vi);
         organism.pushData(rotated);
     }
 

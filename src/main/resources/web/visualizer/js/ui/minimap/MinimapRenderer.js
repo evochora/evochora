@@ -61,7 +61,8 @@ export class MinimapRenderer {
      * the colour table from them.
      *
      * @param {object|null|undefined} moleculeTypes - Metadata map of the shifted type constant,
-     *        as a string, to the type name, e.g. {"0": "CODE", "1048576": "DATA"}.
+     *        as a string, to the type name; the constants are multiples of one shifted by
+     *        `typeShift`, with CODE at 0.
      * @param {number|null|undefined} typeShift - The metadata's `moleculeTypeShift`, the bit
      *        position of the type inside a packed molecule.
      */

@@ -95,13 +95,192 @@ public class SimulationBenchmark {
             }
             """;
 
+    /**
+     * The programs of the tick benchmark. {@code ARITHMETIC}, {@code BITWISE} and {@code VECTOR}
+     * each execute every instruction of one family in each of its operand forms, register,
+     * immediate and stack, with the data stack empty again at the end of the loop; the others
+     * exercise one path of the machine. The default parameter set runs {@code REALISTIC} and
+     * {@code PROC_CALL}; a family program is selected with {@code -p assembly=<NAME>}.
+     */
     private static final Map<String, String> PROGRAMS = Map.of(
             "ARITHMETIC", """
                     START:
-                      SETI %DR0 DATA:1
+                      SETI %DR0 DATA:7
+                      SETI %DR1 DATA:3
+                      ADDR %DR0 %DR1
                       ADDI %DR0 DATA:1
+                      SUBR %DR0 %DR1
                       SUBI %DR0 DATA:1
+                      MULR %DR0 %DR1
                       MULI %DR0 DATA:2
+                      DIVR %DR0 %DR1
+                      DIVI %DR0 DATA:2
+                      MODR %DR0 %DR1
+                      MODI %DR0 DATA:5
+                      NEGR %DR0
+                      ABSR %DR0
+                      INCR %DR0
+                      DECR %DR0
+                      MINR %DR0 %DR1
+                      MINI %DR0 DATA:4
+                      MAXR %DR0 %DR1
+                      MAXI %DR0 DATA:2
+                      SGNR %DR0
+                      SETV %DR2 1|2
+                      SETV %DR3 3|-1
+                      ADDR %DR2 %DR3
+                      SUBR %DR2 %DR3
+                      DOTR %DR4 %DR2 %DR3
+                      CRSR %DR4 %DR2 %DR3
+                      PUSI DATA:7
+                      PUSI DATA:3
+                      ADDS
+                      PUSI DATA:3
+                      SUBS
+                      PUSI DATA:3
+                      MULS
+                      PUSI DATA:4
+                      SWAP
+                      DIVS
+                      PUSI DATA:3
+                      SWAP
+                      MODS
+                      NEGS
+                      ABSS
+                      INCS
+                      DECS
+                      PUSI DATA:5
+                      MINS
+                      PUSI DATA:5
+                      MAXS
+                      SGNS
+                      DROP
+                      PUSV 1|2
+                      PUSV 3|-1
+                      DOTS
+                      DROP
+                      PUSV 1|2
+                      PUSV 3|-1
+                      CRSS
+                      DROP
+                      PUSV 1|2
+                      PUSV 3|-1
+                      ADDS
+                      PUSV 3|-1
+                      SUBS
+                      DROP
+                      JMPI START
+                    """,
+            "BITWISE", """
+                    START:
+                      SETI %DR0 DATA:0b1011
+                      SETI %DR1 DATA:0b0110
+                      ANDR %DR0 %DR1
+                      ANDI %DR0 DATA:0b1111
+                      ORR %DR0 %DR1
+                      ORI %DR0 DATA:0b1000
+                      XORR %DR0 %DR1
+                      XORI %DR0 DATA:0b0001
+                      NADR %DR0 %DR1
+                      NADI %DR0 DATA:0b0101
+                      NORR %DR0 %DR1
+                      NORI %DR0 DATA:0b0011
+                      EQUR %DR0 %DR1
+                      EQUI %DR0 DATA:0b1100
+                      ADNR %DR0 %DR1
+                      ADNI %DR0 DATA:0b0010
+                      ORNR %DR0 %DR1
+                      ORNI %DR0 DATA:0b0100
+                      NOT %DR0
+                      SETI %DR2 DATA:3
+                      SHLR %DR0 %DR2
+                      SHLI %DR0 DATA:2
+                      SHRR %DR0 %DR2
+                      SHRI %DR0 DATA:1
+                      ROTR %DR0 %DR2
+                      ROTI %DR0 DATA:5
+                      PCNR %DR3 %DR0
+                      SETI %DR4 DATA:0b1011
+                      SETI %DR5 DATA:1
+                      BSNR %DR3 %DR4 %DR5
+                      BSNI %DR3 %DR4 DATA:2
+                      PUSI DATA:0b1011
+                      PUSI DATA:0b0110
+                      ANDS
+                      PUSI DATA:0b0110
+                      ORS
+                      PUSI DATA:0b0110
+                      XORS
+                      PUSI DATA:0b0110
+                      NADS
+                      PUSI DATA:0b0110
+                      NORS
+                      PUSI DATA:0b0110
+                      EQUS
+                      PUSI DATA:0b0110
+                      ADNS
+                      PUSI DATA:0b0110
+                      ORNS
+                      NOTS
+                      PUSI DATA:3
+                      SWAP
+                      SHLS
+                      PUSI DATA:3
+                      SWAP
+                      SHRS
+                      PUSI DATA:5
+                      ROTS
+                      PCNS
+                      DROP
+                      PUSI DATA:0b1011
+                      PUSI DATA:2
+                      BSNS
+                      DROP
+                      JMPI START
+                    """,
+            "VECTOR", """
+                    START:
+                      SETV %DR0 1|2
+                      SETI %DR1 DATA:0
+                      SETI %DR2 DATA:9
+                      VGTR %DR3 %DR0 %DR1
+                      VGTI %DR3 %DR0 DATA:1
+                      VSTR %DR0 %DR1 %DR2
+                      VSTI %DR0 DATA:1 DATA:5
+                      PUSI DATA:4
+                      PUSI DATA:6
+                      VBLD %DR4
+                      SETI %DR5 DATA:0b0001
+                      B2VR %DR6 %DR5
+                      B2VI %DR6 DATA:0b0010
+                      V2BR %DR7 %DR6
+                      V2BI %DR7 1|0
+                      SETI %DR1 DATA:0
+                      SETI %DR2 DATA:1
+                      RTRR %DR0 %DR1 %DR2
+                      RTRI %DR0 DATA:0 DATA:1
+                      PUSV 1|2
+                      PUSI DATA:0
+                      VGTS
+                      DROP
+                      PUSV 1|2
+                      PUSI DATA:0
+                      PUSI DATA:9
+                      VSTS
+                      DROP
+                      PUSI DATA:4
+                      PUSI DATA:6
+                      VBLS
+                      DROP
+                      PUSI DATA:0b0001
+                      B2VS
+                      V2BS
+                      DROP
+                      PUSV 1|2
+                      PUSI DATA:0
+                      PUSI DATA:1
+                      RTRS
+                      DROP
                       JMPI START
                     """,
             "ENVIRONMENT", """
@@ -195,7 +374,7 @@ public class SimulationBenchmark {
     );
 
     /** Assembly program to execute. */
-    @Param({/* "ARITHMETIC", "ENVIRONMENT", "LOCATION", "NEIGHBOURS", "SKIP", */ "REALISTIC", "PROC_CALL"})
+    @Param({/* "ARITHMETIC", "BITWISE", "VECTOR", "ENVIRONMENT", "LOCATION", "NEIGHBOURS", "SKIP", */ "REALISTIC", "PROC_CALL"})
     private String assembly;
 
     /** Number of organisms in the simulation. */

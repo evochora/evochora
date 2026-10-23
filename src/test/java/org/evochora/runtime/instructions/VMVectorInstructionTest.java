@@ -7,6 +7,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -208,6 +209,20 @@ public class VMVectorInstructionTest {
         placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 1).toInt());
         sim.tick();
         assertThat((int[]) org.readOperand(0)).containsExactly(0, -1);
+    }
+
+    /**
+     * A rotation negates one component; for the smallest value that negation leaves the value
+     * range and is held at the largest value, so the vector register never holds a component
+     * no cell could hold.
+     */
+    @Test
+    @Tag("unit")
+    void testRtriSaturatesTheNegatedComponent() {
+        org.writeOperand(0, new int[]{ValueBounds.MIN_VALUE, 0});
+        placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 1).toInt());
+        sim.tick();
+        assertThat((int[]) org.readOperand(0)).containsExactly(0, ValueBounds.MAX_VALUE);
     }
 
     /**

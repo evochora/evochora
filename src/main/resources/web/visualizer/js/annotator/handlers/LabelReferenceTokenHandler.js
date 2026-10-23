@@ -22,7 +22,7 @@ export class LabelReferenceTokenHandler {
     /**
      * Analyzes the label token to create a jump-target annotation.
      * It resolves the label name to its hash value using the artifact's
-     * labelNameToValue map. The hash is the 20-bit value used for fuzzy matching.
+     * labelNameToValue map. The hash is the value bits of the molecule, used for fuzzy matching.
      *
      * @param {string} tokenText The text of the token (the label name).
      * @param {object} tokenInfo Metadata about the token.

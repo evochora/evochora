@@ -41,6 +41,19 @@ public class OrganismTest {
     }
 
     /**
+     * The start energy enters the register as every gain does, held at max-energy, so whoever
+     * creates an organism cannot hand it more than it can hold.
+     */
+    @Test
+    @Tag("unit")
+    void startEnergyIsHeldAtTheEnergyLimit() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1_000_000);
+        assertThat(org.getEr()).isEqualTo(org.getMaxEnergy());
+        Organism within = Organism.create(sim, new int[]{1, 0}, 100);
+        assertThat(within.getEr()).isEqualTo(100);
+    }
+
+    /**
      * Verifies that an organism encountering a non-code cell (e.g., DATA)
      * treats it as a NOP instruction (to be skipped). Non-CODE molecules
      * are auto-skipped by the IP, so they should not cause failures.

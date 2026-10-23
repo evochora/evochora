@@ -85,7 +85,7 @@ class FuzzyJumpIntegrationTest {
      */
     @Test
     void jumpSucceedsWithSingleBitMutation() {
-        int originalHash = 0b10101010101010101010 & Config.VALUE_MASK; // 20-bit pattern
+        int originalHash = 0b10101010101010101010 & Config.VALUE_MASK; // an alternating pattern within the value width
         int mutatedHash = originalHash ^ 1; // Flip bit 0 (Hamming distance = 1)
         int[] labelPos = new int[]{50};
         int[] expectedIp = new int[]{51};

@@ -356,7 +356,7 @@ public final class OrganismStateConverter {
                 }
                 resolvedArgs.add(InstructionArgumentView.vector(components));
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LABEL) {
-                // LABEL: Single scalar hash value (20-bit) since fuzzy jumps refactoring
+                // LABEL: a single scalar hash value, the value bits of the molecule
                 // Formatted like IMMEDIATE with molecule type (typically DATA)
                 argumentTypesList.add("LABEL");
                 requireArgumentCells(argIndex, 1, rawArguments, opcodeId, opcodeName, argTypes.size());

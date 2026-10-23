@@ -1,5 +1,10 @@
 package org.evochora;
 
+import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigFactory;
+
+import java.util.Map;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.VirtualMachine;
@@ -7,6 +12,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -112,6 +118,58 @@ public class SimulationTest {
         assertThatThrownBy(bare::tick)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("random provider");
+    }
+
+    /**
+     * An energy or entropy limit that a molecule's value cannot hold is rejected while the
+     * simulation is built, with the key, the configured value and the bound it exceeds; a limit
+     * at the largest value is accepted.
+     */
+    @Test
+    @Tag("unit")
+    void aLimitBeyondTheValueRangeIsRejectedWhenTheSimulationIsBuilt() {
+        int beyond = ValueBounds.MAX_VALUE + 1;
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, beyond, 8191, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-energy")
+                .hasMessageContaining(String.valueOf(beyond))
+                .hasMessageContaining(String.valueOf(ValueBounds.MAX_VALUE));
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, 32767, beyond, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-entropy")
+                .hasMessageContaining(String.valueOf(beyond))
+                .hasMessageContaining(String.valueOf(ValueBounds.MAX_VALUE));
+
+        int belowMin = ValueBounds.MIN_VALUE - 1;
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, belowMin, 8191, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-energy")
+                .hasMessageContaining(String.valueOf(belowMin))
+                .hasMessageContaining(String.valueOf(ValueBounds.MIN_VALUE));
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, 32767, belowMin, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-entropy")
+                .hasMessageContaining(String.valueOf(belowMin))
+                .hasMessageContaining(String.valueOf(ValueBounds.MIN_VALUE));
+
+        Simulation atTheBounds = SimulationTestUtils.createSimulation(
+                environment, ValueBounds.MAX_VALUE, ValueBounds.MIN_VALUE, 10);
+        assertThat(atTheBounds.getOrganismConfig().getInt("max-energy")).isEqualTo(ValueBounds.MAX_VALUE);
+        assertThat(atTheBounds.getOrganismConfig().getInt("max-entropy")).isEqualTo(ValueBounds.MIN_VALUE);
+    }
+
+    /**
+     * A limit the configuration does not carry is not checked while the simulation is built; it is
+     * read, and missed, where an organism is created.
+     */
+    @Test
+    @Tag("unit")
+    void aMissingLimitIsLeftToThePointWhereItIsRead() {
+        com.typesafe.config.Config withoutLimits = ConfigFactory.parseMap(Map.of("error-penalty-cost", 10));
+        Simulation built = new Simulation(environment, sim.getPolicyManager(), withoutLimits, 1);
+        assertThatThrownBy(() -> Organism.create(built, new int[]{0, 0}, 1))
+                .isInstanceOf(ConfigException.Missing.class)
+                .hasMessageContaining("max-energy");
     }
 
     /**

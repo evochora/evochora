@@ -116,7 +116,7 @@ public final class InstructionArgumentView {
 
     /**
      * Creates an argument view for a LABEL type with a scalar hash value.
-     * Since fuzzy jumps, labels are represented as 20-bit hash values stored in DATA molecules.
+     * A label is represented as a hash value in the value bits of a molecule.
      *
      * @param rawValue     Raw int32 value from the molecule
      * @param moleculeType Human-readable molecule type name (typically "DATA")

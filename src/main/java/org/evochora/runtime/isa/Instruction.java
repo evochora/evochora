@@ -108,7 +108,7 @@ public abstract class Instruction {
         VECTOR,
         /**
          * One argument slot holding a label hash. The operand carries the slot reduced to its
-         * 20-bit value part by {@link Config#VALUE_MASK}, which is the hash a fuzzy jump matches
+         * value part by {@link Config#VALUE_MASK}, which is the hash a fuzzy jump matches
          * against the label index; it has no raw source ID.
          */
         LABEL,
@@ -542,7 +542,7 @@ public abstract class Instruction {
      * Resolves a label hash operand from the environment.
      * <p>
      * Used by fuzzy jump instructions (JMPI, CALL, SKJI, etc.) to read the
-     * 20-bit label hash value from the code stream.
+     * label hash value from the code stream.
      *
      * @param currentIp The current instruction pointer position.
      * @param environment The environment to fetch from.
@@ -571,7 +571,7 @@ public abstract class Instruction {
      * based on Hamming distance and physical distance, with preference for labels
      * owned by the same organism.
      *
-     * @param labelHash The 20-bit hash value of the target label.
+     * @param labelHash The hash value of the target label.
      * @param callerCoords The coordinates to use for distance calculation
      *                     (e.g., organism's IP for JMPI, or active DP for SKJI).
      * @param organism The organism executing the instruction (ownership checks and random source).
