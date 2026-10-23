@@ -186,7 +186,7 @@ public class LexerTest {
         lexer.read(aSource, aFile.toString(), "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("b.evo:2: Circular dependency detected: " + aFile);
+        assertThat(diagnostics.summary()).contains("b.evo:2: Circular dependency detected: " + aFile.toString().replace('\\', '/'));
     }
 
     @Test
@@ -282,7 +282,7 @@ public class LexerTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary())
-                .contains("c.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo"));
+                .contains("c.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo").toString().replace('\\', '/'));
     }
 
     /** A scan handler that hands the line of its directive word and the context to an action. */

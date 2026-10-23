@@ -132,7 +132,7 @@ class PassedOnRequirementTest {
         assertThatCode(this::compileMain)
                 .as("two modules importing each other cannot be ordered")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("b.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo"));
+                .hasMessageContaining("b.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo").toString().replace('\\', '/'));
     }
 
     private ProgramArtifact compileMain() throws Exception {
