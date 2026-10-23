@@ -476,6 +476,25 @@ class ConditionalExpansionTest {
     }
 
     @Test
+    void aDefaultThatYieldsReportsNothingAboutItsValue() {
+        String[] program = {
+                ".DEFINE DEFAULT HALF (ROWS / 2)",
+                ".IFDEF HALF = 3",
+                "  NOP",
+                ".ENDDEF"};
+
+        Expansion configured = expandWith(Map.of("HALF", FlagSetting.set(3)), List.of(), program);
+        Expansion switchedOff = expandWith(Map.of("HALF", FlagSetting.off()), List.of(), program);
+        Expansion unconfigured = expand(program);
+
+        assertThat(configured.errors()).isEmpty();
+        assertThat(configured.texts()).containsExactly("NOP");
+        assertThat(switchedOff.errors()).isEmpty();
+        assertThat(switchedOff.texts()).isEmpty();
+        assertThat(unconfigured.errors()).containsExactly(MAIN + ":1: 'ROWS' is not a flag.");
+    }
+
+    @Test
     void aDefaultYieldsToAnEarlierDefinitionOfTheProgram() {
         Expansion result = expand(
                 ".DEFINE LEVEL 3",

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
@@ -27,7 +28,7 @@ class FlagDefinitionTest {
     void aDefaultTakesAFreeFlag() {
         Flags flags = Flags.of(Map.of(), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "REDUNDANCY", OptionalLong.of(1), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.defineDefault(flags, "REDUNDANCY", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
 
         assertThat(flags.valueOf("REDUNDANCY")).hasValue(1);
         assertThat(flags.definitionOf("REDUNDANCY").orElseThrow().origin()).isEqualTo(ORIGIN);
@@ -37,7 +38,7 @@ class FlagDefinitionTest {
     void aDefaultYieldsToAFlagTheConfigurationSet() {
         Flags flags = Flags.of(Map.of("REDUNDANCY", FlagSetting.set(2)), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "REDUNDANCY", OptionalLong.of(1), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.defineDefault(flags, "REDUNDANCY", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
 
         assertThat(flags.valueOf("REDUNDANCY")).hasValue(2);
     }
@@ -47,7 +48,7 @@ class FlagDefinitionTest {
         Flags flags = Flags.of(Map.of(), RESERVED);
         flags.define("SHELL", OptionalLong.empty(), "at lib.evo:4");
 
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", OptionalLong.of(1), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.defineDefault(flags, "SHELL", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("SHELL")).isTrue();
         assertThat(flags.valueOf("SHELL")).isEmpty();
@@ -57,10 +58,33 @@ class FlagDefinitionTest {
     void aDefaultYieldsToAFlagTheConfigurationSwitchedOff() {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", OptionalLong.empty(), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.defineDefault(flags, "SHELL", () -> Optional.of(OptionalLong.empty()), ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("SHELL")).isFalse();
         assertThat(flags.isOff("SHELL")).isTrue();
+    }
+
+    @Test
+    void aDefaultThatYieldsDoesNotComputeItsValue() {
+        Flags flags = Flags.of(Map.of("HALF", FlagSetting.set(3), "SHELL", FlagSetting.off()), RESERVED);
+
+        assertThat(FlagDefinition.defineDefault(flags, "HALF", FlagDefinitionTest::notComputed, ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.defineDefault(flags, "SHELL", FlagDefinitionTest::notComputed, ORIGIN)).isEmpty();
+
+        assertThat(flags.valueOf("HALF")).hasValue(3);
+    }
+
+    @Test
+    void aDefaultWhoseValueCannotBeComputedSetsNothingAndReportsNothingItself() {
+        Flags flags = Flags.of(Map.of(), RESERVED);
+
+        assertThat(FlagDefinition.defineDefault(flags, "HALF", Optional::empty, ORIGIN)).isEmpty();
+
+        assertThat(flags.isSet("HALF")).isFalse();
+    }
+
+    private static Optional<OptionalLong> notComputed() {
+        throw new AssertionError("the value of a default that yields is not computed");
     }
 
     @Test
@@ -68,7 +92,7 @@ class FlagDefinitionTest {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
         flags.undefine("SHELL");
 
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", OptionalLong.empty(), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.defineDefault(flags, "SHELL", () -> Optional.of(OptionalLong.empty()), ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("SHELL")).isTrue();
     }
@@ -77,7 +101,7 @@ class FlagDefinitionTest {
     void aDefaultOfAReservedNameIsRejected() {
         Flags flags = Flags.of(Map.of(), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "MIN", OptionalLong.empty(), ORIGIN))
+        assertThat(FlagDefinition.defineDefault(flags, "MIN", () -> Optional.of(OptionalLong.empty()), ORIGIN))
                 .contains("'MIN' is a function and cannot be defined.");
     }
 

@@ -11,6 +11,7 @@ import org.evochora.compiler.model.token.Token;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Handles {@code .DEFINE NAME [value]} and {@code .DEFINE DEFAULT NAME [value]}, which define a
@@ -60,16 +61,14 @@ public class DefineHandler implements IPreProcessorHandler {
         } else if (!Condition.isNameToken(operands.get(0))) {
             error = form + " needs a flag name, found '" + operands.get(0).text() + "'" + CONSTANT;
         } else {
-            Optional<OptionalLong> value = operands.size() == 1
+            Supplier<Optional<OptionalLong>> value = () -> operands.size() == 1
                     ? Optional.of(OptionalLong.empty())
                     : preProcessorContext.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
-            if (value.isPresent()) {
-                String name = operands.get(0).text();
-                String origin = "at " + directive.source().fileName() + ":" + directive.source().lineNumber();
-                error = (isDefault
-                        ? FlagDefinition.defineDefault(flags, name, value.get(), origin)
-                        : FlagDefinition.define(flags, name, value.get(), origin)).orElse(null);
-            }
+            String name = operands.get(0).text();
+            String origin = "at " + directive.source().fileName() + ":" + directive.source().lineNumber();
+            error = (isDefault
+                    ? FlagDefinition.defineDefault(flags, name, value, origin)
+                    : value.get().flatMap(v -> FlagDefinition.define(flags, name, v, origin))).orElse(null);
         }
         if (error != null) {
             preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());

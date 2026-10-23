@@ -8,6 +8,7 @@ import org.evochora.compiler.model.token.Token;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Lexer-phase handler for {@code .DEFINE NAME [value]} and {@code .DEFINE DEFAULT NAME [value]}:
@@ -29,17 +30,15 @@ public class DefineScanHandler implements IDependencyScanHandler {
         if (!line.startsStatement() || operands.isEmpty() || !Condition.isNameToken(operands.get(0))) {
             return;
         }
-        Optional<OptionalLong> value = operands.size() == 1
+        Supplier<Optional<OptionalLong>> value = () -> operands.size() == 1
                 ? Optional.of(OptionalLong.empty())
                 : ctx.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
         String name = operands.get(0).text();
         String origin = "at " + ctx.sourcePath() + ":" + ctx.lineNumber();
-        value.ifPresent(v -> {
-            if (isDefault) {
-                FlagDefinition.defineDefault(ctx.flags(), name, v, origin);
-            } else {
-                FlagDefinition.define(ctx.flags(), name, v, origin);
-            }
-        });
+        if (isDefault) {
+            FlagDefinition.defineDefault(ctx.flags(), name, value, origin);
+        } else {
+            value.get().ifPresent(v -> FlagDefinition.define(ctx.flags(), name, v, origin));
+        }
     }
 }
