@@ -96,8 +96,8 @@ public final class ValueBounds {
      *
      * @param value The value whose pattern is rotated.
      * @param amount The number of bit positions to rotate to the left.
-     * @return The rotated pattern as the raw bits of the value field, in the range {@code 0} to
-     *         {@link Config#VALUE_MASK}.
+     * @return The rotated pattern as a sign-extended value, as
+     *         {@link Molecule#extractSignedValue(int)} returns it.
      */
     public static int rotate(int value, int amount) {
         int width = Config.VALUE_BITS;
@@ -105,7 +105,7 @@ public final class ValueBounds {
         int v = value & mask;
         int k = amount % width;
         if (k < 0) k += width;
-        return ((v << k) | (v >>> (width - k))) & mask;
+        return Molecule.extractSignedValue((v << k) | (v >>> (width - k)));
     }
 
     /**

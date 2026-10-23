@@ -119,8 +119,21 @@ class ValueBoundsTest {
         assertThat(ValueBounds.rotate(pattern, 0)).isEqualTo(pattern);
         assertThat(ValueBounds.rotate(pattern, WIDTH)).isEqualTo(pattern);
         assertThat(ValueBounds.rotate(pattern, WIDTH + 1)).isEqualTo(pattern << 1);
-        assertThat(ValueBounds.rotate(1, -1)).isEqualTo(1 << (WIDTH - 1));
-        assertThat(ValueBounds.rotate(1 << (WIDTH - 1), 1)).isEqualTo(1);
-        assertThat(ValueBounds.rotate(-1, 3)).isEqualTo(Config.VALUE_MASK);
+        assertThat(ValueBounds.rotate(1, -1)).isEqualTo(MIN);
+        assertThat(ValueBounds.rotate(MIN, 1)).isEqualTo(1);
+        assertThat(ValueBounds.rotate(-1, 3)).isEqualTo(-1);
+    }
+
+    /**
+     * Every method hands its pattern back in the same form, the sign-extended value a cell is
+     * read as, so a result compares directly against a value without being packed first.
+     */
+    @Test
+    @Tag("unit")
+    void everyPatternComesBackSignExtended() {
+        int topBitOnly = MIN;
+        assertThat(ValueBounds.rotate(1, WIDTH - 1)).isEqualTo(topBitOnly);
+        assertThat(ValueBounds.shiftLeft(1, WIDTH - 1)).isEqualTo(topBitOnly);
+        assertThat(ValueBounds.shiftRight(topBitOnly, 0)).isEqualTo(topBitOnly);
     }
 }
