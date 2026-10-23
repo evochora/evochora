@@ -86,7 +86,7 @@ public class Organism {
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
-    /** Sentinel labelHash for Main-level persistent state. Outside the 20-bit labelHash range. */
+    /** Sentinel labelHash for Main-level persistent state. Outside the range of a label hash, which is a raw value pattern. */
     public static final int MAIN_LEVEL_LABEL_HASH = -1;
     /** Which procedure's persistent register state is currently active in the flat array. */
     private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;

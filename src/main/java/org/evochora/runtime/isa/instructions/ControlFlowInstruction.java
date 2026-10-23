@@ -138,7 +138,7 @@ public class ControlFlowInstruction extends Instruction {
      * yields no hash and the jump fails, as SKJR and SKJS do.
      *
      * @param value The value from register or stack
-     * @return The extracted label hash (20-bit), or -1 if the value is not a scalar
+     * @return The extracted label hash, the value bits of the molecule, or -1 if the value is not a scalar
      */
     private int extractLabelHash(Object value) {
         if (value instanceof Integer intVal) {

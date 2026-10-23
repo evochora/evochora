@@ -199,8 +199,7 @@ public class SimulationController extends VisualizerBaseController {
      *   <li>Extracts environment, samplingInterval from resolvedConfigJson to top-level</li>
      *   <li>moleculeTypes: the molecule type constants of {@code Config} to their names. The keys
      *       carry the type bits at their position within a packed molecule and are therefore
-     *       multiples of {@code 1 << Config.TYPE_SHIFT}: {1048576: "DATA", 2097152: "ENERGY", ...},
-     *       with CODE at 0. Cell responses report {@code moleculeType} on the same scale.</li>
+     *       multiples of {@code 1 << Config.TYPE_SHIFT}, with CODE at 0. Cell responses report {@code moleculeType} on the same scale.</li>
      *   <li>moleculeTypeShift: {@code Config.TYPE_SHIFT}, the bit position of the type inside a
      *       packed molecule. A client that holds a raw type index shifts it by this amount to
      *       obtain the key of the {@code moleculeTypes} map.</li>

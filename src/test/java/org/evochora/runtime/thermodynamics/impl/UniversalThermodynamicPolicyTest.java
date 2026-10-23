@@ -139,14 +139,15 @@ class UniversalThermodynamicPolicyTest {
         Thermodynamics positive = policy.priceEffect(READ, packed(Config.TYPE_DATA, 50), 0, ACTOR);
         Thermodynamics negative = policy.priceEffect(READ, packed(Config.TYPE_DATA, -50), 0, ACTOR);
 
-        // The magnitude decides the price, and -50 has the magnitude of 50 - not of 2^20 - 50.
+        // The magnitude decides the price, and -50 has the magnitude of 50 - not of its unsigned pattern.
         assertThat(positive).isEqualTo(new Thermodynamics(50, 50));
         assertThat(negative).isEqualTo(new Thermodynamics(50, 50));
     }
 
     /**
      * A value override is keyed by the signed value, so the rule for -1 must be found for the
-     * molecule that carries -1 and not for the one whose bit pattern happens to read as 2^20 - 1.
+     * molecule that carries -1 and not for the one whose bit pattern happens to read as the
+     * largest unsigned pattern.
      */
     @Test
     void valueOverridesAreKeyedByTheSignedValue() {
