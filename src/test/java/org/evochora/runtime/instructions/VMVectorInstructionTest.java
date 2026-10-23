@@ -7,6 +7,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,6 +62,23 @@ public class VMVectorInstructionTest {
         placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 1).toInt()); // VGTI %DR0 %DR1 DATA:1
         sim.tick();
         assertThat(Molecule.fromInt((Integer)org.readOperand(0)).toScalarValue()).isEqualTo(20);
+    }
+
+    /**
+     * A component that lies past an end of the value range is taken out as that end, never as the
+     * value its masked bits would read as.
+     */
+    @Test
+    @Tag("unit")
+    void vgtiOfAComponentPastTheRangeSaturates() {
+        org.writeOperand(1, new int[]{ValueBounds.MAX_VALUE + 1, ValueBounds.MIN_VALUE - 1});
+        placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 0).toInt());
+        sim.tick();
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(ValueBounds.MAX_VALUE);
+
+        placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 1).toInt());
+        sim.tick();
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(ValueBounds.MIN_VALUE);
     }
 
     /**

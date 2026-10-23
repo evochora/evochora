@@ -9,12 +9,16 @@ import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Implements n-dimensional vector manipulation instructions, including VGET, VSET, VBLD,
  * bit-to-vector/vector-to-bit conversions, and vector rotation.
+ * <p>
+ * A component taken out of a vector as a scalar is held within the value range by
+ * {@link ValueBounds#saturate(long)}.
  */
 public class VectorInstruction extends Instruction {
 
@@ -315,7 +319,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        writeOperand(destReg, new Molecule(Config.TYPE_DATA, vector[index]).toInt());
+        writeOperand(destReg, new Molecule(Config.TYPE_DATA, ValueBounds.saturate(vector[index])).toInt());
     }
 
     private void handleVectorGetStack(List<Operand> operands) {
@@ -342,7 +346,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        organism.pushData(new Molecule(Config.TYPE_DATA, vector[index]).toInt());
+        organism.pushData(new Molecule(Config.TYPE_DATA, ValueBounds.saturate(vector[index])).toInt());
     }
 
     private void handleVectorSet(List<Operand> operands) {
