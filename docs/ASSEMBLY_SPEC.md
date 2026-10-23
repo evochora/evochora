@@ -320,7 +320,7 @@ These operate on the bit pattern of the scalar within the value width and preser
   - The amount is taken modulo the value width: rotations by 0 or by the full width leave the value unchanged.
 * `PCNR %DEST_REG %SRC_REG`, `PCNS`: Population count (number of set bits within the value width).
   - `PCNR` writes the count into `%DEST_REG` with the same type as `%SRC_REG`.
-  - `PCNS` pops a scalar and pushes the count with type `DATA`.
+  - `PCNS` pops a scalar and pushes the count with the type of that scalar.
 * `BSNR %DEST_REG %SRC_REG %N_REG`, `BSNI %DEST_REG %SRC_REG <N>`, `BSNS`: Bit Scan N-th.
   - Finds the n-th set bit in `%SRC` and writes a bitmask with only that bit set.
   - N is 1-based. Positive N scans from LSB to MSB; negative N scans from MSB to LSB. N=0 is invalid.
