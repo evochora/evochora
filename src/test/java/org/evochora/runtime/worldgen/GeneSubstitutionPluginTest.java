@@ -10,6 +10,7 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.BeforeAll;
@@ -1123,22 +1124,27 @@ class GeneSubstitutionPluginTest {
     }
 
     @Test
-    void dataWrapsAtTheRangeBoundary() {
-        // At 524287 the delta is 724, so about half the seeds leave the range. Wrapping continues at
-        // the opposite end. This needs its own assertion: the bound above cannot detect a clamp,
-        // because a clamp moves the value less, never more.
-        int sawWrap = 0;
+    void dataSaturatesAtTheRangeBoundary() {
+        // At the largest value about half the offsets point past the range. Such a result is held
+        // at the largest value, so the cell stays there or moves down and never crosses to the
+        // negative end. The bound above cannot tell the two apart, because a value that crossed
+        // over and one that stayed are both close on the ring, so this needs its own assertion.
+        int stayed = 0;
         for (int seed = 0; seed < 50; seed++) {
             setUp();
-            placeData(5, 5, 524287);
+            placeData(5, 5, ValueBounds.MAX_VALUE);
             GeneSubstitutionPlugin plugin = dataOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
-            if (environment.getMolecule(5, 5).value() < 0) {
-                sawWrap++;
+            int mutated = environment.getMolecule(5, 5).value();
+            assertThat(mutated).as("seed=%d: the value must not cross to the negative end", seed)
+                    .isPositive()
+                    .isLessThanOrEqualTo(ValueBounds.MAX_VALUE);
+            if (mutated == ValueBounds.MAX_VALUE) {
+                stayed++;
             }
         }
-        assertThat(sawWrap).as("at least one seed must wrap past the upper bound").isPositive();
+        assertThat(stayed).as("at least one seed must be held at the largest value").isPositive();
     }
 
     // ---- LABEL / LABELREF mutation tests ----

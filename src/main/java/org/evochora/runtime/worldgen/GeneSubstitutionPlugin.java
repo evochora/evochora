@@ -19,6 +19,7 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
@@ -38,8 +39,8 @@ import org.slf4j.LoggerFactory;
  * stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits of the hash. Every other
  * type carries a plain number and uses the general strategy:
  * scale-proportional perturbation of the signed value, {@code delta = max(1,
- * round(|value|^exponent))} with the type's own exponent, a result leaving the 20-bit range
- * wrapping.
+ * round(|value|^exponent))} with the type's own exponent, a result past an end of the value
+ * range held at that end ({@link ValueBounds#saturate(long)}).
  * <p>
  * <strong>Selection:</strong> Every type registered in {@link org.evochora.runtime.model.MoleculeTypeRegistry}
  * has a selection weight, read from the plugin configuration under the type's name. A type without
@@ -625,22 +626,23 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * large values relatively weakly, producing smooth fitness landscape perturbations.
      * <p>
      * The perturbation runs on the sign-extended value, so a stored {@code -1} moves by one rather
-     * than by the delta belonging to the unsigned pattern {@code 1048575}. A result leaving the
-     * signed 20-bit range wraps modulo 2^20, which is how the instruction set treats arithmetic
-     * on these values as well.
+     * than by the delta belonging to its unsigned pattern. The sum is computed at full width and
+     * a result past an end of the value range is held at that end
+     * ({@link ValueBounds#saturate(long)}), as the instruction set holds the result of arithmetic
+     * on these values: a value at an end moves inward or stays, it never crosses to the other end.
      * <p>
-     * Input and output are the raw 20-bit pattern, as for every mutator in this class: the caller
-     * compares the returned pattern against the sampled one to detect a no-op.
+     * Input and output are the raw pattern of the value field, as for every mutator in this class:
+     * the caller compares the returned pattern against the sampled one to detect a no-op.
      *
-     * @param rawValue The current value as the raw 20-bit pattern.
+     * @param rawValue The current value as the raw pattern of the value field.
      * @param exponent The exponent of the scale-proportional delta, in {@code [0.0, 1.0]}.
-     * @return The mutated value as the raw 20-bit pattern.
+     * @return The mutated value as the raw pattern of the value field.
      */
     private int mutateValue(int rawValue, double exponent) {
         int value = Molecule.extractSignedValue(rawValue);
         int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(value), exponent)));
         int offset = random.nextInt(2 * delta + 1) - delta;
-        return (value + offset) & Config.VALUE_MASK;
+        return ValueBounds.saturate((long) value + offset) & Config.VALUE_MASK;
     }
 
     /**
