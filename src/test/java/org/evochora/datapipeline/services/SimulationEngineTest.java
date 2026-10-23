@@ -561,22 +561,27 @@ class SimulationEngineTest {
         assertSame(artifacts.get(0), artifacts.get(1));
     }
 
+    /**
+     * A flag switched off is a decision about the flag that a flag the entry does not name lacks:
+     * the program's default definition yields to it, so the two entries are two variants.
+     */
     @Test
-    void compileOrganismPrograms_takesAFalseFlagAsUnset() throws IOException {
+    void compileOrganismPrograms_compilesAFalseFlagAndAnAbsentFlagIntoTwoArtifacts() throws IOException {
         Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
 
         List<ProgramArtifact> artifacts = compileOrganismPrograms(
                 organismEntry(program, Map.of("EXTRA", false)),
                 organismEntry(program, Map.of()));
 
-        assertSame(artifacts.get(0), artifacts.get(1));
+        assertNotSame(artifacts.get(0), artifacts.get(1));
     }
 
     @Test
-    void readDefines_readsTrueAsAFlagWithoutValueAndAnIntegerAsAFlagWithThatValue() {
+    void readDefines_readsTrueAsAFlagWithoutValueAnIntegerAsAFlagWithThatValueAndFalseAsAFlagSwitchedOff() {
         Config entry = ConfigFactory.parseString("defines { AGGRESSIVE = true, REDUNDANCY = 2, OFF = false }");
 
-        assertEquals(Map.of("AGGRESSIVE", FlagSetting.set(), "REDUNDANCY", FlagSetting.set(2)),
+        assertEquals(Map.of("AGGRESSIVE", FlagSetting.set(), "REDUNDANCY", FlagSetting.set(2),
+                        "OFF", FlagSetting.off()),
                 SimulationEngine.readDefines(entry, 0));
     }
 

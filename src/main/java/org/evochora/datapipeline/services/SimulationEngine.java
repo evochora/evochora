@@ -704,12 +704,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     /**
      * Reads the preprocessor flags of one organism entry from its optional {@code defines}
      * object. A key whose value is {@code true} is a flag set without a value, an integer a flag
-     * set with that value; {@code false} leaves the flag unset, as an absent key does. The names
-     * are returned as written; {@link CompilerOptions} normalises them.
+     * set with that value, {@code false} a flag switched off; an absent key says nothing about
+     * the flag. The names are returned as written; {@link CompilerOptions} normalises them.
      *
      * @param orgConfig The organism entry.
      * @param index     The position of the entry in {@code organisms}, for the error message.
-     * @return The flags that are set, by name as written.
+     * @return The settings of the flags the entry names, by name as written.
      * @throws IllegalArgumentException if {@code defines} is not an object, or a value is neither
      *                                  a boolean nor an integer;
      *                                  the message names the entry and the flag.
@@ -728,9 +728,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             String name = entry.getKey();
             Object value = entry.getValue().unwrapped();
             if (value instanceof Boolean set) {
-                if (set) {
-                    defines.put(name, FlagSetting.set());
-                }
+                defines.put(name, set ? FlagSetting.set() : FlagSetting.off());
             } else if (value instanceof Integer || value instanceof Long) {
                 defines.put(name, FlagSetting.set(((Number) value).longValue()));
             } else {

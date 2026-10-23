@@ -85,17 +85,21 @@ class ProgramIdentityTest {
     /**
      * Flags that change no code still make another variant: its artifact folds other branches
      * and notes other flag states, so it must not share the ID, and with it the artifact, of the
-     * variant compiled without them.
+     * variant compiled without them. A flag switched off, set without a value and set with a
+     * value are three variants, and none of them is the variant that names no flag.
      */
     @Test
     void compilationsWithOtherFlagsAndTheSameCodeHaveDifferentIds() throws CompilationException {
         ProgramArtifact plain = compile(PINNED_PROGRAM, Map.of());
         ProgramArtifact flagged = compile(PINNED_PROGRAM, Map.of("UNUSED", FlagSetting.set()));
         ProgramArtifact valued = compile(PINNED_PROGRAM, Map.of("UNUSED", FlagSetting.set(0)));
+        ProgramArtifact switchedOff = compile(PINNED_PROGRAM, Map.of("UNUSED", FlagSetting.off()));
 
         assertThat(flagged.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
         assertThat(valued.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
-        assertThat(List.of(plain.programId(), flagged.programId(), valued.programId())).doesNotHaveDuplicates();
+        assertThat(switchedOff.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
+        assertThat(List.of(plain.programId(), flagged.programId(), valued.programId(), switchedOff.programId()))
+                .doesNotHaveDuplicates();
     }
 
     /**

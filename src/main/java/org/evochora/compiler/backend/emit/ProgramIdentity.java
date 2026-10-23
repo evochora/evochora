@@ -34,8 +34,9 @@ import java.util.OptionalLong;
  *   <li>the number of initial objects, then for each object in coordinate order the coordinate's
  *       components followed by the {@link PlacedMolecule}'s type, value and marker;</li>
  *   <li>the number of defines, then for each define in alphabetical order of its name: the
- *       number of bytes of that name in UTF-8 followed by those bytes, then 1 if it has a value
- *       and 0 if not, then the value as two words (0 without one);</li>
+ *       number of bytes of that name in UTF-8 followed by those bytes, then its state (0 for a
+ *       define that is switched off, 1 for one set without a value, 2 for one set with a value),
+ *       then the value as two words (0 without one);</li>
  *   <li>the number of values, then for each value in alphabetical order of its name: the number
  *       of bytes of that name in UTF-8 followed by those bytes, then the number of bytes of the
  *       value's text in UTF-8 followed by those bytes.</li>
@@ -99,8 +100,9 @@ public final class ProgramIdentity {
             byte[] name = flag.getKey().getBytes(StandardCharsets.UTF_8);
             update(digest, name.length);
             digest.update(name);
-            OptionalLong value = flag.getValue().value();
-            update(digest, value.isPresent() ? 1 : 0);
+            FlagSetting setting = flag.getValue();
+            OptionalLong value = setting.value();
+            update(digest, !setting.isSet() ? 0 : value.isPresent() ? 2 : 1);
             update(digest, value.orElse(0L));
         }
 

@@ -51,11 +51,13 @@ import java.util.concurrent.Callable;
  *       a Windows drive letter remains part of the path. Without the option, the directory of the
  *       source file is the only root, so imported modules are resolved relative to it, and no
  *       prefix is defined.</li>
- *   <li>{@code --define} — any number of preprocessor flags, each written as {@code NAME} to set
- *       the flag without a value or as {@code NAME=NUMBER} to set it with that value. The number
- *       is written as a program writes one: decimal, or {@code 0x}, {@code 0o} or {@code 0b} for
- *       hexadecimal, octal or binary, each with an optional leading minus. Names are case-insensitive; a
- *       name given twice, in any case, is an error. Without the option, no flag is set.</li>
+ *   <li>{@code --define} — any number of preprocessor flags, each written as {@code NAME} or
+ *       {@code NAME=true} to set the flag without a value, as {@code NAME=NUMBER} to set it with
+ *       that value, or as {@code NAME=false} to switch it off. The number is written as a program
+ *       writes one: decimal, or {@code 0x}, {@code 0o} or {@code 0b} for hexadecimal, octal or
+ *       binary, each with an optional leading minus; {@code true} and {@code false} are
+ *       case-insensitive. Names are case-insensitive; a name given twice, in any case, is an
+ *       error. Without the option, no flag is named.</li>
  *   <li>{@code --value} — any number of values, each written as {@code NAME=TEXT}, where the text
  *       is an operand as a {@code .CONST} takes it: a literal, a vector or a name. The main
  *       program's {@code .REQUIRE VALUE} of that name takes it in place of its default; a value no
@@ -91,8 +93,8 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"--define"},
-        paramLabel = "NAME[=NUMBER]",
-        description = "Preprocessor flag in format 'NAME' or 'NAME=NUMBER' (e.g., 'REDUNDANCY=2'); repeatable"
+        paramLabel = "NAME[=NUMBER|true|false]",
+        description = "Preprocessor flag in format 'NAME', 'NAME=NUMBER' (e.g., 'REDUNDANCY=2'), 'NAME=true' or 'NAME=false' to switch it off; repeatable"
     )
     private List<String> defineArgs;
 
@@ -183,9 +185,13 @@ public class CompileCommand implements Callable<Integer> {
     /**
      * Parses the arguments of {@code --define} into the flags of the compilation.
      *
-     * @param defineArgs The arguments, each {@code NAME} or {@code NAME=NUMBER}.
-     * @return The flags by name as written, each set, with its value or without one.
-     * @throws IllegalArgumentException if a name is empty, a value is not a number, or a name
+     * @param defineArgs The arguments, each {@code NAME}, {@code NAME=NUMBER}, {@code NAME=true}
+     *                   or {@code NAME=false}, with {@code true} and {@code false} in any case.
+     * @return The settings of the flags by name as written: set without a value for {@code NAME}
+     *         and {@code NAME=true}, set with the value for {@code NAME=NUMBER}, switched off for
+     *         {@code NAME=false}.
+     * @throws IllegalArgumentException if a name is empty, a value is neither a number nor
+     *                                  {@code true} or {@code false}, or a name
      *                                  is given twice as written. Two names that differ only in
      *                                  case are left to {@link CompilerOptions}, which rejects them.
      */
@@ -197,20 +203,37 @@ public class CompileCommand implements Callable<Integer> {
             if (name.isEmpty()) {
                 throw new IllegalArgumentException("--define '" + arg + "' has no flag name");
             }
-            FlagSetting setting = FlagSetting.set();
-            if (equalsIdx >= 0) {
-                String text = arg.substring(equalsIdx + 1);
-                OptionalLong value = IntegerLiteral.parse(text.trim());
-                if (value.isEmpty()) {
-                    throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not a number");
-                }
-                setting = FlagSetting.set(value.getAsLong());
-            }
+            FlagSetting setting = equalsIdx < 0 ? FlagSetting.set() : parseSetting(name, arg.substring(equalsIdx + 1));
             if (defines.putIfAbsent(name, setting) != null) {
                 throw new IllegalArgumentException("--define " + name + ": the flag is given twice");
             }
         }
         return defines;
+    }
+
+    /**
+     * Parses the text after the equals sign of one {@code --define} argument.
+     *
+     * @param name The name of the flag, for the error message.
+     * @param text The text after the equals sign.
+     * @return Switched off for {@code false}, set without a value for {@code true}, both in any
+     *         case, and set with the value for a number.
+     * @throws IllegalArgumentException if the text is neither a number nor {@code true} or
+     *                                  {@code false}.
+     */
+    private static FlagSetting parseSetting(String name, String text) {
+        String trimmed = text.trim();
+        if ("false".equalsIgnoreCase(trimmed)) {
+            return FlagSetting.off();
+        }
+        if ("true".equalsIgnoreCase(trimmed)) {
+            return FlagSetting.set();
+        }
+        OptionalLong value = IntegerLiteral.parse(trimmed);
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not a number, true or false");
+        }
+        return FlagSetting.set(value.getAsLong());
     }
 
     /**

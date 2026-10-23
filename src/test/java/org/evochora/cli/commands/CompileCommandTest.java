@@ -137,6 +137,17 @@ public class CompileCommandTest {
     }
 
     @Test
+    void testDefineArgumentsFalseAndTrueSwitchAFlagOffAndSetItWithoutValueInAnyCase() {
+        Map<String, FlagSetting> defines = CompileCommand.parseDefines(List.of("X=false", "Y=true", "x2=FALSE", "Y2=True"));
+
+        assertThat(defines).containsExactly(
+            Map.entry("X", FlagSetting.off()),
+            Map.entry("Y", FlagSetting.set()),
+            Map.entry("x2", FlagSetting.off()),
+            Map.entry("Y2", FlagSetting.set()));
+    }
+
+    @Test
     void testDefineValuesAreReadAsTheAssemblerReadsNumbers() {
         Map<String, FlagSetting> defines = CompileCommand.parseDefines(
             List.of("DEC=12", "HEX=0x1F", "OCT=0o17", "BIN=0b101", "NEG=-3", "NEGHEX=-0x10", "NEGBIN=-0b11"));
@@ -197,7 +208,11 @@ public class CompileCommandTest {
     @Test
     void testDefineRejectsAValueThatIsNoIntegerANameGivenTwiceAndAMissingName() {
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A=two")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not a number");
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("--define A: 'two' is not a number, true or false");
+        assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("X=maybe")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("--define X: 'maybe' is not a number, true or false");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A", "A=2")))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("given twice");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("=2")))
@@ -232,6 +247,24 @@ public class CompileCommandTest {
         String flagged = compileToJson(sourceFile.toString(), "--define", "A", "--define", "B=2");
 
         assertThat(programIdOf(flagged)).isNotEqualTo(programIdOf(plain));
+    }
+
+    @Test
+    void testDefineFalseSwitchesOffAFlagTheProgramSetsByDefault() throws Exception {
+        Path sourceFile = tempDir.resolve("defaulted.evo");
+        Files.writeString(sourceFile, """
+            .DEFINE DEFAULT X
+            NOP
+            .IFDEF X
+            SETI %DR0 DATA:1
+            .ENDDEF
+            """);
+
+        String plain = compileToJson(sourceFile.toString());
+        String switchedOff = compileToJson(sourceFile.toString(), "--define", "X=false");
+
+        assertThat(programIdOf(switchedOff)).isNotEqualTo(programIdOf(plain));
+        assertThat(codeSizeOf(switchedOff)).isLessThan(codeSizeOf(plain));
     }
 
     @Test
@@ -330,5 +363,9 @@ public class CompileCommandTest {
 
     private static String programIdOf(String json) {
         return JsonParser.parseString(json).getAsJsonObject().get("programId").getAsString();
+    }
+
+    private static int codeSizeOf(String json) {
+        return JsonParser.parseString(json).getAsJsonObject().getAsJsonArray("machineCodeLayout").size();
     }
 }
