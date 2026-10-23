@@ -131,14 +131,17 @@ class OperationRegistryTest {
         registry.register(op("MIN", Notation.FUNCTION, Level.INDEX, Kind.NUMBER, Kind.NUMBER));
         registry.register(op("-", Notation.INFIX, Level.ADDITIVE, Kind.NUMBER, Kind.NUMBER));
         registry.register(op("-", Notation.PREFIX, Level.PREFIX, Kind.NUMBER));
-        assertThat(registry.reservedNames()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
-                "SHL", "an operator", "MIN", "a function", "-", "an operator", "@", ""));
+        assertThat(registry.reservedNames().names()).containsExactlyInAnyOrder("SHL", "MIN", "-", "@");
+        assertThat(registry.reservedNames().description("shl")).contains("an operator");
+        assertThat(registry.reservedNames().description("Min")).contains("a function");
+        assertThat(registry.reservedNames().description("-")).contains("an operator");
+        assertThat(registry.reservedNames().description("@")).isEmpty();
     }
 
     @Test
     void theStandardOperationsRegisterAndPassTheirChecks() {
         OperationRegistry registry = ExpressionFixture.standard().operations();
-        assertThat(registry.reservedNames()).containsKeys("+", "-", "*", "/", "MOD", "AND", "OR", "XOR", "SHL", "SHR", "NOT",
+        assertThat(registry.reservedNames().names()).contains("+", "-", "*", "/", "MOD", "AND", "OR", "XOR", "SHL", "SHR", "NOT",
                 "|", "[]", ":", "TYPE", "NUMBER", "POSITION", "@");
     }
 

@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
@@ -14,7 +15,6 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,7 +37,7 @@ public class PreProcessorContext {
     private final Map<String, List<String>> fileLines;
     private final SourceFile mainFile;
     private final CompilerOptions options;
-    private final Map<String, String> reservedNames;
+    private final ReservedNames reservedNames;
     private final ReadTimeValues values;
     private DiagnosticsEngine diagnostics;
     private BiConsumer<SourceInfo, String> notes;
@@ -74,22 +74,18 @@ public class PreProcessorContext {
         this.mainFile = new SourceFile(this.rootAliasChain, mainName,
                 Objects.requireNonNull(mainPath, "mainPath"), linesOf(mainPath));
         this.options = Objects.requireNonNull(options, "options");
-        Map<String, String> reserved = new HashMap<>();
-        operations.reservedNames().forEach((name, what) -> reserved.put(name.toUpperCase(Locale.ROOT), what));
-        this.reservedNames = Map.copyOf(reserved);
+        this.reservedNames = operations.reservedNames();
         this.values = new ReadTimeValues(flags, operations, isa);
     }
 
     /**
-     * Returns what a name is if nothing in a program may define it, compared without regard to
-     * letter case, so that a handler that defines a name, as {@code .MACRO} does, can reject it.
+     * Returns the names nothing in a program may define, so that a handler that defines a name,
+     * as {@code .MACRO} does, can reject one.
      *
-     * @param name The name, in any letter case.
-     * @return What the name is, "an operator" or "a function", or the empty text for a name
-     *         reserved as it is; empty if the name is not reserved.
+     * @return The reserved names.
      */
-    public Optional<String> reservedName(String name) {
-        return Optional.ofNullable(reservedNames.get(name.toUpperCase(Locale.ROOT)));
+    public ReservedNames reservedNames() {
+        return reservedNames;
     }
 
     /**

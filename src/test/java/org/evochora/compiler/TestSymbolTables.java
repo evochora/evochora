@@ -1,9 +1,8 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.model.symbols.SymbolTable;
-
-import java.util.Map;
 
 /**
  * Builds symbol tables for tests that use one without the names a {@link Compiler} reserves.
@@ -20,6 +19,6 @@ public final class TestSymbolTables {
      * @return The symbol table, with no reserved names.
      */
     public static SymbolTable symbolTable(DiagnosticsEngine diagnostics) {
-        return new SymbolTable(diagnostics, Map.of());
+        return new SymbolTable(diagnostics, ReservedNames.NONE);
     }
 }

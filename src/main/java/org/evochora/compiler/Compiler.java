@@ -1,5 +1,6 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
@@ -186,7 +187,7 @@ public class Compiler implements ICompiler {
 
         // The two read-time phases each keep flags of their own, seeded alike, so that both start
         // from the configuration and pass the same definitions in the same order
-        Map<String, String> reservedNames = featureRegistry.operations().reservedNames();
+        ReservedNames reservedNames = featureRegistry.operations().reservedNames();
 
         // The configured flags are checked once, against the configuration, whatever the program reads
         Flags.configurationErrors(effectiveOptions.defines(), reservedNames)

@@ -1,5 +1,6 @@
 package org.evochora.compiler.expression;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
@@ -110,18 +111,16 @@ public final class OperationRegistry {
     }
 
     /**
-     * Returns the names nothing in a program may define, each with what it is, for the message
-     * that rejects a definition: the name of every operation, upper-cased, as {@code "a function"}
-     * or {@code "an operator"}, and {@code @}, the cursor, with the empty text, as it is neither.
+     * Returns the names nothing in a program may define: the name of every operation, as
+     * "a function" or "an operator", and {@code @}, the cursor, reserved as it is.
      *
-     * @return An unmodifiable map from the upper-cased name to what it is, a copy taken now.
+     * @return The reserved names, a copy taken now.
      */
-    public Map<String, String> reservedNames() {
+    public ReservedNames reservedNames() {
         Map<String, String> names = new LinkedHashMap<>();
         operations.keySet().forEach(key ->
                 names.put(key.name(), key.notation() == Notation.FUNCTION ? "a function" : "an operator"));
-        names.put(INameResolution.CURSOR, "");
-        return Collections.unmodifiableMap(names);
+        return ReservedNames.of(names, Set.of(INameResolution.CURSOR));
     }
 
     /**

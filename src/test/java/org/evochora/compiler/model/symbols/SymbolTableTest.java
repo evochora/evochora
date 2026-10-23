@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.ast.LiteralNode;
@@ -165,7 +166,7 @@ class SymbolTableTest {
     void aReservedNameIsReportedAndNotFiled() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable reserving = new SymbolTable(diagnostics,
-                java.util.Map.of("SHL", "an operator", "MIN", "a function", "@", ""));
+                ReservedNames.of(java.util.Map.of("SHL", "an operator", "MIN", "a function"), java.util.Set.of("@")));
         reserving.registerModule("", MAIN);
         reserving.setCurrentModule("");
 

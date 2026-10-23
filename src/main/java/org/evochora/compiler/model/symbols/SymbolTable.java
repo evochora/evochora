@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.QualifiedNames;
@@ -111,11 +112,8 @@ public class SymbolTable {
 
     private final DiagnosticsEngine diagnostics;
 
-    /**
-     * The names nothing may define, upper-cased, each with what it is ("an operator", "a
-     * function"); a name with the empty text, the cursor {@code @}, is reserved as it is.
-     */
-    private final Map<String, String> reservedNames;
+    /** The names nothing may define. */
+    private final ReservedNames reservedNames;
 
     /**
      * How many definitions {@link #bindingOf} follows before it gives up; a chain longer than
@@ -130,16 +128,11 @@ public class SymbolTable {
      * The current module must be set via {@link #setCurrentModule(String)} before any
      * define/resolve operations.
      * @param diagnostics   The diagnostics engine for reporting errors.
-     * @param reservedNames The names nothing may define, in any letter case, each with what it
-     *                      is, worded for the message: "an operator", "a function" for the names
-     *                      of the operations of computations; the empty text for a name that is
-     *                      reserved as it is, such as {@code @}, the cursor.
+     * @param reservedNames The names nothing may define.
      */
-    public SymbolTable(DiagnosticsEngine diagnostics, Map<String, String> reservedNames) {
+    public SymbolTable(DiagnosticsEngine diagnostics, ReservedNames reservedNames) {
         this.diagnostics = diagnostics;
-        Map<String, String> reserved = new HashMap<>();
-        reservedNames.forEach((name, what) -> reserved.put(name.toUpperCase(), what));
-        this.reservedNames = Map.copyOf(reserved);
+        this.reservedNames = reservedNames;
         this.rootScope = new Scope(null, TokenInfo.MODULE_LEVEL);
         this.currentScope = this.rootScope;
     }
@@ -401,16 +394,12 @@ public class SymbolTable {
                     symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
             return Optional.empty();
         }
-        String name = symbol.name().toUpperCase();
-        String reserved = reservedNames.get(name);
-        if (reserved != null) {
-            diagnostics.reportError(
-                    reserved.isEmpty()
-                            ? "'" + symbol.name() + "' cannot be defined."
-                            : "'" + symbol.name() + "' is " + reserved + " and cannot be defined.",
-                    symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
+        Optional<String> rejection = reservedNames.rejection(symbol.name(), "defined");
+        if (rejection.isPresent()) {
+            diagnostics.reportError(rejection.get(), symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
             return Optional.empty();
         }
+        String name = symbol.name().toUpperCase();
         String file = symbol.sourceInfo().fileName();
 
         // In module context, the symbol is filed under the module placement rather than the file

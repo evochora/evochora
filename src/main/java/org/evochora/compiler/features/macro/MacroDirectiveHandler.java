@@ -99,15 +99,9 @@ public class MacroDirectiveHandler implements IPreProcessorBlockHandler {
      * @return Whether the name is reserved.
      */
     private static boolean rejectReserved(Token name, String role, PreProcessor preProcessor, PreProcessorContext context) {
-        Optional<String> what = context.reservedName(name.text());
-        if (what.isEmpty()) {
-            return false;
-        }
-        preProcessor.getDiagnostics().reportError(
-                what.get().isEmpty()
-                        ? "'" + name.text() + "' cannot be " + role + "."
-                        : "'" + name.text() + "' is " + what.get() + " and cannot be " + role + ".",
-                name.source().fileName(), name.source().lineNumber());
-        return true;
+        Optional<String> rejection = context.reservedNames().rejection(name.text(), role);
+        rejection.ifPresent(message -> preProcessor.getDiagnostics().reportError(
+                message, name.source().fileName(), name.source().lineNumber()));
+        return rejection.isPresent();
     }
 }

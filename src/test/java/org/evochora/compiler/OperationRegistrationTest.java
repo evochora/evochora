@@ -64,7 +64,7 @@ class OperationRegistrationTest {
 
         assertThat(seen.get().find("MIN", Notation.FUNCTION)).isPresent();
         assertThat(seen.get().find("+", Notation.INFIX)).isPresent();
-        assertThat(seen.get().reservedNames()).containsEntry("MIN", "a function");
+        assertThat(seen.get().reservedNames().description("MIN")).contains("a function");
     }
 
     @Test
