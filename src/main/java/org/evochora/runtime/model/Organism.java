@@ -139,8 +139,7 @@ public class Organism {
      * @param startIp The initial coordinate of the Instruction Pointer (IP).
      * @param initialEnergy The starting energy (ER) of the organism. Energy enters the register
      *                      through this value as it does through every later gain, so it is held at
-     *                      {@code max-energy} the same way; a configuration that asks for more is
-     *                      rejected before it gets here.
+     *                      {@code max-energy} the same way.
      * @param simulation The simulation instance this organism belongs to.
      */
     Organism(int id, int[] startIp, int initialEnergy, Simulation simulation) {
