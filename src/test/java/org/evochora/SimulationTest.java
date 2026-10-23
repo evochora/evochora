@@ -1,5 +1,10 @@
 package org.evochora;
 
+import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigFactory;
+
+import java.util.Map;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.VirtualMachine;
@@ -160,9 +165,11 @@ public class SimulationTest {
     @Test
     @Tag("unit")
     void aMissingLimitIsLeftToThePointWhereItIsRead() {
-        com.typesafe.config.Config withoutLimits = com.typesafe.config.ConfigFactory.parseMap(java.util.Map.of("error-penalty-cost", 10));
+        com.typesafe.config.Config withoutLimits = ConfigFactory.parseMap(Map.of("error-penalty-cost", 10));
         Simulation built = new Simulation(environment, sim.getPolicyManager(), withoutLimits, 1);
-        assertThat(built.getOrganismConfig().hasPath("max-energy")).isFalse();
+        assertThatThrownBy(() -> Organism.create(built, new int[]{0, 0}, 1))
+                .isInstanceOf(ConfigException.Missing.class)
+                .hasMessageContaining("max-energy");
     }
 
     /**
