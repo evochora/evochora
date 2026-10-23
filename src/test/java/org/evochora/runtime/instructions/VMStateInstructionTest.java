@@ -9,6 +9,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -145,6 +146,27 @@ public class VMStateInstructionTest {
         int sr = org.getSr();
         int regVal = (Integer) org.readOperand(0);
         assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(sr);
+    }
+
+    /**
+     * The entropy register may stand past the limit for the length of the instruction that pushed
+     * it there, since the limit is checked at the end of the tick. With the limit at the largest
+     * value, what the organism reads is that value and not the pattern from the other end.
+     */
+    @Test
+    @Tag("unit")
+    void ntrAtTheLargestEntropyLimitReadsTheLargestValue() {
+        sim = SimulationTestUtils.createSimulation(environment, 32767, ValueBounds.MAX_VALUE, 10);
+        org = Organism.create(sim, startPos, 1000);
+        sim.addOrganism(org);
+        org.addSr(ValueBounds.MAX_VALUE);
+        placeInstruction("NTR", 0);
+        sim.tick();
+        assertThat(org.getSr()).isGreaterThan(ValueBounds.MAX_VALUE);
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(ValueBounds.MAX_VALUE);
+        // The read happened; the organism then dies at the end of the tick, as the limit demands.
+        assertThat(org.isDead()).isTrue();
+        org.resetTickState();
     }
 
     /**
