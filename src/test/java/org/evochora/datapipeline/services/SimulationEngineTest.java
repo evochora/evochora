@@ -164,6 +164,26 @@ class SimulationEngineTest {
         );
     }
 
+    /**
+     * Energy an organism gains is held at max-energy, so a start energy above it would give the
+     * organism more than it can ever hold: the contradiction is rejected before the run starts.
+     */
+    @Test
+    void constructor_shouldThrowException_whenInitialEnergyExceedsMaxEnergy() {
+        Config config = ConfigFactory.parseMap(Map.of("organisms", List.of(Map.of(
+                        "program", programFile.toString(),
+                        "initialEnergy", 32768,
+                        "placement", Map.of("positions", List.of(5, 5))))))
+                .withFallback(createValidConfig());
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test", config, resources)
+        );
+        assertTrue(exception.getMessage().contains("initialEnergy") && exception.getMessage().contains("32768")
+                && exception.getMessage().contains("max-energy") && exception.getMessage().contains("32767"),
+                exception.getMessage());
+    }
+
     @Test
     void constructor_shouldThrowException_whenSamplingIntervalIsZero() {
         Config config = createValidConfig().withValue("samplingInterval", ConfigValueFactory.fromAnyRef(0));

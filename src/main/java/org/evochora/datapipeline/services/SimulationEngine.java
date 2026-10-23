@@ -897,7 +897,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                     + Arrays.toString(envProps.getWorldShape()));
             }
 
-            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"));
+            int initialEnergy = orgConfig.getInt("initialEnergy");
+            int maxEnergy = simulation.getOrganismConfig().getInt("max-energy");
+            if (initialEnergy > maxEnergy) {
+                throw new IllegalArgumentException(
+                    "Organism initialEnergy of program " + programPath + " is " + initialEnergy
+                    + ", above max-energy " + maxEnergy + ", which is the most an organism can hold");
+            }
+            Organism organism = Organism.create(simulation, startPosition, initialEnergy);
             organism.setProgramId(artifact.programId());
             simulation.addOrganism(organism);
             placeOrganismCodeAndObjects(simulation, organism, artifact, startPosition);
