@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.label;
 
 import java.util.Map;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
@@ -36,7 +37,7 @@ class ColonLabelHandlerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics, "test.s");
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), "test.s", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "test.s", CompilerOptions.defaults(), diagnostics);
         context.handlers().register(":", new ColonLabelHandler());
         PreProcessor pp = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
@@ -114,5 +115,31 @@ class ColonLabelHandlerTest {
         // Typed literal preserved
         assertThat(tokens).extracting(Token::type)
                 .contains(TokenType.COLON);
+    }
+
+    @Test
+    void twoLabelsOnOneLineSeparatedBySemicolonAreBothRewritten() {
+        List<Token> tokens = preprocess("L1: NOP; L2: NOP");
+
+        assertThat(tokens).extracting(Token::text)
+                .containsSubsequence(".LABEL", "L1", "NOP", ";", ".LABEL", "L2", "NOP");
+        assertThat(tokens).extracting(Token::type).doesNotContain(TokenType.COLON);
+    }
+
+    @Test
+    void signedTypedLiteral_notRewritten() {
+        List<Token> tokens = preprocess("SETI %DR0 STATE:-1");
+
+        assertThat(tokens).extracting(Token::text)
+                .containsSubsequence("SETI", "%DR0", "STATE", ":", "-", "1");
+        assertThat(tokens).extracting(Token::type).doesNotContain(TokenType.DIRECTIVE);
+    }
+
+    @Test
+    void typedParenthesis_notRewritten() {
+        List<Token> tokens = preprocess("SETI %DR0 DATA:(WIDTH-1)");
+
+        assertThat(tokens).extracting(Token::type).contains(TokenType.COLON);
+        assertThat(tokens).extracting(Token::type).doesNotContain(TokenType.DIRECTIVE);
     }
 }

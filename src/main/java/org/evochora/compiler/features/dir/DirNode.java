@@ -1,9 +1,9 @@
 package org.evochora.compiler.features.dir;
 
-import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
+import org.evochora.compiler.model.ast.OperandNode;
 
 import java.util.List;
 
@@ -27,9 +27,10 @@ public record DirNode(
         /**
          * A direction given as a vector, one component per dimension of the world.
          *
-         * @param vector The vector literal that specifies the direction.
+         * @param vector The operand whose value is the direction: a vector written out, a name or a
+         *               computation.
          */
-        record Absolute(LiteralNode vector) implements Mode {}
+        record Absolute(OperandNode vector) implements Mode {}
 
         /**
          * A rotation of the current direction by 90 degrees in the plane spanned by two axes.
@@ -47,5 +48,16 @@ public record DirNode(
     public List<AstNode> getChildren() {
         // A written-out direction has the vector as its child; a rotation names no node of its own.
         return mode instanceof Mode.Absolute absolute ? List.of(absolute.vector()) : List.of();
+    }
+
+    /**
+     * Phase 6 puts the vector of a written-out direction it resolved into the node through this;
+     * a rotation has no child and stays as it is.
+     */
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        return mode instanceof Mode.Absolute
+                ? new DirNode(new Mode.Absolute((OperandNode) newChildren.getFirst()), sourceInfo)
+                : this;
     }
 }

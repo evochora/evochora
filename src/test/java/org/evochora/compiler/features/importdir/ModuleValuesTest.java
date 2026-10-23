@@ -102,8 +102,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(this::compile)
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'STEPS' of WALK is not marked EXPORT.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot use 'WALK.STEPS' as an argument: 'STEPS' of WALK is not marked EXPORT.");
     }
 
     /**
@@ -136,6 +135,7 @@ class ModuleValuesTest {
     @Test
     void anUndefinedDefaultIsReportedEvenWhenTheImportBindsTheValue() throws Exception {
         write("walk.evo",
+                "# A comment line.",
                 ".REQUIRE VALUE STEPS NOPE",
                 "  SETI %DR0 STEPS");
         write("main.evo",
@@ -145,8 +145,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(() -> compile())
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
-                .hasMessageContaining("walk.evo:1")
+                .hasMessageContaining("walk.evo:2: Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain("Internal error"));
     }
 
@@ -407,14 +406,14 @@ class ModuleValuesTest {
     @Test
     void aConfiguredNameTheMainProgramHasNotDefinedIsReportedAtTheRequirement() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".REQUIRE VALUE STEPS DATA:10",
                 "START:",
                 "  SETI %DR0 STEPS");
 
         assertThatThrownBy(() -> compile(Map.of("STEPS", "NOPE")))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Cannot require value 'STEPS' from 'NOPE': the name is not defined.");
     }
 
     /**
@@ -431,17 +430,22 @@ class ModuleValuesTest {
 
     @Test
     void aConfiguredValueOfTwoOperandsIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:1 DATA:2");
+        assertConfiguredValueIsNoOperand("DATA:1 DATA:2", "Configured value 'STEPS' = DATA:1 DATA:2: unexpected 'DATA'.");
     }
 
     @Test
     void aConfiguredValueWithASemicolonIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:1; NOP");
+        assertConfiguredValueIsNoOperand("DATA:1; NOP", "Configured value 'STEPS' = DATA:1; NOP: unexpected ';'.");
+    }
+
+    @Test
+    void aConfiguredValueThatEndsTooEarlyIsReportedWithTheParsersReason() throws Exception {
+        assertConfiguredValueIsNoOperand("DATA:(1", "Configured value 'STEPS' = DATA:(1: expected ')'.");
     }
 
     @Test
     void aConfiguredValueTheLexerRejectsIsReported() throws Exception {
-        assertConfiguredValueIsNoOperand("DATA:2\"0");
+        assertConfiguredValueIsNoOperand("DATA:2\"0", "Configured value 'STEPS': expected an operand.");
     }
 
     /**
@@ -461,7 +465,7 @@ class ModuleValuesTest {
         assertThat(compile(Map.of("STEPS", "DATA:20")).constantValues()).containsEntry("WALK.STEPS", "DATA:10");
     }
 
-    private void assertConfiguredValueIsNoOperand(String text) throws Exception {
+    private void assertConfiguredValueIsNoOperand(String text, String message) throws Exception {
         write("main.evo",
                 "START:",
                 ".REQUIRE VALUE STEPS DATA:10",
@@ -469,9 +473,7 @@ class ModuleValuesTest {
 
         assertThatThrownBy(() -> compile(Map.of("STEPS", text)))
                 .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":2: Configured value 'STEPS' is not an operand; a value is written as a .CONST takes it: a literal, a vector or a name."));
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly("[ERROR] " + message));
     }
 
     /**

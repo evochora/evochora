@@ -16,8 +16,11 @@ public sealed interface Resolution permits ResolvedSymbol, Resolution.Missing {
      *                    {@code Cannot <do something with> 'X': …}; it starts in lowercase or
      *                    with a module name and ends with a period, e.g.
      *                    {@code "import 'ARITH' of NAV is not marked EXPORT."}
+     * @param undefined   Whether the name is not defined at all: a plain name no scope holds, or
+     *                    a path whose first segment names nothing; {@code false} when the lookup
+     *                    found something and stopped further on.
      */
-    record Missing(String explanation) implements Resolution {
+    record Missing(String explanation, boolean undefined) implements Resolution {
     }
 
     /**

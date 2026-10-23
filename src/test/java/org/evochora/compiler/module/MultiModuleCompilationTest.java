@@ -192,6 +192,30 @@ public class MultiModuleCompilationTest {
         assertThat(layout.keySet()).hasSize(artifact.machineCodeLayout().size());
     }
 
+    @Test
+    @Tag("integration")
+    void aLabelAsTheFirstStatementOfAModuleIsALabel() throws Exception {
+        Path libFile = tempDir.resolve("lib.evo");
+        Files.writeString(libFile, String.join("\n",
+                "START:",
+                "  JMPI START",
+                ""));
+
+        Path mainFile = tempDir.resolve("main.evo");
+        Files.writeString(mainFile, String.join("\n",
+                ".IMPORT \"lib.evo\" AS LIB",
+                "NOP",
+                ""));
+
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
+        ProgramArtifact artifact = compiler.compile(
+                Files.readAllLines(mainFile),
+                mainFile.toAbsolutePath().toString(),
+                envProps);
+
+        assertThat(artifact.labelNameToValue().keySet()).anySatisfy(name -> assertThat(name).endsWith("START"));
+    }
+
     private boolean hasCodeAt(Map<int[], Integer> layout, int... expected) {
         return layout.keySet().stream()
                 .anyMatch(coord -> Arrays.equals(coord, expected));

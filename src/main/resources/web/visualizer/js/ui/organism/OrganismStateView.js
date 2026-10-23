@@ -334,12 +334,12 @@ export class OrganismStateView {
 
             const coordKey = relativeCoord.join('|');
 
-            if (!this.artifact.relativeCoordToLinearAddress ||
-                !(coordKey in this.artifact.relativeCoordToLinearAddress)) {
+            if (!this.artifact.coordToLinearAddress ||
+                !(coordKey in this.artifact.coordToLinearAddress)) {
                 return null;
             }
 
-            const linearAddress = this.artifact.relativeCoordToLinearAddress[coordKey];
+            const linearAddress = this.artifact.coordToLinearAddress[coordKey];
 
             if (!this.artifact.callSiteBindings || !Array.isArray(this.artifact.callSiteBindings)) {
                 return null;

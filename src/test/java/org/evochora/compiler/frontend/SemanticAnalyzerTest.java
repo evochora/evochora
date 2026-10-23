@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.evochora.compiler.TestDiagnostics.located;
 
 /**
  * Contains unit tests for the {@link SemanticAnalyzer}.
@@ -44,7 +46,8 @@ public class SemanticAnalyzerTest {
         
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, allHandlers());
+        Parser parser = new Parser(tokens, diagnostics, allHandlers(), null, java.util.Map.of(),
+                TestRegistries.operations(), new RuntimeInstructionSetAdapter());
         return parser.parse();
     }
 
@@ -66,7 +69,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -75,7 +78,7 @@ public class SemanticAnalyzerTest {
                 .filter(d -> d.type() == Diagnostic.Type.ERROR)
                 .toList();
         assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).message()).contains("Cannot define label 'START': the name is already used at");
+        assertThat(located(errors.get(0))).isEqualTo("<memory>:3: Cannot define label 'START': the name is already used at <memory>:1.");
     }
 
     /**
@@ -100,7 +103,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -129,7 +132,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -138,7 +141,7 @@ public class SemanticAnalyzerTest {
                 .filter(d -> d.type() == Diagnostic.Type.ERROR)
                 .toList();
         assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).message()).contains("Cannot define label 'LOOP': the name is already used at");
+        assertThat(located(errors.get(0))).isEqualTo("<memory>:3: Cannot define label 'LOOP': the name is already used at <memory>:2.");
     }
 
     /**
@@ -149,19 +152,19 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void testInstructionWithTooFewArgumentsReportsError() {
         // Arrange
-        String source = "ADDI %DR0  # Fehler: Ein Argument fehlt";
+        String source = "# A comment line.\nADDI %DR0  # Fehler: Ein Argument fehlt";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Instruction 'ADDI' expects 2 argument(s), but got 1.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Instruction 'ADDI' expects 2 argument(s), but got 1.");
     }
 
     /**
@@ -172,19 +175,19 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void testInstructionWithTooManyArgumentsReportsError() {
         // Arrange
-        String source = "NOP %DR0  # Fehler: NOP erwartet keine Argumente";
+        String source = "# A comment line.\nNOP %DR0  # Fehler: NOP erwartet keine Argumente";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Instruction 'NOP' expects 0 argument(s), but got 1.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Instruction 'NOP' expects 0 argument(s), but got 1.");
     }
 
     /**
@@ -200,7 +203,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -216,19 +219,19 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void testInstructionWithWrongArgumentTypeReportsError() {
         // Arrange
-        String source = "SETI 1|0 DATA:1  # Fehler: SETI erwartet ein REGISTER, kein VECTOR";
+        String source = "# A comment line.\nSETI 1|0 DATA:1  # Fehler: SETI erwartet ein REGISTER, kein VECTOR";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got VECTOR.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got VECTOR.");
     }
 
     /**
@@ -239,12 +242,12 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void testInstructionWithMultipleWrongArgumentTypesReportsMultipleErrors() {
         // Arrange
-        String source = "ADDI 1|0 %DR0  # Fehler: Arg1=VECTOR statt REGISTER, Arg2=REGISTER statt LITERAL";
+        String source = "# A comment line.\nADDI 1|0 %DR0  # Fehler: Arg1=VECTOR statt REGISTER, Arg2=REGISTER statt LITERAL";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -252,8 +255,8 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isTrue();
         List<Diagnostic> errors = diagnostics.getDiagnostics();
         assertThat(errors).hasSize(2);
-        assertThat(errors.get(0).message()).contains("Argument 1 for instruction 'ADDI' has the wrong type. Expected REGISTER, but got VECTOR.");
-        assertThat(errors.get(1).message()).contains("Argument 2 for instruction 'ADDI' has the wrong type. Expected LITERAL, but got REGISTER.");
+        assertThat(located(errors.get(0))).contains("<memory>:2: Argument 1 for instruction 'ADDI' has the wrong type. Expected REGISTER, but got VECTOR.");
+        assertThat(located(errors.get(1))).contains("<memory>:2: Argument 2 for instruction 'ADDI' has the wrong type. Expected LITERAL, but got REGISTER.");
     }
 
     /**
@@ -269,7 +272,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -297,14 +300,14 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Cannot use 'INNER_LABEL' as an argument: the name is not defined.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:5: Cannot use 'INNER_LABEL' as an argument: the name is not defined.");
     }
 
     /**
@@ -327,14 +330,14 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Cannot use 'INTERNAL_LABEL' as an argument: the name is not defined.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:5: Cannot use 'INTERNAL_LABEL' as an argument: the name is not defined.");
     }
 
     /**
@@ -354,14 +357,14 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got LITERAL.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got LITERAL.");
     }
 
     /**
@@ -372,19 +375,19 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void testUsingUndefinedLabelReportsError() {
         // Arrange
-        String source = "JMPI NON_EXISTENT_LABEL";
+        String source = "# A comment line.\nJMPI NON_EXISTENT_LABEL";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Cannot use 'NON_EXISTENT_LABEL' as an argument: the name is not defined.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Cannot use 'NON_EXISTENT_LABEL' as an argument: the name is not defined.");
     }
 
     /**
@@ -401,7 +404,7 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -422,13 +425,13 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Argument 2 for instruction 'SETI' requires a typed literal (e.g., DATA:42).");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Argument 2 for instruction 'SETI' requires a typed literal (e.g., DATA:42).");
     }
 
     /**
@@ -444,13 +447,13 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
     }
 
     /**
@@ -461,19 +464,20 @@ public class SemanticAnalyzerTest {
     @Tag("unit")
     void testUnknownNameWhereVectorIsExpectedIsReported() {
         String source = String.join("\n",
+                "# A comment line.",
                 "SETV %DR0 LATE",
                 ".CONST LATE 1|0"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .startsWith("Cannot use 'LATE' as an argument:");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Cannot use 'LATE' as an argument: the name is not defined.");
     }
 
     /**
@@ -483,16 +487,17 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void testUnknownRegisterIsReported() {
-        String source = "SETI %DR" + Config.NUM_DATA_REGISTERS + " DATA:1";
+        String source = "# A comment line.\nSETI %DR" + Config.NUM_DATA_REGISTERS + " DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("%DR" + Config.NUM_DATA_REGISTERS);
+        assertThat(located(diagnostics.getDiagnostics().get(0))).isEqualTo("<memory>:2: Register '%DR" + Config.NUM_DATA_REGISTERS
+                        + "' is out of bounds. Valid range: %DR0-%DR" + (Config.NUM_DATA_REGISTERS - 1) + ".");
     }
 
     /**
@@ -502,17 +507,17 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void testUntypedLiteralIsRejected() {
-        String source = "SETI %DR0 42";
+        String source = "# A comment line.\nSETI %DR0 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .contains("requires a typed literal");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .contains("<memory>:2: Argument 2 for instruction 'SETI' requires a typed literal (e.g., DATA:42).");
     }
 
     /**
@@ -523,17 +528,17 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void testDirectAccessToFdrIsForbidden() {
-        String source = "ADDI %FDR0 DATA:1";
+        String source = "# A comment line.\nADDI %FDR0 DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message())
-                .contains("Register '%FDR0' is reserved for procedure parameters");
+        assertThat(located(diagnostics.getDiagnostics().get(0)))
+                .isEqualTo("<memory>:2: Register '%FDR0' is reserved for procedure parameters. Use the parameter's name instead.");
     }
 
     /**
@@ -555,7 +560,7 @@ public class SemanticAnalyzerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -573,13 +578,13 @@ public class SemanticAnalyzerTest {
                 ".PROC myProc REF rA VAL v1",
                 "  RET",
                 ".ENDPROC",
-                "CALL myProc REF %DR1 VAL 123"
+                "CALL myProc REF %DR1 VAL DATA:123"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -601,13 +606,13 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Cannot pass a literal as REF argument: REF takes a register."));
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> located(d).contains("<memory>:4: Invalid argument: '123' for REF is a literal; expected a register."));
     }
 
     @Test
@@ -624,13 +629,13 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Procedure 'myProc' expects 2 REF argument(s), but received 1."));
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> located(d).contains("<memory>:4: Procedure 'myProc' expects 2 REF argument(s), but received 1."));
     }
 
     @Test
@@ -647,13 +652,13 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Procedure 'myProc' expects 1 VAL argument(s), but received 2."));
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> located(d).contains("<memory>:4: Procedure 'myProc' expects 1 VAL argument(s), but received 2."));
     }
 
     @Test
@@ -670,7 +675,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
@@ -685,7 +690,7 @@ public class SemanticAnalyzerTest {
     private List<Diagnostic> analyze(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(String.join("\n", lines), diagnostics);
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
         return diagnostics.getDiagnostics().stream()
@@ -733,22 +738,23 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aLabelWithADotInItsNameIsReported() {
-        List<Diagnostic> errors = analyze(".LABEL X.Y NOP");
+        List<Diagnostic> errors = analyze("# A comment line.", ".LABEL X.Y NOP");
 
         assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
+        assertThat(located(errors.get(0))).contains("<memory>:2: Cannot define 'X.Y': a name is one segment and may not contain a dot.");
     }
 
     @Test
     @Tag("unit")
     void aProcedureWithADotInItsNameIsReported() {
         List<Diagnostic> errors = analyze(
+                "# A comment line.",
                 ".PROC X.Y",
                 "  RET",
                 ".ENDPROC");
 
         assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
+        assertThat(located(errors.get(0))).contains("<memory>:2: Cannot define 'X.Y': a name is one segment and may not contain a dot.");
     }
 
     /**
@@ -759,11 +765,11 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void anImportAliasWithADotIsReported() {
-        List<Diagnostic> errors = analyze(".IMPORT \"lib.evo\" AS X.Y");
+        List<Diagnostic> errors = analyze("# A comment line.", ".IMPORT \"lib.evo\" AS X.Y");
 
         assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
                 .singleElement()
-                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+                .satisfies(d -> assertThat(located(d)).contains("<memory>:2: Cannot define 'X.Y': a name is one segment and may not contain a dot."));
     }
 
     /**
@@ -773,11 +779,11 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aRequireAliasWithADotIsReported() {
-        List<Diagnostic> errors = analyze(".REQUIRE MODULE \"lib.evo\" AS X.Y");
+        List<Diagnostic> errors = analyze("# A comment line.", ".REQUIRE MODULE \"lib.evo\" AS X.Y");
 
         assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
                 .singleElement()
-                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+                .satisfies(d -> assertThat(located(d)).contains("<memory>:2: Cannot define 'X.Y': a name is one segment and may not contain a dot."));
     }
 
     /**
@@ -808,9 +814,8 @@ public class SemanticAnalyzerTest {
                 "PSLI CLAMP.TO_MIN");
 
         assertThat(errors).singleElement().satisfies(d -> {
-            assertThat(d.lineNumber()).isEqualTo(5);
-            assertThat(d.message()).isEqualTo(
-                    "Cannot use 'CLAMP.TO_MIN' as an argument: 'TO_MIN' of CLAMP is not marked EXPORT.");
+            assertThat(located(d)).isEqualTo(
+                    "<memory>:5: Cannot use 'CLAMP.TO_MIN' as an argument: 'TO_MIN' of CLAMP is not marked EXPORT.");
         });
     }
 
@@ -823,8 +828,8 @@ public class SemanticAnalyzerTest {
                 ".ENDPROC",
                 "PSLI CLAMP.NOPE");
 
-        assertThat(errors).singleElement().satisfies(d -> assertThat(d.message())
-                .isEqualTo("Cannot use 'CLAMP.NOPE' as an argument: 'CLAMP' has no member 'NOPE'."));
+        assertThat(errors).singleElement().satisfies(d -> assertThat(located(d))
+                .isEqualTo("<memory>:4: Cannot use 'CLAMP.NOPE' as an argument: 'CLAMP' has no member 'NOPE'."));
     }
 
     /**
@@ -837,8 +842,8 @@ public class SemanticAnalyzerTest {
                 ".CONST X DATA:5",
                 "PSLI X.Y");
 
-        assertThat(errors).singleElement().satisfies(d -> assertThat(d.message())
-                .isEqualTo("Cannot use 'X.Y' as an argument: 'X' has no member 'Y'."));
+        assertThat(errors).singleElement().satisfies(d -> assertThat(located(d))
+                .isEqualTo("<memory>:2: Cannot use 'X.Y' as an argument: 'X' has no member 'Y'."));
     }
 
     /**
@@ -873,8 +878,7 @@ public class SemanticAnalyzerTest {
                 ".ENDPROC");
 
         assertThat(errors).singleElement().satisfies(d -> {
-            assertThat(d.lineNumber()).isEqualTo(2);
-            assertThat(d.message()).isEqualTo(".IMPORT may stand only at the module level.");
+            assertThat(located(d)).isEqualTo("<memory>:2: .IMPORT may stand only at the module level.");
         });
     }
 
@@ -888,8 +892,117 @@ public class SemanticAnalyzerTest {
                 ".ENDPROC");
 
         assertThat(errors).singleElement().satisfies(d -> {
-            assertThat(d.lineNumber()).isEqualTo(2);
-            assertThat(d.message()).isEqualTo(".REQUIRE may stand only at the module level.");
+            assertThat(located(d)).isEqualTo("<memory>:2: .REQUIRE may stand only at the module level.");
+        });
+    }
+
+    /**
+     * A typed literal whose value is computed from a constant is a typed literal operand.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedTypedLiteralIsALiteralOperand() {
+        assertThat(analyze(
+                ".CONST WIDTH 99",
+                "SETI %DR0 DATA:(WIDTH+1)")).isEmpty();
+    }
+
+    /**
+     * A computation whose value is a bare number is held to the rule of a written number.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedNumberRequiresATypedLiteral() {
+        assertThat(analyze(
+                ".CONST WIDTH 99",
+                "SETI %DR0 (WIDTH+1)")).singleElement().satisfies(d ->
+                assertThat(located(d)).isEqualTo("<memory>:2: Argument 2 for instruction 'SETI' requires a typed literal (e.g., DATA:42)."));
+    }
+
+    /**
+     * A computed vector is a vector operand.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedVectorIsAVectorOperand() {
+        assertThat(analyze(
+                ".CONST WIDTH 100",
+                ".CONST HEIGHT 70",
+                "SETV %DR0 (WIDTH-1|HEIGHT-1)")).isEmpty();
+    }
+
+    /**
+     * A computed vector at a literal slot has the wrong type, as a written vector has.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedVectorAtALiteralSlotHasTheWrongType() {
+        assertThat(analyze("# A comment line.", "SETI %DR0 (1|0)")).singleElement().satisfies(d ->
+                assertThat(located(d)).isEqualTo("<memory>:2: Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got VECTOR."));
+    }
+
+    /**
+     * A value computed from a position is no operand.
+     */
+    @Test
+    @Tag("unit")
+    void aLayoutValueIsNoOperand() {
+        assertThat(analyze("# A comment line.", "SETI %DR0 DATA:(@[0])")).singleElement().satisfies(d -> {
+            assertThat(located(d)).isEqualTo("<memory>:2: Argument 2 for instruction 'SETI' is computed from a position.");
+        });
+    }
+
+    /**
+     * A constant whose value is a computation on a label is a layout value, and a jump to it is
+     * reported: a computed position is never a jump target.
+     */
+    @Test
+    @Tag("unit")
+    void aJumpToALayoutValuedConstantIsReported() {
+        assertThat(analyze(
+                ".LABEL TARGET NOP",
+                ".CONST X (TARGET)",
+                "JMPI X")).singleElement().satisfies(d -> {
+            assertThat(located(d)).isEqualTo("<memory>:3: Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got POSITION.");
+        });
+    }
+
+    /**
+     * A jump to a constant that names a label stays a jump to the label.
+     */
+    @Test
+    @Tag("unit")
+    void aJumpToAConstantThatNamesALabelStaysAJumpToTheLabel() {
+        assertThat(analyze(
+                ".LABEL TARGET NOP",
+                ".CONST X TARGET",
+                "JMPI X")).isEmpty();
+    }
+
+    /**
+     * The error of a computation is reported at the line it stands on.
+     */
+    @Test
+    @Tag("unit")
+    void theErrorOfAComputationIsReported() {
+        assertThat(analyze("NOP", "SETI %DR0 DATA:(1/0)")).singleElement().satisfies(d -> {
+            assertThat(located(d)).isEqualTo("<memory>:2: Division by zero.");
+        });
+    }
+
+    /**
+     * A constant that failed to compute is reported once, at its definition, and not again at
+     * its use.
+     */
+    @Test
+    @Tag("unit")
+    void aConstantThatFailedIsReportedOnlyAtItsDefinition() {
+        assertThat(analyze(
+                "# A comment line.",
+                ".CONST BAD DATA:(1/0)",
+                "SETI %DR0 BAD",
+                "SETI %DR1 DATA:(BAD)")).singleElement().satisfies(d -> {
+            assertThat(located(d)).isEqualTo("<memory>:2: Division by zero.");
         });
     }
 

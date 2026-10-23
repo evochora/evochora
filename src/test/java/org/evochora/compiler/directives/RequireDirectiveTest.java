@@ -1,6 +1,7 @@
 package org.evochora.compiler.directives;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
+import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -35,7 +37,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -55,7 +57,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -68,7 +70,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -81,7 +83,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -94,7 +96,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics, "main.evo");
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -110,7 +112,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -126,7 +128,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -144,7 +146,7 @@ public class RequireDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -155,20 +157,18 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void aRequireWithoutAKindWordReportsTheMissingModule() {
-        String source = ".REQUIRE \"d.evo\" AS D";
+        String source = "# A comment line.\n.REQUIRE \"d.evo\" AS D";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> {
-                    assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after .REQUIRE; found '\"d.evo\"'.");
-                    assertThat(d.lineNumber()).isEqualTo(1);
-                });
+                .satisfies(d -> assertThat(located(d))
+                        .isEqualTo("<memory>:2: Expected MODULE or VALUE after .REQUIRE; found '\"d.evo\"'."));
     }
 
 

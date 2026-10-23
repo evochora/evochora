@@ -95,6 +95,7 @@ class PassedOnRequirementTest {
                 ""));
 
         Files.writeString(tempDir.resolve("main.evo"), String.join("\n",
+                "# A comment line.",
                 ".IMPORT \"bottom.evo\" AS BOTTOM USING MODULE NOWHERE AS MATH",
                 "  NOP",
                 ""));
@@ -102,7 +103,7 @@ class PassedOnRequirementTest {
         assertThatCode(this::compileMain)
                 .as("a name that is neither imported nor required cannot satisfy anything")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("NOWHERE");
+                .hasMessageContaining("main.evo:2: USING source 'NOWHERE' is neither an import nor a requirement of the current module.");
     }
 
     @Test
@@ -118,6 +119,7 @@ class PassedOnRequirementTest {
                 ""));
 
         Files.writeString(tempDir.resolve("b.evo"), String.join("\n",
+                "# A comment line.",
                 ".IMPORT \"a.evo\" AS A",
                 "  NOP",
                 ""));
@@ -130,7 +132,7 @@ class PassedOnRequirementTest {
         assertThatCode(this::compileMain)
                 .as("two modules importing each other cannot be ordered")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Circular");
+                .hasMessageContaining("b.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo").toString().replace('\\', '/'));
     }
 
     private ProgramArtifact compileMain() throws Exception {

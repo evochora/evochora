@@ -1,6 +1,9 @@
 package org.evochora.compiler.features.control;
 
+import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
@@ -10,7 +13,6 @@ import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.ModuleContextTracker;
-import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
@@ -95,7 +97,7 @@ class ControlLevelTest {
                 "JMPI WALK.BLOCKED");
 
         assertThat(analyzed.errors()).containsExactly(
-                "5: Cannot use 'WALK.BLOCKED' as an argument: 'BLOCKED' of WALK is not marked EXPORT.");
+                "main.evo:5: Cannot use 'WALK.BLOCKED' as an argument: 'BLOCKED' of WALK is not marked EXPORT.");
     }
 
     @Test
@@ -149,7 +151,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "3: Cannot define label 'END': the name is already used at main.evo:5.");
+                "main.evo:3: Cannot define label 'END': the name is already used at main.evo:5.");
     }
 
     @Test
@@ -163,7 +165,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "4: Cannot define case 'BLOCKED': the name is already used at main.evo:2.");
+                "main.evo:4: Cannot define case 'BLOCKED': the name is already used at main.evo:2.");
     }
 
     @Test
@@ -177,7 +179,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "4: Cannot define block 'WALK': the name is already used at main.evo:1.");
+                "main.evo:4: Cannot define block 'WALK': the name is already used at main.evo:1.");
     }
 
     @Test
@@ -191,7 +193,7 @@ class ControlLevelTest {
                 "JMPI WALK.L");
 
         assertThat(analyzed.errors()).containsExactly(
-                "6: Cannot use 'WALK.L' as an argument: 'L' of WALK is not marked EXPORT.");
+                "main.evo:6: Cannot use 'WALK.L' as an argument: 'L' of WALK is not marked EXPORT.");
     }
 
     @Test
@@ -219,7 +221,7 @@ class ControlLevelTest {
                 "SETI %DR0 WALK.N");
 
         assertThat(analyzed.errors()).containsExactly(
-                "5: Cannot use 'WALK.N' as an argument: 'N' of WALK is not marked EXPORT.");
+                "main.evo:5: Cannot use 'WALK.N' as an argument: 'N' of WALK is not marked EXPORT.");
     }
 
     @Test
@@ -246,7 +248,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "2: .IMPORT may stand only at the module level.");
+                "main.evo:2: .IMPORT may stand only at the module level.");
     }
 
     @Test
@@ -259,7 +261,7 @@ class ControlLevelTest {
                 ".ENDCONTROL");
 
         assertThat(analyzed.errors()).containsExactly(
-                "2: .PROC may stand only at the module level.");
+                "main.evo:2: .PROC may stand only at the module level.");
     }
 
     // --- helpers ---
@@ -314,7 +316,7 @@ class ControlLevelTest {
                 ".ENDCONTROL",
                 "INCR %TMP");
 
-        assertThat(analyzed.errors()).containsExactly("9: Cannot use '%TMP' as an argument: the name is not defined.");
+        assertThat(analyzed.errors()).containsExactly("main.evo:9: Cannot use '%TMP' as an argument: the name is not defined.");
         Analyzed inside = analyze(
                 ".CONTROL WALK",
                 "  .REG %TMP %DR1",
@@ -342,11 +344,11 @@ class ControlLevelTest {
                     .orElseThrow(() -> new AssertionError("No token '" + text + "' on line " + line));
         }
 
-        /** The errors, each as {@code line: message}. */
+        /** The errors, each as {@code file:line: message}. */
         List<String> errors() {
             return diagnostics.getDiagnostics().stream()
                     .filter(d -> d.type() == Diagnostic.Type.ERROR)
-                    .map(d -> d.lineNumber() + ": " + d.message())
+                    .map(TestDiagnostics::located)
                     .toList();
         }
 
@@ -394,9 +396,9 @@ class ControlLevelTest {
         features.parserStatementHandlers().forEach(registry::register);
         features.parserBlocks().forEach(block -> registry.registerBlock(block.kind(), block.handler()));
         registry.registerDefault(features.defaultParserStatementHandler());
-        List<AstNode> ast = new Parser(tokens, diagnostics, registry).parse();
+        List<AstNode> ast = TestParsers.parser(tokens, diagnostics, registry).parse();
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         new SemanticAnalyzer(diagnostics, symbolTable, null, null,
                 TestRegistries.analysisRegistry(symbolTable, diagnostics), new ModuleSetupRegistry())
                 .analyze(ast);
@@ -406,7 +408,7 @@ class ControlLevelTest {
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.registerAll(features.tokenMapContributors());
         Map<SourceInfo, TokenInfo> tokenMap = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry,
-                new ModuleContextTracker(symbolTable)).generateAll(ast);
+                new ModuleContextTracker(symbolTable)).generateAll(ast).tokenMap();
         AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable),
                 new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         return new Analyzed(postProcessor.process(ast), diagnostics, tokenMap);

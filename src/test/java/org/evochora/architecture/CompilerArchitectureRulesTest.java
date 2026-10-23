@@ -7,8 +7,10 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
-import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -28,12 +30,20 @@ import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.backend.link.ILinkingRule;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.IOperation;
+import org.evochora.compiler.expression.IOperationGroup;
+import org.evochora.compiler.expression.NameAnswer;
+import org.evochora.compiler.expression.OperationResult;
+import org.evochora.compiler.expression.parser.ParseResult;
+import org.evochora.compiler.frontend.parser.OperandReading;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrValue;
+import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.junit.jupiter.api.BeforeAll;
@@ -42,8 +52,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Enforces the structure of the compiler described in the <em>Compiler</em> section of
- * {@code AGENTS.md}: a feature-agnostic core, features that know neither each other nor any
- * state, three data formats that do not reach into one another, and phases that meet only in
+ * {@code AGENTS.md}: a feature-agnostic core, features that know each other only where one
+ * declares that it requires another and that hold no state, three data formats that do not reach into one another, and phases that meet only in
  * {@code Compiler}.
  * <p>
  * Each rule here is the enforceable form of one sentence of that section. A rule fires naming
@@ -59,6 +69,9 @@ class CompilerArchitectureRulesTest {
 
     /** Package holding one sub-package per feature. */
     private static final String FEATURES = COMPILER + ".features";
+
+    /** Package holding the behaviour of computations, shared by the phases that compute. */
+    private static final String EXPRESSION = COMPILER + ".expression";
 
     /** The classes that run the phases of the pipeline, in pipeline order. */
     private static final String[] PHASE_CLASSES = {
@@ -123,17 +136,60 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
-     * No feature references another feature.
+     * A feature references another feature only where it declares that it requires it: from its
+     * feature class, in {@link ICompilerFeature#requires()}, to the feature class it requires.
      * <p>
      * A feature is the unit of change. A handler that needs another feature's work reads it from
      * the phase's input data, never from the other feature's classes; otherwise a change to one
-     * feature spreads into the next.
+     * feature spreads into the next. A feature that builds on another names it in one place, and
+     * the rule reads that declaration rather than a list of its own, so what is allowed is
+     * exactly what the features declare.
      */
     @Test
-    void featuresDoNotReferenceEachOther() {
-        slices().matching(FEATURES + ".(*)..")
-                .should().notDependOnEachOther()
+    void featuresReferenceOnlyTheFeaturesTheyRequire() {
+        Map<Class<?>, Set<Class<? extends ICompilerFeature>>> declared = new HashMap<>();
+        StandardFeatures.all().forEach(feature -> declared.put(feature.getClass(), feature.requires()));
+
+        classes().that().resideInAPackage(FEATURES + "..")
+                .should(referenceOtherFeaturesOnlyAsDeclared(declared))
                 .check(compilerClasses);
+    }
+
+    private static ArchCondition<JavaClass> referenceOtherFeaturesOnlyAsDeclared(
+            Map<Class<?>, Set<Class<? extends ICompilerFeature>>> declared) {
+        return new ArchCondition<>("reference another feature only from its feature class to a feature class it requires") {
+            @Override
+            public void check(JavaClass origin, ConditionEvents events) {
+                String own = featureOf(origin);
+                for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                    JavaClass target = dependency.getTargetClass();
+                    String other = featureOf(target);
+                    if (other == null || other.equals(own)) {
+                        continue;
+                    }
+                    boolean allowed = declared.containsKey(origin.reflect())
+                            && declared.get(origin.reflect()).contains(target.reflect());
+                    if (!allowed) {
+                        events.add(SimpleConditionEvent.violated(dependency, dependency.getDescription()));
+                    }
+                }
+            }
+        };
+    }
+
+    /**
+     * Names the feature a class belongs to: the package directly below the features package, or
+     * none for a class outside it.
+     */
+    private static String featureOf(JavaClass clazz) {
+        String prefix = FEATURES + ".";
+        String packageName = clazz.getPackageName();
+        if (!packageName.startsWith(prefix)) {
+            return null;
+        }
+        String rest = packageName.substring(prefix.length());
+        int dot = rest.indexOf('.');
+        return dot < 0 ? rest : rest.substring(0, dot);
     }
 
     /**
@@ -186,18 +242,25 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
-     * A top-level interface carries the {@code I} prefix, except the sealed roots of data.
+     * A top-level interface carries the {@code I} prefix, except the types that name a kind of data.
      * <p>
-     * Handler, registration and context interfaces are recognisable by name. The exceptions
-     * are the types every AST node, AST operand, IR item, IR operand and IR value implements,
-     * the value family the formats share, and the outcome of a name lookup; they name data, not a role, and are listed here so
-     * that a further exception is a decision. A nested interface is named by its owner, as in
+     * The prefix marks a role: what a feature implements (a handler, a rule, an operation), what
+     * it is handed or calls (a context, a registration), and what a node can do (a capability
+     * such as {@code ISourceLocatable}). A type that says what a value is carries no prefix: the
+     * core builds such values and their users tell them apart with a {@code switch}. No property
+     * of the code tells a role from a kind of data, so the kinds of data are listed here, and each
+     * entry is a decision: the types every AST node, AST operand, IR item, IR operand and IR value
+     * implements, the value family the formats share, the outcome of a name lookup, the expression
+     * tree, and the outcomes of reading an operand and of parsing, answering and computing an
+     * expression. A nested interface is named by its owner, as in
      * {@code IInstructionSet.Signature}, and is not covered.
      */
     @Test
     void topLevelInterfacesCarryThePrefix() {
         classes().that().areInterfaces().and().areTopLevelClasses()
-                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class)
+                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class,
+                        Expression.class, OperationResult.class, EvaluationResult.class, NameAnswer.class, ParseResult.class,
+                        OperandReading.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
                 .check(compilerClasses);
     }
@@ -209,6 +272,10 @@ class CompilerArchitectureRulesTest {
      * exist for the backend. Neither a backend package nor a handler a feature registers for a
      * backend phase may read the symbol table, the AST or the tokens. A handler that needs
      * something from there says that the IR is missing it, and then it belongs into the IR.
+     * <p>
+     * The operations of computations are held to the same rule, as the layout computes with
+     * them, and so are the parts of the expression package only the frontend may use: the
+     * parser, which reads tokens, and the bridge to the symbol table.
      */
     @Test
     void backendReadsOnlyTheIrAndTheInstructionSet() {
@@ -218,11 +285,15 @@ class CompilerArchitectureRulesTest {
                 .or().implement(ILinkingDirectiveHandler.class)
                 .or().implement(IRewriteRule.class)
                 .or().implement(IEmissionContributor.class)
+                .or().implement(IOperation.class)
+                .or().implement(IOperationGroup.class)
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".frontend..",
                         COMPILER + ".model.ast..",
                         COMPILER + ".model.token..",
-                        COMPILER + ".model.symbols..")
+                        COMPILER + ".model.symbols..",
+                        EXPRESSION + ".parser..",
+                        EXPRESSION + ".symbols..")
                 .check(compilerClasses);
     }
 
@@ -338,6 +409,43 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
+     * The root of the expression package holds what frontend and backend share, and so reads
+     * neither its own sub-packages nor the data only the frontend has: the tokens, the AST and
+     * the symbol table.
+     * <p>
+     * The layout computes with the evaluator, the operations and the registry as phase 4 does.
+     * The parser, which reads tokens, and the bridge to the symbol table are the frontend's
+     * part and lie in sub-packages, which the backend may not reference; a root class that
+     * reached them would carry them into the backend.
+     */
+    @Test
+    void expressionRootReadsNothingOfTheFrontend() {
+        noClasses().that().resideInAPackage(EXPRESSION)
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        EXPRESSION + ".parser..",
+                        EXPRESSION + ".symbols..",
+                        COMPILER + ".model.token..",
+                        COMPILER + ".model.ast..",
+                        COMPILER + ".model.symbols..")
+                .check(compilerClasses);
+    }
+
+    /**
+     * The data of computations knows nothing of the behaviour that computes them: neither the
+     * expression tree and the values ({@code model.expression}) nor the symbol table, which
+     * records them, references the expression package.
+     * <p>
+     * The tree is data every phase may hold; if it reached the evaluator or the registry, a
+     * format would depend on the operations a compilation happens to register.
+     */
+    @Test
+    void computationDataReferencesNoBehaviour() {
+        noClasses().that().resideInAnyPackage(COMPILER + ".model.expression..", COMPILER + ".model.symbols..")
+                .should().dependOnClassesThat().resideInAPackage(EXPRESSION + "..")
+                .check(compilerClasses);
+    }
+
+    /**
      * Phases never call other phases: {@code Compiler} is the only class that knows the order.
      * <p>
      * A phase receives its input from the compiler and returns its result to it. A phase that
@@ -411,7 +519,7 @@ class CompilerArchitectureRulesTest {
                 .should(useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes())
                 .check(compilerClasses);
         noClasses().that().resideInAnyPackage(COMPILER + ".frontend", COMPILER + ".isa..", COMPILER + ".diagnostics..",
-                        COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..")
+                        COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..", EXPRESSION + "..")
                 .should().dependOnClassesThat().resideInAnyPackage(PHASE_PACKAGES)
                 .check(compilerClasses);
     }

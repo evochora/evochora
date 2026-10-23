@@ -1,5 +1,7 @@
 package org.evochora.compiler;
 
+import java.util.Set;
+
 /**
  * A self-contained compiler feature that registers its components into the phase pipeline.
  *
@@ -15,6 +17,18 @@ public interface ICompilerFeature {
 	 * @return The feature name (e.g., "instruction", "proc", "label").
 	 */
 	String name();
+
+	/**
+	 * Returns the features this feature builds on: without them its abilities do not work, and a
+	 * compiler that has this feature has to have them as well. This is the one place where a
+	 * feature names another; the architecture rules allow exactly the references declared here.
+	 *
+	 * @return The classes of the features this feature requires; empty for a feature that stands
+	 *         alone.
+	 */
+	default Set<Class<? extends ICompilerFeature>> requires() {
+		return Set.of();
+	}
 
 	/**
 	 * Registers all components of this feature into the phase pipeline.

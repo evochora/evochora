@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.postprocess;
 
 import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.proc.ProcedureNode;
@@ -39,7 +40,7 @@ class RegisterAliasScopeTest {
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule("", "test.s");
         symbolTable.setCurrentModule("");
     }

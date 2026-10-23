@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 
+import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -114,10 +115,11 @@ class LexerLinesTest {
      */
     @Test
     void aPathOverTwoLinesIsReadWhole() {
-        Reading reading = read(".SOURCE \"lib\n.evo\"\n", CompilerOptions.defaults());
+        Reading reading = read("# A comment line.\n.SOURCE \"lib\n.evo\"\n", CompilerOptions.defaults());
 
         assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
-        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).contains("lib\n.evo");
+        assertThat(located(reading.diagnostics.getDiagnostics().get(0)))
+                .startsWith(resolved("main.evo") + ":2: ").contains("lib\n.evo");
     }
 
     @Test
@@ -133,13 +135,29 @@ class LexerLinesTest {
     }
 
     @Test
+    void aComputedFlagDefinedBeforeAnImportHoldsInsideTheImportedFile() throws Exception {
+        Files.writeString(tempDir.resolve("lib.evo"), ".IFDEF HALF = 2\n.SOURCE \"big.evo\"\n.ENDDEF\nNOP\n");
+        Files.writeString(tempDir.resolve("big.evo"), "NOP\n");
+
+        Reading with = read(".DEFINE ROWS 4\n.DEFINE HALF (ROWS/2)\n.IMPORT \"lib.evo\" AS LIB\n",
+                CompilerOptions.defaults());
+        Reading without = read(".DEFINE ROWS 6\n.DEFINE HALF (ROWS/2)\n.IMPORT \"lib.evo\" AS LIB\n",
+                CompilerOptions.defaults());
+
+        assertThat(with.diagnostics.hasErrors()).as(with.diagnostics.summary()).isFalse();
+        assertThat(with.graph.tokens()).containsKey(resolved("big.evo"));
+        assertThat(without.graph.tokens()).doesNotContainKey(resolved("big.evo"));
+    }
+
+    @Test
     void aFileImportedTwiceIsTokenizedOnceAndItsErrorReportedOnce() throws Exception {
-        Files.writeString(tempDir.resolve("lib.evo"), "NOP §\n");
+        Files.writeString(tempDir.resolve("lib.evo"), "# A comment line.\nNOP §\n");
 
         Reading reading = read(".IMPORT \"lib.evo\" AS A\n.IMPORT \"lib.evo\" AS B\n", CompilerOptions.defaults());
 
         assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
-        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).contains("Unexpected character").contains("§");
+        assertThat(located(reading.diagnostics.getDiagnostics().get(0)))
+                .isEqualTo(resolved("lib.evo") + ":2: Unexpected character: §");
     }
 
     @Test
@@ -161,19 +179,19 @@ class LexerLinesTest {
         Reading reading = read(".SOURCE \"a.evo\"\n", CompilerOptions.defaults());
 
         assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
-        assertThat(reading.diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Circular .SOURCE detected: a.evo");
-        assertThat(reading.diagnostics.getDiagnostics().get(0).lineNumber()).isEqualTo(2);
+        assertThat(located(reading.diagnostics.getDiagnostics().get(0)))
+                .isEqualTo(resolved("b.evo") + ":2: Circular .SOURCE detected: a.evo");
     }
 
     @Test
     void aFileThatSourcesItselfIsReported() throws Exception {
-        Files.writeString(tempDir.resolve("self.evo"), ".SOURCE \"self.evo\"\n");
+        Files.writeString(tempDir.resolve("self.evo"), "# A comment line.\n.SOURCE \"self.evo\"\n");
 
         Reading reading = read(".SOURCE \"self.evo\"\n", CompilerOptions.defaults());
 
         assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
-        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).startsWith("Circular .SOURCE detected");
+        assertThat(located(reading.diagnostics.getDiagnostics().get(0)))
+                .isEqualTo(resolved("self.evo") + ":2: Circular .SOURCE detected: self.evo");
     }
 
     private record Reading(DependencyGraph graph, DiagnosticsEngine diagnostics) {
@@ -184,7 +202,8 @@ class LexerLinesTest {
         StandardFeatures.all().forEach(f -> f.register(features));
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), tempDir),
-                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols());
+                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols(),
+                features.operations(), Flags.of(options.defines(), features.operations().reservedNames()));
         DependencyGraph graph = lexer.read(mainSource, resolved("main.evo"), "");
         return new Reading(graph, diagnostics);
     }

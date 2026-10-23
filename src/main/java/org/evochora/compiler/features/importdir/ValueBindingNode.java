@@ -7,7 +7,10 @@ import org.evochora.compiler.model.ast.OperandNode;
 
 /**
  * The definition behind the constant a value requirement defines in its placement: it binds a
- * use of the name to the value the importer bound, or to the default.
+ * use of the name to the value the importer bound, or to the default. When that value is a
+ * computation, phase 4 records the constant's value for this node, and a use of the name stands
+ * for the recorded value instead (see
+ * {@link org.evochora.compiler.model.symbols.SymbolTable#chainEndOf}).
  *
  * @param value The bound value or the default; {@code null} when the placement received neither,
  *              which {@link RequireAnalysisHandler} or {@link ImportAnalysisHandler} has reported.

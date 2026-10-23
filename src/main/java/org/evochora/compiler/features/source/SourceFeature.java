@@ -2,6 +2,9 @@ package org.evochora.compiler.features.source;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
+import org.evochora.compiler.features.ctx.CtxFeature;
+
+import java.util.Set;
 
 /**
  * Compiler feature for the {@code .SOURCE} directive.
@@ -11,6 +14,16 @@ import org.evochora.compiler.IFeatureRegistrationContext;
  * stand only at the top level.</p>
  */
 public class SourceFeature implements ICompilerFeature {
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Requires {@link CtxFeature}: the module context an included file is wrapped in.
+     */
+    @Override
+    public Set<Class<? extends ICompilerFeature>> requires() {
+        return Set.of(CtxFeature.class);
+    }
 
     @Override
     public String name() {

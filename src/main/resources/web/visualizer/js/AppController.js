@@ -601,6 +601,11 @@ export class AppController {
             this.minimapView.updateZoomButton(this.renderer.getCurrentCellSize());
             this.minimapView.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
 
+            // An organism selected through the URL is the selection of the grid and the minimap as
+            // well, as one selected in the interface is
+            this.renderer.setSelectedOrganism(this.state.selectedOrganismId);
+            this.minimapView.setSelectedOrganism(this.state.selectedOrganismId);
+
             // Abort previous request if it's still running
             this.waitingOverlay.cancel();
             if (this.simulationRequestController) {
@@ -773,6 +778,12 @@ export class AppController {
                             worldShape: shape,
                             toroidal: shape ? shape.map(() => isTorus) : null
                         };
+                    }
+                    // The lookup from a coordinate relative to the program's origin to the address
+                    // of its cell, the inverse of linearAddressToCoord, built once per program
+                    program.coordToLinearAddress = {};
+                    for (const entry of program.linearAddressToCoord || []) {
+                        program.coordToLinearAddress[entry.coord.components.join('|')] = entry.linearAddress;
                     }
                     this.programArtifactCache.set(program.programId, program);
                 }
@@ -1042,6 +1053,10 @@ export class AppController {
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._showOrganisms(organisms, organismResult.descent, requestedRoot, isForwardStep);
+            // The markers are drawn as soon as the organisms arrive: they lie in a container of
+            // their own above the cells and need nothing of the environment, and a viewport load
+            // that aborts the environment load below redraws the list the grid holds
+            this.renderer.renderOrganisms(organisms);
             organismsShown = true;
             // The organisms of the tick are shown from here on, whatever becomes of the
             // environment load: the descent poll refers to them
@@ -1068,7 +1083,7 @@ export class AppController {
                 }
             }
 
-            // Wait for environment, then render grid + organisms on top
+            // Wait for the environment of the tick
             loadingManager.update('Loading environment', managedExternally ? 75 : 66);
             const result = await environmentPromise;
             if (result?.minimap && this.state.worldShape) {
@@ -1077,7 +1092,6 @@ export class AppController {
                 this._minimapShownRequest = minimapRequest;
             }
             this.updateMinimapViewport();
-            this.renderer.renderOrganisms(organisms);
 
             if (!managedExternally) {
                 loadingManager.hide();

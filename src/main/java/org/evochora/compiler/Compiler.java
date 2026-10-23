@@ -1,17 +1,17 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -35,6 +35,7 @@ import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
+import org.evochora.compiler.frontend.tokenmap.TokenMapResult;
 
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -79,11 +80,13 @@ public class Compiler implements ICompiler {
 
     /**
      * Creates a compiler with the given features, which tests use to put a feature of their
-     * own next to the standard ones.
+     * own next to the standard ones, or to leave one out.
      *
      * @param features The features to register, in order.
+     * @throws IllegalArgumentException if a feature requires a feature that is not among them.
      */
     Compiler(List<ICompilerFeature> features) {
+        FeatureRegistry.checkRequirements(features);
         this.features = features;
     }
 
@@ -169,11 +172,20 @@ public class Compiler implements ICompiler {
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         FeatureRegistry featureRegistry = new FeatureRegistry(isa);
         features.forEach(f -> f.register(featureRegistry));
+        featureRegistry.validate();
+
+        ReservedNames reservedNames = featureRegistry.operations().reservedNames();
+
+        // The configured flags are checked once, against the configuration, whatever the program reads
+        Flags.configurationErrors(effectiveOptions.defines(), reservedNames)
+                .forEach(message -> diagnostics.reportError(message, "", 0));
+        failOnErrors(diagnostics);
 
         // Phase 1: Lexer — finds the files and tokenizes each of them once; the main file's tokens
         // become the stream, and the text of every value of the options is tokenized on its own
         Lexer lexer = new Lexer(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions,
-                isa, featureRegistry.lexerSymbols());
+                isa, featureRegistry.lexerSymbols(), featureRegistry.operations(),
+                Flags.of(effectiveOptions.defines(), reservedNames));
         DependencyGraph graph = lexer.read(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
         List<Token> initialTokens = new ArrayList<>(graph.mainStream());
@@ -181,8 +193,11 @@ public class Compiler implements ICompiler {
                 featureRegistry.lexerSymbols());
 
         // Phase 2: Preprocessing (includes, macros)
+        // The preprocessor keeps flags of its own, seeded like the Lexer's, so that both read-time
+        // phases start from the configuration and pass the same definitions in the same order
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, graph.tokens(), graph.lines(),
-                programName, mainFilePath, effectiveOptions);
+                programName, mainFilePath, effectiveOptions, featureRegistry.operations(), isa,
+                Flags.of(effectiveOptions.defines(), reservedNames), diagnostics);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(block ->
                 ppContext.handlers().registerBlock(block.kind(), block.handler(), block.stored()));
@@ -199,13 +214,14 @@ public class Compiler implements ICompiler {
         if (featureRegistry.defaultParserStatementHandler() != null) {
             parserRegistry.registerDefault(featureRegistry.defaultParserStatementHandler());
         }
-        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry, rootAliasChain, valueTokens);
+        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry, rootAliasChain, valueTokens,
+                featureRegistry.operations(), isa);
         List<AstNode> ast = parser.parse();
 
         failOnErrors(diagnostics);
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = new SymbolTable(diagnostics, reservedNames);
         AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
@@ -221,7 +237,7 @@ public class Compiler implements ICompiler {
         tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
-        Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
+        TokenMapResult tokenMap = tokenMapGenerator.generateAll(ast);
         failOnErrors(diagnostics);
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
@@ -237,8 +253,8 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        DebugInfo debugInfo = new DebugInfo(ppResult.sources(), ppResult.expansions(), tokenMap,
-                effectiveOptions.defines(), effectiveOptions.values());
+        DebugInfo debugInfo = new DebugInfo(ppResult.view(), tokenMap.tokenMap(),
+                tokenMap.notes(), effectiveOptions.defines(), effectiveOptions.values());
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain, debugInfo);
         failOnErrors(diagnostics);
 
@@ -254,7 +270,7 @@ public class Compiler implements ICompiler {
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
         LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry);
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry, featureRegistry.operations());
 
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = new LinkingRegistry();

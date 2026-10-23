@@ -41,9 +41,9 @@ This represents a compiler directive, which provides instructions to the compile
 
 #### Core Directives
 
--   `core:org`: Sets the layout origin. Its `args` map holds `position`, the vector, and `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module.
--   `core:dir`: Sets the layout direction. Either `direction`, the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) spanning the plane it turns in.
--   `core:place`: Places a molecule at one or more locations. Its `args` map contains the typed literal as `value`, and a special `placements` argument holding a `PlacementListVal`.
+-   `core:org`: Sets the layout origin. Its `args` map holds `components`, a `ListVal` with one value per component, `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module, and `backward`, a `ListVal` of `Bool` with one entry per component: `true` where the marker was `@-` and the component, as written, counts backwards. Each component is a `Literal`, a `Str` (a qualified name) or an `Expression`, which the layout computes at the directive; each is a number, except that a directive of one component may give the whole origin as a vector, counted from the base position (or, marked, from the cursor), or as a position, which becomes the cursor as it is.
+-   `core:dir`: Sets the layout direction. Either `direction`, a `Literal`, `Str` or `Expression` whose value is the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) spanning the plane it turns in.
+-   `core:place`: Places a molecule at one or more locations. Its `args` map contains the molecule as `value`, a typed value given as a `Literal`, a `Str` or an `Expression`, and the locations as `placements`: a `ListVal` of placements, each a `ListVal` of components, each component a `MapVal` whose `kind` (`Str`) names its form and whose other entries are its operands, each a `Literal`, a `Str` or an `Expression`: `single` with `value`, `range` with `start` and `end`, `stepped` with `start`, `step` and `end`, `wildcard` with nothing else. Every operand is a number, except that a placement of one `single` component may give the whole place as a vector, counted from the base position of the enclosing module, or as a position, a place of the program.
 -   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
 -   `core:scope_enter` / `core:scope_exit`: Mark the boundaries of a named scope.
 -   `core:proc_enter` / `core:proc_exit`: Mark the boundaries of a procedure, carrying metadata like arity and export status.
@@ -74,33 +74,18 @@ This is a sealed interface for typed values used in directive arguments. It allo
 -   **`IrReg`**: Represents a machine register.
     -   **`name`**: The `String` name of the register (e.g., "%DR0", "%PR1").
 
--   **`IrLiteral`**: Represents a literal operand, carried as one `Value` of `model/expression`: a `Number` (a `long`), a `Typed` value (a type name such as "DATA" and a `long`), or a `Vector` (a list of `long` components). The emitter checks a number against the range of a cell where it encodes it.
+-   **`IrLiteral`**: Represents a literal operand, carried as one `Value` of `model/expression`: a `Number` (a `long`), a `Typed` value (a type name such as "DATA" and a `long`), or a `Vector` (a list of `long` components). The layout checks that a vector argument of an instruction has one component per dimension of the world, and the emitter checks a number against the range of a cell where it encodes it.
 
 -   **`IrLabelRef`**: Represents a reference to a previously defined label. This is used as an operand for control flow instructions.
     -   **`labelName`**: The `String` name of the label being referenced.
 
 -   **`IrValue` Subtypes**:
     -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
+    -   `Expression(Expression)`: a computation only the layout can compute, every name in it qualified, every node of it carrying where it begins and ends in the source; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line. The layout computes it where the directive stands: a `const_value` (`constdir`) and an `importdir` `value` record the result in the layout's named values under the directive's `name`, and an `importdir` `bound_value`, emitted at an import line for a `USING VALUE` binding that is a computation, records it under the qualified name of the requirement it binds; a `value` whose expression is only the requirement's own name records nothing, because the import line recorded the value already. The emitter hands the named values to the emission contributors, which write `constantValues` from them
     -   `Str(String)`
     -   `Bool(boolean)`
     -   `ListVal(List<IrValue>)`
     -   `MapVal(Map<String, IrValue>)`
-    -   `PlacementListVal(List<IPlacementArgument>)`
-
-### 5.4. Placement Arguments
-
-To support the extended syntax of the `.PLACE` directive, a dedicated set of IR objects exists in the `org.evochora.compiler.ir.placement` package.
-
--   **`IPlacementArgument`**: A marker interface for a complete placement argument.
--   **`IrVectorPlacement`**: Represents a simple vector placement, holding a list of integer components.
--   **`IrRangeExpression`**: Represents a complex range-based placement. It contains a list of dimensions, where each dimension is represented by a list of `IIrPlacementComponent` objects.
-
-The `IIrPlacementComponent` interface is the base for IR-level representations of the different parts of a range expression:
-
--   **`IrSingleValueComponent(int)`**: A single integer value.
--   **`IrRangeValueComponent(int start, int end)`**: A continuous range.
--   **`IrSteppedRangeValueComponent(int start, int step, int end)`**: A stepped range.
--   **`IrWildcardValueComponent()`**: A wildcard `*`.
 
 ---
 

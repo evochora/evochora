@@ -1,8 +1,12 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ModuleScope;
@@ -27,13 +31,29 @@ import java.util.Map;
  *   <li>A bound value that is a name must be defined in the current placement at this line; it
  *       is resolved here as a use.</li>
  * </ul>
+ * <p>A bound value that is a computation is evaluated here, in the importer's placement, with the
+ * names defined above the import line; {@code @} is the importer's cursor. Its outcome is recorded
+ * for the computation, where {@link RequireAnalysisHandler} finds it through the binding the
+ * module's {@link Requirements} carry: a value, or the tree only the layout computes. A
+ * computation that fails is reported here.
  */
 public class ImportAnalysisHandler implements IAnalysisHandler {
+
+    private final ComputationAnalysis computations;
+
+    /**
+     * Creates the handler.
+     *
+     * @param operations The operations of computations, read when the phase runs.
+     */
+    public ImportAnalysisHandler(OperationRegistry operations) {
+        this.computations = new ComputationAnalysis(operations);
+    }
 
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ImportNode importNode = (ImportNode) node;
-        String alias = importNode.alias().toUpperCase();
+        String alias = importNode.alias().toUpperCase(Locale.ROOT);
 
         ModuleScope currentModScope = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).orElse(null);
         if (currentModScope == null) {
@@ -62,8 +82,8 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         Map<String, Boolean> valueRequirements = record.valueRequirements();
 
         for (ImportNode.UsingClause using : importNode.usings()) {
-            String sourceAlias = using.sourceAlias().toUpperCase();
-            String targetAlias = using.targetAlias().toUpperCase();
+            String sourceAlias = using.sourceAlias().toUpperCase(Locale.ROOT);
+            String targetAlias = using.targetAlias().toUpperCase(Locale.ROOT);
 
             // A USING source is either a module this one imported, or one it was given itself:
             // a requirement received from above can be handed on, so that the choice of what
@@ -102,7 +122,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         }
 
         for (ImportNode.ValueBinding binding : importNode.values()) {
-            if (importedModScope != null && !valueRequirements.containsKey(binding.name().toUpperCase())) {
+            if (importedModScope != null && !valueRequirements.containsKey(binding.name().toUpperCase(Locale.ROOT))) {
                 diagnostics.reportError(
                         "USING VALUE '" + binding.name()
                                 + "' does not match any .REQUIRE VALUE in the imported module.",
@@ -116,6 +136,9 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                         "Cannot bind VALUE " + binding.name() + " from '" + id.text() + "': " + missing.explanation(),
                         importNode.sourceInfo().fileName(),
                         importNode.sourceInfo().lineNumber());
+            }
+            if (binding.value() instanceof ExpressionNode expression) {
+                evaluate(expression, symbolTable, diagnostics);
             }
         }
 
@@ -131,5 +154,13 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                         importNode.sourceInfo().lineNumber());
             }
         }
+    }
+
+    /**
+     * Evaluates a bound computation and records its outcome for it; reports the error of a
+     * computation that fails.
+     */
+    private void evaluate(ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        computations.evaluate(expression, symbolTable, diagnostics);
     }
 }

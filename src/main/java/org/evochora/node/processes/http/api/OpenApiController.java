@@ -11,6 +11,7 @@ import io.javalin.openapi.HttpMethod;
 import io.javalin.openapi.OpenApi;
 import io.javalin.openapi.OpenApiContent;
 import io.javalin.openapi.OpenApiResponse;
+import java.util.Locale;
 import org.evochora.node.processes.http.AbstractController;
 import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
@@ -314,7 +315,7 @@ public class OpenApiController extends AbstractController {
             final ObjectNode pathObject = (ObjectNode) pathNode;
 
             for (final HttpMethod methodEnum : annotation.methods()) {
-                final String methodName = methodEnum.name().toLowerCase();
+                final String methodName = methodEnum.name().toLowerCase(Locale.ROOT);
                 final JsonNode methodNode = pathObject.get(methodName);
                 if (!(methodNode instanceof ObjectNode)) {
                     continue;

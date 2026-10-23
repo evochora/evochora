@@ -1,7 +1,15 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
+import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
+import org.evochora.compiler.model.ast.OperandText;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -21,18 +29,28 @@ import java.util.Set;
 /**
  * Semantic analysis handler for CALL instructions.
  * Validates procedure references, REF/VAL/LREF/LVAL argument types and counts.
+ * <p>
+ * The target of a CALL is a name; a target of any other kind, written or computed, is of the
+ * wrong type. A computation is evaluated here and its outcome recorded in the symbol table: as
+ * a target, to report its kind, and as a VAL argument, where its value is a number, a typed
+ * value or a vector. A REF, LREF or LVAL argument takes no computation. A position, a molecule
+ * type and a value computed from a position, which only the layout knows, stand nowhere,
+ * written or through a name.
  */
 public class CallAnalysisHandler implements IAnalysisHandler {
 
     private final IInstructionSet isa;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the handler for an instruction set.
      *
-     * @param isa The instruction set, which tells a location register from a data register.
+     * @param isa        The instruction set, which tells a location register from a data register.
+     * @param operations The operations of computations, read when the phase runs.
      */
-    public CallAnalysisHandler(IInstructionSet isa) {
+    public CallAnalysisHandler(IInstructionSet isa, OperationRegistry operations) {
         this.isa = isa;
+        this.computations = new ComputationAnalysis(operations);
     }
 
     @Override
@@ -41,11 +59,14 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
         boolean hasArguments = !callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
                 || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty();
-        if (!(callNode.procedureName() instanceof IdentifierNode procIdentifier)) {
-            if (hasArguments) {
-                diagnostics.reportError("CALL with REF/VAL requires a procedure name.",
-                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
-            }
+        // The target is a name; anything else, written or computed, is of the wrong type
+        AstNode targetNode = callNode.procedureName();
+        if (targetNode instanceof ExpressionNode target) {
+            evaluate(target, Role.TARGET, symbolTable, diagnostics);
+            return;
+        }
+        if (!(targetNode instanceof IdentifierNode procIdentifier)) {
+            reportWrongTarget(callNode, kindOf(targetNode), diagnostics);
             return;
         }
 
@@ -88,20 +109,28 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 validateDataIdentifier(idNode, "REF", symbolTable, diagnostics);
                 continue;
             }
-            diagnostics.reportError("Cannot pass " + describe(refArg) + " as REF argument: REF takes a register.",
-                    callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+            report(invalid(refArg, "REF", "is " + describe(refArg), "a register"), callNode.sourceInfo(), diagnostics);
         }
 
-        // Validate VAL argument types: a register, a literal or a vector, written or through a constant
+        // Validate VAL argument types: a register, a typed literal or a vector, written or through a constant
         for (AstNode valArg : callNode.valArguments()) {
             if (valArg instanceof RegisterNode) continue;
-            if (valArg instanceof LiteralNode) continue;
+            if (valArg instanceof LiteralNode literal) {
+                if (literal.value() instanceof Value.Number) {
+                    report(invalid(literal, "VAL", "is a number without a type", EXPECTED_BY_VAL),
+                            literal.sourceInfo(), diagnostics);
+                }
+                continue;
+            }
+            if (valArg instanceof ExpressionNode expression) {
+                evaluate(expression, Role.VAL, symbolTable, diagnostics);
+                continue;
+            }
             if (valArg instanceof IdentifierNode idNode) {
                 validateDataIdentifierOrLiteral(idNode, "VAL", symbolTable, diagnostics);
                 continue;
             }
-            diagnostics.reportError("Cannot pass " + describe(valArg) + " as VAL argument: VAL takes a register, a literal or a vector.",
-                    callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+            report(invalid(valArg, "VAL", "is " + describe(valArg), EXPECTED_BY_VAL), callNode.sourceInfo(), diagnostics);
         }
 
         // Validate LREF argument counts
@@ -120,13 +149,13 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         for (AstNode lrefArg : callNode.lrefArguments()) {
             if (lrefArg instanceof RegisterNode regNode) {
                 if (isLocationRegister(regNode.name())) continue;
-                diagnostics.reportError("Cannot pass '" + regNode.name() + "' as LREF argument: it is not a location register.",
-                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+                report(invalid(regNode, "LREF", "is not a location register", A_LOCATION_REGISTER),
+                        callNode.sourceInfo(), diagnostics);
             } else if (lrefArg instanceof IdentifierNode idNode) {
                 validateLocationIdentifier(idNode, "LREF", symbolTable, diagnostics);
             } else {
-                diagnostics.reportError("Cannot pass " + describe(lrefArg) + " as LREF argument: LREF takes a location register.",
-                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+                report(invalid(lrefArg, "LREF", "is " + describe(lrefArg), A_LOCATION_REGISTER),
+                        callNode.sourceInfo(), diagnostics);
             }
         }
 
@@ -134,13 +163,13 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         for (AstNode lvalArg : callNode.lvalArguments()) {
             if (lvalArg instanceof RegisterNode regNode) {
                 if (isLocationRegister(regNode.name())) continue;
-                diagnostics.reportError("Cannot pass '" + regNode.name() + "' as LVAL argument: it is not a location register.",
-                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+                report(invalid(regNode, "LVAL", "is not a location register", EXPECTED_BY_LVAL),
+                        callNode.sourceInfo(), diagnostics);
             } else if (lvalArg instanceof IdentifierNode idNode) {
                 validateLocationIdentifierOrLabel(idNode, "LVAL", symbolTable, diagnostics);
             } else {
-                diagnostics.reportError("Cannot pass " + describe(lvalArg) + " as LVAL argument: LVAL takes a location register or a label.",
-                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+                report(invalid(lvalArg, "LVAL", "is " + describe(lvalArg), EXPECTED_BY_LVAL),
+                        callNode.sourceInfo(), diagnostics);
             }
         }
     }
@@ -148,25 +177,38 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     /**
      * What an identifier stands for in a CALL argument, asked of the node that defined it.
      */
-    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, NONE, UNRESOLVED }
+    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, NUMBER, TYPE, LABEL, LAYOUT_VALUE, NONE, UNRESOLVED }
 
     private static final String A_DATA_REGISTER = "a data register";
     private static final String A_LOCATION_REGISTER = "a location register";
+    private static final String EXPECTED_BY_VAL = "a register, a typed literal or a vector";
+    private static final String EXPECTED_BY_LVAL = "a location register or a label";
 
     /**
      * What an identifier stands for, asked of the node that defined it and followed through the
-     * definitions. A literal here is any value a constant can hold: a number, a typed value or a
-     * vector.
+     * definitions. A literal here is a typed value or a vector; a number without a type and a
+     * molecule type are told apart, since neither can be passed.
      */
     private Meaning meaningOf(AstNode definition, IdentifierNode idNode, SymbolTable st) {
         if (!(definition instanceof IIdentifierBinding) && !(definition instanceof IJumpTarget)) {
             return Meaning.NONE;
         }
         // The symbol table follows the definitions; a circle it reports itself
-        AstNode bound = st.bindingOf(idNode).orElse(null);
-        if (bound == null) return Meaning.UNRESOLVED;
+        SymbolTable.ChainEnd end = st.chainEndOf(idNode).orElse(null);
+        if (end == null) return Meaning.UNRESOLVED;
+        if (end.symbol() != null && st.definitionValueOf(end.node()).map(outcome -> outcome.remaining() != null).orElse(false)) {
+            return Meaning.LAYOUT_VALUE;
+        }
+        AstNode bound = end.symbol() != null ? new IdentifierNode(end.qualifiedName(), end.sourceInfo()) : end.node();
         if (bound instanceof RegisterNode reg) {
             return isLocationRegister(reg.name()) ? Meaning.LOCATION_REGISTER : Meaning.DATA_REGISTER;
+        }
+        if (bound instanceof LiteralNode literal) {
+            return switch (literal.value()) {
+                case Value.Number number -> Meaning.NUMBER;
+                case Value.Type type -> Meaning.TYPE;
+                default -> Meaning.LITERAL;
+            };
         }
         return bound instanceof IdentifierNode ? Meaning.LABEL : Meaning.LITERAL;
     }
@@ -178,7 +220,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         if (argument instanceof LiteralNode literal) {
             return literal.value() instanceof Value.Vector ? "a vector" : "a literal";
         }
-        return "this argument";
+        if (argument instanceof ExpressionNode) {
+            return "a computation";
+        }
+        return "of another kind";
     }
 
     private static String describe(Meaning meaning) {
@@ -186,8 +231,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             case DATA_REGISTER -> A_DATA_REGISTER;
             case LOCATION_REGISTER -> A_LOCATION_REGISTER;
             case LITERAL -> "a literal";
+            case NUMBER -> "a number without a type";
+            case TYPE -> "a molecule type";
             case LABEL -> "a label";
-            case NONE, UNRESOLVED -> "";
+            case LAYOUT_VALUE, NONE, UNRESOLVED -> "";
         };
     }
 
@@ -201,20 +248,24 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         ResolvedSymbol resolved;
         switch (st.resolve(idNode.text(), idNode.sourceInfo())) {
             case Resolution.Missing missing -> {
-                diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),
-                        idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+                report("Invalid argument: '" + idNode.text() + "' for " + position + ": " + missing.explanation(),
+                        idNode.sourceInfo(), diag);
                 return;
             }
             case ResolvedSymbol found -> resolved = found;
         }
         Meaning meaning = meaningOf(resolved.symbol().node(), idNode, st);
         if (accepted.contains(meaning) || meaning == Meaning.UNRESOLVED) return;
-        if (meaning == Meaning.NONE) {
-            diag.reportError("'" + idNode.text() + "' is not a register or a label and cannot be a CALL argument.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+        if (meaning == Meaning.LAYOUT_VALUE) {
+            boolean isPosition = st.chainEndOf(idNode)
+                    .flatMap(end -> st.definitionValueOf(end.node()))
+                    .map(outcome -> outcome.kind() == Kind.POSITION).orElse(false);
+            report(invalid(idNode, position, isPosition ? "is a position" : "is computed from a position", expected),
+                    idNode.sourceInfo(), diag);
+        } else if (meaning == Meaning.NONE) {
+            report(invalid(idNode, position, "is not a register or a label", expected), idNode.sourceInfo(), diag);
         } else {
-            diag.reportError(position + " argument '" + idNode.text() + "' is " + describe(meaning) + ", expected " + expected + ".",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+            report(invalid(idNode, position, "is " + describe(meaning), expected), idNode.sourceInfo(), diag);
         }
     }
 
@@ -226,7 +277,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     private void validateDataIdentifierOrLiteral(IdentifierNode idNode, String position,
                                                  SymbolTable st, DiagnosticsEngine diag) {
         validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL),
-                "a register, a literal or a vector", st, diag);
+                EXPECTED_BY_VAL, st, diag);
     }
 
     private void validateLocationIdentifier(IdentifierNode idNode, String position,
@@ -237,7 +288,89 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
                                                    SymbolTable st, DiagnosticsEngine diag) {
         validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LABEL),
-                "a location register or a label", st, diag);
+                EXPECTED_BY_LVAL, st, diag);
+    }
+
+    /**
+     * Where a computation stands in a CALL: as its target, or as a VAL argument.
+     */
+    private enum Role { TARGET, VAL }
+
+    /**
+     * Evaluates a computation that stands for a literal, records its outcome, and reports what
+     * keeps it from being one: a molecule type, a position, a value computed from a position,
+     * which only the layout knows, or the error of the computation. The target is reported as
+     * the first argument of the CALL instruction, a VAL argument as what VAL takes.
+     *
+     * @return The result of the evaluation.
+     */
+    private EvaluationResult evaluate(ExpressionNode expression, Role role, SymbolTable symbolTable,
+                                      DiagnosticsEngine diagnostics) {
+        EvaluationResult result = computations.evaluate(expression, symbolTable, diagnostics);
+        if (result instanceof EvaluationResult.Value value) {
+            if (value.value() instanceof Value.Type) {
+                reportUnusable(expression, role, "TYPE", diagnostics);
+            } else if (value.value() instanceof Value.Position) {
+                reportUnusable(expression, role, "POSITION", diagnostics);
+            } else if (role == Role.VAL && value.value() instanceof Value.Number) {
+                report(invalid(expression, "VAL", "is a number without a type", EXPECTED_BY_VAL),
+                        expression.sourceInfo(), diagnostics);
+            } else if (role == Role.TARGET) {
+                reportUnusable(expression, role, value.value() instanceof Value.Vector ? "VECTOR" : "LITERAL", diagnostics);
+            }
+        } else if (result instanceof EvaluationResult.Partial partial) {
+            reportUnusable(expression, role, partial.kind() == Kind.POSITION ? "POSITION" : null, diagnostics);
+        }
+        return result;
+    }
+
+    /**
+     * The message for an argument of a CALL that its kind does not take: the argument as written,
+     * what it is, and what the kind expects.
+     */
+    private static String invalid(AstNode argument, String kind, String whatItIs, String expected) {
+        String text = argument instanceof OperandNode operand ? OperandText.of(operand) : "?";
+        return "Invalid argument: '" + text + "' for " + kind + " " + whatItIs + "; expected " + expected + ".";
+    }
+
+    /**
+     * Reports a CALL target that is no name, of the kind given.
+     */
+    private static void reportWrongTarget(CallNode callNode, String kind, DiagnosticsEngine diagnostics) {
+        diagnostics.reportError("Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got " + kind + ".",
+                callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+    }
+
+    /**
+     * Names the kind of a written target that is no name: a literal, a vector or a register.
+     */
+    private String kindOf(AstNode target) {
+        if (target instanceof LiteralNode literal) {
+            return literal.value() instanceof Value.Vector ? "VECTOR" : "LITERAL";
+        }
+        if (target instanceof RegisterNode register) {
+            return isLocationRegister(register.name()) ? "LOCATION_REGISTER" : "REGISTER";
+        }
+        return "LITERAL";
+    }
+
+    /**
+     * Reports a computation whose value cannot stand where it stands: of the kind given, a
+     * molecule type or a position, or, without a kind, computed from a position.
+     */
+    private static void reportUnusable(ExpressionNode expression, Role role, String kind, DiagnosticsEngine diagnostics) {
+        String message = switch (role) {
+            case TARGET -> kind != null
+                    ? "Argument 1 for instruction 'CALL' has the wrong type. Expected LABEL, but got " + kind + "."
+                    : "Argument 1 for instruction 'CALL' is computed from a position.";
+            case VAL -> invalid(expression, "VAL", kind == null ? "is computed from a position"
+                    : "TYPE".equals(kind) ? "is a molecule type" : "is a position", EXPECTED_BY_VAL);
+        };
+        report(message, expression.sourceInfo(), diagnostics);
+    }
+
+    private static void report(String message, SourceInfo at, DiagnosticsEngine diagnostics) {
+        diagnostics.reportError(message, at.fileName(), at.lineNumber());
     }
 
     /**

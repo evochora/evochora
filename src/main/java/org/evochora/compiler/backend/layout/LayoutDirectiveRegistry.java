@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.layout;
 
+import java.util.Locale;
 import org.evochora.compiler.model.ir.IrDirective;
 
 import java.util.HashMap;
@@ -29,7 +30,7 @@ public final class LayoutDirectiveRegistry {
 	 * @param handler The handler for the directive.
 	 */
 	public void register(String namespace, String name, ILayoutDirectiveHandler handler) {
-		handlers.put((namespace + ":" + name).toLowerCase(), handler);
+		handlers.put((namespace + ":" + name).toLowerCase(Locale.ROOT), handler);
 	}
 
 	/**
@@ -38,7 +39,7 @@ public final class LayoutDirectiveRegistry {
 	 * @return An optional containing the handler, or empty if not found.
 	 */
 	public Optional<ILayoutDirectiveHandler> get(IrDirective dir) {
-		return Optional.ofNullable(handlers.get((dir.namespace() + ":" + dir.name()).toLowerCase()));
+		return Optional.ofNullable(handlers.get((dir.namespace() + ":" + dir.name()).toLowerCase(Locale.ROOT)));
 	}
 
 	/**

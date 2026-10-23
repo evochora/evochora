@@ -16,6 +16,6 @@ public class UndefScanHandler implements IDependencyScanHandler {
         if (!line.startsStatement() || line.operands().size() != 1 || !Condition.isNameToken(line.operands().get(0))) {
             return;
         }
-        Flags.inScan(ctx).undefine(line.operands().get(0).text());
+        ctx.flags().undefine(line.operands().get(0).text());
     }
 }

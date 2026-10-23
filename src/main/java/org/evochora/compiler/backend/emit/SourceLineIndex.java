@@ -5,6 +5,7 @@ import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.MachineInstructionInfo;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.SourceView;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.expression.Value;
@@ -51,17 +52,15 @@ final class SourceLineIndex {
      *
      * @param layout         The layout, for the addresses and coordinates of labels.
      * @param isa            The instruction set, for the text a typed value is shown as.
-     * @param sources        The entries of the program's sources, which every recorded position
-     *                       must name.
-     * @param expansions     Every instance of injected tokens that is no inclusion, by its number,
-     *                       with the position of its template.
+     * @param view           The program's sources, whose entries every recorded position must
+     *                       name, and every instance of injected tokens that is no inclusion, by
+     *                       its number, with the position of its template.
      */
-    SourceLineIndex(LayoutResult layout, IInstructionSet isa, List<SourceFile> sources,
-                    Map<Integer, Expansion> expansions) {
+    SourceLineIndex(LayoutResult layout, IInstructionSet isa, SourceView view) {
         this.layout = layout;
         this.isa = isa;
-        this.expansions = expansions;
-        for (SourceFile source : sources) {
+        this.expansions = view.expansions();
+        for (SourceFile source : view.sources()) {
             entries.add(new EntryKey(source.placement(), source.resolvedPath(), source.instance()));
         }
     }

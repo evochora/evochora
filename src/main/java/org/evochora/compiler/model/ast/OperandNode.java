@@ -2,9 +2,9 @@ package org.evochora.compiler.model.ast;
 
 /**
  * An expression as it may stand in operand position: what the parser produces for an
- * argument of an instruction or a directive. There are exactly three forms, fixed by the
+ * argument of an instruction or a directive. There are exactly four forms, fixed by the
  * language: a register, a literal (a number, a typed literal or a vector, one {@link LiteralNode}
- * with a value of the matching kind), and a name.
+ * with a value of the matching kind), a name, and a computation ({@link ExpressionNode}).
  * <p>
  * The forms are fixed by the core because every phase that reads an operand has to know all
  * of them, from the token map through IR generation. A feature that needs a new way to write
@@ -12,5 +12,5 @@ package org.evochora.compiler.model.ast;
  * operand forms of instructions are the language's, not a feature's.
  */
 public sealed interface OperandNode extends AstNode, ISourceLocatable
-        permits RegisterNode, LiteralNode, IdentifierNode {
+        permits RegisterNode, LiteralNode, IdentifierNode, ExpressionNode {
 }

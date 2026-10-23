@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.CompilerOptions;
@@ -277,6 +278,46 @@ class ConditionalDependencyScanTest {
                 .containsExactly("FIRST.IMPL", "FIRST", "SECOND.IMPL", "SECOND", "");
     }
 
+    @Test
+    void theScanFollowsAComputedConditionAsThePreprocessorDoes() throws Exception {
+        Files.writeString(root.resolve("three.evo"), "NOP\n");
+        String block = String.join("\n",
+                ".IFDEF (A+1) = 3",
+                "  .IMPORT \"three.evo\" AS LIB",
+                ".ELSEDEF",
+                "  .IMPORT \"missing.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP");
+
+        Scan withA = scan(".DEFINE A 2\n" + block, Map.of());
+        Scan withOtherA = scan(".DEFINE A 5\n" + String.join("\n",
+                ".IFDEF (A+1) = 3",
+                "  .IMPORT \"missing.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP"), Map.of());
+
+        assertThat(withA.diagnostics.hasErrors()).as(withA.diagnostics.summary()).isFalse();
+        assertThat(withA.modules()).containsExactly("three.evo", "main.evo");
+        assertThat(withOtherA.diagnostics.hasErrors()).as(withOtherA.diagnostics.summary()).isFalse();
+        assertThat(withOtherA.modules()).containsExactly("main.evo");
+    }
+
+    @Test
+    void aConditionThatCannotBeComputedSkipsTheWholeBlockSilently() throws Exception {
+        String main = String.join("\n",
+                ".IFDEF (A+1) = 3",
+                "  .IMPORT \"missing.evo\" AS LIB",
+                ".ELSEDEF",
+                "  .IMPORT \"missing.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP");
+
+        Scan result = scan(main, Map.of());
+
+        assertThat(result.diagnostics.hasErrors()).as(result.diagnostics.summary()).isFalse();
+        assertThat(result.modules()).containsExactly("main.evo");
+    }
+
     private record Scan(DependencyGraph graph, DiagnosticsEngine diagnostics) {
         /** The file names of the placements, each after the placements it imports. */
         List<String> modules() {
@@ -294,7 +335,8 @@ class ConditionalDependencyScanTest {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
         Lexer lexer = new Lexer(diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), root),
-                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols());
+                features.dependencyScanHandlers(), options, new RuntimeInstructionSetAdapter(), features.lexerSymbols(),
+                features.operations(), Flags.of(options.defines(), features.operations().reservedNames()));
         String mainPath = root.resolve("main.evo").toString();
         DependencyGraph graph = lexer.read(mainSource + "\n", mainPath, "");
         return new Scan(graph, diagnostics);

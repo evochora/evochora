@@ -31,7 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class AssemblyProgramsCompileTest {
 
-    private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{100, 100}, true);
+    /** A world every program under {@code assembly/} fits in, so that none overlaps itself across the wrap. */
+    private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{1024, 1024}, true);
 
     @BeforeAll
     static void init() {

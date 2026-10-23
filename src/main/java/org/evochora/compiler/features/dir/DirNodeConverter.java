@@ -18,7 +18,8 @@ public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 	 * {@inheritDoc}
 	 * <p>
 	 * This implementation converts the {@link DirNode} to an {@link IrDirective}. A written-out
-	 * direction carries a {@code direction} vector, a rotation the plane and the way round.
+	 * direction carries a {@code direction}, a literal, a qualified name or a computation the layout
+	 * finishes, whose value is the vector; a rotation the plane and the way round.
 	 *
 	 * @param node The node to convert.
 	 * @param ctx  The generation context.
@@ -28,7 +29,7 @@ public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 		Map<String, IrValue> args = new HashMap<>();
 		switch (node.mode()) {
 			case DirNode.Mode.Absolute absolute -> {
-				args.put("direction", new IrValue.Literal(absolute.vector().value()));
+				args.put("direction", ctx.convertValue(absolute.vector()));
 			}
 			case DirNode.Mode.Rotation rotation -> {
 				args.put("forward", new IrValue.Bool(rotation.forward()));

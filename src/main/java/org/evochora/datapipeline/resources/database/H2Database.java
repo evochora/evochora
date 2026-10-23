@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -1309,7 +1310,7 @@ public class H2Database extends AbstractDatabaseResource
             return 16384; // H2 default: 16 MB
         }
         
-        String upperUrl = jdbcUrl.toUpperCase();
+        String upperUrl = jdbcUrl.toUpperCase(Locale.ROOT);
         int idx = upperUrl.indexOf("CACHE_SIZE=");
         if (idx < 0) {
             return 16384; // H2 default

@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.reg;
 
+import java.util.Locale;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
@@ -33,6 +34,6 @@ public record RegNode(
      */
     @Override
     public AstNode bind(IdentifierNode reference) {
-        return new RegisterNode(register, reference.text().toUpperCase(), reference.sourceInfo());
+        return new RegisterNode(register, reference.text().toUpperCase(Locale.ROOT), reference.sourceInfo());
     }
 }

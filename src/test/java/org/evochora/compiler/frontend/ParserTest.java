@@ -1,9 +1,20 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
+import org.evochora.compiler.expression.ExpressionFixture;
+import org.evochora.compiler.model.expression.Expression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
+import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
+import org.evochora.compiler.frontend.parser.OperandReading;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
@@ -18,8 +29,12 @@ import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,7 +66,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -87,7 +102,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -119,7 +134,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -136,6 +151,35 @@ public class ParserTest {
     }
 
     /**
+     * Verifies that a minus before a number makes it negative: for a bare number, for every
+     * component of a vector, including the first, and for the value of a typed literal.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserSignedNumbers() {
+        // Arrange
+        String source = "SETI %DR0 -7\nSETV %DR0 -1|0|-3\nSETI %DR0 DATA:-1";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(3);
+        assertThat(((LiteralNode) ((InstructionNode) ast.get(0)).arguments().get(1)).value())
+                .isEqualTo(new Value.Number(-7));
+        assertThat(((LiteralNode) ((InstructionNode) ast.get(1)).arguments().get(1)).value())
+                .isEqualTo(new Value.Vector(List.of(-1L, 0L, -3L)));
+        assertThat(((LiteralNode) ((InstructionNode) ast.get(2)).arguments().get(1)).value())
+                .isEqualTo(new Value.Typed("DATA", -1));
+    }
+
+    /**
      * Verifies that the parser correctly handles an exported label (e.g., "EXPORT L1: NOP").
      * The exported flag should be true and the statement should be parsed correctly after the label.
      * This is a unit test for the parser.
@@ -148,7 +192,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -179,7 +223,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -203,7 +247,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -230,15 +274,15 @@ public class ParserTest {
     @Tag("unit")
     void testParserExportBeforeAnInstructionIsReported() {
         // Arrange
-        String source = "EXPORT NOP";
+        String source = "# A comment line.\nEXPORT NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
         // Assert
-        assertThat(diagnostics.summary()).contains("EXPORT is not supported before 'NOP'.");
+        assertThat(diagnostics.summary()).contains("<memory>:2: EXPORT is not supported before 'NOP'.");
         assertThat(ast).singleElement().isInstanceOf(InstructionNode.class);
     }
 
@@ -254,7 +298,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -282,7 +326,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -309,11 +353,259 @@ public class ParserTest {
         List<Token> tokens = TestLexers.tokenizer(".BROKEN\nNOP\n", diagnostics).scanTokens();
         ParserStatementRegistry reg = registry();
         reg.register(".BROKEN", context -> { throw new NullPointerException("defect in the handler"); });
-        Parser parser = new Parser(tokens, diagnostics, reg);
+        Parser parser = TestParsers.parser(tokens, diagnostics, reg);
 
         assertThatThrownBy(parser::parse)
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("defect in the handler");
+    }
+
+    /**
+     * A parenthesis in operand position is a computation: the parser cuts it to its matching
+     * parenthesis and carries the tree with the position of its first token and the position
+     * right after its last token.
+     */
+    @Test
+    @Tag("unit")
+    void aParenthesisIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        InstructionNode seti = (InstructionNode) parseWithOperations("SETI %DR0 (WIDTH - 1)", diagnostics).getFirst();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(seti.arguments()).hasSize(2);
+        ExpressionNode computation = (ExpressionNode) seti.arguments().get(1);
+        assertThat(computation.expression().text()).isEqualTo("(WIDTH-1)");
+        assertThat(computation.sourceInfo().columnNumber()).isEqualTo(11);
+        assertThat(computation.end().columnNumber()).isEqualTo(22);
+    }
+
+    /**
+     * A function name directly followed by its parenthesis is a call, read with its arguments.
+     */
+    @Test
+    @Tag("unit")
+    void aCallIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        InstructionNode seti = (InstructionNode) parseWithOperations("SETI %DR0 NUMBER(DATA:5)", diagnostics).getFirst();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        ExpressionNode computation = (ExpressionNode) seti.arguments().get(1);
+        assertThat(computation.expression()).isInstanceOf(OperationExpression.class);
+        assertThat(((OperationExpression) computation.expression()).operation()).isEqualTo("NUMBER");
+        assertThat(computation.expression().text()).isEqualTo("NUMBER(DATA:5)");
+    }
+
+    /**
+     * A name followed by a bracket is an index, and indexes chain.
+     */
+    @Test
+    @Tag("unit")
+    void anIndexIsAComputationAndIndexesChain() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations("SETV %DR0 V[0]\nSETV %DR1 V[0][1]", diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(((ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1)).expression().text()).isEqualTo("V[0]");
+        assertThat(((ExpressionNode) ((InstructionNode) ast.get(1)).arguments().get(1)).expression().text()).isEqualTo("V[0][1]");
+    }
+
+    /**
+     * The text of a computation writes it as the source would: a prefix, an infix and a chain in
+     * parentheses of their own, an argument of a function or an index without them, a word
+     * operator apart from its operands, a literal vector or a negative number that an operation
+     * takes in parentheses, and a prefix among the parts of a chain without them. Read back, the
+     * text gives the same tree.
+     */
+    @ParameterizedTest(name = "{0} is written {1}")
+    @Tag("unit")
+    @CsvSource(delimiter = ';', value = {
+            "(A + 1); (A+1)",
+            "(A + 1 * 2); (A+(1*2))",
+            "(A - B - C); ((A-B)-C)",
+            "(-A); (-A)",
+            "(-(A + 1)); (-(A+1))",
+            "(-(-A)); (-(-A))",
+            "((-A) + 1); ((-A)+1)",
+            "(3 - -2); (3-(-2))",
+            "(3 - -A); (3-(-A))",
+            "(NOT A); (NOT A)",
+            "(NOT (A AND B)); (NOT (A AND B))",
+            "(A AND NOT B); (A AND (NOT B))",
+            "(A / 2 MOD 3); ((A/2) MOD 3)",
+            "(A SHL 2); (A SHL 2)",
+            "A|B; (A|B)",
+            "(W-1|H-1); ((W-1)|(H-1))",
+            "(P + (0|1)); (P+(0|1))",
+            "(-(1|2)); (-(1|2))",
+            "((-1|-2) + P); ((-1|-2)+P)",
+            "(-A|B); (-A|B)",
+            "V[A + 1]; V[A+1]",
+            "((A + B)[0]); (A+B)[0]",
+            "(1|2)[0]; (1|2)[0]",
+            "NUMBER(A + 1); NUMBER(A+1)",
+            "NUMBER(-A); NUMBER(-A)",
+            "POSITION(1|2); POSITION(1|2)",
+            "POSITION(W-1|H-1); POSITION((W-1)|(H-1))",
+            "POSITION(P + (1|0)); POSITION(P+(1|0))",
+            "DATA:(W-1); DATA:(W-1)",
+            "DATA:(1|2)[0]; DATA:(1|2)[0]",
+            "TYPE(U):5; TYPE(U):5",
+            "(@ + (0|2)); (@+(0|2))",
+            "@[1]; @[1]",
+            "POSITION(@); POSITION(@)"
+    })
+    void theTextOfAComputationReadsAsTheSourceWould(String written, String text) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        InstructionNode setv = (InstructionNode) parseWithOperations("SETV %DR0 " + written, diagnostics).getFirst();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        Expression tree = ((ExpressionNode) setv.arguments().get(1)).expression();
+        assertThat(tree.text()).isEqualTo(text);
+
+        InstructionNode again = (InstructionNode) parseWithOperations("SETV %DR0 " + text, diagnostics).getFirst();
+        assertThat(diagnostics.hasErrors()).as("the text read back").isFalse();
+        assertThat(ExpressionFixture.shape(((ExpressionNode) again.arguments().get(1)).expression()))
+                .as("the tree read back from the text").isEqualTo(ExpressionFixture.shape(tree));
+    }
+
+    /**
+     * A typed literal whose value is a computation is one computation, the typing of the type
+     * and the value.
+     */
+    @Test
+    @Tag("unit")
+    void aTypedLiteralWithAComputedValueIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        InstructionNode seti = (InstructionNode) parseWithOperations("SETI %DR0 DATA:(W-1)", diagnostics).getFirst();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        ExpressionNode computation = (ExpressionNode) seti.arguments().get(1);
+        assertThat(((OperationExpression) computation.expression()).operation()).isEqualTo(":");
+        assertThat(computation.expression().text()).isEqualTo("DATA:(W-1)");
+        assertThat(computation.sourceInfo().columnNumber()).isEqualTo(11);
+    }
+
+    /**
+     * A typing with a name or a computation on either side is a computation, outside parentheses
+     * as inside: the value a name, the word before the colon no molecule type of the instruction
+     * set, or a call before the colon.
+     */
+    @Test
+    @Tag("unit")
+    void aTypingWithANameOnEitherSideIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations(
+                "SETI %DR0 DATA:MASKED\nSETI %DR1 WALL_TYPE:7\nSETI %DR2 WALL_TYPE:-7\nSETI %DR3 DATA:V[0]\nSETI %DR4 TYPE(V):7",
+                diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        for (int i = 0; i < 5; i++) {
+            AstNode argument = ((InstructionNode) ast.get(i)).arguments().get(1);
+            assertThat(argument).isInstanceOf(ExpressionNode.class);
+            assertThat(((OperationExpression) ((ExpressionNode) argument).expression()).operation()).isEqualTo(":");
+        }
+        assertThat(((ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1)).end().columnNumber()).isEqualTo(22);
+    }
+
+    /**
+     * A vector with a name or a computation among its parts is a computation outside parentheses;
+     * a vector of numbers stays a literal, and an operator without parentheses ends the vector.
+     */
+    @Test
+    @Tag("unit")
+    void aVectorWithANameOrAComputationAmongItsPartsIsAComputation() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations("SETV %DR0 W|H\nSETV %DR1 1|(2)\nSETV %DR2 1|0\nSETV %DR3 W-1|H", diagnostics);
+
+        assertThat(((OperationExpression) ((ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1)).expression())
+                .operation()).isEqualTo("|");
+        assertThat(((OperationExpression) ((ExpressionNode) ((InstructionNode) ast.get(1)).arguments().get(1)).expression())
+                .operation()).isEqualTo("|");
+        assertThat(((InstructionNode) ast.get(2)).arguments().get(1)).isInstanceOf(LiteralNode.class);
+        assertThat(((InstructionNode) ast.get(3)).arguments()).hasSize(3);
+    }
+
+    /**
+     * The cursor alone is a computation, a name the layout knows; a typed literal with a number
+     * stays a literal.
+     */
+    @Test
+    @Tag("unit")
+    void theCursorIsAComputationAndATypedNumberStaysALiteral() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parseWithOperations("SETV %DR0 @\nSETI %DR1 DATA:-5", diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        ExpressionNode cursor = (ExpressionNode) ((InstructionNode) ast.get(0)).arguments().get(1);
+        assertThat(cursor.expression()).isEqualTo(new NameExpression("@", cursor.sourceInfo(), cursor.sourceInfo().plusColumns(1)));
+        assertThat(((InstructionNode) ast.get(1)).arguments().get(1)).isInstanceOfSatisfying(LiteralNode.class,
+                literal -> assertThat(literal.value()).isEqualTo(new Value.Typed("DATA", -5)));
+    }
+
+    /**
+     * A computation the expression parser cannot read is reported at the token at fault, and the
+     * operand is left out.
+     */
+    @Test
+    @Tag("unit")
+    void aComputationThatCannotBeReadIsReportedAtTheTokenAtFault() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        parseWithOperations("NOP\nSETI %DR0 (A +)", diagnostics);
+
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("<memory>:2: Expected an expression after '+'.");
+    }
+
+    /**
+     * A parser built without operations reads a parenthesis, and an operator in it is unexpected.
+     */
+    @Test
+    @Tag("unit")
+    void aParserWithoutOperationsReportsAnOperatorAsUnexpected() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        TestParsers.parser(TestLexers.tokenizer("# A comment line.\nSETI %DR0 (A+1)", diagnostics).scanTokens(), diagnostics, registry()).parse();
+
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("<memory>:2: Unexpected '+'.");
+    }
+
+    /**
+     * The reporting form of reading an operand apart from the stream reports what keeps the
+     * tokens from being one operand; the silent form reports nothing.
+     */
+    @Test
+    @Tag("unit")
+    void theReportingOperandReaderReportsWhatTheSilentOneKeepsToItself() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(List.of(), diagnostics, registry(), null, Map.of(),
+                TestRegistries.operations(), new RuntimeInstructionSetAdapter());
+        DiagnosticsEngine lexing = new DiagnosticsEngine();
+        List<Token> computation = withoutEnd(TestLexers.tokenizer("(W - 1)", lexing).scanTokens());
+        List<Token> twoOperands = withoutEnd(TestLexers.tokenizer("1 2", lexing).scanTokens());
+        List<Token> broken = withoutEnd(TestLexers.tokenizer("(W -)", lexing).scanTokens());
+
+        Optional<OperandNode> read = parser.readOperand(computation);
+        assertThat(read).get().isInstanceOf(ExpressionNode.class);
+        assertThat(parser.operandOf(TestLexers.tokenizer("1 2", lexing).scanTokens()))
+                .isEqualTo(new OperandReading.Failed("Unexpected '2'."));
+        assertThat(diagnostics.hasErrors()).isFalse();
+
+        assertThat(parser.readOperand(twoOperands)).isEmpty();
+        assertThat(parser.readOperand(broken)).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("<memory>:1: Unexpected '2'.", "<memory>:1: Expected an expression after '-'.");
+    }
+
+    private static List<Token> withoutEnd(List<Token> tokens) {
+        return tokens.stream().filter(t -> t.type() != org.evochora.compiler.model.token.TokenType.END_OF_FILE
+                && t.type() != org.evochora.compiler.model.token.TokenType.NEWLINE).toList();
+    }
+
+    private static List<AstNode> parseWithOperations(String source, DiagnosticsEngine diagnostics) {
+        List<Token> tokens = TestLexers.tokenizer(source, diagnostics).scanTokens();
+        return new Parser(tokens, diagnostics, registry(), null, Map.of(),
+                TestRegistries.operations(), new RuntimeInstructionSetAdapter())
+                .parse().stream().filter(Objects::nonNull).toList();
     }
 
     private static ParserStatementRegistry registry() {

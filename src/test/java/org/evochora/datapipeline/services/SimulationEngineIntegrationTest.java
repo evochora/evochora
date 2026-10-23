@@ -319,7 +319,7 @@ class SimulationEngineIntegrationTest {
                 List.of(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo()));
         assertEquals(1, expansion.getNotesCount());
         org.evochora.datapipeline.api.contracts.SourceNote note = expansion.getNotes(0);
-        assertEquals(List.of(2, 2, 8), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
+        assertEquals(List.of(2, 2, 11), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
         assertEquals("[=1]", note.getText());
         assertEquals(List.of(2), program.getSourceMapList().stream()
                 .map(entry -> entry.getSourceInfo())

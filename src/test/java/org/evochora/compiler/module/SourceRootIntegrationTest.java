@@ -64,7 +64,7 @@ public class SourceRootIntegrationTest {
     @Tag("integration")
     void unknownPrefix_reportsCompilationError() throws Exception {
         Path mainFile = tempDir.resolve("main.evo");
-        Files.writeString(mainFile, ".IMPORT \"UNKNOWN:lib.evo\" AS LIB\nNOP\n");
+        Files.writeString(mainFile, "# A comment line.\n.IMPORT \"UNKNOWN:lib.evo\" AS LIB\nNOP\n");
 
         CompilerOptions options = new CompilerOptions(List.of(
                 new SourceRoot(tempDir.toString(), null)));
@@ -74,7 +74,7 @@ public class SourceRootIntegrationTest {
         assertThatThrownBy(() -> compiler.compile(
                 List.of(source.split("\n")), mainFile.toString(), ENV, options))
                 .isInstanceOf(org.evochora.compiler.api.CompilationException.class)
-                .hasMessageContaining("UNKNOWN");
+                .hasMessageContaining("main.evo:2: No source root configured for prefix 'UNKNOWN'. Available prefixes: (default)");
     }
 
     @Test

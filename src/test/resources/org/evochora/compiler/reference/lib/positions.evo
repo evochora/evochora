@@ -1,0 +1,18 @@
+# A module that is handed a position and a computation: it places molecules beside the
+# position, over a range computed from it, and continues its code at the position, wherever it
+# is imported.
+
+#> needs: importdir, ctx, expression, constdir, place
+.REQUIRE VALUE CORNER
+.REQUIRE VALUE WIDTH
+.REQUIRE VALUE MARGIN (1|1)
+.CONST BEYOND (CORNER + MARGIN)
+.PLACE DATA:WIDTH BEYOND
+.PLACE STRUCTURE:2 (CORNER[0] + 2)..(CORNER[0] + 4)|CORNER[1]
+#<
+
+#> needs: importdir, ctx, expression, org, label, instruction
+.ORG CORNER
+EXPORT INSIDE:
+  NOP
+#<

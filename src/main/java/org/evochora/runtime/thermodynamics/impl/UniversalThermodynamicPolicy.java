@@ -1,6 +1,7 @@
 package org.evochora.runtime.thermodynamics.impl;
 
 import com.typesafe.config.Config;
+import java.util.Locale;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
 import java.util.EnumMap;
@@ -218,7 +219,7 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
             Config readRulesConfig = options.getConfig("read-rules");
             requireKnownKeys(readRulesConfig, "read-rules", OWNERSHIP_KEYS);
             for (Ownership ownership : Ownership.values()) {
-                String ownerKey = ownership.name().toLowerCase();
+                String ownerKey = ownership.name().toLowerCase(Locale.ROOT);
                 if (!readRulesConfig.hasPath(ownerKey)) continue;
                 Config ownerConfig = readRulesConfig.getConfig(ownerKey);
                 Map<Integer, TypeRule> typeRules = new HashMap<>();

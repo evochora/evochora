@@ -17,11 +17,13 @@ public class OrgFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         // Phase 1: Lexing
-        ctx.lexerSymbol("@+");
-        ctx.lexerSymbol("@-");
+        ctx.lexerSymbol("+");
 
         // Phase 3: Parsing
         ctx.parserStatement(".ORG", new OrgDirectiveHandler());
+
+        // Phase 4: Semantic Analysis
+        ctx.analysisHandler(OrgNode.class, new OrgAnalysisHandler(ctx.operations()));
 
         // Phase 7: IR Generation
         ctx.irConverter(OrgNode.class, new OrgNodeConverter());

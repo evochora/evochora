@@ -8,6 +8,7 @@ import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 import org.evochora.compiler.frontend.lexer.IDependencyScanHandler;
+import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.BlockKind;
@@ -18,12 +19,15 @@ import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.expression.IOperation;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,13 +50,17 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	/**
 	 * The characters a lexer symbol may consist of. The lexer tries symbols before identifiers,
 	 * numbers, strings, comments and registers, so letters, digits, {@code _}, {@code $}, {@code #},
-	 * {@code "}, {@code ;}, {@code %} and whitespace would cut into those; {@code |} and {@code :}
-	 * are read by the parser itself. Brackets, {@code \} and {@code §} are kept out as a reserve
-	 * for the core. A character joins when a feature needs it and the core does not claim it.
+	 * {@code "}, {@code ;}, {@code %} and whitespace would cut into those. The tokenizer reads
+	 * {@code |}, {@code :}, {@code ,} and the parentheses and brackets as tokens of its own, and
+	 * {@code @} is a name of its own; {@code \} and {@code §} are kept out as a reserve for the
+	 * core. A character joins when a feature needs it and the core does not claim it.
 	 */
-	private static final String LEXER_SYMBOL_ALPHABET = "!&*+,./<=>?@^~-";
+	private static final String LEXER_SYMBOL_ALPHABET = "!&*+./<=>?^~-";
 
 	private final IInstructionSet isa;
+
+	// The operations of computations; the registry checks each registration itself.
+	private final OperationRegistry operations = new OperationRegistry();
 
 	// Map-based registrations are key-based with guardDuplicate — duplicates are a configuration error.
 	private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers = new HashMap<>();
@@ -91,11 +99,53 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		this.isa = isa;
 	}
 
+	/**
+	 * Checks that every feature of a compiler finds the features it requires among them.
+	 *
+	 * @param features The features of a compiler.
+	 * @throws IllegalArgumentException if a feature requires a feature that is not among them.
+	 */
+	public static void checkRequirements(List<ICompilerFeature> features) {
+		Set<Class<?>> present = new HashSet<>();
+		features.forEach(feature -> present.add(feature.getClass()));
+		for (ICompilerFeature feature : features) {
+			for (Class<? extends ICompilerFeature> required : feature.requires()) {
+				if (!present.contains(required)) {
+					throw new IllegalArgumentException("Feature '" + feature.name() + "' requires the feature "
+							+ required.getSimpleName() + ", which is not among the compiler's features.");
+				}
+			}
+		}
+	}
+
+	/**
+	 * Checks what can be checked only once every feature has registered: no operation of
+	 * computations is named like a word the preprocessor acts on, a directive of its handlers or a
+	 * word of its block kinds.
+	 *
+	 * @throws IllegalStateException if an operation is named like such a word.
+	 */
+	public void validate() {
+		Set<String> words = new LinkedHashSet<>(preprocessorHandlers.keySet());
+		preprocessorBlocks.forEach(block -> words.addAll(block.kind().words()));
+		operations.validate(words);
+	}
+
 	// --- IFeatureRegistrationContext implementation (write side) ---
 
 	@Override
 	public IInstructionSet isa() {
 		return isa;
+	}
+
+	@Override
+	public void operation(IOperation operation) {
+		operations.register(operation);
+	}
+
+	@Override
+	public OperationRegistry operations() {
+		return operations;
 	}
 
 	@Override
@@ -110,7 +160,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 						+ "', which is not one of " + LEXER_SYMBOL_ALPHABET + ".");
 			}
 		}
-		if (symbol.equals(".") || symbol.equals("-")) {
+		if (symbol.length() == 1 && Tokenizer.FIXED_CHARACTERS.indexOf(symbol.charAt(0)) >= 0) {
 			throw new IllegalArgumentException("Lexer symbol '" + symbol
 					+ "' is a fixed case of the lexer and cannot be registered alone.");
 		}
@@ -133,7 +183,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void preprocessor(String name, IPreProcessorHandler handler) {
-		String key = name.toUpperCase();
+		String key = name.toUpperCase(Locale.ROOT);
 		guardDuplicate(preprocessorHandlers, key, "preprocessor handler");
 		preprocessorHandlers.put(key, handler);
 	}
@@ -145,12 +195,12 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void preprocessorTopLevelOnly(String directive) {
-		preprocessorTopLevelOnly.add(directive.toUpperCase());
+		preprocessorTopLevelOnly.add(directive.toUpperCase(Locale.ROOT));
 	}
 
 	@Override
 	public void parserStatement(String keyword, IParserStatementHandler handler) {
-		String key = keyword.toUpperCase();
+		String key = keyword.toUpperCase(Locale.ROOT);
 		guardDuplicate(parserStatementHandlers, key, "parser statement handler");
 		parserStatementHandlers.put(key, handler);
 	}
@@ -205,7 +255,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void layoutHandler(String namespace, String name, ILayoutDirectiveHandler handler) {
-		String key = (namespace + ":" + name).toLowerCase();
+		String key = (namespace + ":" + name).toLowerCase(Locale.ROOT);
 		guardDuplicate(layoutHandlers, key, "layout handler");
 		layoutHandlers.put(key, handler);
 	}
@@ -217,7 +267,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler) {
-		String key = (namespace + ":" + name).toLowerCase();
+		String key = (namespace + ":" + name).toLowerCase(Locale.ROOT);
 		guardDuplicate(linkingDirectiveHandlers, key, "linking directive handler");
 		linkingDirectiveHandlers.put(key, handler);
 	}

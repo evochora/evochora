@@ -337,7 +337,7 @@ export class AnnotationUtils {
  */
 function _resolveFrameBindings(frame, initialPosition, artifact) {
     if (!frame.absoluteCallIp || !Array.isArray(frame.absoluteCallIp) || !initialPosition ||
-        !artifact.relativeCoordToLinearAddress || !artifact.callSiteBindings) {
+        !artifact.coordToLinearAddress || !artifact.callSiteBindings) {
         return null;
     }
 
@@ -353,7 +353,7 @@ function _resolveFrameBindings(frame, initialPosition, artifact) {
     }
 
     const coordKey = relativeCoord.join('|');
-    const linearAddress = artifact.relativeCoordToLinearAddress[coordKey];
+    const linearAddress = artifact.coordToLinearAddress[coordKey];
     if (linearAddress === null || linearAddress === undefined) {
         return null;
     }

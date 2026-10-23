@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -217,7 +218,7 @@ public class DatabaseCleaner {
         String rest = schemaName.substring(4);
 
         // Replace underscores with dashes and convert to lowercase
-        return rest.replace('_', '-').toLowerCase();
+        return rest.replace('_', '-').toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -231,7 +232,7 @@ public class DatabaseCleaner {
      */
     @SuppressWarnings("unused")
     private String runIdToSchemaName(String runId) {
-        return "SIM_" + runId.replace('-', '_').toUpperCase();
+        return "SIM_" + runId.replace('-', '_').toUpperCase(Locale.ROOT);
     }
 
     /**

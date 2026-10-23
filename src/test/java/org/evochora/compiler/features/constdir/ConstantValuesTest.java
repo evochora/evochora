@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.TestEmissionContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
@@ -42,7 +43,7 @@ class ConstantValuesTest {
     @Test
     @Tag("unit")
     void theContributorRegistersTheValueOfAConstValueDirective_andIgnoresOtherDirectives() {
-        EmissionContext context = new EmissionContext();
+        EmissionContext context = TestEmissionContexts.emissionContext();
         ConstantValueEmissionContributor contributor = new ConstantValueEmissionContributor();
         SourceInfo at = new SourceInfo("main.evo", 1, 1, "", 0);
 
@@ -157,6 +158,41 @@ class ConstantValuesTest {
                     .isEqualTo(line == 7 ? "DATA:1" : "DATA:2");
             assertThat(artifact.registerAliasMap()).containsKey(alias.qualifiedName());
         }
+    }
+
+    /**
+     * A constant or a value that is only another name for a definition the layout computes shows
+     * that definition's value, over two module levels; a constant that names a label shows the
+     * label's name.
+     */
+    @Test
+    @Tag("integration")
+    void anAliasOfADefinitionTheLayoutComputesShowsItsValue() throws Exception {
+        write("main.evo",
+                ".CONST P (@ + (0|1))",
+                ".CONST Q P",
+                "TARGET:",
+                "  NOP",
+                ".CONST LOCAL TARGET",
+                ".IMPORT \"a.evo\" AS A USING VALUE X POSITION(3|3)",
+                ".ORG Q",
+                "  JMPI LOCAL");
+        write("a.evo",
+                ".REQUIRE VALUE X",
+                ".IMPORT \"b.evo\" AS B USING VALUE Y X",
+                ".CONST Z X",
+                "  NOP");
+        write("b.evo",
+                ".REQUIRE VALUE Y",
+                ".CONST W Y",
+                ".ORG W",
+                "  NOP");
+
+        ProgramArtifact artifact = compile();
+
+        assertThat(artifact.constantValues()).containsOnly(
+                Map.entry("P", "0|1"), Map.entry("Q", "0|1"), Map.entry("LOCAL", "TARGET"),
+                Map.entry("A.X", "3|3"), Map.entry("A.Z", "3|3"), Map.entry("A.B.Y", "3|3"), Map.entry("A.B.W", "3|3"));
     }
 
     private String resolved(String fileName) {

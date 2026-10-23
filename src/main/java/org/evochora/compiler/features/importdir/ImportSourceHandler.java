@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
@@ -96,7 +97,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
         // Compute alias chain: parent chain + alias
         String parentChain = preProcessorContext.currentAliasChain();
-        String aliasUpper = alias.toUpperCase();
+        String aliasUpper = alias.toUpperCase(Locale.ROOT);
         String aliasChain = (parentChain == null || parentChain.isEmpty())
                 ? aliasUpper
                 : parentChain + "." + aliasUpper;

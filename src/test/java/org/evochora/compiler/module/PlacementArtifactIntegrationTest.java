@@ -112,10 +112,10 @@ class PlacementArtifactIntegrationTest {
                 ".ENDPROC");
         write("main.evo",
                 ".SOURCE \"lib/inc.evo\"",
-                ".IMPORT \"lib/mod.evo\" AS MOD",
+                ".IMPORT \"lib/mod.evo\" AS LIB",
                 ".SOURCE \"lib/inc.evo\"",
                 "START:",
-                "  CALL MOD.WORK");
+                "  CALL LIB.WORK");
 
         ProgramArtifact artifact = compile("main.evo", null);
 
@@ -127,8 +127,8 @@ class PlacementArtifactIntegrationTest {
                 .containsExactly(
                         tuple("", "main.evo", main, null),
                         tuple("", "lib/inc.evo", inc, new SourceInfo(main, 1, 1, "", 0)),
-                        tuple("MOD", "lib/mod.evo", mod, new SourceInfo(main, 2, 1, "", 0)),
-                        tuple("MOD", "lib/inc.evo", inc, new SourceInfo(mod, 1, 1, "MOD", 0)),
+                        tuple("LIB", "lib/mod.evo", mod, new SourceInfo(main, 2, 1, "", 0)),
+                        tuple("LIB", "lib/inc.evo", inc, new SourceInfo(mod, 1, 1, "LIB", 0)),
                         tuple("", "lib/inc.evo", inc, new SourceInfo(main, 3, 1, "", 0)));
         // The main file and the module placement are instance 0, every text inclusion one of its own
         assertThat(artifact.sources().get(0).instance()).isZero();
@@ -144,7 +144,7 @@ class PlacementArtifactIntegrationTest {
                 .extracting(SourceInfo::placement, SourceInfo::expansion)
                 .containsExactlyInAnyOrder(
                         tuple("", artifact.sources().get(1).instance()),
-                        tuple("MOD", artifact.sources().get(3).instance()),
+                        tuple("LIB", artifact.sources().get(3).instance()),
                         tuple("", artifact.sources().get(4).instance()));
         // The instructions per line keep the two inclusions in one placement apart: the entry of
         // each holds exactly the instruction its inclusion produced
@@ -153,7 +153,7 @@ class PlacementArtifactIntegrationTest {
         assertThat(artifact.sourceLineToInstructions().get("").get(inc)).containsOnlyKeys(first, second);
         assertThat(addressesOfLine(artifact, "", inc, first, 1)).containsExactly(addressOf(artifact, inc, "", first));
         assertThat(addressesOfLine(artifact, "", inc, second, 1)).containsExactly(addressOf(artifact, inc, "", second));
-        assertThat(artifact.sourceLineToInstructions().get("MOD").get(inc))
+        assertThat(artifact.sourceLineToInstructions().get("LIB").get(inc))
                 .containsOnlyKeys(artifact.sources().get(3).instance());
     }
 

@@ -1,5 +1,6 @@
 package org.evochora.runtime.model;
 
+import java.util.Locale;
 import org.evochora.runtime.Config;
 
 import java.util.ArrayList;
@@ -113,7 +114,7 @@ public final class MoleculeTypeRegistry {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Molecule type name cannot be null or empty");
         }
-        String upperName = name.toUpperCase();
+        String upperName = name.toUpperCase(Locale.ROOT);
         if (NAME_TO_TYPE.containsKey(upperName)) {
             throw new IllegalStateException("Molecule type name '" + name + "' is already registered");
         }
@@ -177,7 +178,7 @@ public final class MoleculeTypeRegistry {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Molecule type name cannot be null or empty");
         }
-        Integer type = NAME_TO_TYPE.get(name.toUpperCase());
+        Integer type = NAME_TO_TYPE.get(name.toUpperCase(Locale.ROOT));
         if (type == null) {
             throw new IllegalArgumentException("Unknown molecule type: '" + name + 
                 "'. Valid types: " + String.join(", ", NAME_TO_TYPE.keySet()));
@@ -199,7 +200,7 @@ public final class MoleculeTypeRegistry {
         if (name == null || name.trim().isEmpty()) {
             return Optional.empty();
         }
-        return Optional.ofNullable(NAME_TO_TYPE.get(name.toUpperCase()));
+        return Optional.ofNullable(NAME_TO_TYPE.get(name.toUpperCase(Locale.ROOT)));
     }
 
     /**

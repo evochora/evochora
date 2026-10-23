@@ -7,11 +7,11 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.frontend.parser.IParsingContext;
+import org.evochora.compiler.frontend.parser.OperandReading;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 /**
  * Parses the {@code .REQUIRE} directive.
@@ -31,7 +31,8 @@ import java.util.Optional;
  * requirement's name takes the default's place in the node, so the configuration is decisive.
  * It is read here, where it is known what an operand is, from the tokens the compiler lexed apart
  * from the token stream; nothing of the configuration enters the stream. A configured text that
- * is not exactly one operand is reported at the {@code .REQUIRE} line.
+ * is not exactly one operand is reported once, against the configuration, naming the value and
+ * its text, without a file or line.
  *
  * <p>The alias, or the value and its default, end the statement: a token after them is an error,
  * and the rest of the statement is passed over.
@@ -61,7 +62,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         }
         if (isWord(context, "VALUE")) {
             context.advance(); // consume VALUE
-            return parseValue(context, directive);
+            return parseValue(context);
         }
         context.getDiagnostics().reportError(
                 "Expected MODULE or VALUE after .REQUIRE; found '" + context.peek().text() + "'.",
@@ -98,7 +99,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
      * that name is read as one operand and kept apart from the default, which it takes the place
      * of in the analysis; its tokens stand in no source file and are no child of the node.
      */
-    private static AstNode parseValue(IParsingContext context, Token directive) {
+    private static AstNode parseValue(IParsingContext context) {
         boolean exported = context.isExported();
         Token name = context.consume(TokenType.IDENTIFIER, "Expected a value name after VALUE.");
         OperandNode defaultValue = null;
@@ -112,19 +113,21 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             return null;
         }
         OperandNode configured = null;
+        String configuredText = null;
         List<Token> configuredTokens = configuredValue(context, name);
         if (configuredTokens != null) {
-            Optional<OperandNode> operand = context.operandOf(configuredTokens);
-            if (operand.isEmpty()) {
-                context.getDiagnostics().reportError(
-                        "Configured value '" + name.text() + "' is not an operand; a value is written as a .CONST takes it: a literal, a vector or a name.",
-                        directive.source().fileName(), directive.source().lineNumber());
-                return null;
+            configuredText = ConfiguredValues.textOf(configuredTokens);
+            switch (context.operandOf(configuredTokens)) {
+                case OperandReading.Failed failed -> {
+                    context.getDiagnostics().reportError(
+                            ConfiguredValues.message(name.text(), configuredText, failed.reason()), "", 0);
+                    return null;
+                }
+                case OperandReading.Read read -> configured = read.operand();
             }
-            configured = operand.get();
         }
         return new ValueRequirementNode(name.text(), new IdentifierNode(name.text(), name.source()),
-                defaultValue, configured, exported, name.source());
+                defaultValue, configured, configuredText, exported, name.source());
     }
 
     /**

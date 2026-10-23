@@ -3,8 +3,10 @@ package org.evochora.compiler.frontend;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -103,6 +105,62 @@ public record DirectiveLine(Token word, int directive, int end, int next, List<T
      */
     public boolean standsAlone() {
         return before == null && separator == null;
+    }
+
+    /**
+     * Finds the next separator in a list of tokens, outside brackets: the first token from an
+     * index on that is one of the given token types or a symbol with one of the given texts, and
+     * stands at bracket depth zero. A parenthesis, a call parenthesis and a square bracket open a
+     * level that their closing token ends, so that a separator inside a computation, such as the
+     * {@code |} of {@code (0|2)}, stays part of it. A directive cuts its arguments with this at its
+     * own separators; the parser knows none of them.
+     *
+     * @param tokens  The tokens, such as the operands of a directive.
+     * @param from    The index the search starts at.
+     * @param types   The token types that separate, such as {@link TokenType#PIPE}.
+     * @param symbols The texts of the symbols that separate, such as {@code ..}.
+     * @return The index of the separator, or the size of the list if none follows.
+     */
+    public static int nextSeparator(List<Token> tokens, int from, Set<TokenType> types, Set<String> symbols) {
+        int depth = 0;
+        for (int i = from; i < tokens.size(); i++) {
+            Token token = tokens.get(i);
+            switch (token.type()) {
+                case OPEN_PARENTHESIS, CALL_PARENTHESIS, OPEN_BRACKET -> depth++;
+                case CLOSE_PARENTHESIS, CLOSE_BRACKET -> depth--;
+                default -> {
+                    if (depth == 0 && (types.contains(token.type())
+                            || token.type() == TokenType.SYMBOL && symbols.contains(token.text()))) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return tokens.size();
+    }
+
+    /**
+     * Cuts a list of tokens into the pieces between its separators outside brackets, as
+     * {@link #nextSeparator} finds them. Two separators side by side, or one at either end, leave
+     * an empty piece, so that the caller can report the piece that is missing.
+     *
+     * @param tokens  The tokens.
+     * @param types   The token types that separate.
+     * @param symbols The texts of the symbols that separate.
+     * @return The pieces, in order, without the separators; one piece if no separator stands in
+     *         the list, and that one empty if the list is.
+     */
+    public static List<List<Token>> pieces(List<Token> tokens, Set<TokenType> types, Set<String> symbols) {
+        List<List<Token>> pieces = new ArrayList<>();
+        int start = 0;
+        while (true) {
+            int separator = nextSeparator(tokens, start, types, symbols);
+            pieces.add(tokens.subList(start, separator));
+            if (separator == tokens.size()) {
+                return pieces;
+            }
+            start = separator + 1;
+        }
     }
 
     private static Token tokenBefore(List<Token> tokens, int directive, Predicate<Token> passedOver) {

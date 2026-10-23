@@ -2,8 +2,22 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.EvaluationResult;
+import org.evochora.compiler.expression.Evaluator;
+import org.evochora.compiler.expression.IEvaluationContext;
+import org.evochora.compiler.expression.INameResolution;
+import org.evochora.compiler.expression.NameAnswer;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.expression.ValueNotes;
 import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.model.expression.Expression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrLiteral;
+import org.evochora.compiler.model.ir.IrOperand;
+import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayDeque;
@@ -11,7 +25,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -25,10 +42,22 @@ import java.util.stream.Collectors;
  * <p>The cursor is created lazily on first use, because its dimensionality is taken from the
  * world shape. A program that places nothing can therefore be laid out without environment
  * properties, while the first placement without them fails.</p>
+ *
+ * <p>A directive handler computes its arguments through {@link #evaluate}, with the operations
+ * the features registered, the cursor and the origin of the line.</p>
+ *
+ * <p>The context keeps the named layout values: the position of every label's cell, recorded
+ * when the label is placed, and the value of every definition only the layout computes,
+ * recorded by the layout handler of its feature through {@link #record}. A computation resolves
+ * a name from them; a name not yet recorded is a forward reference.</p>
+ *
+ * <p>Every computation it computes in a file is noted with {@code [=value]} as
+ * {@link ValueNotes} places it, for the source view to show.</p>
  */
 public final class LayoutContext {
 
     private final EnvironmentProperties envProps;
+    private final Evaluator evaluator;
     private boolean isInitialized = false;
     private int[] currentPos;
     private int[] currentDv;
@@ -37,17 +66,20 @@ public final class LayoutContext {
     private final Deque<int[]> dvStack = new ArrayDeque<>();
 
     private final Map<Integer, int[]> linearToCoord = new HashMap<>();
-    private final Map<String, Integer> coordToLinear = new HashMap<>();
     private final Map<Integer, SourceInfo> sourceMap = new HashMap<>();
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private final Map<String, Occupant> occupied = new HashMap<>();
+    private Occupant[] lowest;
+    private Occupant[] highest;
+    private final Map<String, Value> namedValues = new HashMap<>();
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private int linearAddress = 0;
 
     /**
-     * What sits in a cell already: how the item is named in a conflict message, and where in
-     * the source it came from.
+     * What sits in a cell already: how the item is named in a conflict message, where in the
+     * source it came from, and the coordinate relative to the program origin it was placed at.
      */
-    private record Occupant(String description, SourceInfo source) {
+    private record Occupant(String description, SourceInfo source, int[] coordinate) {
         String location() {
             return SourceInfo.position(source);
         }
@@ -56,12 +88,117 @@ public final class LayoutContext {
     /**
      * Creates a layout context for the given environment.
      *
-     * @param envProps The environment properties supplying the world shape, whose length fixes
-     *                 the dimensionality of every layout vector. May be null; such a context is
-     *                 usable only for programs that place nothing.
+     * @param envProps   The environment properties supplying the world shape, whose length fixes
+     *                   the dimensionality of every layout vector. May be null; such a context is
+     *                   usable only for programs that place nothing.
+     * @param operations The operations of computations, which the features registered.
      */
-    public LayoutContext(EnvironmentProperties envProps) {
+    public LayoutContext(EnvironmentProperties envProps, OperationRegistry operations) {
         this.envProps = envProps;
+        this.evaluator = new Evaluator(operations);
+    }
+
+    /**
+     * Computes an argument of a directive at the line the layout stands at. A literal is its
+     * value; a qualified name and a computation are evaluated with the cursor {@code @} and the
+     * origin the line counts its vectors from, the base position of the enclosing module, both as
+     * positions of the program, and with the names the layout knows at this line. The value of
+     * a computation is noted as {@link ValueNotes} places it; an equal note is kept once.
+     *
+     * @param value The argument, as the IR carries it.
+     * @param at    The position of the directive, for an error.
+     * @return The value.
+     * @throws CompilationException if the computation fails, at the directive.
+     * @throws IllegalStateException if the computation still needs what a later phase knows, as
+     *         nothing is left to wait for after the layout, or if the argument is no value.
+     */
+    public Value evaluate(IrValue value, SourceInfo at) throws CompilationException {
+        return switch (value) {
+            case IrValue.Literal literal -> literal.value();
+            case IrValue.Expression expression -> noted(expression.expression(), result(evaluator.evaluate(expression.expression(),
+                    this::resolve, evaluationContext()), at));
+            case IrValue.Str name -> result(evaluator.evaluate(new NameExpression(name.value(), at, at.plusColumns(name.value().length())),
+                    this::resolve, evaluationContext()), at);
+            default -> throw new IllegalStateException("A directive argument is no value: " + value);
+        };
+    }
+
+    private Value noted(Expression expression, Value value) {
+        notes.addAll(ValueNotes.of(expression, value));
+        return value;
+    }
+
+    /**
+     * Returns the notes of the computations computed so far, as {@link ValueNotes} places them,
+     * in the order they were computed.
+     *
+     * @return The notes, each distinct note once.
+     */
+    public List<PositionedNote> notes() {
+        return List.copyOf(notes);
+    }
+
+    private IEvaluationContext evaluationContext() throws CompilationException {
+        return IEvaluationContext.at(position(currentPos()), position(basePos()));
+    }
+
+    /**
+     * Answers a name of a computation: the cursor {@code @} with its position, a label or a
+     * definition the layout computes with the value recorded under its qualified name; a name
+     * not recorded yet stands below the line that uses it and is a forward reference.
+     */
+    private NameAnswer resolve(NameExpression name) {
+        if (INameResolution.CURSOR.equals(name.name())) {
+            return new NameAnswer.Value(position(currentPos));
+        }
+        Value recorded = namedValues.get(name.name());
+        if (recorded != null) {
+            return new NameAnswer.Value(recorded);
+        }
+        return new NameAnswer.NotUsable("Forward reference to '" + name.name() + "'.");
+    }
+
+    /**
+     * Records the value of a definition only the layout computes, so that a computation further
+     * down the layout resolves its name to it.
+     *
+     * @param qualifiedName The qualified name of the definition.
+     * @param value         Its value, computed where its directive stands.
+     * @param at            The position of the directive, for an error.
+     * @throws CompilationException if a value is recorded under that name already.
+     */
+    public void record(String qualifiedName, Value value, SourceInfo at) throws CompilationException {
+        if (namedValues.putIfAbsent(qualifiedName, value) != null) {
+            throw new CompilationException(SourceInfo.locate(at, "'" + qualifiedName + "' is already recorded in the layout."));
+        }
+    }
+
+    /**
+     * Returns the named layout values: the position of every placed label's cell and the value of
+     * every recorded definition, by qualified name.
+     *
+     * @return an unmodifiable view of the context's map
+     */
+    public Map<String, Value> namedValues() {
+        return Collections.unmodifiableMap(namedValues);
+    }
+
+    private static Value result(EvaluationResult result, SourceInfo at) throws CompilationException {
+        return switch (result) {
+            case EvaluationResult.Value computed -> computed.value();
+            case EvaluationResult.Error error -> throw new CompilationException(SourceInfo.locate(at, error.reason()));
+            case EvaluationResult.Partial partial -> throw new IllegalStateException(
+                    "A computation still needs a later phase after the layout: " + partial.expression().text());
+            case EvaluationResult.Reported reported -> throw new IllegalStateException(
+                    "A computation whose error was reported reached the layout.");
+        };
+    }
+
+    /**
+     * A coordinate of the layout as a position of the program.
+     */
+    private static Value.Position position(int[] coordinate) {
+        return new Value.Position(Arrays.stream(coordinate).mapToObj(c -> (long) c).toList());
     }
 
     private void initialize() throws CompilationException {
@@ -220,22 +357,33 @@ public final class LayoutContext {
 
     /**
      * Places a whole instruction: the opcode cell, then one cell per argument of the
-     * signature, where a vector argument takes one cell per dimension of the world.
+     * signature, where a vector argument takes one cell per dimension of the world and so has
+     * to carry one component per dimension.
      *
      * @param opcode    The opcode name, for the error a vector argument raises without a world.
      * @param signature The instruction's ISA signature, listing its argument kinds in order.
+     * @param operands  The instruction's operands, in the order of the signature.
      * @param src       The source information recorded for every placed cell; may be null.
-     * @throws CompilationException if a coordinate is already occupied, or if the instruction
-     *         needs a world shape and none was supplied.
+     * @throws CompilationException if a coordinate is already occupied, if a vector argument
+     *         has not one component per dimension, or if the instruction needs a world shape
+     *         and none was supplied.
      */
-    public void placeInstruction(String opcode, IInstructionSet.Signature signature, SourceInfo src) throws CompilationException {
+    public void placeInstruction(String opcode, IInstructionSet.Signature signature, List<IrOperand> operands,
+                                 SourceInfo src) throws CompilationException {
         placeOpcode(src);
-        for (IInstructionSet.ArgKind kind : signature.argumentTypes()) {
-            if (kind == IInstructionSet.ArgKind.VECTOR) {
+        List<IInstructionSet.ArgKind> kinds = signature.argumentTypes();
+        for (int i = 0; i < kinds.size(); i++) {
+            if (kinds.get(i) == IInstructionSet.ArgKind.VECTOR) {
                 if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
                     throw new CompilationException("Instruction " + opcode + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
                 }
-                for (int k = 0; k < envProps.getWorldShape().length; k++) {
+                int dimensions = envProps.getWorldShape().length;
+                if (i < operands.size() && operands.get(i) instanceof IrLiteral literal
+                        && literal.value() instanceof Value.Vector vector && vector.components().size() != dimensions) {
+                    throw new CompilationException(SourceInfo.locate(src,
+                            "Expected a vector with " + dimensions + " components."));
+                }
+                for (int k = 0; k < dimensions; k++) {
                     placeOperand(src);
                 }
             } else {
@@ -245,21 +393,24 @@ public final class LayoutContext {
     }
 
     /**
-     * Places a label at the current position.
-     * Labels occupy space in the grid, like Tierra and Avida templates do.
+     * Places a label at the current position and records the position of its cell under the
+     * label's name. Labels occupy space in the grid, like Tierra and Avida templates do.
      *
-     * @param src The source information for error reporting.
-     * @throws CompilationException if the position is already occupied.
+     * @param name The qualified name of the label.
+     * @param src  The source information for error reporting.
+     * @throws CompilationException if the position is already occupied, or a value is recorded
+     *         under the name already.
      */
-    public void placeLabel(SourceInfo src) throws CompilationException {
+    public void placeLabel(String name, SourceInfo src) throws CompilationException {
         initialize();
+        Value.Position cell = position(currentPos);
         placeAtCurrent("a label", src);
+        record(name, cell, src);
     }
 
     private void placeAtCurrent(String description, SourceInfo src) throws CompilationException {
-        String coordKey = occupy(currentPos, new Occupant(description, src));
+        occupy(currentPos, new Occupant(description, src, Nd.copy(currentPos)));
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
-        coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
         currentPos = Nd.add(currentPos, currentDv);
@@ -278,32 +429,90 @@ public final class LayoutContext {
      * @throws CompilationException if the cell is already occupied.
      */
     public void placeObject(int[] coord, PlacedMolecule molecule, String description, SourceInfo src) throws CompilationException {
-        occupy(coord, new Occupant(description, src));
+        occupy(coord, new Occupant(description, src, Nd.copy(coord)));
         initialWorldObjects.put(Nd.copy(coord), molecule);
     }
 
     /**
-     * Claims a cell for an item, or reports whose it already is. A coordinate with more or
+     * Claims a cell for an item, or reports why it cannot have it. A coordinate with more or
      * fewer dimensions than the world cannot name a cell, and is reported with the item's position.
-     *
-     * @return The cell's key in the occupancy tables.
+     * <p>
+     * Cells are claimed by the cell of the world a coordinate lands on, which the environment
+     * computes from the coordinate as a vector from the program origin: on a toroidal world two
+     * coordinates a world size apart land on one cell, wherever the program starts, since a start
+     * position moves every coordinate alike. On a bounded world two coordinates a world size or
+     * more apart along an axis cannot both lie in the world, wherever the program starts; the
+     * coordinates lowest and highest along each axis are kept to tell. Whether the program lies
+     * in the world at the start position it is given is checked where that position is known,
+     * when the simulation places the organism.
      */
-    private String occupy(int[] coord, Occupant occupant) throws CompilationException {
-        if (envProps != null && envProps.getWorldShape() != null && coord.length != envProps.getWorldShape().length) {
+    private void occupy(int[] coord, Occupant occupant) throws CompilationException {
+        initialize();
+        int[] shape = envProps.getWorldShape();
+        if (coord.length != shape.length) {
             throw new CompilationException(String.format("%s: Coordinate %s has %d components, the world has %d dimensions.",
-                    occupant.location(), Arrays.toString(coord), coord.length, envProps.getWorldShape().length));
+                    occupant.location(), Arrays.toString(coord), coord.length, shape.length));
         }
-        String coordKey = coordToStringKey(coord);
-        Occupant existing = occupied.get(coordKey);
+        String cellKey = coordToStringKey(envProps.getTargetCoordinate(new int[shape.length], coord));
+        Occupant existing = occupied.get(cellKey);
         if (existing != null) {
+            if (Arrays.equals(existing.coordinate(), coord)) {
+                throw new CompilationException(String.format(
+                    "Address conflict: Coordinate %s is already occupied by %s at %s. " +
+                    "Cannot place new item at %s.",
+                    Arrays.toString(coord), existing.description(), existing.location(), occupant.location()
+                ));
+            }
             throw new CompilationException(String.format(
-                "Address conflict: Coordinate %s is already occupied by %s at %s. " +
+                "Address conflict: Coordinate %s lands on the cell of %s, which is already occupied by %s at %s. " +
                 "Cannot place new item at %s.",
-                Arrays.toString(coord), existing.description(), existing.location(), occupant.location()
+                Arrays.toString(coord), Arrays.toString(existing.coordinate()), existing.description(),
+                existing.location(), occupant.location()
             ));
         }
-        occupied.put(coordKey, occupant);
-        return coordKey;
+        if (!envProps.isToroidal()) {
+            requireWithinWorldSize(occupant, shape);
+        }
+        occupied.put(cellKey, occupant);
+    }
+
+    /**
+     * Checks a coordinate of a bounded world against the lowest and the highest coordinate along
+     * each axis claimed so far, and makes it one of them where it lies beyond.
+     */
+    private void requireWithinWorldSize(Occupant occupant, int[] shape) throws CompilationException {
+        if (lowest == null) {
+            lowest = new Occupant[shape.length];
+            highest = new Occupant[shape.length];
+        }
+        int[] coord = occupant.coordinate();
+        for (int axis = 0; axis < shape.length; axis++) {
+            if (lowest[axis] == null) {
+                lowest[axis] = occupant;
+                highest[axis] = occupant;
+                continue;
+            }
+            requireApartLessThanWorld(occupant, lowest[axis], axis, shape[axis]);
+            requireApartLessThanWorld(occupant, highest[axis], axis, shape[axis]);
+            if (coord[axis] < lowest[axis].coordinate()[axis]) {
+                lowest[axis] = occupant;
+            }
+            if (coord[axis] > highest[axis].coordinate()[axis]) {
+                highest[axis] = occupant;
+            }
+        }
+    }
+
+    private static void requireApartLessThanWorld(Occupant occupant, Occupant other, int axis, int size)
+            throws CompilationException {
+        long apart = Math.abs((long) occupant.coordinate()[axis] - other.coordinate()[axis]);
+        if (apart >= size) {
+            throw new CompilationException(String.format(
+                "World size exceeded: Coordinate %s lies %d cells from %s, occupied by %s at %s, along axis %d; "
+                + "the bounded world has %d cells along it. Cannot place new item at %s.",
+                Arrays.toString(occupant.coordinate()), apart, Arrays.toString(other.coordinate()),
+                other.description(), other.location(), axis, size, occupant.location()));
+        }
     }
 
     /**
@@ -315,16 +524,6 @@ public final class LayoutContext {
      */
     public Map<Integer, int[]> linearToCoord() {
         return linearToCoord;
-    }
-
-    /**
-     * Returns the inverse of the address mapping. Its keys are coordinates rendered as their
-     * components joined by '|', because an {@code int[]} key would be compared by identity.
-     *
-     * @return the live map, not a copy
-     */
-    public Map<String, Integer> coordToLinear() {
-        return coordToLinear;
     }
 
     /**

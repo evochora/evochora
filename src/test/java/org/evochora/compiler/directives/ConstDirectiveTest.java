@@ -1,5 +1,7 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.TestLexers;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.BeforeAll;
 import java.util.List;
 import java.util.Objects;
 
+import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -52,7 +55,7 @@ public class ConstDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry()); // KORREKTUR
 
 
         // Act
@@ -84,13 +87,13 @@ public class ConstDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         
         // Semantic Analysis - Populates symbol table with constants
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
@@ -123,17 +126,50 @@ public class ConstDirectiveTest {
     @Test
     @Tag("unit")
     void testConstWithADotInItsNameIsReported() {
-        String source = ".CONST X.Y DATA:1";
+        String source = "# A comment line.\n.CONST X.Y DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
+        List<AstNode> ast = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry())
                 .analyze(ast);
 
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+                .satisfies(d -> assertThat(located(d))
+                        .isEqualTo("<memory>:2: Cannot define 'X.Y': a name is one segment and may not contain a dot."));
+    }
+
+    /**
+     * A constant computed from a typed constant and a number is a typed value, and an
+     * instruction uses it as a typed literal.
+     */
+    @Test
+    @Tag("unit")
+    void aComputedConstantIsUsedAsItsValue() {
+        String source = String.join("\n",
+                ".CONST W DATA:10",
+                ".CONST H 5",
+                ".CONST AREA (W*H)",
+                "SETI %DR0 AREA"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry(),
+                null, java.util.Map.of(), TestRegistries.operations(), new org.evochora.compiler.isa.RuntimeInstructionSetAdapter())
+                .parse().stream().filter(Objects::nonNull).toList();
+
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
+        new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry())
+                .analyze(ast);
+        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        List<AstNode> processed = ast.stream().map(postProcessor::process).toList();
+
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+        assertThat(((ConstNode) processed.get(2)).value()).isInstanceOfSatisfying(LiteralNode.class,
+                literal -> assertThat(literal.value()).isEqualTo(new Value.Typed("DATA", 50)));
+        InstructionNode seti = (InstructionNode) processed.get(3);
+        assertThat(seti.arguments().get(1)).isInstanceOfSatisfying(LiteralNode.class,
+                literal -> assertThat(literal.value()).isEqualTo(new Value.Typed("DATA", 50)));
     }
 
     private static ParserStatementRegistry registry() {

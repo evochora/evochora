@@ -1,0 +1,25 @@
+# A module without requirements, which the main program imports and hands to another module. It
+# includes the file the main program includes too, so that one file is included in two places.
+
+#> needs: importdir, ctx, constdir
+EXPORT .CONST HELPED DATA:4
+#<
+
+#> needs: importdir, ctx, source
+.SOURCE "lib/text.evo"
+#<
+
+#> needs: importdir, ctx, proc, instruction, label
+EXPORT .PROC CLAMP REF VALUE VAL MIN MAX
+  LTR VALUE MIN
+  JMPI TO_MIN
+  LTR MAX VALUE
+  JMPI DONE
+  SETR VALUE MAX
+  RET
+TO_MIN:
+  SETR VALUE MIN
+DONE:
+  RET
+.ENDPROC
+#<

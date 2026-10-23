@@ -1,7 +1,9 @@
 package org.evochora.compiler.features.macro;
 
+import java.util.Locale;
 import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.frontend.SignedNumber;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
@@ -51,22 +53,9 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
 
         List<List<Token>> actualArgs = new ArrayList<>();
         while (!preProcessor.isAtEnd() && preProcessor.peek().type() != TokenType.NEWLINE) {
-            List<Token> arg = new ArrayList<>();
-            Token t = preProcessor.peek();
-            if (t.type() == TokenType.IDENTIFIER && (preProcessor.getCurrentIndex() + 2) < preProcessor.streamSize()
-                    && preProcessor.getToken(preProcessor.getCurrentIndex() + 1).type() == TokenType.COLON
-                    && preProcessor.getToken(preProcessor.getCurrentIndex() + 2).type() == TokenType.NUMBER) {
-                arg.add(preProcessor.advance());
-                arg.add(preProcessor.advance());
-                arg.add(preProcessor.advance());
-            } else if (t.type() == TokenType.NUMBER) {
-                arg.add(preProcessor.advance());
-                while (!preProcessor.isAtEnd() && preProcessor.peek().type() == TokenType.PIPE) {
-                    arg.add(preProcessor.advance());
-                    if (!preProcessor.isAtEnd()) arg.add(preProcessor.advance());
-                    else break;
-                }
-            } else {
+            int length = argumentLength(preProcessor, preProcessorContext, preProcessor.getCurrentIndex());
+            List<Token> arg = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
                 arg.add(preProcessor.advance());
             }
             actualArgs.add(arg);
@@ -103,29 +92,32 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         List<Expansion.Binding> bindings = new ArrayList<>(macro.parameters().size());
         for (int i = 0; i < macro.parameters().size(); i++) {
             Token parameter = macro.parameters().get(i);
-            argMap.put(parameter.text().toUpperCase(), actualArgs.get(i));
+            argMap.put(parameter.text().toUpperCase(Locale.ROOT), actualArgs.get(i));
             bindings.add(new Expansion.Binding(parameter.text(), asWritten(actualArgs.get(i))));
         }
 
         // The body tokens stand in this expansion. An argument keeps its own position, where it
-        // was written, and remembers the position of the parameter it replaces in this expansion.
+        // was written, and remembers the parameter it replaces, at its position in this expansion.
         // A body token that is itself an argument an enclosing expansion substituted, in a macro
-        // defined in that body, is treated the same way: it keeps its position and remembers its
-        // position in the body, now in this expansion. A call whose name was substituted so is
-        // called at its position in the body, so that the expansion stands in the enclosing one.
+        // defined in that body, is treated the same way: it keeps its position and remembers the
+        // parameter it stands for in the body, now in this expansion. A call whose name was
+        // substituted so is called at its position in the body, so that the expansion stands in
+        // the enclosing one.
         int expansion = preProcessorContext.nextInstance();
         preProcessor.expands(expansion, definedAt(), inBody(invocation), macro.name().text(), bindings);
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
-            SourceInfo position = inExpansion(inBody(bodyToken), expansion);
-            List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
+            Token written = writtenInBody(bodyToken);
+            Token replaced = new Token(written.type(), written.text(), written.value(),
+                    inExpansion(written.source(), expansion));
+            List<Token> replacement = argMap.get(bodyToken.text().toUpperCase(Locale.ROOT));
             if (replacement == null) {
-                expandedBody.add(bodyToken.replaces().isEmpty() ? bodyToken.with(position)
-                        : replacing(bodyToken, position));
+                expandedBody.add(bodyToken.replaces().isEmpty() ? bodyToken.with(replaced.source())
+                        : replacing(bodyToken, replaced));
                 continue;
             }
             for (Token argument : replacement) {
-                expandedBody.add(replacing(argument, position));
+                expandedBody.add(replacing(argument, replaced));
             }
         }
 
@@ -133,6 +125,54 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         for (List<Token> g : actualArgs) removed += g.size();
         preProcessor.removeTokens(callSiteIndex, removed);
         preProcessor.injectTokens(expandedBody, 0);
+    }
+
+    /**
+     * Tells how many tokens the argument at an index takes: one value in the forms the
+     * preprocessor context reads, a number with its sign, a name, a written literal or a
+     * computation, or else a single token, such as a register. A vector stays one argument even
+     * where a component is no number, each component a {@code |} and one value or token, with a
+     * {@code -} before it, so that
+     * the parser reports the component where the argument is used rather than the number of
+     * arguments being wrong.
+     *
+     * @param preProcessor        The preprocessor holding the stream.
+     * @param preProcessorContext The context that knows the forms of a value.
+     * @param index               The index of the argument's first token.
+     * @return The number of tokens, at least one.
+     */
+    private static int argumentLength(PreProcessor preProcessor, PreProcessorContext preProcessorContext, int index) {
+        int lineEnd = index;
+        while (!isLineEnd(typeAt(preProcessor, lineEnd))) {
+            lineEnd++;
+        }
+        List<Token> line = preProcessor.tokensOf(index, lineEnd);
+        if (line.isEmpty()) {
+            return 1;
+        }
+        int number = SignedNumber.at(line, 0).map(SignedNumber::length).orElse(0);
+        if (number > 0 && number < line.size() && line.get(number).type() == TokenType.PIPE) {
+            int length = number;
+            while (length < line.size() && line.get(length).type() == TokenType.PIPE) {
+                length++;
+                if (length >= line.size()) {
+                    break;
+                }
+                int sign = line.get(length).type() == TokenType.SYMBOL && "-".equals(line.get(length).text())
+                        && length + 1 < line.size() ? 1 : 0;
+                length += sign + Math.max(1, preProcessorContext.valueLength(line.subList(length + sign, line.size())));
+            }
+            return length;
+        }
+        return Math.max(1, preProcessorContext.valueLength(line));
+    }
+
+    private static TokenType typeAt(PreProcessor preProcessor, int index) {
+        return index < preProcessor.streamSize() ? preProcessor.getToken(index).type() : TokenType.END_OF_FILE;
+    }
+
+    private static boolean isLineEnd(TokenType type) {
+        return type == TokenType.NEWLINE || type == TokenType.END_OF_FILE;
     }
 
     /**
@@ -155,19 +195,27 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
     }
 
     /**
-     * Returns where a token stands in the text it was read from: the last position it replaced,
-     * for a token substituted into that text, otherwise its own position.
+     * Returns where a token stands in the text it was read from: the position of the last token
+     * it replaced, for a token substituted into that text, otherwise its own position.
      */
     private static SourceInfo inBody(Token token) {
-        return token.replaces().isEmpty() ? token.source() : token.replaces().getLast();
+        return writtenInBody(token).source();
     }
 
     /**
-     * Returns a token that keeps its own position and remembers one more position it replaces.
+     * Returns the token as the text it was read from has it: the last token it replaced, for a
+     * token substituted into that text, otherwise the token itself.
      */
-    private static Token replacing(Token token, SourceInfo position) {
-        List<SourceInfo> replaces = new ArrayList<>(token.replaces());
-        replaces.add(position);
+    private static Token writtenInBody(Token token) {
+        return token.replaces().isEmpty() ? token : token.replaces().getLast();
+    }
+
+    /**
+     * Returns a token that keeps its own position and remembers one more token it replaces.
+     */
+    private static Token replacing(Token token, Token replaced) {
+        List<Token> replaces = new ArrayList<>(token.replaces());
+        replaces.add(replaced);
         return new Token(token.type(), token.text(), token.value(), token.source(), replaces);
     }
 

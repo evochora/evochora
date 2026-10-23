@@ -5,6 +5,7 @@ import org.evochora.compiler.features.control.ControlFeature;
 import org.evochora.compiler.features.ctx.CtxFeature;
 import org.evochora.compiler.features.constdir.ConstFeature;
 import org.evochora.compiler.features.dir.DirFeature;
+import org.evochora.compiler.features.expression.ExpressionFeature;
 import org.evochora.compiler.features.macro.MacroFeature;
 import org.evochora.compiler.features.org.OrgFeature;
 import org.evochora.compiler.features.label.LabelFeature;
@@ -52,6 +53,7 @@ public final class StandardFeatures {
             new ImportFeature(),
             new ProcFeature(),
             new ControlFeature(),
+            new ExpressionFeature(),
             new InstructionFeature()
         );
     }

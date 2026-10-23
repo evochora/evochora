@@ -146,7 +146,7 @@ When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g.
 Sets a flag for the conditional compilation directives (`.IFDEF` and its relatives, see `ASSEMBLY_SPEC.md`), as `.DEFINE` in the program would, before its first line:
 
 - `--define NAME` — sets the flag without a value
-- `--define NAME=INTEGER` — sets it with that value; decimal, `0x…`, `0o…` and `0b…`, with an optional minus
+- `--define NAME=NUMBER` — sets it with that value; decimal, `0x…`, `0o…` and `0b…`, with an optional minus
 
 The option may be repeated. Flag names are case-insensitive. In a simulation the same flags are set per organism in the configuration (`defines { … }` in the organism entry).
 
@@ -154,7 +154,7 @@ The option may be repeated. Flag names are case-insensitive. In a simulation the
 
 Sets a value of the main program, which nothing imports, so no `USING VALUE` can bind it: the main program's `.REQUIRE VALUE` of that name takes it in place of its default (see `ASSEMBLY_SPEC.md`):
 
-- `--value NAME=TEXT` — the text is an operand as a `.CONST` takes it: a literal, a vector or a name of the main program, e.g. `--value STEPS=DATA:20`
+- `--value NAME=TEXT` — the text is an operand as a `.CONST` takes it: a literal, a vector, a name of the main program or an expression with them, e.g. `--value STEPS=DATA:20` or `--value 'STEPS=DATA:(WIDTH/2)'`
 
 The option may be repeated. Value names are case-insensitive. A value no `.REQUIRE VALUE` of the main program names is ignored, as a flag no `.IFDEF` tests is. In a simulation the same values are set per organism in the configuration (`values { … }` in the organism entry).
 
@@ -178,13 +178,13 @@ Compilation produces a JSON object with (among others):
 
 - `programId`: unique identifier
 - `sources`: one entry per placement and source file, with the placement's alias chain, the path as written, the resolved path and the lines
-- `machineCodeLayout`: generated machine code (linear address → instruction)
-- `labelAddressToName`: label addresses and names
+- `machineCodeLayout`: the code, one entry per cell with its `position` relative to the program's origin and its encoded `instruction`
+- `labelValueToName`, `labelNameToValue`: the value each label stands for in the machine code, by value and by name
 - `registerAliasMap`: register aliases used by the compiler
 - `procNameToParamNames`: procedures and their parameters
 - `sourceMap`: source mapping for debugging
 - `tokenMap`: token information for syntax highlighting
-- `envProps`: environment properties (worldShape, isToroidal)
+- `envProps`: environment properties (worldShape, isToroidal, strides, totalCells)
 
 ### Inspect Storage Data
 

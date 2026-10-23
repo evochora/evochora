@@ -1,0 +1,19 @@
+# A module that requires a module and a value, imported by another module, which hands both on
+# and exports the import again.
+
+#> needs: importdir, ctx
+.REQUIRE MODULE "lib/helper.evo" AS HELP
+.REQUIRE VALUE CEIL
+#<
+
+#> needs: importdir, ctx, constdir
+EXPORT .CONST INNER_VALUE HELP.HELPED
+#<
+
+#> needs: importdir, ctx, proc, instruction, label
+EXPORT .PROC FORWARD REF X
+  ADDI X DATA:1
+  CALL HELP.CLAMP REF X VAL DATA:0 CEIL
+  RET
+.ENDPROC
+#<

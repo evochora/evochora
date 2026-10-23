@@ -1,13 +1,17 @@
 package org.evochora.compiler.model.symbols;
 
+import java.util.Locale;
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.LiteralNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -100,7 +104,17 @@ public class SymbolTable {
     // otherwise share one entry and therefore one scope.
     private final Map<AstNode, Scope> nodeScopeMap = new IdentityHashMap<>();
 
+    // --- Outcomes of computations (recorded by the analysis handlers that evaluate, read by later phases) ---
+    // Keyed by node identity, as the scopes are: an outcome belongs to the computation where it
+    // stands, and two structurally equal nodes are two computations.
+    private final Map<ExpressionNode, ExpressionOutcome> expressionResults = new IdentityHashMap<>();
+    // The values of definitions, keyed by the identity of the defining node.
+    private final Map<AstNode, ExpressionOutcome> definitionValues = new IdentityHashMap<>();
+
     private final DiagnosticsEngine diagnostics;
+
+    /** The names nothing may define. */
+    private final ReservedNames reservedNames;
 
     /**
      * How many definitions {@link #bindingOf} follows before it gives up; a chain longer than
@@ -111,12 +125,15 @@ public class SymbolTable {
     private boolean frozen = false;
 
     /**
-     * Constructs a new symbol table. The current module must be set via
-     * {@link #setCurrentModule(String)} before any define/resolve operations.
-     * @param diagnostics The diagnostics engine for reporting errors.
+     * Constructs a new symbol table that rejects the given names wherever anything is defined.
+     * The current module must be set via {@link #setCurrentModule(String)} before any
+     * define/resolve operations.
+     * @param diagnostics   The diagnostics engine for reporting errors.
+     * @param reservedNames The names nothing may define.
      */
-    public SymbolTable(DiagnosticsEngine diagnostics) {
+    public SymbolTable(DiagnosticsEngine diagnostics, ReservedNames reservedNames) {
         this.diagnostics = diagnostics;
+        this.reservedNames = reservedNames;
         this.rootScope = new Scope(null, TokenInfo.MODULE_LEVEL);
         this.currentScope = this.rootScope;
     }
@@ -233,7 +250,7 @@ public class SymbolTable {
      */
     public Scope enterScope(String segment) {
         guardFrozen();
-        String key = segment.toUpperCase();
+        String key = segment.toUpperCase(Locale.ROOT);
         String path = QualifiedNames.join(currentScope == rootScope ? currentAliasChain : currentScope.name, key);
         Scope newScope = new Scope(currentScope, path);
         currentScope = newScope;
@@ -299,6 +316,58 @@ public class SymbolTable {
         return nodeScopeMap.get(node);
     }
 
+    // === Outcomes of computations ===
+
+    /**
+     * Records what phase 4 made of a computation in operand position. Called by the analysis
+     * handler that evaluates it; a computation that failed records nothing.
+     *
+     * @param node    The node of the computation, used as the lookup key by identity.
+     * @param outcome Its value, or the tree a later phase computes with its kind.
+     * @throws IllegalStateException if the table is frozen.
+     */
+    public void recordResult(ExpressionNode node, ExpressionOutcome outcome) {
+        guardFrozen();
+        expressionResults.put(node, outcome);
+    }
+
+    /**
+     * Returns what phase 4 made of a computation in operand position.
+     * <p>
+     * Nodes are matched by identity, so this has to be the very instance that was evaluated, as
+     * for {@link #getNodeScope}.
+     *
+     * @param node The node of the computation.
+     * @return Its outcome; empty if it was not evaluated or failed.
+     */
+    public Optional<ExpressionOutcome> resultOf(ExpressionNode node) {
+        return Optional.ofNullable(expressionResults.get(node));
+    }
+
+    /**
+     * Records the value of a definition whose value is a computation, so that a name bound to it
+     * stands for that value: a value now, or, for a value only a later phase knows, the
+     * definition's qualified name (see {@link #chainEndOf}).
+     *
+     * @param definition The defining node, the node of its symbol, used as the key by identity.
+     * @param outcome    Its value, or the tree a later phase computes with its kind.
+     * @throws IllegalStateException if the table is frozen.
+     */
+    public void recordDefinitionValue(AstNode definition, ExpressionOutcome outcome) {
+        guardFrozen();
+        definitionValues.put(definition, outcome);
+    }
+
+    /**
+     * Returns the value recorded for a definition.
+     *
+     * @param definition The defining node, matched by identity.
+     * @return Its recorded value; empty if none was recorded.
+     */
+    public Optional<ExpressionOutcome> definitionValueOf(AstNode definition) {
+        return Optional.ofNullable(definitionValues.get(definition));
+    }
+
     // === Symbol definition and resolution ===
 
     /**
@@ -309,10 +378,13 @@ public class SymbolTable {
      * <p>
      * A name is one segment: a name that contains a dot could only be confused with the path of
      * a name on another level. Such a definition is reported here, at the symbol's position,
-     * whatever kind of thing it names, and is not filed.
+     * whatever kind of thing it names, and is not filed. So is a reserved name: the name of an
+     * operation, which a computation would read as the operation, and {@code @}, the cursor; the
+     * message says what the name is.
      * @param symbol The symbol to define.
      * @return The definition the name already had in this scope, which stays; empty if the
-     *         symbol was defined, or if its name contains a dot and it was reported instead.
+     *         symbol was defined, or if its name contains a dot or is reserved and it was
+     *         reported instead.
      * @throws IllegalStateException if the table is frozen.
      */
     public Optional<Symbol> define(Symbol symbol) {
@@ -323,7 +395,12 @@ public class SymbolTable {
                     symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
             return Optional.empty();
         }
-        String name = symbol.name().toUpperCase();
+        Optional<String> rejection = reservedNames.rejection(symbol.name(), "defined");
+        if (rejection.isPresent()) {
+            diagnostics.reportError(rejection.get(), symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
+            return Optional.empty();
+        }
+        String name = symbol.name().toUpperCase(Locale.ROOT);
         String file = symbol.sourceInfo().fileName();
 
         // In module context, the symbol is filed under the module placement rather than the file
@@ -353,13 +430,56 @@ public class SymbolTable {
      * identifiers, until a node that is not one is reached.
      *
      * @param reference The identifier as written.
-     * @return The node the identifier finally stands for: what the last binding binds to, or
-     *         the identifier under the qualified name of a symbol that offers no binding (a
-     *         label, a procedure). Empty if the identifier names no symbol, if the last
-     *         definition has no value, or if its definitions go in a circle, which is reported
-     *         once at the definition the circle was entered through.
+     * @return The node the identifier finally stands for: what the last binding binds to, a
+     *         literal for a definition whose recorded value is a value, or the identifier under
+     *         the qualified name of a symbol that offers no binding (a label, a procedure) or of a
+     *         definition whose recorded value only a later phase knows. Empty if the identifier
+     *         names no symbol, if the last definition has no value, or if its definitions go in a
+     *         circle, which is reported once at the definition the circle was entered through.
      */
     public Optional<AstNode> bindingOf(IdentifierNode reference) {
+        return chainEndOf(reference).map(end -> end.symbol() != null
+                ? new IdentifierNode(end.qualifiedName(), end.sourceInfo())
+                : end.node());
+    }
+
+    /**
+     * Where a chain of names ends, as {@link #chainEndOf} finds it: at the node a binding gave,
+     * at a symbol whose node offers no binding, or at a definition whose recorded value only a
+     * later phase knows.
+     *
+     * @param node          The node the chain ends at: what the last binding binds to, a literal
+     *                      of a recorded value, or the node of the symbol the chain stops at,
+     *                      whose capabilities and recorded value the caller asks.
+     * @param symbol        The symbol the chain stops at: one that offers no binding, or a
+     *                      definition whose recorded value only a later phase knows;
+     *                      {@code null} when the chain ends at a node.
+     * @param qualifiedName The qualified name of that symbol; {@code null} with it.
+     * @param sourceInfo    The position of the last identifier of the chain, as written.
+     */
+    public record ChainEnd(AstNode node, Symbol symbol, String qualifiedName, SourceInfo sourceInfo) {
+    }
+
+    /**
+     * Follows what an identifier is bound to, through definitions that are themselves
+     * identifiers, and says where the chain ends. Each identifier is looked up where it is
+     * written: the reference from the current scope, every identifier a definition binds to
+     * from the scope of that definition, in the placement its position names.
+     * <p>
+     * A definition with a recorded value ends the chain: a value as a literal at the position of
+     * the identifier that names it, a value only a later phase knows at the definition's symbol.
+     * A definition whose value is a computation without a recorded outcome has no value: the
+     * computation failed and was reported where it was evaluated.
+     *
+     * @param reference The identifier as written.
+     * @return Where the chain ends: at the node the last binding binds to, at the literal of a
+     *         recorded value, or at the symbol with its qualified name whose node offers no
+     *         binding (a label, a procedure, a module alias) or whose recorded value only a later
+     *         phase knows. Empty if the identifier names no symbol, if the last definition has no
+     *         value, or if its definitions go in a circle, which is reported once at the
+     *         definition the circle was entered through.
+     */
+    public Optional<ChainEnd> chainEndOf(IdentifierNode reference) {
         IdentifierNode current = reference;
         // The symbols visited, by identity, and the names as written, for the message
         Set<Symbol> visited = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -376,11 +496,18 @@ public class SymbolTable {
             if (resolved.isEmpty()) {
                 return Optional.empty();
             }
-            if (!(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
-                return Optional.of(new IdentifierNode(resolved.get().qualifiedName(), current.sourceInfo()));
+            Symbol symbol = resolved.get().symbol();
+            if (!(symbol.node() instanceof IIdentifierBinding binding)) {
+                return Optional.of(new ChainEnd(symbol.node(), symbol, resolved.get().qualifiedName(), current.sourceInfo()));
             }
-            if (visited.contains(resolved.get().symbol())) {
-                if (reportedCircles.add(resolved.get().symbol().sourceInfo() + " " + resolved.get().symbol().name())) {
+            ExpressionOutcome recorded = definitionValues.get(symbol.node());
+            if (recorded != null) {
+                return Optional.of(recorded.value() != null
+                        ? new ChainEnd(new LiteralNode(recorded.value(), current.sourceInfo()), null, null, current.sourceInfo())
+                        : new ChainEnd(symbol.node(), symbol, resolved.get().qualifiedName(), current.sourceInfo()));
+            }
+            if (visited.contains(symbol)) {
+                if (reportedCircles.add(symbol.sourceInfo() + " " + symbol.name())) {
                     diagnostics.reportError(
                             "Definition of " + chain.get(0) + " is circular: " + String.join(" -> ", chain) + " -> " + current.text() + ".",
                             firstDefinition != null ? firstDefinition.fileName() : "unknown",
@@ -388,15 +515,17 @@ public class SymbolTable {
                 }
                 return Optional.empty();
             }
-            visited.add(resolved.get().symbol());
+            visited.add(symbol);
             chain.add(current.text());
             if (firstDefinition == null) {
-                firstDefinition = resolved.get().symbol().sourceInfo();
+                firstDefinition = symbol.sourceInfo();
             }
             from = lookup.scope();
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {
-                return Optional.ofNullable(bound);
+                return bound == null || bound instanceof ExpressionNode
+                        ? Optional.empty()
+                        : Optional.of(new ChainEnd(bound, null, null, current.sourceInfo()));
             }
             current = next;
         }
@@ -427,7 +556,11 @@ public class SymbolTable {
      */
     private record Lookup(Resolution resolution, Scope scope) {
         static Lookup missing(String explanation) {
-            return new Lookup(new Resolution.Missing(explanation), null);
+            return new Lookup(new Resolution.Missing(explanation, false), null);
+        }
+
+        static Lookup undefined() {
+            return new Lookup(new Resolution.Missing("the name is not defined.", true), null);
         }
     }
 
@@ -468,19 +601,19 @@ public class SymbolTable {
     private Lookup lookUp(String name, String filedUnder, Scope from, ModuleScope module) {
         int dot = name.indexOf('.');
         if (dot < 0) {
-            Scope scope = enclosingScopeOf(from, name.toUpperCase(), filedUnder);
+            Scope scope = enclosingScopeOf(from, name.toUpperCase(Locale.ROOT), filedUnder);
             if (scope == null) {
-                return Lookup.missing("the name is not defined.");
+                return Lookup.undefined();
             }
-            return found(scope, name.toUpperCase(), filedUnder, module);
+            return found(scope, name.toUpperCase(Locale.ROOT), filedUnder, module);
         }
         if (dot == 0) {
-            return Lookup.missing("the name is not defined.");
+            return Lookup.undefined();
         }
         // Explanations quote the segments as the program wrote them; lookups use the key
         String first = name.substring(0, dot);
         String remainder = name.substring(dot + 1);
-        String firstKey = first.toUpperCase();
+        String firstKey = first.toUpperCase(Locale.ROOT);
 
         // An alias of the module level leads into the module it names; any other name the
         // scopes hold leads into the scope its symbol opened.
@@ -499,7 +632,7 @@ public class SymbolTable {
             return descendInto(symbol, first, remainder, filedUnder, from, module);
         }
         if (module == null) {
-            return Lookup.missing("the name is not defined.");
+            return Lookup.undefined();
         }
         return Lookup.missing("'" + first + "' is neither a name nor an alias of this module.");
     }
@@ -573,7 +706,7 @@ public class SymbolTable {
      */
     private Lookup descendScope(Scope level, String levelName, String remainder, String filedUnder, Scope from, ModuleScope module) {
         String segment = firstSegment(remainder);
-        String key = segment.toUpperCase();
+        String key = segment.toUpperCase(Locale.ROOT);
         Map<String, Symbol> perFile = level.symbols.get(key);
         Symbol symbol = perFile != null ? perFile.get(filedUnder) : null;
         if (symbol == null) {
@@ -608,7 +741,7 @@ public class SymbolTable {
             return Lookup.missing(moduleName + " is not a module of this compilation.");
         }
         String segment = firstSegment(remainder);
-        String key = segment.toUpperCase();
+        String key = segment.toUpperCase(Locale.ROOT);
         boolean last = segment.length() == remainder.length();
         Symbol symbol = modScope.symbols().get(key);
         if (symbol == null) {

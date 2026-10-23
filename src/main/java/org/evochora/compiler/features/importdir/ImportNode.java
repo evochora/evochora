@@ -6,6 +6,7 @@ import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.model.ast.OperandNode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -13,8 +14,9 @@ import java.util.List;
  *
  * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING {MODULE source AS target ... | VALUE name value ...} ...]}
  *
- * <p>The children are the bound values, so that the phases that walk the tree see a name the
- * importer writes as a value; the node itself emits nothing and is not rebuilt.
+ * <p>The children are the bound values, so that the phases that walk the tree see a name or a
+ * computation the importer writes as a value; phase 6 rebuilds the node with the values it put in
+ * their place, so that phase 7 finds each computation only the layout computes.
  *
  * @param path       The imported file path (unquoted string value from the token).
  * @param alias      The local alias name for the imported module.
@@ -36,6 +38,20 @@ public record ImportNode(
     @Override
     public List<AstNode> getChildren() {
         return values.stream().<AstNode>map(ValueBinding::value).toList();
+    }
+
+    /**
+     * Phase 6 puts the resolved bound values into the node through this, one per binding, in the
+     * order of the bindings.
+     */
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        List<ValueBinding> rebuilt = new ArrayList<>(values.size());
+        for (int i = 0; i < values.size(); i++) {
+            ValueBinding binding = values.get(i);
+            rebuilt.add(new ValueBinding(binding.name(), (OperandNode) newChildren.get(i), binding.nameSourceInfo()));
+        }
+        return new ImportNode(path, alias, usings, rebuilt, exported, sourceInfo);
     }
 
     /**

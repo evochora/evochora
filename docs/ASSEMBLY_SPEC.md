@@ -28,10 +28,10 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 
 * **`CODE`**: an executable instruction of the organism's virtual machine.
 * **`DATA`**: a numeric value. As an instruction operand it is a constant of the program; instructions can also read and write it in the grid.
-* **`STATE`**: a numeric value an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see below).
+* **`STATE`**: a numeric value an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see [Types in value operations](#types-in-value-operations)).
 * **`ENERGY`**: a resource organisms consume to replenish their energy reserves (ER).
 * **`STRUCTURE`**: physical matter, such as the shell of an organism's body.
-* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see *Fuzzy label matching*).
+* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see [Fuzzy label matching](#fuzzy-label-matching)).
 * **`LABELREF`**: an instruction operand naming a label by its hash.
 * **`REGISTER`**: an instruction operand naming a register.
 
@@ -47,7 +47,7 @@ Any grid cell can be "owned" by an organism. This ownership is tracked separatel
 
 ### Molecule Marker
 
-Each molecule carries a 4-bit marker value (0-15). When an organism writes a molecule to the environment using `POKE` or similar instructions, the current value of the organism's Molecule Marker Register (`MR`) is embedded into the molecule. This marker is used during `FORK` to transfer ownership of specific molecules to the offspring (see `FORK` instruction).
+Each molecule carries a 4-bit marker value (0-15). When an organism writes a molecule to the environment using `POKE` or similar instructions, the current value of the organism's Molecule Marker Register (`MR`) is embedded into the molecule. This marker is used during `FORK` to transfer ownership of specific molecules to the offspring (see `FORK` in [State and Location Operations](#state-and-location-operations)).
 
 The marker separates soma from genome. What an organism writes with `MR` 0 is soma: it belongs to no genome, and `DATA` written this way is stored as `STATE`. What it writes with any other marker is genome: it keeps its type and is handed to a child by a `FORK` executed with that marker. `FORK`, `FRKI` and `FRKS` fail when `MR` is 0.
 
@@ -207,47 +207,9 @@ START_LOOP:
 
 A label is not an address. The compiler gives every label a value derived from its name; the `LABEL` molecule it places carries that value, and an instruction that names the label carries the same value as its operand. The label is looked up by its value when the instruction runs, so a jump goes to wherever a matching `LABEL` molecule stands at that moment.
 
-A `LABEL` molecule matches when its value differs from the one looked up in at most a few bits; how many is set by the label-matching strategy of the simulation configuration. The organism's own labels come first, and among them those that differ in the fewest bits; where several of its own differ equally, one of them is chosen, by default the nearer ones more likely. Only when none of its own matches can a label of another organism or an unowned one be taken, and only within a reach that shrinks with every differing bit. A label in cells the organism is building for a child, written with a non-zero marker (see *Molecule Marker*), is never found.
+A `LABEL` molecule matches when its value differs from the one looked up in at most a few bits; how many is set by the label-matching strategy of the simulation configuration. The organism's own labels come first, and among them those that differ in the fewest bits; where several of its own differ equally, one of them is chosen, by default the nearer ones more likely. Only when none of its own matches can a label of another organism or an unowned one be taken, and only within a reach that shrinks with every differing bit. A label in cells the organism is building for a child, written with a non-zero marker (see [Molecule Marker](#molecule-marker)), is never found.
 
-A jump continues with the instruction behind the label it found. When no label matches, the instruction fails (see *Error Penalty*) and execution runs on with the next instruction.
-
-#### Exported Labels
-
-By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword before the label:
-
-```
-EXPORT MY_ENTRY_POINT:
-  ...
-```
-
-Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is imported with `.IMPORT "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`. A label inside a `.PROC` is visible only in that procedure; with `EXPORT` it is reached from outside as `PROC_NAME.LABEL_NAME`, and from another module as `LIB.PROC_NAME.LABEL_NAME` when the procedure is exported as well.
-
-```
-# In lib.evo
-EXPORT DATA_TABLE:
-  .PLACE DATA:42 0|0
-
-# In main.evo
-.IMPORT "lib.evo" AS LIB
-
-START:
-  JMPI LIB.DATA_TABLE  # Jump to the exported label
-  ...
-```
-
-#### Exported Constants
-
-Constants defined with `.CONST` can also be exported. This allows modules to expose configuration values as part of their API:
-
-```
-# In lib.evo
-EXPORT .CONST MAX_ENERGY DATA:1000
-EXPORT .CONST STEP_SIZE 1|0
-
-# In main.evo
-.IMPORT "lib.evo" AS LIB
-SETI %DR0 LIB.MAX_ENERGY
-```
+A jump continues with the instruction behind the label it found. When no label matches, the instruction fails (see *Error Penalty* in [Energy Register (ER)](#energy-register-er)) and execution runs on with the next instruction.
 
 ### Case-Insensitivity
 
@@ -261,11 +223,7 @@ Spaces and tabs are used to separate elements in a statement. Multiple whitespac
 
 ## 5. Data Types and Literals
 
-All values in Evochora are fundamentally represented as **Molecules**, but the assembly language provides several convenient ways to write them in code. These are known as literals.
-
-### Registers
-
-The most common way to reference a value is through a register. Registers are specified by their name, such as `%DR0` or `%PDR1`. They can be used as arguments in most instructions.
+All values in Evochora are fundamentally represented as **Molecules**, but the assembly language provides several convenient ways to write them in code. These are known as literals. Where a literal stands, the compiler can also compute the value (see [Compile-Time Expressions](#8-compile-time-expressions)).
 
 ### Typed Literals
 
@@ -333,7 +291,7 @@ These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support
 
 ### Bitwise Operations
 
-These instructions operate on the integer value of scalars.
+These instructions operate on the number of a scalar.
 
 * `ANDR %REG1 %REG2`, `ANDI %REG1 <Literal>`, `ANDS`: Bitwise AND.
 * `ORR %REG1 %REG2`, `ORI %REG1 <Literal>`, `ORS`: Bitwise OR.
@@ -345,7 +303,7 @@ These instructions operate on the integer value of scalars.
 * `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
 * `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
-* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Arithmetic shift right, the sign is kept. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
 
 #### Rotation and Bit Utilities
 
@@ -399,7 +357,7 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 * `JMPS`: Jumps to the label whose value is popped from the stack.
   `CALL <Label> [REF %reg ...] [VAL %reg|Literal|Vector ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
-    - `VAL`: Passes registers, literal values or vectors by value. Modifications are local.
+    - `VAL`: Passes registers, typed literals or vectors by value. Modifications are local.
     - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
     - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time, as `PSLI` does: a label that matches nothing, or whose cell belongs to another organism, is passed as no position.
     - **Example**:
@@ -421,13 +379,13 @@ The lists below name each condition by its skips; the jumps are given beside the
 
 #### Value comparisons
 
-Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector. Equality compares the molecule, order compares the number, and every negated form holds exactly when its counterpart does not; see *Types in value operations*.
+Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector. Equality compares the molecule, order compares the number, and every negated form holds exactly when its counterpart does not; see [Types in value operations](#types-in-value-operations).
 
 * `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS` (jumps `JFR`, `JFI`, `JFS`): If values are equal.
 * `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS` (jumps `JLTR`, `JLTI`, `JLTS`): If value of first argument is less than second.
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS` (jumps `JGTR`, `JGTI`, `JGTS`): If value of first argument is greater than second.
-* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS` (jumps `QGTR`, `QGTI`, `QGTS`): If value of first argument is greater than a random value drawn below the second. See "Probabilistic conditionals".
-* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS` (jumps `QLTR`, `QLTI`, `QLTS`): If value of first argument is less than a random value drawn below the second. See "Probabilistic conditionals".
+* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS` (jumps `QGTR`, `QGTI`, `QGTS`): If value of first argument is greater than a random value drawn below the second. See [Probabilistic conditionals](#probabilistic-conditionals).
+* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS` (jumps `QLTR`, `QLTI`, `QLTS`): If value of first argument is less than a random value drawn below the second. See [Probabilistic conditionals](#probabilistic-conditionals).
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS` (jumps `JFTR`, `JFTI`, `JFTS`): If molecule types are equal.
 * `IFER` (jump `JFER`): If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
 * `IFSL %LOC_REG` (jump `JFSL`): If the location register holds a position.
@@ -629,14 +587,14 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Definitions and Aliases
 
-* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
+* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` below the definition with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
 
-* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file brought in with `.IMPORT` or `.SOURCE`, the coordinate is **relative** to the position where that directive was invoked. A component written with the marker `@+` or `@-` counts from the write cursor instead, the cell that follows the one placed last: `.ORG 0|@+2` starts a row two below the row before it whatever its length, and after an include it continues below the included code. The marker carries the sign and the number after it carries none, so `@-3` moves three back.
+* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file brought in with `.IMPORT` or `.SOURCE`, the coordinate is **relative** to the position where that directive was invoked. A component written with the marker `@+` or `@-` counts from the write cursor instead, the cell that follows the one placed last: `.ORG 0|@+2` starts a row two below the row before it whatever its length, and after an include it continues below the included code. The marker carries the sign and the number after it carries none, so `@-3` moves three back. Before a whole vector the marker counts every component from the cursor: `.ORG @+(0|2)` is `.ORG @+0|@+2`.
 * `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. A vector sets the direction outright. The form `.DIR @+<Axis>|<Axis>` turns the direction currently in effect by 90 degrees in the plane the two axes span — `@+0|1` turns the first axis towards the second, `@-0|1` the other way — and the plane is named in worlds of every dimensionality. When an included file finishes, the direction is restored to what it was before the include.
-* `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the current origin (`.ORG`). Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
+* `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the origin of the current file. Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
   * **Vector Literal**: A standard vector like `10|20` places a single molecule.
   * **Range**: A range like `1..10|20` places molecules along a line.
   * **2D Range**: A range like `1..10|20..30` places molecules in a rectangular area.
@@ -703,11 +661,11 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 ### Conditional Compilation
 
-Code can be kept or left out depending on *flags*. A flag is a name that is set or not set; a set flag may carry an integer value. Flags belong to the whole compilation: a flag set in one file is set in every line the compiler reads after it, whatever file that line stands in.
+Code can be kept or left out depending on *flags*. A flag is a name that is set or not set; a set flag may carry a number as its value. Flags belong to the whole compilation: a flag set in one file is set in every line the compiler reads after it, whatever file that line stands in.
 
-* `.DEFINE <NAME> [<Integer>]`: Sets the flag `<NAME>`, with the integer as its value if one is given. A set flag may be set again with the same definition; a different one is an error. To change a flag, remove it first.
+* `.DEFINE <NAME> [<Number>]`: Sets the flag `<NAME>`, with the number as its value if one is given. A set flag may be set again with the same definition; a different one is an error. To change a flag, remove it first.
 * `.UNDEF <NAME>`: Removes the flag. Removing a flag that is not set does nothing.
-* `.IFDEF <NAME> [<Op> <Operand>]` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is set and, when a comparison is given, if its value compares as stated. `<Op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`; `==` and `!=` mean the same as `=` and `<>`. `<Operand>` is an integer or the name of another flag, whose value is taken. Comparing a flag that has no value is an error.
+* `.IFDEF <NAME> [<Op> <Operand>]` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is set and, when a comparison is given, if its value compares as stated. `<Op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`; `==` and `!=` mean the same as `=` and `<>`. `<Operand>` is a number or the name of another flag. Comparing a flag that has no value is an error.
 * `.IFNDEF <NAME>` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is not set.
 * `.ELSEIFDEF <NAME> [<Op> <Operand>]`, `.ELSEIFNDEF <NAME>`, `.ELSEDEF`: Further branches of the same block. The first branch whose condition holds is kept and every other branch is left out; `.ELSEDEF` is the last branch.
     ```
@@ -725,7 +683,7 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
 * **Lines of their own**: the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
 * **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
 * **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
-* **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by `.IFDEF`; a flag is seen only by `.IFDEF` and cannot be used as an operand.
+* **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by the directives that read the program; a flag is seen only by `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` and cannot be used as an operand.
 
 ### Modules and Procedures
 
@@ -741,7 +699,7 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 
 * **Syntax**: `.REQUIRE MODULE "<path>" AS <Alias>` and `[EXPORT] .REQUIRE VALUE <Name> [<Default>]`
 * **`MODULE`**: This module uses a module as `<Alias>`, reaching its exported names as `<Alias>.<Name>`, but does not inline it; the importer names the module that takes the place of `<Alias>`, and `<path>` says which file the module expects there. The alias is never exported.
-* **`VALUE`**: Defines the constant `<Name>`, whose value the importer decides; `<Default>` is its value when the importer decides nothing, and without a default the importer has to decide. It is a constant as `.CONST` makes one, with the same values (a literal or a name) and the same rules, and `EXPORT` makes it reachable from outside. Two placements of one module may receive different values.
+* **`VALUE`**: Defines the constant `<Name>`, whose value the importer decides; `<Default>` is its value when the importer decides nothing, and without a default the importer has to decide. It is a constant as `.CONST` makes one, with the same values and the same rules, and `EXPORT` makes it reachable from outside. Two placements of one module may receive different values.
 * **The main program** has no importer; its values come from the configuration, `values { STEPS = "DATA:20" }` in the organism's entry or `evochora compile --value STEPS=DATA:20`. A value that no `.REQUIRE VALUE` of the main program names is ignored.
 
 #### `.IMPORT`
@@ -789,6 +747,44 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
 * `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
 * A procedure stands only at the module level: a `.PROC` inside a procedure is reported.
 * A name defined inside a procedure (a label, a constant, a register alias, a parameter) may repeat a name of the module around it; inside the procedure the inner one is meant. A name is defined once per level.
+
+#### Exported Labels
+
+By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword before the label:
+
+```
+EXPORT MY_ENTRY_POINT:
+  ...
+```
+
+Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is imported with `.IMPORT "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`. A label inside a `.PROC` is visible only in that procedure; with `EXPORT` it is reached from outside as `PROC_NAME.LABEL_NAME`, and from another module as `LIB.PROC_NAME.LABEL_NAME` when the procedure is exported as well.
+
+```
+# In lib.evo
+EXPORT DATA_TABLE:
+  .PLACE DATA:42 0|0
+
+# In main.evo
+.IMPORT "lib.evo" AS LIB
+
+START:
+  JMPI LIB.DATA_TABLE  # Jump to the exported label
+  ...
+```
+
+#### Exported Constants
+
+Constants defined with `.CONST` can also be exported. This allows modules to expose configuration values as part of their API:
+
+```
+# In lib.evo
+EXPORT .CONST MAX_ENERGY DATA:1000
+EXPORT .CONST STEP_SIZE 1|0
+
+# In main.evo
+.IMPORT "lib.evo" AS LIB
+SETI %DR0 LIB.MAX_ENERGY
+```
 
 #### Example: Simple Module Import
 
@@ -879,7 +875,7 @@ START:
   CALL NEAR.GO REF %DR0                   # %DR0 is now 13
 ```
 
-Inside `walk.evo`, `STEPS` is a constant like any other; each placement has its own value, and the visualizer shows it at every use. A `.REQUIRE VALUE` without a default must be supplied by every import. The main program itself, which nothing imports, takes its values from the configuration (`values { … }` or `--value NAME=TEXT`).
+Inside `walk.evo`, `STEPS` is a constant like any other; each placement has its own value. A `.REQUIRE VALUE` without a default must be supplied by every import. The main program itself, which nothing imports, takes its values from the configuration (`values { … }` or `--value NAME=TEXT`).
 
 #### Example: Using .SOURCE for Shared Constants
 
@@ -911,7 +907,7 @@ What other languages write as `if … else`, `switch`, `while` or `for` is writt
 * **Syntax**: `[EXPORT] .CONTROL <Block> / [EXPORT] .CASE <Case> ... / [EXPORT] .ENDCONTROL`
 * **Effect**: Opens a block. The code up to the first `.CASE` is the head, where the conditions are tested; every `.CASE <Case>` begins a branch; `END` is the place behind the `.ENDCONTROL`. A conditional followed by `JMPI <Case>` is the `if` that enters a branch, `JMPI END` ends a branch or breaks out of a loop, `JMPI <Block>` is the `continue`: a block that jumps to its own name is a loop, a block whose head tests one value against several cases is a `switch`, a block whose cases hold the alternatives is an `if … elseif … else`.
     - What does not jump runs on: from the head into the first case, from one case into the next, from the last case out of the block. The compiler adds no instruction and checks no jump.
-    - `<Block>`, `<Case>` and `END` are labels: `<Block>` on the level around the block, the others on the block's own level, meant inside by their plain names and from a block nested inside as `<Block>.<Case>` and `<Block>.END`. From outside the block a case or the end is reached only with `EXPORT` on it, from another module as `LIB.<Block>.<Case>` (see *Exported Labels*). Names defined inside the block belong to it, as inside a procedure; `END` is taken, and `.PROC`, `.IMPORT` and `.REQUIRE` do not stand inside a block.
+    - `<Block>`, `<Case>` and `END` are labels: `<Block>` on the level around the block, the others on the block's own level, meant inside by their plain names and from a block nested inside as `<Block>.<Case>` and `<Block>.END`. From outside the block a case or the end is reached only with `EXPORT` on it, from another module as `LIB.<Block>.<Case>` (see [Exported Labels](#exported-labels)). Names defined inside the block belong to it, as inside a procedure; `END` is taken, and `.PROC`, `.IMPORT` and `.REQUIRE` do not stand inside a block.
     - A case that begins a row of its own has its `.ORG` before the `.CASE`.
     - **Example**:
       ```
@@ -928,7 +924,160 @@ What other languages write as `if … else`, `switch`, `while` or `for` is writt
       .ENDCONTROL                        # endif: END stands here
       ```
 
-## 8. Examples
+---
+
+## 8. Compile-Time Expressions
+
+An expression is a value the compiler computes from numbers, typed values, vectors and names with operators and functions. It may stand wherever an instruction or a directive takes a value, and the compiler writes its result into the program in its place.
+
+### Values
+
+An expression works with five kinds of value:
+
+* **Number**: a whole number of 64 bits, written in any number format of [Typed Literals](#typed-literals), such as `100` or `0xFF`. A minus in front of it is its sign.
+* **Typed value**: a molecule type and a number, written as a typed literal, such as `DATA:42`.
+* **Vector**: a list of numbers, written as a vector literal, such as `1|0`. In an expression it may have any number of components; as an instruction argument it has one per dimension of the world.
+* **Molecule type**: a type on its own, such as `DATA` or `ENERGY`, as `TYPE` gives it (see [Functions](#functions)).
+* **Position**: a place in the program (see [Positions](#positions)).
+
+A molecule type and a position never become a cell: they take part in further expressions, and an instruction argument that holds one is an error. A number is checked against what it becomes: the value of a cell in an instruction argument and in `.PLACE`, a coordinate in `.ORG`, `.DIR` and `.PLACE`, a count in `.REPEAT` and `^`. Where an instruction takes a typed literal, an expression has to give a typed value; a number alone is an error there, as a written number is.
+
+### Operators
+
+An operator binds tighter than every operator in the rows below it. Parentheses inside an expression group what they enclose: `((2 + 3) * 4)` is 20.
+
+| Operators | Meaning |
+|---|---|
+| `a[i]` | component `i` of a vector, counting from 0 |
+| `T:n` | the typed value of type `T` and number `n` |
+| `-a`, `NOT a` | the number with the opposite sign, for a vector every component; the bitwise not of a number |
+| `*`, `/`, `MOD` | multiplication, division and remainder, from left to right |
+| `+`, `-` | addition and subtraction, from left to right |
+| `a\|b\|c` | the vector of the parts, each a number |
+| `AND`, `OR`, `XOR`, `SHL`, `SHR` | bitwise and, or, exclusive or, shift left and shift right |
+
+* A typed value combined with a number keeps its type; two typed values combine only if their types are equal.
+* A vector is added to and subtracted from a vector of the same length, and multiplied and divided by a number; nothing else.
+* `/` rounds towards zero, `MOD` has the sign of its left operand, `SHR` keeps the sign of the number it shifts and `SHL` drops the bits it shifts out, as the instructions `DIV*`, `MOD*`, `SHR*` and `SHL*` do.
+* `AND`, `OR`, `XOR`, `SHL` and `SHR` take numbers only. Next to `*`, `/`, `MOD`, `+`, `-`, `|` or another of these five they need parentheses; next to themselves they are read from left to right.
+* Division by zero, an arithmetic result beyond 64 bits, a shift by less than 0 or more than 63 bits and a component outside the vector are errors.
+* **Examples**:
+    * `(2 + 3 * 4)` (The number 14)
+    * `(ENERGY:50 * 2)` (The typed value `ENERGY:100`)
+    * `((1|2) * 3)` (The vector `3|6`)
+    * `(4|5)[1]` (The number 5)
+    * `(-7 / 2)` (The number -3)
+    * `((0xF0 OR 0x0F) + 1)` (The number 256)
+
+### Functions
+
+A function name is directly followed by its arguments in parentheses.
+
+* `NUMBER(<Typed value>)`: The number of the typed value; `NUMBER(ENERGY:50)` is `50`.
+* `TYPE(<Typed value>)`: The molecule type of the typed value; `TYPE(ENERGY:50)` is `ENERGY`.
+* `POSITION(<Vector>)`: The place the vector names in the program (see [Positions](#positions)).
+
+### Names
+
+A name in an expression is a constant ([`.CONST`](#definitions-and-aliases)) or a value ([`.REQUIRE VALUE`](#require)). A label, a procedure and a control block are names as well; they stand for positions (see [Positions](#positions)).
+
+* A constant or a value is used below its definition; above it, the name is not defined.
+* The operators written as words and the functions are taken: none of them can be defined or name a macro.
+* A value of the main program set from outside (`values { … }` or `--value`) may be an expression with the names of the main program.
+* **Examples**:
+    ```
+    .CONST WIDTH 100
+    .CONST HEIGHT 70
+    .CONST AREA (WIDTH * HEIGHT)          # 7000
+    .CONST UNIT ENERGY:50
+    .CONST TWICE (UNIT * 2)               # ENERGY:100
+    ```
+
+### Where an Expression Stands
+
+An expression has one of three forms; an operand of any other form is a literal of [Data Types and Literals](#5-data-types-and-literals) or a name.
+
+* A function: `NUMBER(UNIT)`.
+* A component of a vector: `CORNER[0]`.
+* A parenthesis: `(WIDTH - 1)`.
+
+A typed literal may take an expression or a name for its type or its number: `DATA:(WIDTH - 1)`, `DATA:AREA`, `TYPE(UNIT):7`. A vector may take one for any of its numbers: `WIDTH|HEIGHT`, `1|(HEIGHT - 1)`. Inside parentheses, the parentheses of a function and the brackets of a component, spaces are free.
+
+* **Examples**:
+    ```
+    START:
+      SETI %DR0 DATA:(WIDTH - 1)          # DATA:99
+      SETI %DR1 (UNIT * 2)                # ENERGY:100
+      SETV %DR2 (WIDTH-1|HEIGHT-1)        # 99|69: one pair of parentheses around the whole vector
+      SETI %DR3 DATA:AREA                 # DATA:7000
+      SETI %DR4 TYPE(UNIT):7              # ENERGY:7
+    ```
+
+### Positions
+
+Every file has an origin: in the main file it is `0|0`, in a file brought in with `.IMPORT` or `.SOURCE` it is the place where that directive was invoked. A vector in `.ORG` or `.PLACE` counts from the origin of its file (see [Layout Control](#layout-control)). A position is a place that is converted to the origin of the file that uses it, so that one file can name a place and another file can use it.
+
+* `@` is a reserved name: the position the next code would be placed at.
+* The name of a label, a procedure or a control block is, in an expression, the position of the cell its label stands on: `(TARGET)` is the position of the label `TARGET`.
+* `POSITION(v)` is the position that lies the vector `v` away from the origin of the file where it is written.
+* `P[0]` is a component of the position `P`, counted from the origin of the file that uses it.
+* `.ORG` and `.PLACE` take a position where they take a vector: `.ORG P` continues the code at `P`.
+* **Example**: the main file brings a module in at `10|5` and gives it its own `0|0`. In the module, `P[0]` is `-10` and `P[1]` is `-5`, and `.ORG P` continues the code at `0|0` of the main file.
+    ```
+    # main.evo
+    .ORG 10|5
+    .IMPORT "mod.evo" AS M USING VALUE P POSITION(0|0)
+    ```
+    ```
+    # mod.evo
+    .REQUIRE VALUE P
+    .ORG P
+    ```
+* A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Apart from these and the component `P[i]`, an operation on a position is an error.
+* A position, and a value computed from one, cannot be an instruction argument.
+* An expression with `@` means the place where it is written: `.CONST HERE @` is the position of the `.CONST` line, wherever `HERE` is used.
+* A label in an expression must stand above that expression.
+* In `.ORG 0|@+2`, `@+` is the marker of `.ORG` (see [Layout Control](#layout-control)), not `@` plus 2; the same holds for `@-` and for the markers of `.DIR`.
+* **Example**: `main.evo` gives `shell.evo` the two corners of its code; `shell.evo` places a shell one cell outside them, wherever `main.evo` imports it.
+    ```
+    # main.evo
+    .CONST WIDTH 100
+    .CONST HEIGHT 70
+    .IMPORT "shell.evo" AS SHELL USING VALUE NW POSITION(0|0) VALUE SE POSITION(WIDTH-1|HEIGHT-1)
+    ```
+    ```
+    # shell.evo
+    .REQUIRE VALUE NW
+    .REQUIRE VALUE SE
+    .CONST OUT_NW (NW - (1|1))
+    .CONST OUT_SE (SE + (1|1))
+    .PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # north edge
+    .PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # south edge
+    .PLACE STRUCTURE:100 OUT_NW[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # west edge
+    .PLACE STRUCTURE:100 OUT_SE[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # east edge
+    ```
+
+### Computing with Flags
+
+`.DEFINE`, `.REPEAT`, `^` and the comparison of `.IFDEF` take expressions as well; the names in them are flags (see [Conditional Compilation](#conditional-compilation)).
+
+* Either side of an `.IFDEF` comparison may be an expression. An expression alone, `.IFDEF (ROWS - 1)`, holds if it can be computed; a flag in it that is not set or has no value is an error.
+* **Examples**:
+    ```
+    .DEFINE ROWS 4
+    .DEFINE HALF (ROWS / 2)               # 2
+
+    .REPEAT (ROWS * 2)                    # 8 times
+      NOP
+    .ENDREPEAT
+    NOP^(HALF + 1)                        # 3 times
+
+    .IFDEF (ROWS + 1) = 5
+      NOP
+    .ENDDEF
+    ```
+
+## 9. Examples
 
 Complete, compilable example programs are provided in [`assembly/examples/`](../assembly/examples/):
 

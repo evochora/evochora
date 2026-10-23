@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupContext;
 import org.evochora.compiler.model.symbols.ModuleScope;
@@ -12,7 +13,7 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
 
     @Override
     public void registerRelationships(ImportDependencyInfo dep, ModuleSetupContext ctx) {
-        String importAlias = dep.alias().toUpperCase();
+        String importAlias = dep.alias().toUpperCase(Locale.ROOT);
         String importedAliasChain = dep.aliasChain();
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {

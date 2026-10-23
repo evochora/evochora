@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.TestLexers;
@@ -224,6 +225,26 @@ class ConditionalExpansionTest {
     }
 
     @Test
+    void aNegativeOperandIsComparedWithItsSign() {
+        Expansion result = expand(
+                ".DEFINE A -1",
+                ".IFDEF A = -1",
+                "  ADDI %DR0 DATA:1",
+                ".ENDDEF",
+                ".IFDEF A = 1",
+                "  ADDI %DR0 DATA:2",
+                ".ENDDEF",
+                ".IFDEF A>-2",
+                "  ADDI %DR0 DATA:3",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly(
+                "ADDI", "%DR0", "DATA", ":", "1",
+                "ADDI", "%DR0", "DATA", ":", "3");
+    }
+
+    @Test
     void hexadecimalBinaryAndNegativeLiteralsAreCompared() {
         Expansion result = expand(
                 ".DEFINE MASK 0x1F",
@@ -271,7 +292,7 @@ class ConditionalExpansionTest {
                 ".ENDDEF");
 
         assertThat(result.errors()).containsExactly(
-                MAIN + ":2: Flag FAST is set without a value and cannot be compared");
+                MAIN + ":2: 'FAST' has no value.");
         assertThat(result.texts()).isEmpty();
     }
 
@@ -284,7 +305,7 @@ class ConditionalExpansionTest {
                 ".ENDDEF");
 
         assertThat(result.errors()).containsExactly(
-                MAIN + ":2: Flag MINIMUM, which LEVEL is compared with, is not set");
+                MAIN + ":2: 'MINIMUM' is not a flag.");
         assertThat(result.texts()).isEmpty();
     }
 
@@ -298,7 +319,7 @@ class ConditionalExpansionTest {
                 ".ENDDEF");
 
         assertThat(result.errors()).containsExactly(
-                MAIN + ":3: Flag MINIMUM, which LEVEL is compared with, is set without a value");
+                MAIN + ":3: 'MINIMUM' has no value.");
     }
 
     @Test
@@ -426,20 +447,7 @@ class ConditionalExpansionTest {
         assertThat(unconfigured.texts()).containsExactly("JMPI", "END");
     }
 
-    @Test
-    void aConfiguredFlagThatIsNoNameIsReportedOnce() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty(), "GOOD", OptionalLong.empty()), List.of(),
-                ".IFDEF GOOD",
-                "  NOP",
-                ".ENDDEF",
-                ".DEFINE OTHER",
-                ".IFDEF OTHER",
-                ".ENDDEF");
 
-        assertThat(result.errors()).containsExactly(":0: Configured flag 'NO-NAME' is not a valid name:"
-                + " a flag name consists of letters, digits and _ and begins with a letter or _");
-        assertThat(result.texts()).containsExactly("NOP");
-    }
 
     @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {
@@ -695,8 +703,8 @@ class ConditionalExpansionTest {
 
         assertThat(result.errors()).containsExactly(
                 MAIN + ":1: Expected a comparison (=, ==, <>, !=, <, <=, >, >=) after the flag name of .IFDEF, found 'Y'",
-                MAIN + ":3: Unexpected ':' after the condition of .IFDEF",
-                MAIN + ":5: Expected an integer or a flag name after '>' in .IFDEF");
+                MAIN + ":3: Expected a number.",
+                MAIN + ":5: Expected an integer, a flag name or a computation after '>' in .IFDEF");
     }
 
     @Test
@@ -723,16 +731,148 @@ class ConditionalExpansionTest {
     }
 
     @Test
-    void aDefineWithATypedLiteralOrAVectorIsToldThatAConstantIsWrittenConst() {
+    void aDefineWithATypedLiteralAVectorOrANameThatIsNoFlagIsRejected() {
         Expansion result = expand(
                 ".DEFINE X DATA:5",
                 ".DEFINE Y 1|0",
-                ".DEFINE Z W");
+                ".DEFINE Z W",
+                ".IFDEF X",
+                "  NOP",
+                ".ENDDEF");
 
         assertThat(result.errors()).containsExactly(
-                MAIN + ":1: .DEFINE takes a flag name and an optional integer; a constant is written .CONST",
-                MAIN + ":2: .DEFINE takes a flag name and an optional integer; a constant is written .CONST",
-                MAIN + ":3: .DEFINE takes a flag name and an optional integer; a constant is written .CONST");
+                MAIN + ":1: Expected a number.",
+                MAIN + ":2: Expected a number.",
+                MAIN + ":3: 'W' is not a flag.");
+        assertThat(result.texts()).isEmpty();
+    }
+
+    // --- Computations ---
+
+    @Test
+    void aDefineTakesAComputationOverFlags() {
+        Expansion result = expand(
+                ".DEFINE ROWS 4",
+                ".DEFINE HALF (ROWS/2)",
+                ".IFDEF HALF = 2",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aComputedLeftSideIsCompared() {
+        Expansion result = expand(
+                ".DEFINE A 2",
+                ".IFDEF (A+1) = 3",
+                "  ADDI %DR0 DATA:1",
+                ".ENDDEF",
+                ".IFDEF (A+1) = 4",
+                "  ADDI %DR0 DATA:2",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("ADDI", "%DR0", "DATA", ":", "1");
+    }
+
+    @Test
+    void aComputationAloneHoldsWhenItCanBeComputed() {
+        Expansion result = expand(
+                ".DEFINE A 0",
+                ".IFDEF (A+1)",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aComputationAloneOverAFlagWithoutValueIsAnError() {
+        Expansion result = expand(
+                ".DEFINE A",
+                ".IFDEF (A+1)",
+                "  NOP",
+                ".ELSEDEF",
+                "  JMPI END",
+                ".ENDDEF");
+
+        assertThat(result.errors()).containsExactly(MAIN + ":2: 'A' has no value.");
+        assertThat(result.texts()).isEmpty();
+    }
+
+    @Test
+    void aComputationAloneOverAnUnsetFlagIsAnError() {
+        Expansion result = expand(
+                ".IFDEF (A+1)",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).containsExactly(MAIN + ":1: 'A' is not a flag.");
+        assertThat(result.texts()).isEmpty();
+    }
+
+    @Test
+    void aReservedNameCannotBeDefined() {
+        Expansion result = expand(
+                ".DEFINE SHL 1",
+                ".DEFINE TYPE",
+                ".IFDEF SHL",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).containsExactly(
+                MAIN + ":1: 'SHL' is an operator and cannot be defined.",
+                MAIN + ":2: 'TYPE' is a function and cannot be defined.");
+        assertThat(result.texts()).isEmpty();
+    }
+
+    @Test
+    void aFlagHoldsA64BitValue() {
+        Expansion result = expand(
+                ".DEFINE BIG 5000000000",
+                ".IFDEF BIG > 4000000000",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aRepeatCountIsComputedFromFlags() {
+        Expansion result = expand(
+                ".DEFINE ROWS 2",
+                ".REPEAT (ROWS*2)",
+                "  NOP",
+                ".ENDREPEAT");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP", "NOP", "NOP", "NOP");
+    }
+
+    @Test
+    void aCaretCountIsComputedFromFlags() {
+        Expansion result = expand(
+                ".DEFINE N 1",
+                "NOP^(N+1)");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP", "NOP");
+    }
+
+    @Test
+    void aRepeatCountThatCannotBeComputedIsReported() {
+        Expansion result = expand(
+                ".REPEAT ROWS",
+                "  NOP",
+                ".ENDREPEAT",
+                "JMPI END");
+
+        assertThat(result.errors()).containsExactly(MAIN + ":1: 'ROWS' is not a flag.");
+        assertThat(result.texts()).containsExactly("JMPI", "END");
     }
 
     // --- Macros and repetitions ---
@@ -882,9 +1022,11 @@ class ConditionalExpansionTest {
         List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
-        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), MAIN, options);
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
+        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), Map.of(), MAIN, MAIN,
+                options, features.operations(), new RuntimeInstructionSetAdapter(),
+                Flags.of(defines, features.operations().reservedNames()), diagnostics);
         features.preprocessorHandlers().forEach(context.handlers()::register);
         features.preprocessorBlocks().forEach(block ->
                 context.handlers().registerBlock(block.kind(), block.handler(), block.stored()));

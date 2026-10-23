@@ -1,5 +1,8 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestSymbolTables;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -39,7 +42,7 @@ class CallAnalysisHandlerTypeSafetyTest {
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
-    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0, "TEST", 0);
+    private static final SourceInfo SRC = new SourceInfo("test.s", 2, 0, "TEST", 0);
 
     @BeforeAll
     static void initInstructionSet() {
@@ -48,9 +51,9 @@ class CallAnalysisHandlerTypeSafetyTest {
 
     @BeforeEach
     void setUp() {
-        handler = new CallAnalysisHandler(new RuntimeInstructionSetAdapter());
+        handler = new CallAnalysisHandler(new RuntimeInstructionSetAdapter(), new OperationRegistry());
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
 
@@ -104,8 +107,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a data register, expected a location register"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'X' for LREF is a data register; expected a location register.");
     }
 
     @Test
@@ -117,8 +120,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a location register, expected a data register"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'X' for REF is a location register; expected a data register.");
     }
 
     @Test
@@ -129,8 +132,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a data register, expected a location register"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'P' for LREF is a data register; expected a location register.");
     }
 
     @Test
@@ -141,8 +144,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a location register, expected a data register"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'P' for REF is a location register; expected a data register.");
     }
 
     @Test
@@ -153,20 +156,20 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a label, expected a data register"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'MY_LABEL' for REF is a label; expected a data register.");
     }
 
     @Test
     void constantAsLref_reportsError() {
-        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new LiteralNode(new Value.Number(1), SRC), false)));
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new LiteralNode(new Value.Typed("DATA", 1), SRC), false)));
 
         CallNode call = callWithLref("MY_CONST");
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a literal, expected a location register"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'MY_CONST' for LREF is a literal; expected a location register.");
     }
 
     @Test
@@ -177,8 +180,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("cannot be a CALL argument"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'MATH' for REF is not a register or a label; expected a data register.");
     }
 
     @Test
@@ -189,8 +192,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("cannot be a CALL argument"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'MATH' for LREF is not a register or a label; expected a location register.");
     }
 
     @Test
@@ -199,8 +202,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("not defined"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'UNKNOWN' for REF: the name is not defined.");
     }
 
     @Test
@@ -209,8 +212,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("Cannot pass 'SOME_NAME' as VAL argument"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'SOME_NAME' for VAL: the name is not defined.");
     }
 
     @Test
@@ -221,8 +224,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a label, expected a register, a literal or a vector"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .containsExactly("test.s:2: Invalid argument: 'MY_LABEL' for VAL is a label; expected a register, a typed literal or a vector.");
     }
 
     @Test
@@ -252,14 +255,14 @@ class CallAnalysisHandlerTypeSafetyTest {
 
     @Test
     void constantAsLval_reportsError() {
-        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new LiteralNode(new Value.Number(1), SRC), false)));
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new LiteralNode(new Value.Typed("DATA", 1), SRC), false)));
 
         CallNode call = callWithLval("MY_CONST");
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("is a literal, expected a location register or a label"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .contains("test.s:2: Invalid argument: 'MY_CONST' for LVAL is a literal; expected a location register or a label.");
     }
 
     @Test
@@ -268,8 +271,8 @@ class CallAnalysisHandlerTypeSafetyTest {
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("Cannot pass 'SOME_NAME' as LVAL argument"))).isTrue();
+        assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
+                .contains("test.s:2: Invalid argument: 'SOME_NAME' for LVAL: the name is not defined.");
     }
 
     private CallNode callWithRef(String argName) {

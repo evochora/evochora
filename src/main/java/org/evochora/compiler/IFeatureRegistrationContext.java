@@ -18,6 +18,8 @@ import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.expression.IOperation;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
@@ -25,8 +27,9 @@ import org.evochora.compiler.model.ast.AstNode;
  * Pure declarative registration interface for compiler features.
  *
  * <p>Features call these methods during {@link ICompilerFeature#register} to declare
- * which handlers they contribute to each compiler phase. The one thing a feature reads here
- * is the instruction set, which it hands to the handlers that need it.</p>
+ * which handlers they contribute to each compiler phase. The two things a feature reads here
+ * are the instruction set and the operations of computations, which it hands to the handlers
+ * that need them.</p>
  *
  * <p>The concrete implementation ({@link FeatureRegistry}) collects all registrations
  * and provides getter methods for the compiler to read them back.</p>
@@ -44,6 +47,27 @@ public interface IFeatureRegistrationContext {
 	 * @return The compiler's view of the instruction set.
 	 */
 	IInstructionSet isa();
+
+	// Computations, for every phase that computes
+
+	/**
+	 * Registers an operation computations can apply: an operator or a function. Several operations
+	 * under one name and notation are the overloads of one operation.
+	 *
+	 * @param operation The operation.
+	 * @throws IllegalStateException if the operation breaks a rule of the {@link OperationRegistry};
+	 *         the message names the operation.
+	 */
+	void operation(IOperation operation);
+
+	/**
+	 * The operations of this compilation, for handlers that read or evaluate computations. A
+	 * handler takes the registry when it is registered and reads it when its phase runs, after
+	 * every feature has registered.
+	 *
+	 * @return The registry the features fill.
+	 */
+	OperationRegistry operations();
 
 	// Phase 1: Lexer, which finds the files
 
@@ -73,13 +97,15 @@ public interface IFeatureRegistrationContext {
 	 * Registers a character sequence the lexer emits as one
 	 * {@link org.evochora.compiler.model.token.TokenType#SYMBOL} token with that text. The lexer
 	 * tries the registered symbols at the start of every token, longest first, before any of its
-	 * own cases, so a symbol may consist only of the characters {@code ! & * + , . / < = > ? @ ^ ~ -};
-	 * the single characters {@code .} and {@code -} are taken by the lexer and cannot be registered
-	 * alone. The same symbol registered by several features is one symbol.
+	 * own cases, so a symbol may consist only of the characters {@code ! & * + , . / < = > ? ^ ~ -};
+	 * a single character the lexer reads by a fixed case
+	 * ({@link org.evochora.compiler.frontend.lexer.Tokenizer#FIXED_CHARACTERS}, such as {@code .},
+	 * {@code -} or {@code ,}) cannot be registered alone, while a longer symbol such as {@code ..}
+	 * can. The same symbol registered by several features is one symbol.
 	 *
-	 * @param symbol The character sequence, for example {@code ".."} or {@code "@+"}.
+	 * @param symbol The character sequence, for example {@code ".."} or {@code "+"}.
 	 * @throws IllegalArgumentException if the symbol is empty, contains a character outside the
-	 *         alphabet, or is {@code "."} or {@code "-"}; the message names the symbol.
+	 *         alphabet, or is a single fixed character of the lexer; the message names the symbol.
 	 */
 	void lexerSymbol(String symbol);
 

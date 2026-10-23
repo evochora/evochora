@@ -2,10 +2,14 @@ package org.evochora.compiler;
 
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.model.symbols.SymbolTable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Builds fully-populated registries for tests, mirroring what {@link Compiler} does.
@@ -27,6 +31,16 @@ public final class TestRegistries {
         registry.registerAllCollectors(featureRegistry.symbolCollectors());
 
         return registry;
+    }
+
+    /**
+     * Builds the operations of computations the standard features register, as {@link Compiler}
+     * hands them to the parser.
+     */
+    public static OperationRegistry operations() {
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        return featureRegistry.operations();
     }
 
     /**
@@ -53,5 +67,15 @@ public final class TestRegistries {
         featureRegistry.preprocessorBlocks().forEach(block ->
                 registry.registerBlock(block.kind(), block.handler(), block.stored()));
         featureRegistry.preprocessorTopLevelOnly().forEach(registry::registerTopLevelOnly);
+    }
+
+    /**
+     * Builds a compiler with the standard features and one feature of the test after them, as a
+     * test that looks into a compilation needs it from outside this package.
+     */
+    public static Compiler compilerWith(ICompilerFeature feature) {
+        List<ICompilerFeature> features = new ArrayList<>(StandardFeatures.all());
+        features.add(feature);
+        return new Compiler(features);
     }
 }

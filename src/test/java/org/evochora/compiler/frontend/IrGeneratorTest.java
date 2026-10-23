@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -86,14 +87,15 @@ public class IrGeneratorTest {
             fail("Lexer errors: " + diagnostics.summary());
         }
 
-        Parser parser = new Parser(tokens, diagnostics, allHandlers());
+        Parser parser = new Parser(tokens, diagnostics, allHandlers(), null, java.util.Map.of(),
+                TestRegistries.operations(), new RuntimeInstructionSetAdapter());
         List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) {
             fail("Parser errors: " + diagnostics.summary());
         }
 
         String rootAliasChain = "";
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
         new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
@@ -122,10 +124,38 @@ public class IrGeneratorTest {
 
     @Test
     @Tag("unit")
+    void aComputedOperandBecomesALiteral() {
+        IrProgram ir = compileToIr(String.join("\n",
+                ".CONST WIDTH 99",
+                "SETI %DR0 DATA:(WIDTH+1)"));
+
+        IrInstruction seti = ir.items().stream()
+                .filter(IrInstruction.class::isInstance).map(IrInstruction.class::cast)
+                .filter(i -> i.opcode().equals("SETI")).findFirst().orElseThrow();
+        assertThat(seti.operands().get(1)).isEqualTo(new IrLiteral(new Value.Typed("DATA", 100)));
+    }
+
+    @Test
+    @Tag("unit")
+    void aLayoutValuedConstantCarriesItsTree() {
+        IrProgram ir = compileToIr(String.join("\n",
+                ".LABEL TARGET NOP",
+                ".CONST X (TARGET)"));
+
+        IrDirective constValue = ir.items().stream()
+                .filter(IrDirective.class::isInstance).map(IrDirective.class::cast)
+                .filter(d -> d.name().equals("const_value")).findFirst().orElseThrow();
+        assertThat(constValue.args().get("name")).isEqualTo(new IrValue.Str("X"));
+        assertThat(constValue.args().get("value")).isInstanceOfSatisfying(IrValue.Expression.class,
+                value -> assertThat(value.expression().text()).isEqualTo("TARGET"));
+    }
+
+    @Test
+    @Tag("unit")
     void generatesIrForNewCallSyntax() {
         String src = """
             .PROC myProc REF rA VAL v1
-                CALL myProc REF %DR1 VAL 42
+                CALL myProc REF %DR1 VAL DATA:42
             .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
@@ -147,7 +177,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.valOperands().size());
         assertInstanceOf(IrLiteral.class, callInstruction.valOperands().get(0));
-        assertEquals(new Value.Number(42), ((IrLiteral) callInstruction.valOperands().get(0)).value());
+        assertEquals(new Value.Typed("DATA", 42), ((IrLiteral) callInstruction.valOperands().get(0)).value());
     }
 
     @Test

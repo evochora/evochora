@@ -1,5 +1,6 @@
 package org.evochora.runtime.model;
 
+import java.util.Locale;
 import org.evochora.runtime.Config;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -152,7 +153,7 @@ class MoleculeTypeRegistryTest {
 
         // Verify uppercase
         String codeName = MoleculeTypeRegistry.typeToName(Config.TYPE_CODE);
-        assertThat(codeName).isEqualTo(codeName.toUpperCase());
+        assertThat(codeName).isEqualTo(codeName.toUpperCase(Locale.ROOT));
     }
     
     @Test

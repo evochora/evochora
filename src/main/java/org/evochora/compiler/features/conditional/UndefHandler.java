@@ -2,6 +2,7 @@ package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.Export;
+import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -21,7 +22,7 @@ public class UndefHandler implements IPreProcessorHandler {
         int start = preProcessor.getCurrentIndex();
         Token directive = preProcessor.peek();
         DirectiveLine line = preProcessor.lineOf(start);
-        Flags flags = PreprocessorFlags.in(preProcessor, preProcessorContext);
+        Flags flags = preProcessorContext.flags();
 
         if (!line.startsStatement()) {
             // The directive owns its statement; a word before it without a statement end would lose

@@ -1,5 +1,7 @@
 package org.evochora.runtime.isa;
 
+import java.util.Locale;
+
 /**
  * Utility class for instruction argument type operations.
  * Provides centralized mapping from InstructionArgumentType enum values to their string representations
@@ -45,7 +47,7 @@ public final class InstructionArgumentTypeUtils {
             return null;
         }
         
-        return switch (displayString.toUpperCase()) {
+        return switch (displayString.toUpperCase(Locale.ROOT)) {
             case "REGISTER" -> InstructionArgumentType.REGISTER;
             case "LITERAL" -> InstructionArgumentType.LITERAL;
             case "VECTOR" -> InstructionArgumentType.VECTOR;

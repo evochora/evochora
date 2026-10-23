@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.model.expression.Value;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -71,6 +72,24 @@ public final class Nd {
 			r[i] = (int) c;
 		}
 		return r;
+	}
+
+	/**
+	 * Turns a vector or a position into a coordinate, as {@link #coordinate(List, SourceInfo)}
+	 * turns its components.
+	 *
+	 * @param value A vector or a position.
+	 * @param src   The position of the directive, for the message.
+	 * @return The coordinate.
+	 * @throws CompilationException if a component is outside the range of a coordinate.
+	 * @throws IllegalArgumentException if the value is neither a vector nor a position.
+	 */
+	public static int[] coordinate(Value value, SourceInfo src) throws CompilationException {
+		return switch (value) {
+			case Value.Vector vector -> coordinate(vector.components(), src);
+			case Value.Position position -> coordinate(position.components(), src);
+			default -> throw new IllegalArgumentException("Neither a vector nor a position: " + value.text());
+		};
 	}
 
 	/**

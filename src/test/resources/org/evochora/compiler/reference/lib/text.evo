@@ -1,0 +1,5 @@
+# A file the main program includes with .SOURCE: its names are the main program's.
+
+#> needs: source, ctx, constdir
+.CONST SOURCED DATA:9
+#<

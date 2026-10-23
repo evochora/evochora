@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.link.features;
 
+import java.util.Locale;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ir.IrLiteral;
 import org.evochora.compiler.api.SourceInfo;
@@ -42,8 +43,10 @@ class CallSiteBindingRuleTest {
         rule = new CallSiteBindingRule();
         context = new LinkingContext(stubIsa);
         layout = new LayoutResult(
-                Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyList(),
+                Collections.emptyMap(),
                 Collections.emptyList()
         );
         dummySource = new SourceInfo("test.s", 1, 0, "", 0);
@@ -240,7 +243,7 @@ class CallSiteBindingRuleTest {
 
         @Override
         public Optional<Integer> resolveRegisterToken(String token) {
-            String upper = token.toUpperCase().replace("%", "");
+            String upper = token.toUpperCase(Locale.ROOT).replace("%", "");
             // Order matters: check longer prefixes first to avoid "LR" matching "PLR"
             if (upper.startsWith("PDR")) {
                 return parseIndex(upper, "PDR", RegisterBank.PDR.base);

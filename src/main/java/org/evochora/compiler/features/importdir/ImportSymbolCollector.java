@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
@@ -56,14 +57,14 @@ public class ImportSymbolCollector implements ISymbolCollector {
             return;
         }
         for (ImportNode.UsingClause using : importNode.usings()) {
-            String sourceChain = currentScope.get().aliases().get(using.sourceAlias().toUpperCase());
+            String sourceChain = currentScope.get().aliases().get(using.sourceAlias().toUpperCase(Locale.ROOT));
             if (sourceChain != null) {
-                importedScope.get().bindAlias(using.targetAlias().toUpperCase(), sourceChain);
+                importedScope.get().bindAlias(using.targetAlias().toUpperCase(Locale.ROOT), sourceChain);
             }
         }
         for (ImportNode.ValueBinding binding : importNode.values()) {
             importedScope.get().update(Requirements.class, Requirements::none,
-                    r -> r.withBoundValue(binding.name().toUpperCase(), binding.value()));
+                    r -> r.withBoundValue(binding.name().toUpperCase(Locale.ROOT), binding.value()));
         }
     }
 }

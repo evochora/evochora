@@ -8,6 +8,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Handles the {@code ^} directive, which is shorthand for a {@code .REPEAT} block.
@@ -17,7 +18,10 @@ import java.util.List;
  *
  * <p>The handler scans backward from the {@code ^} token to find the statement
  * body on the current line, then replaces the entire sequence with the
- * equivalent block. The tokens it adds carry the position of the {@code ^}.</p>
+ * equivalent block. The tokens it adds carry the position of the {@code ^}. The count is a
+ * number, a flag name or a computation; it is computed here, so that a count that cannot be
+ * computed or lies out of range is reported before the block is built, and the block takes the
+ * tokens of the count as they are written.</p>
  *
  * <p>Labels are preserved and excluded from the repeat body, so
  * {@code L1: NOP^3} becomes {@code L1:} followed by the block repeating {@code NOP}.</p>
@@ -31,8 +35,19 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume ^
 
-        Token countToken = preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");
-        long written = (Long) countToken.value();
+        List<Token> countTokens = RepeatCount.at(preProcessor, preProcessorContext, preProcessor.getCurrentIndex());
+        if (countTokens.isEmpty()) {
+            // No count stands at the cursor, so this reports the missing count
+            preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");
+        }
+        Token countToken = countTokens.getFirst();
+        for (int i = 0; i < countTokens.size(); i++) preProcessor.advance();
+        Optional<Long> evaluated = preProcessorContext.evaluate(countTokens);
+        if (evaluated.isEmpty()) {
+            // The count that could not be computed has been reported where it stands
+            return;
+        }
+        long written = evaluated.get();
         if (written > Integer.MAX_VALUE) {
             preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",
                     countToken.source().fileName(), countToken.source().lineNumber());
@@ -73,7 +88,7 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
         // Build replacement: .REPEAT n, NEWLINE, BODY, NEWLINE, .ENDREPEAT
         List<Token> replacement = new ArrayList<>();
         replacement.add(synthetic(TokenType.DIRECTIVE, ".REPEAT", caretToken));
-        replacement.add(countToken);
+        replacement.addAll(countTokens);
         replacement.add(synthetic(TokenType.NEWLINE, ";", caretToken));
         replacement.addAll(bodyTokens);
         replacement.add(synthetic(TokenType.NEWLINE, ";", caretToken));

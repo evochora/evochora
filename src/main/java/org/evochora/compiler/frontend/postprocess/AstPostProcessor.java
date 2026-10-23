@@ -1,17 +1,24 @@
 package org.evochora.compiler.frontend.postprocess;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.ScopeTracker;
+import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A dedicated compiler phase that transforms the AST after semantic analysis.
@@ -28,6 +35,11 @@ import java.util.Map;
  * whose node offers no binding is referred to by its qualified name, as the symbol table
  * resolved it with the module's imports and export rules. An identifier that names no symbol
  * is left as it is.</p>
+ *
+ * <p>A computation is replaced by what phase 4 recorded for it in the symbol table: a literal
+ * for a value, or the tree only the layout computes, in which the evaluation qualified every
+ * name already, as the bridge to the symbol table answers a name the layout knows with its
+ * qualified name. A computation without a recorded outcome stays as it is.</p>
  */
 public class AstPostProcessor implements IPostProcessContext {
 
@@ -35,7 +47,9 @@ public class AstPostProcessor implements IPostProcessContext {
     private final ModuleContextTracker contextTracker;
     private final ScopeTracker scopeTracker;
     private final PostProcessHandlerRegistry registry;
-    private final Map<AstNode, AstNode> replacements = new HashMap<>();
+    // Keyed by node identity, as the symbol table keys what it records per node: a replacement
+    // belongs to the node it was collected for, and two equal nodes are two places in the tree.
+    private final Map<AstNode, AstNode> replacements = new IdentityHashMap<>();
 
     /**
      * Constructs a post-processor with handler registry, module context tracker, and scope tracker.
@@ -97,6 +111,9 @@ public class AstPostProcessor implements IPostProcessContext {
             if (replacement != null) {
                 replacements.put(identifier, replacement);
             }
+        } else if (node instanceof ExpressionNode expression) {
+            symbolTable.resultOf(expression).ifPresent(outcome ->
+                    replacements.put(expression, recorded(expression, outcome)));
         }
 
         SymbolTable.Scope savedScope = scopeTracker.enterNode(node);
@@ -104,6 +121,37 @@ public class AstPostProcessor implements IPostProcessContext {
             collectPass(child);
         }
         scopeTracker.leaveNode(savedScope);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<ExpressionOutcome> definitionValue(String name, SourceInfo at) {
+        return symbolTable.resolve(name, at) instanceof ResolvedSymbol resolved
+                ? symbolTable.definitionValueOf(resolved.symbol().node())
+                : Optional.empty();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The tree walker that applies the replacements takes the replacement of a node before it
+     * descends into the node, so what was collected for the nodes inside it is not applied.
+     */
+    @Override
+    public void replace(AstNode node, AstNode replacement) {
+        replacements.put(node, replacement);
+    }
+
+    /**
+     * Builds the node a computation is replaced by: a literal of its value at the computation's
+     * position, or the computation carrying the tree that remains.
+     */
+    private static AstNode recorded(ExpressionNode expression, ExpressionOutcome outcome) {
+        return outcome.value() != null
+                ? new LiteralNode(outcome.value(), expression.sourceInfo())
+                : new ExpressionNode(outcome.remaining(), expression.sourceInfo());
     }
 
     /**

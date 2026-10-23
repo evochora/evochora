@@ -3,6 +3,7 @@ package org.evochora.runtime.isa;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -111,7 +112,7 @@ class InstructionRegistryTest {
             assertThat(ids.add(info.opcodeId()))
                     .as("opcode ID %d of %s is used twice", info.opcodeId(), info.name())
                     .isTrue();
-            assertThat(names.put(info.name().toUpperCase(), info.name()))
+            assertThat(names.put(info.name().toUpperCase(Locale.ROOT), info.name()))
                     .as("instruction name %s is used twice", info.name())
                     .isNull();
         }

@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.postprocess;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.frontend.ScopeTracker;
@@ -7,10 +8,18 @@ import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
+import org.evochora.compiler.model.expression.Kind;
+import org.evochora.compiler.model.expression.LiteralExpression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
+import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.features.constdir.ConstNode;
+import org.evochora.compiler.features.importdir.ValueBindingNode;
+import org.evochora.compiler.features.importdir.ValueRequirementNode;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -39,7 +48,7 @@ class AstPostProcessorTest {
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
 
         // Register a default module and set it as current
         symbolTable.registerModule("TEST", "test.s");
@@ -142,7 +151,7 @@ class AstPostProcessorTest {
     void testProcess_ExportedLabelOfImportedModule_ReplacedByQualifiedName() {
         // Given: an exported label in module LIB and an import alias LIB in module MAIN
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        SymbolTable st = new SymbolTable(diags);
+        SymbolTable st = TestSymbolTables.symbolTable(diags);
         st.registerModule("LIB", "lib.s");
         st.registerModule("MAIN", "main.s");
         st.setCurrentModule("LIB");
@@ -164,7 +173,7 @@ class AstPostProcessorTest {
     void testProcess_NonExportedLabelOfImportedModule_NotReplaced() {
         // Given: a label in module LIB that is not exported
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        SymbolTable st = new SymbolTable(diags);
+        SymbolTable st = TestSymbolTables.symbolTable(diags);
         st.registerModule("LIB", "lib.s");
         st.registerModule("MAIN", "main.s");
         st.setCurrentModule("LIB");
@@ -271,7 +280,7 @@ class AstPostProcessorTest {
     void testProcess_AliasWithoutRegNode_NotBoundToRegister() {
         // Create a fresh symbol table with an ALIAS symbol that has no RegNode (node=null)
         DiagnosticsEngine freshDiags = new DiagnosticsEngine();
-        SymbolTable freshSt = new SymbolTable(freshDiags);
+        SymbolTable freshSt = TestSymbolTables.symbolTable(freshDiags);
         freshSt.registerModule("TEST", "test.s");
         freshSt.setCurrentModule("TEST");
         freshSt.define(new Symbol("ORPHAN", createSourceInfo(), Symbol.Type.MODULE_ALIAS));
@@ -333,7 +342,7 @@ class AstPostProcessorTest {
         String mainChain = "MAIN";
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        SymbolTable st = new SymbolTable(diags);
+        SymbolTable st = TestSymbolTables.symbolTable(diags);
         st.registerModule(mainChain, "/main.evo");
         st.registerModule(modAChain, "/mod_a.evo");
         st.registerModule(modBChain, "/mod_b.evo");
@@ -411,6 +420,87 @@ class AstPostProcessorTest {
         assertThat(resultInstr).isInstanceOf(InstructionNode.class);
         assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(LiteralNode.class);
         assertThat(((LiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 99));
+    }
+
+    @Test
+    void aComputationWithAValueBecomesALiteral() {
+        ExpressionNode computation = new ExpressionNode(new NameExpression("WIDTH", createSourceInfo(),
+                createSourceInfo().plusColumns(5)), createSourceInfo());
+        symbolTable.recordResult(computation, ExpressionOutcome.of(new Value.Typed("DATA", 100)));
+        InstructionNode instr = new InstructionNode("SETI",
+                List.of(new RegisterNode("%DR0", createSourceInfo()), computation), createSourceInfo());
+
+        InstructionNode result = (InstructionNode) processor.process(instr);
+
+        assertThat(result.arguments().get(1)).isEqualTo(new LiteralNode(new Value.Typed("DATA", 100), createSourceInfo()));
+    }
+
+    @Test
+    void aComputationOnlyTheLayoutKnowsKeepsItsTreeWithQualifiedNames() {
+        SourceInfo end = new SourceInfo("test.s", 10, 20, "TEST", 0);
+        ExpressionNode computation = new ExpressionNode(
+                new OperationExpression("+", false, List.of(new NameExpression("TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
+                        new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo(), end)), createSourceInfo(), end),
+                createSourceInfo());
+        OperationExpression remaining = new OperationExpression("+", false, List.of(
+                new NameExpression("TEST.TARGET", createSourceInfo(), createSourceInfo().plusColumns(6)),
+                new LiteralExpression(new Value.Vector(List.of(0L, 1L)), createSourceInfo(), end)), createSourceInfo(), end);
+        symbolTable.recordResult(computation, ExpressionOutcome.later(remaining, Kind.POSITION));
+        ConstNode constant = new ConstNode("X", createSourceInfo(), computation);
+
+        ConstNode result = (ConstNode) processor.process(constant);
+
+        assertThat(result.value()).isEqualTo(new ExpressionNode(remaining, createSourceInfo()));
+        assertThat(((ExpressionNode) result.value()).end()).isEqualTo(end);
+    }
+
+    @Test
+    void aNameOfALayoutValuedConstantBecomesItsQualifiedName() {
+        ExpressionNode computation = new ExpressionNode(new NameExpression("@", createSourceInfo(),
+                createSourceInfo().plusColumns(1)), createSourceInfo());
+        ConstNode constant = new ConstNode("HERE", createSourceInfo(), computation);
+        symbolTable.define(new Symbol("HERE", createSourceInfo(), Symbol.Type.CONSTANT, constant));
+        symbolTable.recordDefinitionValue(constant, ExpressionOutcome.later(new NameExpression("@", createSourceInfo(),
+                createSourceInfo().plusColumns(1)), Kind.POSITION));
+
+        AstNode result = processor.process(new IdentifierNode("HERE", createSourceInfo()));
+
+        assertThat(result).isEqualTo(new IdentifierNode("TEST.HERE", createSourceInfo()));
+    }
+
+    /**
+     * A value requirement whose bound value only the layout computes names itself: the whole node
+     * is replaced, so the phase's own replacement of the identifier in the value slot, the
+     * qualified name, does not take the place of the computation. The computation ends right
+     * after the requirement's name.
+     */
+    @Test
+    void aValueRequirementWithARecordedValueIsReplacedAsAWhole() {
+        ExpressionNode binding = new ExpressionNode(new NameExpression("@", createSourceInfo(),
+                createSourceInfo().plusColumns(1)), createSourceInfo());
+        ValueBindingNode definition = new ValueBindingNode(binding);
+        symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
+        NameExpression self = new NameExpression("TEST.P", createSourceInfo(), createSourceInfo().plusColumns(1));
+        symbolTable.recordDefinitionValue(definition, ExpressionOutcome.later(self, Kind.POSITION));
+        ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
+                null, null, null, false, createSourceInfo());
+
+        ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
+
+        assertThat(result.value()).isEqualTo(new ExpressionNode(self, createSourceInfo()));
+        assertThat(((ExpressionNode) result.value()).end()).isEqualTo(createSourceInfo().plusColumns(1));
+    }
+
+    @Test
+    void aValueRequirementWithoutARecordedValueKeepsTheReplacementOfItsName() {
+        ValueBindingNode definition = new ValueBindingNode(new LiteralNode(new Value.Typed("DATA", 3), createSourceInfo()));
+        symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
+        ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
+                null, null, null, false, createSourceInfo());
+
+        ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
+
+        assertThat(result.value()).isEqualTo(new LiteralNode(new Value.Typed("DATA", 3), createSourceInfo()));
     }
 
     private SourceInfo createSourceInfo() {

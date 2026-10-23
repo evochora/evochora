@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -892,7 +893,7 @@ public abstract class Instruction {
                                      int family, int operation, int index, String name,
                                      boolean parallelExecuteSafe, OperandSource... sources) {
         int fullId = opcodeIdOf(family, index) | Config.TYPE_CODE;
-        String upperCaseName = name.toUpperCase();
+        String upperCaseName = name.toUpperCase(Locale.ROOT);
         // Checked before anything is written, so a rejected registration leaves the registry as it was.
         if (REGISTERED_INSTRUCTIONS_BY_ID.containsKey(fullId)) {
             throw new IllegalStateException("Opcode " + fullId + " is already registered as "
@@ -980,7 +981,7 @@ public abstract class Instruction {
         if (token == null) {
             return Optional.empty();
         }
-        String u = token.toUpperCase();
+        String u = token.toUpperCase(Locale.ROOT);
         try {
             for (RegisterBank bank : RegisterBank.values()) {
                 if (bank.count > 0 && u.startsWith(bank.prefix)) {
@@ -1092,7 +1093,7 @@ public abstract class Instruction {
      * @param name The name of the instruction.
      * @return The instruction ID.
      */
-    public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
+    public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase(Locale.ROOT)); }
 
     /**
      * Gets the operand sources for an instruction by its opcode ID.
@@ -1195,7 +1196,7 @@ public abstract class Instruction {
      * @throws IllegalStateException if no instruction is registered under that name
      */
     private static int registeredId(String name) {
-        Integer opcodeId = NAME_TO_ID.get(name.toUpperCase());
+        Integer opcodeId = NAME_TO_ID.get(name.toUpperCase(Locale.ROOT));
         if (opcodeId == null) {
             throw new IllegalStateException("Instruction " + name + " is not registered");
         }

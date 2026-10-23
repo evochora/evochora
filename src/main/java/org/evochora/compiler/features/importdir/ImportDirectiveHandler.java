@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -184,6 +185,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
 
     private static boolean isKindWord(IParsingContext context) {
         return !context.isAtEnd() && context.check(TokenType.IDENTIFIER)
-                && KIND_WORDS.contains(context.peek().text().toUpperCase());
+                && KIND_WORDS.contains(context.peek().text().toUpperCase(Locale.ROOT));
     }
 }

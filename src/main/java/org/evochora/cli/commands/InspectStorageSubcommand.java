@@ -2,6 +2,7 @@ package org.evochora.cli.commands;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -210,7 +211,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
     }
 
     private void outputTickData(TickData tick, TickDataChunk chunk, TickDelta delta, String format) {
-        switch (format.toLowerCase()) {
+        switch (format.toLowerCase(Locale.ROOT)) {
             case "json":
                 Gson gson = new GsonBuilder().setPrettyPrinting().create();
                 spec.commandLine().getOut().println(gson.toJson(tick));

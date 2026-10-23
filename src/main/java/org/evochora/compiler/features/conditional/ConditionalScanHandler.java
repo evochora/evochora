@@ -122,7 +122,8 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
 
     /**
      * Decides a head. A head that does not stand alone on its line is invalid, as the
-     * preprocessor finds it so; so is a condition the preprocessor would reject or cannot evaluate.
+     * preprocessor finds it so; so is a condition the preprocessor would reject, and one with a
+     * value that cannot be computed, which the preprocessor reports.
      */
     private static Decision decide(DirectiveLine line, IDependencyScanContext ctx) {
         if (!line.standsAlone()) {
@@ -130,7 +131,9 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
         }
         try {
             Condition condition = Condition.parse(line.word(), line.operands());
-            return condition.holds(Flags.inScan(ctx)) ? Decision.HOLDS : Decision.FAILS;
+            return condition.holds(ctx.flags(), ctx::evaluate)
+                    .map(holds -> holds ? Decision.HOLDS : Decision.FAILS)
+                    .orElse(Decision.INVALID);
         } catch (Condition.Invalid invalid) {
             return Decision.INVALID;
         }

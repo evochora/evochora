@@ -54,8 +54,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot use 'LIB.PRIVATE' as an argument: 'PRIVATE' of LIB is not marked EXPORT.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot use 'LIB.PRIVATE' as an argument: 'PRIVATE' of LIB is not marked EXPORT.");
     }
 
     @Test
@@ -69,8 +68,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Macro 'INC' expects 1 arguments, but got 2")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageContaining("main.evo:5: Macro 'INC' expects 1 arguments, but got 2");
     }
 
     @Test
@@ -89,9 +87,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define macro 'INC' differently at")
-                .hasMessageContaining("main.evo:2: first defined at")
-                .hasMessageContaining("macros.evo:1 with another body");
+                .hasMessageFindingMatch("main\\.evo:2: Cannot define macro 'INC' differently at \\S*main\\.evo:2: first defined at \\S*macros\\.evo:1 with another body\\.");
     }
 
     @Test
@@ -99,14 +95,14 @@ class CompilerDiagnosticsTest {
         write("lib.evo",
                 "  NOP");
         write("main.evo",
+                "# A comment line.",
                 ".IMPORT \"lib.evo\"",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected AS after .IMPORT path.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Expected AS after .IMPORT path.");
     }
 
     @Test
@@ -121,34 +117,33 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected AS after .IMPORT path.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Expected AS after .IMPORT path.");
     }
 
     @Test
     void importOfAMissingFileNamesTheFileAndTheLine() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".IMPORT \"nowhere.evo\" AS X",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Module file not found: nowhere.evo")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Module file not found: nowhere.evo");
     }
 
     @Test
     void sourceOfAMissingFileNamesTheFileAndTheLine() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".SOURCE \"nowhere.evo\"",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Source file not found: nowhere.evo")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Source file not found: nowhere.evo");
     }
 
     /**
@@ -298,8 +293,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unexpected '^' after the path of .SOURCE.")
-                .hasMessageContaining("main.evo:2")
+                .hasMessageContaining("main.evo:2: Unexpected '^' after the path of .SOURCE.")
                 .hasMessageNotContaining("must be a literal");
     }
 
@@ -314,8 +308,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unexpected '^' after the alias and its USING clauses of .IMPORT.")
-                .hasMessageContaining("main.evo:2")
+                .hasMessageContaining("main.evo:2: Unexpected '^' after the alias and its USING clauses of .IMPORT.")
                 .hasMessageNotContaining("must be a literal")
                 .hasMessageNotContaining("Unexpected token");
     }
@@ -358,6 +351,7 @@ class CompilerDiagnosticsTest {
                 "D:",
                 "  NOP");
         write("lib.evo",
+                "# A comment line.",
                 ".REQUIRE MODULE \"dep.evo\" AS DEP EXTRA",
                 "L:",
                 "  NOP");
@@ -369,8 +363,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unexpected 'EXTRA' after the alias of .REQUIRE.")
-                .hasMessageContaining("lib.evo:1");
+                .hasMessageContaining("lib.evo:2: Unexpected 'EXTRA' after the alias of .REQUIRE.");
     }
 
     @Test
@@ -401,8 +394,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".IMPORT may not stand inside a .MACRO body; the body opened at ")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageFindingMatch("main\\.evo:2: \\.IMPORT may not stand inside a \\.MACRO body; the body opened at \\S*main\\.evo:1");
     }
 
     @Test
@@ -417,8 +409,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PROC may stand only at the module level.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: .PROC may stand only at the module level.");
     }
 
     @Test
@@ -434,8 +425,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REQUIRE not allowed in a .SOURCE file")
-                .hasMessageContaining("lib.evo:3");
+                .hasMessageContaining("lib.evo:3: .REQUIRE not allowed in a .SOURCE file");
     }
 
     @Test
@@ -450,8 +440,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REQUIRE not allowed in a .SOURCE file")
-                .hasMessageContaining("lib.evo:2");
+                .hasMessageContaining("lib.evo:2: .REQUIRE not allowed in a .SOURCE file");
     }
 
     @Test
@@ -469,8 +458,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".IMPORT not allowed in a .SOURCE file")
-                .hasMessageContaining("lib.evo:3");
+                .hasMessageContaining("lib.evo:3: .IMPORT not allowed in a .SOURCE file");
     }
 
     @Test
@@ -484,8 +472,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected repeat count after .REPEAT")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Expected repeat count after .REPEAT");
     }
 
     @Test
@@ -496,21 +483,20 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Register '%DR999' is out of bounds. Valid range: %DR0-%DR")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Register '%DR999' is out of bounds. Valid range: %DR0-%DR7.");
     }
 
     @Test
     void registerIndexBeyondTheBankIsRejectedInARegDirectiveToo() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".REG %X %DR999",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Register '%DR999' is out of bounds. Valid range: %DR0-%DR")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Register '%DR999' is out of bounds. Valid range: %DR0-%DR7.");
     }
 
     @Test
@@ -521,21 +507,20 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Register '%FDR0' is reserved for procedure parameters. Use the parameter's name instead.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Register '%FDR0' is reserved for procedure parameters. Use the parameter's name instead.");
     }
 
     @Test
     void aProcedureScopedRegisterAliasedOutsideAProcedureNamesTheScope() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".REG %X %PDR0",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Register '%PDR0' is only available inside a procedure.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Register '%PDR0' is only available inside a procedure.");
     }
 
     @Test
@@ -600,6 +585,67 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:5");
     }
 
+    /**
+     * On a toroidal world a coordinate a world size from another lands on its cell, wherever the
+     * program starts: code laid over code across the wrap is a conflict like code laid over code.
+     */
+    @Test
+    void codeLaidOverCodeAcrossTheWrapNamesBothLines() throws Exception {
+        write("main.evo",
+                ".ORG 0|0",
+                "START:",
+                "  NOP",
+                ".ORG 100|0",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [100, 0] lands on the cell of [0, 0], which is already occupied by a label at")
+                .hasMessageFindingMatch("by a label at \\S*main\\.evo:2\\. Cannot place new item at \\S*main\\.evo:5\\.");
+    }
+
+    @Test
+    void aPlacementLaidOverItselfAcrossTheWrapNamesItsLine() throws Exception {
+        write("main.evo",
+                ".PLACE DATA:5 0:2:100|5",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [100, 5] lands on the cell of [0, 5], which is already occupied by a .PLACE at")
+                .hasMessageFindingMatch("by a \\.PLACE at \\S*main\\.evo:1\\. Cannot place new item at \\S*main\\.evo:1\\.");
+    }
+
+    /**
+     * On a bounded world two cells a world size or more apart along an axis cannot both lie in
+     * it, wherever the program starts; cells one less apart can.
+     */
+    @Test
+    void cellsTooFarApartForABoundedWorldNameBothLines() throws Exception {
+        EnvironmentProperties bounded = new EnvironmentProperties(new int[]{100, 100}, false);
+        write("main.evo",
+                ".PLACE DATA:5 -1|0",
+                "START:",
+                "  NOP",
+                ".ORG 99|0",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo", bounded))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("World size exceeded: Coordinate [99, 0] lies 100 cells from [-1, 0], occupied by a .PLACE at")
+                .hasMessageFindingMatch("by a \\.PLACE at \\S*main\\.evo:1, along axis 0; "
+                        + "the bounded world has 100 cells along it\\. Cannot place new item at \\S*main\\.evo:5\\.");
+
+        write("main.evo",
+                ".PLACE DATA:5 -1|0",
+                "START:",
+                "  NOP",
+                ".ORG 98|0",
+                "  NOP");
+        compile("main.evo", bounded);
+    }
+
     @Test
     void aMacroOfAnImportedModuleIsNotAMacroInTheImportingFile() throws Exception {
         write("lib.evo",
@@ -615,8 +661,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'INC'")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Expected instruction or directive, but got 'INC'.");
     }
 
     @Test
@@ -634,8 +679,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'INC'")
-                .hasMessageContaining("lib.evo:2");
+                .hasMessageContaining("lib.evo:2: Expected instruction or directive, but got 'INC'.");
     }
 
     @Test
@@ -693,8 +737,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got LITERAL.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got LITERAL.");
     }
 
     @Test
@@ -706,8 +749,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got REGISTER.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got REGISTER.");
     }
 
     @Test
@@ -722,8 +764,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'LIB' is not a value, a register or a label and cannot be an instruction argument.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: 'LIB' is not a value, a register or a label and cannot be an instruction argument.");
     }
 
     @Test
@@ -738,8 +779,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("REF argument '%POS' is a location register, expected a data register.")
-                .hasMessageContaining("main.evo:6");
+                .hasMessageContaining("main.evo:6: Invalid argument: '%POS' for REF is a location register; expected a data register.");
     }
 
     @Test
@@ -757,13 +797,13 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'LIB' is not a register or a label and cannot be a CALL argument.")
-                .hasMessageContaining("main.evo:6");
+                .hasMessageContaining("main.evo:6: Invalid argument: 'LIB' for REF is not a register or a label; expected a data register.");
     }
 
     @Test
     void aCircularDefinitionNamesTheCircle() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".CONST A B",
                 ".CONST B A",
                 "START:",
@@ -771,14 +811,14 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define constant 'A' from 'B': the name is not defined.")
-                .hasMessageContaining("Definition of A is circular: A -> B -> A.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Cannot define constant 'A' from 'B': the name is not defined.")
+                .hasMessageContaining("main.evo:2: Definition of A is circular: A -> B -> A.");
     }
 
     @Test
     void aConstantNamingALaterConstantIsReportedAtItsLine() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".CONST A B",
                 ".CONST B DATA:1",
                 "START:",
@@ -786,8 +826,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define constant 'A' from 'B': the name is not defined.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Cannot define constant 'A' from 'B': the name is not defined.");
     }
 
     @Test
@@ -803,7 +842,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define constant 'A' from 'LIB.NOPE': 'LIB' has no member 'NOPE'.");
+                .hasMessageContaining("main.evo:2: Cannot define constant 'A' from 'LIB.NOPE': 'LIB' has no member 'NOPE'.");
     }
 
     @Test
@@ -812,29 +851,41 @@ class CompilerDiagnosticsTest {
                 "HELPER:",
                 "  NOP");
         write("main.evo",
+                "# A comment line.",
                 ".IMPORT \"lib.evo\" AS LIB USING MODULE X Y AS Z",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected AS after USING source alias.")
-                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:2: Expected AS after USING source alias.")
                 .extracting(Throwable::getMessage, as(STRING))
                 .containsOnlyOnce("[ERROR]");
     }
 
     @Test
-    void anUnknownMoleculeTypeInAPlacementNamesTheTypeAndTheLine() throws Exception {
+    void anUndefinedNameBeforeTheColonOfAPlacementNamesTheNameAndTheLine() throws Exception {
         write("main.evo",
                 "START:",
                 "  NOP",
-                ".PLACE FOO:1 5|5");
+                ".PLACE FOOD:1 5|5");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unknown molecule type 'FOO' in .PLACE.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: 'FOOD' is not defined.");
+    }
+
+    @Test
+    void aNumberBeforeTheColonOfAPlacementNamesTheOperandsAndTheLine() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".CONST FOOD 5",
+                ".PLACE FOOD:1 5|5");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:4: Invalid operands for ':': number and number.");
     }
 
     @Test
@@ -846,8 +897,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PLACE uses 3 components, the world has 2 dimensions.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: .PLACE uses 3 components, the world has 2 dimensions.");
     }
 
     @Test
@@ -859,21 +909,20 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Coordinate [5, 5, 7] has 3 components, the world has 2 dimensions.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Coordinate [5, 5, 7] has 3 components, the world has 2 dimensions.");
     }
 
     @Test
     void anOriginWithMoreDimensionsThanTheWorldIsRejectedAtTheDirective() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".ORG 1|2|3",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Origin [1, 2, 3] has 3 components, the world has 2 dimensions.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Origin [1, 2, 3] has 3 components, the world has 2 dimensions.");
     }
 
     @Test
@@ -902,9 +951,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define label 'START': the name is already used at")
-                .hasMessageContaining("main.evo:1")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageFindingMatch("main\\.evo:3: Cannot define label 'START': the name is already used at \\S*main\\.evo:1\\.");
     }
 
     @Test
@@ -921,9 +968,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define procedure 'STEP': the name is already used at")
-                .hasMessageContaining("main.evo:1")
-                .hasMessageContaining("main.evo:4");
+                .hasMessageFindingMatch("main\\.evo:4: Cannot define procedure 'STEP': the name is already used at \\S*main\\.evo:1\\.");
     }
 
     @Test
@@ -936,9 +981,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define constant 'MAX': the name is already used at")
-                .hasMessageContaining("main.evo:1")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageFindingMatch("main\\.evo:2: Cannot define constant 'MAX': the name is already used at \\S*main\\.evo:1\\.");
     }
 
     @Test
@@ -951,14 +994,13 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define register alias '%TMP': the name is already used at")
-                .hasMessageContaining("main.evo:1")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageFindingMatch("main\\.evo:2: Cannot define register alias '%TMP': the name is already used at \\S*main\\.evo:1\\.");
     }
 
     @Test
     void aParameterDeclaredTwiceNamesTheProcedure() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".PROC STEP REF X VAL X",
                 "  RET",
                 ".ENDPROC",
@@ -967,8 +1009,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot declare parameter 'X' twice in procedure 'STEP'.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Cannot declare parameter 'X' twice in procedure 'STEP'.");
     }
 
     @Test
@@ -983,9 +1024,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot import as 'LIB': the name is already used at")
-                .hasMessageContaining("main.evo:1")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageFindingMatch("main\\.evo:2: Cannot import as 'LIB': the name is already used at \\S*main\\.evo:1\\.");
     }
 
     @Test
@@ -1005,9 +1044,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot require as 'DEP': the name is already used at")
-                .hasMessageContaining("lib.evo:1")
-                .hasMessageContaining("lib.evo:2");
+                .hasMessageFindingMatch("lib\\.evo:2: Cannot require as 'DEP': the name is already used at \\S*lib\\.evo:1\\.");
     }
 
     @Test
@@ -1025,8 +1062,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot bind 'DEP' twice in the USING clauses of one import.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Cannot bind 'DEP' twice in the USING clauses of one import.");
     }
 
     @Test
@@ -1046,8 +1082,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD_CLAMPED': alias 'ARITH' of NAV is not marked EXPORT.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot call 'NAV.ARITH.ADD_CLAMPED': alias 'ARITH' of NAV is not marked EXPORT.");
     }
 
     @Test
@@ -1068,8 +1103,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD': alias 'ARITH' of NAV is not marked EXPORT.")
-                .hasMessageContaining("main.evo:4");
+                .hasMessageContaining("main.evo:4: Cannot call 'NAV.ARITH.ADD': alias 'ARITH' of NAV is not marked EXPORT.");
     }
 
     @Test
@@ -1152,8 +1186,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.STEP': 'STEP' of NAV is not marked EXPORT.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot call 'NAV.STEP': 'STEP' of NAV is not marked EXPORT.");
     }
 
     @Test
@@ -1169,8 +1202,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'nav.step': 'step' of nav is not marked EXPORT.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot call 'nav.step': 'step' of nav is not marked EXPORT.");
     }
 
     @Test
@@ -1185,8 +1217,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.STEP': 'NAV' has no member 'STEP'.")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageContaining("main.evo:3: Cannot call 'NAV.STEP': 'NAV' has no member 'STEP'.");
     }
 
     @Test
@@ -1197,8 +1228,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'FOO.STEP': 'FOO' is neither a name nor an alias of this module.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Cannot call 'FOO.STEP': 'FOO' is neither a name nor an alias of this module.");
     }
 
     @Test
@@ -1209,8 +1239,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'START': it is not a procedure.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Cannot call 'START': it is not a procedure.");
     }
 
     @Test
@@ -1221,8 +1250,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot use 'MAX' as an argument: the name is not defined.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Cannot use 'MAX' as an argument: the name is not defined.");
     }
 
     @Test
@@ -1236,8 +1264,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass a literal as REF argument: REF takes a register.")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageContaining("main.evo:5: Invalid argument: 'DATA:1' for REF is a literal; expected a register.");
     }
 
     @Test
@@ -1251,8 +1278,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass '%DR0' as LREF argument: it is not a location register.")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageContaining("main.evo:5: Invalid argument: '%DR0' for LREF is not a location register; expected a location register.");
     }
 
     @Test
@@ -1278,8 +1304,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("VAL argument 'START' is a label, expected a register, a literal or a vector.")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageContaining("main.evo:5: Invalid argument: 'START' for VAL is a label; expected a register, a typed literal or a vector.");
     }
 
     @Test
@@ -1293,13 +1318,13 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass a literal as LVAL argument: LVAL takes a location register or a label.")
-                .hasMessageContaining("main.evo:5");
+                .hasMessageContaining("main.evo:5: Invalid argument: 'DATA:1' for LVAL is a literal; expected a location register or a label.");
     }
 
     @Test
     void anUnexpectedWordInAProcDeclarationNamesWhatIsExpected() throws Exception {
         write("main.evo",
+                "# A comment line.",
                 ".PROC P FOO X",
                 "  RET",
                 ".ENDPROC",
@@ -1308,8 +1333,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unexpected 'FOO' in .PROC: expected REF, VAL, LREF or LVAL.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Unexpected 'FOO' in .PROC: expected REF, VAL, LREF or LVAL.");
     }
 
     @Test
@@ -1322,9 +1346,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REPEAT opened at ")
-                .hasMessageContaining(" is not closed before the end of the input")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageFindingMatch("main\\.evo:3: \\.REPEAT opened at \\S*main\\.evo:3 is not closed before the end of the input");
     }
 
     @Test
@@ -1337,9 +1359,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PROC opened at ")
-                .hasMessageContaining(" is not closed before the end of the input")
-                .hasMessageContaining("main.evo:3");
+                .hasMessageFindingMatch("main\\.evo:3: \\.PROC opened at \\S*main\\.evo:3 is not closed before the end of the input");
     }
 
     @Test
@@ -1350,14 +1370,14 @@ class CompilerDiagnosticsTest {
                 "L:",
                 "  NOP");
         write("main.evo",
+                "# A comment line.",
                 ".IMPORT \"lib.evo\" AS LIB",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot import LIB: it requires 'DEP'; add USING MODULE <module> AS DEP to the import.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:2: Cannot import LIB: it requires 'DEP'; add USING MODULE <module> AS DEP to the import.");
     }
 
     @Test
@@ -1368,8 +1388,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Unknown directive '.FOO'.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Unknown directive '.FOO'.");
     }
 
     @Test
@@ -1380,8 +1399,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Expected a register, a literal, a vector or a name, but got ':'.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("main.evo:2: Expected a register, a literal, a vector or a name, but got ':'.");
     }
 
     private void write(String fileName, String... lines) throws Exception {
@@ -1389,8 +1407,12 @@ class CompilerDiagnosticsTest {
     }
 
     private void compile(String fileName) throws Exception {
+        compile(fileName, ENV);
+    }
+
+    private void compile(String fileName, EnvironmentProperties env) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)));
-        new Compiler().compile(fileName, ENV, options);
+        new Compiler().compile(fileName, env, options);
     }
 
     /**

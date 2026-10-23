@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
 import org.junit.jupiter.api.Tag;
@@ -71,6 +73,6 @@ class PreProcessorContextTest {
     }
 
     private static PreProcessorContext context(CompilerOptions options) {
-        return new PreProcessorContext("", Map.of(), "<memory>", options);
+        return TestPreProcessorContexts.context("", Map.of(), "<memory>", options, new DiagnosticsEngine());
     }
 }

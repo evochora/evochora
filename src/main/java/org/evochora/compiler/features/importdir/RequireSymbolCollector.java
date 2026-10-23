@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.api.SourceInfo;
@@ -37,7 +38,7 @@ public class RequireSymbolCollector implements ISymbolCollector {
         if (node instanceof ValueRequirementNode valueNode) {
             symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).ifPresent(scope ->
                     scope.update(Requirements.class, Requirements::none,
-                            r -> r.withValue(valueNode.name().toUpperCase(), valueNode.defaultValue() != null)));
+                            r -> r.withValue(valueNode.name().toUpperCase(Locale.ROOT), valueNode.defaultValue() != null)));
             return;
         }
         RequireNode requireNode = (RequireNode) node;
@@ -47,6 +48,6 @@ public class RequireSymbolCollector implements ISymbolCollector {
                         requireNode.sourceInfo().fileName(), requireNode.sourceInfo().lineNumber()));
         symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).ifPresent(scope ->
                 scope.update(Requirements.class, Requirements::none,
-                        r -> r.withModule(requireNode.alias().toUpperCase(), requireNode.path())));
+                        r -> r.withModule(requireNode.alias().toUpperCase(Locale.ROOT), requireNode.path())));
     }
 }

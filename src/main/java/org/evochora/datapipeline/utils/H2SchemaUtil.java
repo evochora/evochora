@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,7 +81,7 @@ public final class H2SchemaUtil {
         
         // H2 is case-insensitive and stores identifiers in uppercase
         // Return uppercase for consistency with H2's internal representation
-        return sanitized.toUpperCase();
+        return sanitized.toUpperCase(Locale.ROOT);
     }
     
     /**

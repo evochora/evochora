@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
@@ -31,12 +32,14 @@ public final class LayoutEngine {
      * @param envProps The environment properties, providing context like world dimensions. Can be null.
      * @param registry The handlers for layout-relevant IR directives; a directive without a
      *                 registered handler is passed to the registry's default handler.
+     * @param operations The operations of computations, with which the handlers compute their
+     *                   arguments.
      * @return The result of the layout process.
      * @throws CompilationException if address conflicts are detected during layout.
      */
     public LayoutResult layout(IrProgram program, IInstructionSet isa, EnvironmentProperties envProps,
-                               LayoutDirectiveRegistry registry) throws CompilationException {
-        LayoutContext ctx = new LayoutContext(envProps);
+                               LayoutDirectiveRegistry registry, OperationRegistry operations) throws CompilationException {
+        LayoutContext ctx = new LayoutContext(envProps, operations);
 
         Map<String, Integer> labelToAddress = new HashMap<>();
         List<PlacedItem> placedItems = new ArrayList<>(program.items().size());
@@ -50,19 +53,20 @@ public final class LayoutEngine {
                 case IrDirective dir -> registry.resolve(dir).handle(dir, ctx);
                 case IrLabelDef lbl -> {
                     labelToAddress.put(lbl.name(), ctx.linearAddress());
-                    ctx.placeLabel(src);  // a label occupies one cell, like an opcode or an operand
+                    ctx.placeLabel(lbl.name(), src);  // a label occupies one cell, like an opcode or an operand
                 }
                 case IrInstruction ins -> {
                     int opcodeId = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() -> new IllegalArgumentException("Unknown opcode: " + ins.opcode()));
                     IInstructionSet.Signature sig = isa.getSignatureById(opcodeId)
                             .orElseThrow(() -> new IllegalArgumentException("No ISA signature for instruction '" + ins.opcode() + "'."));
-                    ctx.placeInstruction(ins.opcode(), sig, src);
+                    ctx.placeInstruction(ins.opcode(), sig, ins.operands(), src);
                 }
             }
         }
 
-        return new LayoutResult(ctx.linearToCoord(), ctx.coordToLinear(), labelToAddress,
-                assignLabelValues(labelToAddress, isa), ctx.sourceMap(), ctx.initialWorldObjects(), List.copyOf(placedItems));
+        return new LayoutResult(ctx.linearToCoord(), labelToAddress,
+                assignLabelValues(labelToAddress, isa), ctx.sourceMap(), ctx.initialWorldObjects(), List.copyOf(placedItems),
+                ctx.namedValues(), ctx.notes());
     }
 
     /**

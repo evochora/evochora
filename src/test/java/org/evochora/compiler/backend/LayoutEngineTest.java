@@ -11,7 +11,7 @@ import org.evochora.compiler.features.place.PlaceLayoutHandler;
 import org.evochora.compiler.features.ctx.PushCtxLayoutHandler;
 import org.evochora.compiler.features.ctx.PopCtxLayoutHandler;
 import org.evochora.compiler.model.ir.*;
-import org.evochora.compiler.model.ir.placement.IrVectorPlacement;
+import org.evochora.compiler.TestRegistries;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -56,15 +56,16 @@ public class LayoutEngineTest {
 
         Map<String, IrValue> placeArgs = new HashMap<>();
         placeArgs.put("value", new IrValue.Literal(new Value.Typed("ENERGY", 50)));
-        IrVectorPlacement placement = new IrVectorPlacement(List.of(5, 0));
-        placeArgs.put("placements", new IrValue.PlacementListVal(List.of(placement)));
+        IrValue placement = new IrValue.ListVal(List.of(single(5), single(0)));
+        placeArgs.put("placements", new IrValue.ListVal(List.of(placement)));
         IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));
 
         IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, push, place), DebugInfo.none());
 
         LayoutEngine engine = new LayoutEngine();
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, true);
-        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), envProps, allLayoutHandlers());
+        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), envProps, allLayoutHandlers(),
+                TestRegistries.operations());
 
         assertThat(res.linearAddressToCoord().get(0)).containsExactly(2, 3);
         assertThat(res.linearAddressToCoord().get(1)).containsExactly(3, 3);
@@ -80,16 +81,29 @@ public class LayoutEngineTest {
     }
 
     /**
-     * Builds a {@code core:org} directive with one mark per component.
+     * Builds a {@code core:org} directive with one mark per component, none counting backwards.
      */
     private static IrDirective org(int[] components, boolean[] relative, SourceInfo source) {
+        return org(components, relative, new boolean[relative.length], source);
+    }
+
+    /**
+     * Builds a {@code core:org} directive with one mark and one direction per component.
+     */
+    private static IrDirective org(int[] components, boolean[] relative, boolean[] backward, SourceInfo source) {
         Map<String, IrValue> args = new HashMap<>();
-        args.put("position", new IrValue.Literal(new Value.Vector(java.util.Arrays.stream(components).mapToObj(c -> (long) c).toList())));
+        args.put("components", new IrValue.ListVal(java.util.Arrays.stream(components)
+                .mapToObj(c -> (IrValue) new IrValue.Literal(new Value.Number(c))).toList()));
         List<IrValue> marks = new ArrayList<>(relative.length);
         for (boolean marked : relative) {
             marks.add(new IrValue.Bool(marked));
         }
         args.put("relative", new IrValue.ListVal(List.copyOf(marks)));
+        List<IrValue> directions = new ArrayList<>(backward.length);
+        for (boolean back : backward) {
+            directions.add(new IrValue.Bool(back));
+        }
+        args.put("backward", new IrValue.ListVal(List.copyOf(directions)));
         return new IrDirective("core", "org", args, source);
     }
 
@@ -113,7 +127,15 @@ public class LayoutEngineTest {
     private static LayoutResult layout(List<IrItem> items, int[] worldShape) throws Exception {
         Instruction.init();
         return new LayoutEngine().layout(new IrProgram("Test", items, DebugInfo.none()), new RuntimeInstructionSetAdapter(),
-                new EnvironmentProperties(worldShape, true), allLayoutHandlers());
+                new EnvironmentProperties(worldShape, true), allLayoutHandlers(), TestRegistries.operations());
+    }
+
+    /**
+     * Builds a placement component of one number.
+     */
+    private static IrValue single(long value) {
+        return new IrValue.MapVal(Map.of("kind", new IrValue.Str("single"),
+                "value", new IrValue.Literal(new Value.Number(value))));
     }
 
     /**
@@ -208,19 +230,19 @@ public class LayoutEngineTest {
     @Test
     void aComponentBeyondACoordinateIsReportedAtTheDirective() {
         Map<String, IrValue> orgArgs = new HashMap<>();
-        orgArgs.put("position", new IrValue.Literal(new Value.Vector(List.of(4294967296L, 0L))));
+        orgArgs.put("components", new IrValue.ListVal(List.of(new IrValue.Literal(new Value.Number(4294967296L)),
+                new IrValue.Literal(new Value.Number(0L)))));
         orgArgs.put("relative", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
-        assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "org", orgArgs, src("main.s", 1)), seti(2))))
+        orgArgs.put("backward", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
+        assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "org", orgArgs, src("main.s", 3)), seti(2))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 4294967296 out of range for a coordinate.")
-                .hasMessageContaining("main.s:1");
+                .hasMessageContaining("main.s:3: Value 4294967296 out of range for a coordinate.");
 
         Map<String, IrValue> dirArgs = new HashMap<>();
         dirArgs.put("direction", new IrValue.Literal(new Value.Vector(List.of(0L, -4294967296L))));
         assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "dir", dirArgs, src("main.s", 2)), seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value -4294967296 out of range for a coordinate.")
-                .hasMessageContaining("main.s:2");
+                .hasMessageContaining("main.s:2: Value -4294967296 out of range for a coordinate.");
     }
 
     @Test
@@ -233,8 +255,7 @@ public class LayoutEngineTest {
                 new IrDirective("core", "dir", args, src("main.s", 2)),
                 seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Direction [1, 0, 0] has 3 components, the world has 2 dimensions.")
-                .hasMessageContaining("main.s:2");
+                .hasMessageContaining("main.s:2: Direction [1, 0, 0] has 3 components, the world has 2 dimensions.");
     }
 
     /**
@@ -248,22 +269,22 @@ public class LayoutEngineTest {
                 rotation(true, 1, 1, src("main.s", 2)),
                 seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("needs two different axes, both are 1")
-                .hasMessageContaining("main.s:2");
+                .hasMessageContaining("main.s:2: A rotation plane needs two different axes, both are 1.");
 
         assertThatThrownBy(() -> layout(List.of(
                 org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
                 rotation(true, 0, 5, src("main.s", 2)),
                 seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Axis 5 is not an axis of a 2-dimensional world.");
+                .hasMessageContaining("main.s:2: Axis 5 is not an axis of a 2-dimensional world.");
 
         assertThatThrownBy(() -> layout(List.of(
                 org(new int[]{0}, new boolean[]{false}, src("main.s", 1)),
                 rotation(true, 0, 1, src("main.s", 2)),
                 seti(3)), new int[]{32}))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("one-dimensional world");
+                .hasMessageContaining("main.s:2: A rotation needs a plane, which a one-dimensional world does not have. "
+                        + "Write the direction out instead.");
     }
 
     /**
@@ -299,13 +320,14 @@ public class LayoutEngineTest {
     }
 
     /**
-     * Both components may be marked, and the marker's sign decides the direction.
+     * Both components may be marked, and the marker's sign decides the direction: the written
+     * value counts backwards where the marker is {@code @-}.
      */
     @Test
     void markedComponentsCountForwardsAndBackwards() throws Exception {
         LayoutResult res = layout(List.of(
                 org(new int[]{5, 10}, new boolean[]{false, false}, src("main.s", 1)),
-                org(new int[]{2, -3}, new boolean[]{true, true}, src("main.s", 2)),
+                org(new int[]{2, 3}, new boolean[]{true, true}, new boolean[]{false, true}, src("main.s", 2)),
                 seti(3)));
 
         assertThat(res.linearAddressToCoord().get(0)).containsExactly(7, 7);
@@ -352,10 +374,101 @@ public class LayoutEngineTest {
     @Test
     void aWrongNumberOfComponentsIsReported() {
         assertThatThrownBy(() -> layout(List.of(
-                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 1)),
-                seti(2))))
+                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 2)),
+                seti(3))))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Origin [0, 0, 0] has 3 components, the world has 2 dimensions.");
+                .hasMessageContaining("main.s:2: Origin [0, 0, 0] has 3 components, the world has 2 dimensions.");
+    }
+
+    /**
+     * Builds a {@code core:org} directive of one unmarked component, a value the layout computes.
+     */
+    private static IrDirective orgTo(IrValue whole, SourceInfo source) {
+        Map<String, IrValue> args = new HashMap<>();
+        args.put("components", new IrValue.ListVal(List.of(whole)));
+        args.put("relative", new IrValue.ListVal(List.of(new IrValue.Bool(false))));
+        args.put("backward", new IrValue.ListVal(List.of(new IrValue.Bool(false))));
+        return new IrDirective("core", "org", args, source);
+    }
+
+    private static IrValue.Literal vector(long... components) {
+        return new IrValue.Literal(new Value.Vector(java.util.Arrays.stream(components).boxed().toList()));
+    }
+
+    private static IrValue.Literal position(long... components) {
+        return new IrValue.Literal(new Value.Position(java.util.Arrays.stream(components).boxed().toList()));
+    }
+
+    /**
+     * Inside a module placed at 5|5, a vector counts from the module's origin, while a position is
+     * that place of the program, whatever the module's origin.
+     */
+    @Test
+    void aVectorCountsFromTheModuleAndAPositionFromTheProgram() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{5, 5}, new boolean[]{false, false}, src("main.s", 1)),
+                new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 1)),
+                orgTo(vector(1, 1), src("lib.inc", 2)),
+                seti(3),
+                orgTo(position(1, 1), src("lib.inc", 4)),
+                seti(5)));
+
+        assertThat(res.linearAddressToCoord().get(0)).containsExactly(6, 6);
+        assertThat(res.linearAddressToCoord().get(3)).containsExactly(1, 1);
+    }
+
+    /**
+     * A computation is evaluated where the directive stands: the cursor {@code @} is the cell the
+     * next code would go to.
+     */
+    @Test
+    void aComputationReadsTheCursorOfItsLine() throws Exception {
+        org.evochora.compiler.model.expression.Expression twoRowsDown = new org.evochora.compiler.model.expression.OperationExpression("+", false,
+                List.of(new org.evochora.compiler.model.expression.NameExpression("@", src("main.s", 3), src("main.s", 3).plusColumns(1)),
+                        new org.evochora.compiler.model.expression.LiteralExpression(new Value.Vector(List.of(0L, 2L)), src("main.s", 3),
+                                src("main.s", 3).plusColumns(5))),
+                src("main.s", 3), src("main.s", 3).plusColumns(5));
+        LayoutResult res = layout(List.of(
+                org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
+                seti(2),
+                orgTo(new IrValue.Expression(twoRowsDown), src("main.s", 3)),
+                seti(4)));
+
+        // The instruction took the cells 0|0 to 2|0, so the cursor stood at 3|0.
+        assertThat(res.linearAddressToCoord().get(3)).containsExactly(3, 2);
+    }
+
+    /**
+     * A name that reaches the layout is a forward reference here, reported at the directive.
+     */
+    @Test
+    void aNameInTheLayoutIsAForwardReference() {
+        assertThatThrownBy(() -> layout(List.of(orgTo(new IrValue.Str("NW"), src("main.s", 2)), seti(3))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.s:2: Forward reference to 'NW'.");
+    }
+
+    /**
+     * A placement of one single value places at a vector from the module's origin or at a
+     * position of the program; a range places a cell per number between its bounds.
+     */
+    @Test
+    void placementsTakeVectorsPositionsAndRanges() throws Exception {
+        Map<String, IrValue> placeArgs = new HashMap<>();
+        placeArgs.put("value", new IrValue.Literal(new Value.Typed("STRUCTURE", 1)));
+        IrValue range = new IrValue.MapVal(Map.of("kind", new IrValue.Str("range"),
+                "start", new IrValue.Literal(new Value.Number(0)), "end", new IrValue.Literal(new Value.Number(1))));
+        placeArgs.put("placements", new IrValue.ListVal(List.of(
+                new IrValue.ListVal(List.of(new IrValue.MapVal(Map.of("kind", new IrValue.Str("single"), "value", vector(1, 0))))),
+                new IrValue.ListVal(List.of(new IrValue.MapVal(Map.of("kind", new IrValue.Str("single"), "value", position(0, 9))))),
+                new IrValue.ListVal(List.of(range, single(3))))));
+        LayoutResult res = layout(List.of(
+                org(new int[]{5, 5}, new boolean[]{false, false}, src("main.s", 1)),
+                new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 1)),
+                new IrDirective("core", "place", placeArgs, src("lib.inc", 2))));
+
+        assertThat(res.initialWorldObjects().keySet()).containsExactlyInAnyOrder(
+                new int[]{6, 5}, new int[]{0, 9}, new int[]{5, 8}, new int[]{6, 8});
     }
 
     private static LayoutDirectiveRegistry allLayoutHandlers() {
@@ -387,8 +500,8 @@ public class LayoutEngineTest {
                 new IrLabelDef(first, src("main.evo", 1)),
                 new IrInstruction("NOP", List.of(), src("main.evo", 2)),
                 new IrLabelDef(second, src("main.evo", 3))), DebugInfo.none());
-        LayoutResult once = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
-        LayoutResult again = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
+        LayoutResult once = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers(), TestRegistries.operations());
+        LayoutResult again = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers(), TestRegistries.operations());
 
         assertThat(once.labelToValue()).containsEntry(first, isa.labelValue(first));
         assertThat(once.labelToValue()).doesNotContainEntry(second, once.labelToValue().get(first));

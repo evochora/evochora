@@ -29,6 +29,28 @@ public record SourceInfo(String fileName, int lineNumber, int columnNumber, Stri
         return expansion == 0 ? this : new SourceInfo(fileName, lineNumber, columnNumber, placement, 0);
     }
 
+    /**
+     * Reports whether the position stands on a line of a file of the program. Lines count from
+     * 1; a line number of 0 marks a position outside every file, such as a token of a configured
+     * value, which a source view cannot show.
+     *
+     * @return {@code true} for a line number from 1 on.
+     */
+    public boolean inAFile() {
+        return lineNumber >= 1;
+    }
+
+    /**
+     * Returns the position a number of columns further on the same line, in the same placement
+     * and instance: the position right after a text of that length that begins here.
+     *
+     * @param columns The number of columns to move on.
+     * @return The position {@code columns} columns further on.
+     */
+    public SourceInfo plusColumns(int columns) {
+        return new SourceInfo(fileName, lineNumber, columnNumber + columns, placement, expansion);
+    }
+
     private static final String UNKNOWN_FILE = "<unknown>";
 
     /**

@@ -10,7 +10,7 @@ import org.evochora.compiler.api.IntegerLiteral;
 import java.io.IOException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.internal.LinearizedProgramArtifact;
+import org.evochora.compiler.internal.JsonProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import picocli.CommandLine;
@@ -29,7 +29,7 @@ import java.util.concurrent.Callable;
 
 /**
  * The {@code compile} subcommand: translates one assembly source file and writes the resulting
- * program artifact in its linearized form as pretty-printed JSON to the command's standard output.
+ * program artifact in its JSON form as pretty-printed JSON to the command's standard output.
  * A successful run returns exit code 0; a compilation or I/O failure prints its message to the
  * command's error stream and returns exit code 1.
  * <p>
@@ -51,9 +51,9 @@ import java.util.concurrent.Callable;
  *       source file is the only root, so imported modules are resolved relative to it, and no
  *       prefix is defined.</li>
  *   <li>{@code --define} — any number of preprocessor flags, each written as {@code NAME} to set
- *       the flag without a value or as {@code NAME=INTEGER} to set it with that value. The integer
- *       is written as a program writes a number: decimal, or {@code 0x} or {@code 0b} for
- *       hexadecimal or binary, each with an optional leading minus. Names are case-insensitive; a
+ *       the flag without a value or as {@code NAME=NUMBER} to set it with that value. The number
+ *       is written as a program writes one: decimal, or {@code 0x}, {@code 0o} or {@code 0b} for
+ *       hexadecimal, octal or binary, each with an optional leading minus. Names are case-insensitive; a
  *       name given twice, in any case, is an error. Without the option, no flag is set.</li>
  *   <li>{@code --value} — any number of values, each written as {@code NAME=TEXT}, where the text
  *       is an operand as a {@code .CONST} takes it: a literal, a vector or a name. The main
@@ -90,8 +90,8 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"--define"},
-        paramLabel = "NAME[=INTEGER]",
-        description = "Preprocessor flag in format 'NAME' or 'NAME=INTEGER' (e.g., 'REDUNDANCY=2'); repeatable"
+        paramLabel = "NAME[=NUMBER]",
+        description = "Preprocessor flag in format 'NAME' or 'NAME=NUMBER' (e.g., 'REDUNDANCY=2'); repeatable"
     )
     private List<String> defineArgs;
 
@@ -132,11 +132,11 @@ public class CompileCommand implements Callable<Integer> {
         Compiler compiler = new Compiler();
         try {
             ProgramArtifact artifact = compiler.compile(programPath, envProps, compilerOptions);
-            LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
+            JsonProgramArtifact jsonForm = artifact.toJsonForm(envProps);
 
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             PrintWriter out = spec.commandLine().getOut();
-            out.println(gson.toJson(linearizedArtifact));
+            out.println(gson.toJson(jsonForm));
 
             return 0;
         } catch (CompilationException | IOException e) {
@@ -182,9 +182,9 @@ public class CompileCommand implements Callable<Integer> {
     /**
      * Parses the arguments of {@code --define} into the flags of the compilation.
      *
-     * @param defineArgs The arguments, each {@code NAME} or {@code NAME=INTEGER}.
+     * @param defineArgs The arguments, each {@code NAME} or {@code NAME=NUMBER}.
      * @return The flags by name as written, empty for a flag without a value.
-     * @throws IllegalArgumentException if a name is empty, a value is not an integer, or a name
+     * @throws IllegalArgumentException if a name is empty, a value is not a number, or a name
      *                                  is given twice as written. Two names that differ only in
      *                                  case are left to {@link CompilerOptions}, which rejects them.
      */
@@ -201,7 +201,7 @@ public class CompileCommand implements Callable<Integer> {
                 String text = arg.substring(equalsIdx + 1);
                 value = IntegerLiteral.parse(text.trim());
                 if (value.isEmpty()) {
-                    throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not an integer");
+                    throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not a number");
                 }
             }
             if (defines.putIfAbsent(name, value) != null) {

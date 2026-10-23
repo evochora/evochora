@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
+import java.util.Locale;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.Export;
 import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
@@ -58,7 +59,7 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
     }
 
     private static String childChain(String parentChain, String alias) {
-        String aliasUpper = alias.toUpperCase();
+        String aliasUpper = alias.toUpperCase(Locale.ROOT);
         return (parentChain == null || parentChain.isEmpty()) ? aliasUpper : parentChain + "." + aliasUpper;
     }
 }

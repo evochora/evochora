@@ -465,9 +465,6 @@ public class SimulationRestorer {
             );
         }
 
-        // Direct copy of relativeCoordToLinearAddress
-        Map<String, Integer> relativeCoordToLinearAddress = new HashMap<>(proto.getRelativeCoordToLinearAddressMap());
-
         // Convert linearAddressToCoord
         Map<Integer, int[]> linearAddressToCoord = new HashMap<>();
         for (LinearAddressToCoord entry : proto.getLinearAddressToCoordList()) {
@@ -544,7 +541,6 @@ public class SimulationRestorer {
             initialWorldObjects,
             sourceMap,
             callSiteBindings,
-            relativeCoordToLinearAddress,
             linearAddressToCoord,
             registerAliasMap,
             new HashMap<>(proto.getConstantValuesMap()),

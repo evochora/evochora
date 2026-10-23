@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -28,7 +29,7 @@ class PreProcessorRootPlacementTest {
         List<Token> tokens = TestLexers.tokenizer("NOP\nNOP\n", diagnostics, "/p/main.evo").scanTokens();
         assertThat(tokens).allSatisfy(token -> assertThat(token.source().placement()).isEmpty());
 
-        PreProcessorContext context = new PreProcessorContext("PRED", Map.of(), "/p/main.evo", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("PRED", Map.of(), "/p/main.evo", CompilerOptions.defaults(), diagnostics);
         List<Token> expanded = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("/p")), context).expand().tokens();
 

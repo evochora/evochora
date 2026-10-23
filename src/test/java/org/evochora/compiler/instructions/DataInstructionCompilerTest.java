@@ -4,7 +4,9 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -66,7 +68,7 @@ class DataInstructionCompilerTest extends CompilerTestBase {
         List<String> lines = List.of("LBL:", "SETV %DR0 LBL");
         assertThatThrownBy(() -> compiler.compile(lines, "setv_label.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
+                .hasMessageContaining("setv_label.s:2: Argument 2 for instruction 'SETV' has the wrong type. Expected VECTOR, but got LABEL.");
     }
 
     @Test
@@ -74,7 +76,7 @@ class DataInstructionCompilerTest extends CompilerTestBase {
         List<String> lines = List.of("LBL:", "PUSV LBL");
         assertThatThrownBy(() -> compiler.compile(lines, "pusv_label.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Argument 1 for instruction 'PUSV' has the wrong type. Expected VECTOR, but got LABEL.");
+                .hasMessageContaining("pusv_label.s:2: Argument 1 for instruction 'PUSV' has the wrong type. Expected VECTOR, but got LABEL.");
     }
 
     /**
@@ -82,18 +84,38 @@ class DataInstructionCompilerTest extends CompilerTestBase {
      */
     @Test
     void aLiteralBeyondACellIsReported() {
-        List<String> lines = List.of("SETI %DR0 DATA:1048576");
+        List<String> lines = List.of("# A comment line.", "SETI %DR0 DATA:1048576");
         assertThatThrownBy(() -> compiler.compile(lines, "big_literal.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+                .hasMessageContaining("big_literal.s:2: Value 1048576 out of range for a cell (-524288 to 524287).");
+    }
+
+    /**
+     * A vector argument of an instruction becomes one cell per dimension of the world, so it has
+     * to carry one component per dimension, whether written, taken from a constant or computed;
+     * a vector that never becomes cells may have any length.
+     */
+    @Test
+    void aVectorArgumentWithoutOneComponentPerDimensionIsReported() throws Exception {
+        for (List<String> lines : List.of(
+                List.of("SETV %DR2 1|2|3"),
+                List.of("SETV %DR2 (1|2|3)"),
+                List.of(".CONST V 1|2|3", "SETV %DR2 V"))) {
+            assertThatThrownBy(() -> compiler.compile(lines, "long_vector.s", testEnvProps))
+                    .isInstanceOf(CompilationException.class)
+                    .hasMessageContaining("long_vector.s:" + lines.size() + ": Expected a vector with 2 components.");
+        }
+        ProgramArtifact indexed = compiler.compile(List.of(".CONST V 1|2|3", "SETI %DR0 DATA:V[2]"), "long_vector.s", testEnvProps);
+        assertThat(indexed.machineCodeLayout().values()).extracting(Molecule::fromInt)
+                .contains(new Molecule(Config.TYPE_DATA, 3, 0));
     }
 
     @Test
     void aPlacedValueBeyondACellIsReported() {
-        List<String> lines = List.of(".PLACE STRUCTURE:1048576 1|1");
+        List<String> lines = List.of("# A comment line.", ".PLACE STRUCTURE:1048576 1|1");
         assertThatThrownBy(() -> compiler.compile(lines, "big_place.s", testEnvProps))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+                .hasMessageContaining("big_place.s:2: Value 1048576 out of range for a cell (-524288 to 524287).");
     }
 
     @Test

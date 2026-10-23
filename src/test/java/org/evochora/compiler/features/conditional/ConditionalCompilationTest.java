@@ -159,19 +159,30 @@ class ConditionalCompilationTest {
     }
 
     @Test
-    void aConfiguredFlagThatIsNoNameIsReportedOnce() throws Exception {
+    void aConfiguredFlagThatIsNoNameIsReportedOnceWhateverTheProgramReads() throws Exception {
         write("main.evo",
-                ".IFDEF A",
-                ".ENDDEF",
-                ".IFDEF B",
-                ".ENDDEF",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo", Map.of("NOT A NAME", OptionalLong.empty())))
                 .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().split("Configured flag 'NOT A NAME' is not a valid name",
-                        -1)).hasSize(2));
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] Configured flag 'NOT A NAME' is not a valid name: a flag name consists of"
+                                + " letters, digits and _ and begins with a letter or _"));
+    }
+
+    @Test
+    void aConfiguredFlagWithAReservedNameIsReportedAgainstTheConfiguration() throws Exception {
+        write("main.evo",
+                ".REPEAT (SHL)",
+                "  NOP",
+                ".ENDREPEAT");
+
+        assertThatThrownBy(() -> compile("main.evo", Map.of("SHL", OptionalLong.of(1), "NUMBER", OptionalLong.empty())))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] Configured flag 'NUMBER' is a function and cannot be defined.",
+                        "[ERROR] Configured flag 'SHL' is an operator and cannot be defined."));
     }
 
     /**

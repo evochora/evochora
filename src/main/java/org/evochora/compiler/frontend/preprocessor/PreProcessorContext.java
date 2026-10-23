@@ -1,15 +1,27 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceFile;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.expression.OperationRegistry;
+import org.evochora.compiler.frontend.Flags;
+import org.evochora.compiler.frontend.ReadTimeValues;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -17,7 +29,8 @@ import java.util.function.Supplier;
  * Contains the state that handlers read and modify while the token stream is expanded: the
  * handlers the preprocessor dispatches to, the pre-lexed token streams and the lines of the files
  * that may be included, the entry of the main file, the inclusions currently open, the options of the compilation, the numbers of the instances of injected
- * tokens, and a slot in which features keep state of their own types.
+ * tokens, the names nothing may define, the flags with the computation of a number over them, and
+ * a slot in which features keep state of their own types.
  */
 public class PreProcessorContext {
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
@@ -27,54 +40,57 @@ public class PreProcessorContext {
     private final Map<String, List<String>> fileLines;
     private final SourceFile mainFile;
     private final CompilerOptions options;
+    private final ReservedNames reservedNames;
+    private final ReadTimeValues values;
+    private final DiagnosticsEngine diagnostics;
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private final Map<Class<?>, Object> featureState = new HashMap<>();
     private int lastInstance;
 
     /**
      * Creates a context carrying the token streams that were pre-lexed and the lines that were
-     * read for the files found during dependency scanning. A null alias chain becomes the empty
-     * chain, a null map an empty map.
+     * read for the files found during dependency scanning, which computes with the operations of
+     * the compilation and offers the names nothing in a program may define. A null alias chain
+     * becomes the empty chain, a null map an empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
-     *                       resolved absolute path. Whether an inclusion is a module or plain
-     *                       text is decided by the directive that includes the file, not here.
-     * @param fileLines      The lines of every file read, the main file's included, keyed by
-     *                       resolved absolute path; the entries of one file share its list.
-     * @param mainName       The name the main file was given to the compiler under, which names
-     *                       its entry where the program's text is shown.
-     * @param mainPath       The resolved path of the main file, the file name of the initial
-     *                       tokens; the main file's entry, the first of the preprocessor's
-     *                       entries, stands under the root chain with the lines of this path.
-     *                       Must not be null.
-     * @param options        The options of the compilation, offered to handlers through
-     *                       {@link #options()}; must not be null.
+     *                       resolved absolute path.
+     * @param fileLines      The lines of every file read, keyed by resolved absolute path.
+     * @param mainName       The name the main file was given to the compiler under.
+     * @param mainPath       The resolved path of the main file; must not be null.
+     * @param options        The options of the compilation; must not be null.
+     * @param operations     The operations of the compilation, with which {@link #evaluate}
+     *                       computes; their names, and the cursor {@code @}, are the names
+     *                       nothing may define.
+     * @param isa            The instruction set, whose molecule types a computation recognises
+     *                       before the typing colon.
+     * @param flags          The flags of the phase, seeded from the options.
+     * @param diagnostics    Where {@link #evaluate} reports an error.
      */
     public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
                                Map<String, List<String>> fileLines, String mainName, String mainPath,
-                               CompilerOptions options) {
+                               CompilerOptions options, OperationRegistry operations, IInstructionSet isa,
+                               Flags flags, DiagnosticsEngine diagnostics) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
         this.fileLines = fileLines != null ? fileLines : Map.of();
         this.mainFile = new SourceFile(this.rootAliasChain, mainName,
                 Objects.requireNonNull(mainPath, "mainPath"), linesOf(mainPath));
         this.options = Objects.requireNonNull(options, "options");
+        this.reservedNames = operations.reservedNames();
+        this.values = new ReadTimeValues(flags, operations, isa);
+        this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
     }
 
     /**
-     * Creates a context carrying pre-lexed token streams but no lines: the main file's entry is
-     * named by its path and shows no text.
+     * Returns the names nothing in a program may define, so that a handler that defines a name,
+     * as {@code .MACRO} does, can reject one.
      *
-     * @param rootAliasChain The alias chain for the compilation root module.
-     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
-     *                       resolved absolute path.
-     * @param mainPath       The resolved path of the main file, the file name of the initial
-     *                       tokens; must not be null.
-     * @param options        The options of the compilation; must not be null.
+     * @return The reserved names.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, String mainPath,
-                               CompilerOptions options) {
-        this(rootAliasChain, fileTokens, Map.of(), mainPath, mainPath, options);
+    public ReservedNames reservedNames() {
+        return reservedNames;
     }
 
     /**
@@ -139,6 +155,72 @@ public class PreProcessorContext {
      */
     public int nextInstance() {
         return ++lastInstance;
+    }
+
+    // --- Flags ---
+
+    /**
+     * Returns the flags of the phase: one store for the whole token stream, seeded from the
+     * options of the compilation, which the directives of a feature fill as the walk reaches
+     * them.
+     *
+     * @return The flags of the phase.
+     */
+    public Flags flags() {
+        return values.flags();
+    }
+
+    /**
+     * Tells how many tokens the one value at the start of the given tokens takes, in the forms
+     * {@link #evaluate} reads: a number with its sign, a flag name or a computation, so that a
+     * directive that finds its value on a line can tell where the value ends.
+     *
+     * @param tokens The tokens, not empty.
+     * @return The number of tokens of the value at the start, or 0 if none stands there.
+     */
+    public int valueLength(List<Token> tokens) {
+        return values.valueLength(tokens);
+    }
+
+    /**
+     * Computes a number at read time: the tokens of one value, a number, a flag name or a
+     * computation, read with the operations of the compilation, every name a flag of
+     * {@link #flags()} with its value. An error is reported to the diagnostics the context was
+     * created with, at the token or the node at fault, or else at the
+     * first token: tokens that form no computation, a name that is no flag or a flag without a
+     * value, a computation that fails, a result that is no number. A computation that gives a
+     * number, and a flag name written alone, are noted as {@code [=n]} right after their last
+     * token, for the source view the preprocessor builds ({@link #notes()}); a number written
+     * alone is not, nor is a value outside every file.
+     *
+     * @param tokens The tokens of the value, as the directive delimits them; not empty.
+     * @return The number, or empty if an error was reported.
+     */
+    public Optional<Long> evaluate(List<Token> tokens) {
+        return switch (values.read(tokens)) {
+            case ReadTimeValues.Reading.Number number -> {
+                if (number.form() != ReadTimeValues.Reading.Form.NUMBER && tokens.getLast().source().inAFile()) {
+                    notes.add(new PositionedNote(tokens.getLast().after(), "[=" + number.value() + "]"));
+                }
+                yield Optional.of(number.value());
+            }
+            case ReadTimeValues.Reading.Failed failed -> {
+                SourceInfo at = failed.at() != null ? failed.at()
+                        : tokens.isEmpty() ? null : tokens.getFirst().source();
+                diagnostics.reportError(failed.message(), at == null ? "" : at.fileName(),
+                        at == null ? 0 : at.lineNumber());
+                yield Optional.empty();
+            }
+        };
+    }
+
+    /**
+     * Returns the notes {@link #evaluate} has recorded, in the order recorded, each once.
+     *
+     * @return An unmodifiable view of the notes.
+     */
+    Set<PositionedNote> notes() {
+        return Collections.unmodifiableSet(notes);
     }
 
     // --- Feature state ---

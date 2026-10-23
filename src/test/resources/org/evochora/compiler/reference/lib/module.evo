@@ -1,0 +1,32 @@
+# A module with every kind of requirement, an import it hands a module to and exports again,
+# and an exported label, procedure, constant and control block for the main program.
+
+#> needs: importdir, ctx
+.REQUIRE MODULE "lib/helper.evo" AS HELP
+.REQUIRE VALUE COUNT
+.REQUIRE VALUE START DATA:0
+EXPORT .IMPORT "lib/inner.evo" AS INNER USING MODULE HELP AS HELP VALUE CEIL COUNT
+#<
+
+#> needs: importdir, ctx, label
+EXPORT ENTRY:
+#<
+
+#> needs: importdir, ctx, constdir
+EXPORT .CONST TOTAL COUNT
+#<
+
+#> needs: importdir, ctx, proc, instruction, label
+EXPORT .PROC SERVE REF RESULT
+  ADDI RESULT DATA:1
+  RET
+.ENDPROC
+#<
+
+#> needs: importdir, ctx, control, instruction, label
+EXPORT .CONTROL GATE
+  JMPI END
+EXPORT .CASE OPEN
+  NOP
+.ENDCONTROL
+#<

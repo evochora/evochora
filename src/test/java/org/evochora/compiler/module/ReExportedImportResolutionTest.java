@@ -59,7 +59,7 @@ class ReExportedImportResolutionTest {
         assertThatCode(this::compileMain)
                 .as("MIDDLE keeps INNER to itself, so MIDDLE.INNER.TARGET names nothing")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("TARGET");
+                .hasMessageContaining("main.evo:2: Cannot use 'MIDDLE.INNER.TARGET' as an argument: alias 'INNER' of MIDDLE is not marked EXPORT.");
     }
 
     @Test
@@ -80,7 +80,7 @@ class ReExportedImportResolutionTest {
         assertThatCode(this::compileOuter)
                 .as("the outermost level keeps its import to itself, so the chain stops there")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("TARGET");
+                .hasMessageContaining("outer.evo:2: Cannot use 'OUTER.MIDDLE.INNER.TARGET' as an argument: alias 'MIDDLE' of OUTER is not marked EXPORT.");
     }
 
     /**

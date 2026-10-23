@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.Locale;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
@@ -106,7 +107,7 @@ public class ConditionalSkipInstruction extends AbstractConditionInstruction {
      * @return the name of its negation, or empty if the name is not a conditional skip
      */
     public static Optional<String> negationOf(String opcodeName) {
-        Integer opcodeId = Instruction.getInstructionIdByName(opcodeName.toUpperCase());
+        Integer opcodeId = Instruction.getInstructionIdByName(opcodeName.toUpperCase(Locale.ROOT));
         if (opcodeId == null || !Instruction.skipsNext(opcodeId)) {
             return Optional.empty();
         }

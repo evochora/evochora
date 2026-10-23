@@ -44,11 +44,12 @@ public record SourceFile(String placement, String path, String resolvedPath, int
     }
 
     /**
-     * A text the preprocessor attached to a position, shown next to the token there.
+     * A text the preprocessor attached to a token, shown right behind the token.
      *
      * @param expansion The instance of injected tokens the note was made in.
-     * @param line      The line of the position.
-     * @param column    The column of the position.
+     * @param line      The line of the token.
+     * @param column    The column right after the token's last character, where a source view
+     *                  inserts the note.
      * @param text      The text of the note.
      */
     public record Note(int expansion, int line, int column, String text) {

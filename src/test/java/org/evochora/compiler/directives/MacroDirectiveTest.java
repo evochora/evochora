@@ -1,5 +1,9 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestPreProcessorContexts;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.frontend.Flags;
 import java.util.Map;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestRegistries;
@@ -52,7 +56,7 @@ public class MacroDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults(), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,
@@ -74,5 +78,35 @@ public class MacroDirectiveTest {
                 TokenType.NEWLINE,
                 TokenType.END_OF_FILE
         );
+    }
+
+    /**
+     * A name a computation reads as an operation, or the cursor, cannot be the name of a macro
+     * or of one of its parameters; the letter case does not matter.
+     */
+    @Test
+    @Tag("unit")
+    void aReservedNameCannotBeAMacroNameOrAParameterName() {
+        assertThat(macroErrors("# A comment line.", ".MACRO number X", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: 'number' is a function and cannot be a macro name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO SHL X", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: 'SHL' is an operator and cannot be a macro name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO @ X", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: '@' cannot be a macro name.");
+        assertThat(macroErrors("# A comment line.", ".MACRO SET TYPE @", "  NOP", ".ENDMACRO"))
+                .containsExactly("<memory>:2: 'TYPE' is a function and cannot be a parameter name.",
+                        "<memory>:2: '@' cannot be a parameter name.");
+    }
+
+    private static List<String> macroErrors(String... lines) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines), diagnostics).scanTokens();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(), "<memory>", "<memory>",
+                CompilerOptions.defaults(), TestRegistries.operations(), new RuntimeInstructionSetAdapter(),
+                Flags.of(Map.of(), TestRegistries.operations().reservedNames()), diagnostics);
+        TestRegistries.registerPreProcessorBlocks(context.handlers());
+        new PreProcessor(tokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), context)
+                .expand();
+        return diagnostics.getDiagnostics().stream().map(TestDiagnostics::located).toList();
     }
 }

@@ -1,5 +1,6 @@
 package org.evochora.compiler.isa;
 
+import java.util.Locale;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
 
@@ -111,7 +112,7 @@ public interface IInstructionSet {
 	 *         bank of the target that has registers.
 	 */
 	default Optional<RegisterRef> parseRegister(String text) {
-		String upper = text.toUpperCase();
+		String upper = text.toUpperCase(Locale.ROOT);
 		for (RegisterBankInfo bank : registerBanks()) {
 			if (bank.count() > 0 && upper.startsWith(bank.prefix())) {
 				String suffix = upper.substring(bank.prefix().length());

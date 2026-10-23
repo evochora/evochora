@@ -2,6 +2,7 @@ package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
+import org.evochora.compiler.features.label.LabelFeature;
 import org.evochora.compiler.frontend.BlockKind;
 
 import java.util.Set;
@@ -13,6 +14,16 @@ import java.util.Set;
  */
 public class ProcFeature implements ICompilerFeature {
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Requires {@link LabelFeature}: a procedure is a label, which a call resolves through.
+     */
+    @Override
+    public Set<Class<? extends ICompilerFeature>> requires() {
+        return Set.of(LabelFeature.class);
+    }
+
     @Override
     public String name() { return "proc"; }
 
@@ -21,7 +32,7 @@ public class ProcFeature implements ICompilerFeature {
         ctx.parserBlock(new BlockKind(Set.of(".PROC"), ".ENDPROC", Set.of()), new ProcDirectiveHandler(ctx.isa()));
         ctx.parserStatement("CALL", new CallStatementHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler(ctx.isa()));
+        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler(ctx.isa(), ctx.operations()));
         ctx.irConverter(CallNode.class, new CallNodeConverter());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());

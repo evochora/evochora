@@ -4,6 +4,7 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.SourceView;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingResult;
@@ -39,9 +40,13 @@ public class Emitter {
      *
      * @param linked The linked IR program with the call site bindings; the program's
      *               {@link org.evochora.compiler.model.ir.DebugInfo} supplies the source files
-     *               and the token map, which the artifact carries unchanged, and from which the
-     *               token lookup by position is built.
-     * @param layout The layout result, containing coordinate and source mapping.
+     *               and the token map, which the artifact carries, and from which the token
+     *               lookup by position is built, and the notes of the computations the frontend
+     *               computed.
+     * @param layout The layout result, containing coordinate and source mapping and the notes of
+     *               the computations the layout computed. The artifact's source files and
+     *               expansions carry the notes the preprocessor recorded, then those of the
+     *               frontend and those of the layout, each distinct note once.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @return The final, compiled {@link ProgramArtifact}.
@@ -53,7 +58,7 @@ public class Emitter {
                                 IInstructionSet isa,
                                 EmissionContributorRegistry contributorRegistry) throws CompilationException {
         IrProgram program = linked.program();
-        EmissionContext emissionContext = new EmissionContext();
+        EmissionContext emissionContext = new EmissionContext(layout.namedValues());
         List<IEmissionContributor> contributors = contributorRegistry.contributors();
         for (IrItem item : program.items()) {
             for (IEmissionContributor contributor : contributors) {
@@ -62,8 +67,10 @@ public class Emitter {
         }
 
         OperandEncoder encoder = new OperandEncoder(isa);
-        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, program.debugInfo().sources(),
-                program.debugInfo().expansions());
+        SourceView sourceView = program.debugInfo().view()
+                .withNotes(program.debugInfo().notes())
+                .withNotes(layout.notes());
+        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, sourceView);
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
 
@@ -119,13 +126,12 @@ public class Emitter {
 
         return new ProgramArtifact(
                 programId,
-                program.debugInfo().sources(),
-                program.debugInfo().expansions(),
+                sourceView.sources(),
+                sourceView.expansions(),
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),
                 linked.callSiteBindings(),
-                layout.relativeCoordToLinearAddress(),
                 linearToCoord,
                 emissionContext.registerAliasMap(),
                 emissionContext.constantValues(),
@@ -142,12 +148,14 @@ public class Emitter {
      * Looks up the coordinate the layout assigned to an address.
      *
      * @throws CompilationException if the layout has no cell for the address, which means the
-     *         layout and the emitter disagree about how many cells an item occupies.
+     *         layout and the emitter disagree about how many cells an item occupies: a defect of
+     *         the compiler, since the layout checks every item against the cells it reserves.
      */
     private static int[] coordinateOf(Map<Integer, int[]> linearToCoord, int address, SourceInfo src) throws CompilationException {
         int[] coord = linearToCoord.get(address);
         if (coord == null) {
-            throw new CompilationException(SourceInfo.locate(src, "Missing coord for address " + address));
+            throw new CompilationException(SourceInfo.locate(src, "Internal error: the layout has no cell for address "
+                    + address + "; the layout and the emitter disagree about how many cells an item occupies."));
         }
         return coord;
     }

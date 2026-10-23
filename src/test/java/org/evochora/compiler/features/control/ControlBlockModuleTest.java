@@ -63,7 +63,7 @@ class ControlBlockModuleTest {
         assertThatCode(() -> compile("main.evo"))
                 .as("the block's name is a member of the library that is not exported")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'WALK' of LIB is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot use 'LIB.WALK' as an argument: 'WALK' of LIB is not marked EXPORT.");
     }
 
     @Test
@@ -75,7 +75,7 @@ class ControlBlockModuleTest {
         assertThatCode(() -> compile("main.evo"))
                 .as("the block is exported, its case is not")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'BLOCKED' of LIB.WALK is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot use 'LIB.WALK.BLOCKED' as an argument: 'BLOCKED' of LIB.WALK is not marked EXPORT.");
     }
 
     @Test
@@ -105,7 +105,7 @@ class ControlBlockModuleTest {
         assertThatCode(() -> compile("main.evo"))
                 .as("the block is exported, its end is not")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'END' of LIB.WALK is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot use 'LIB.WALK.END' as an argument: 'END' of LIB.WALK is not marked EXPORT.");
     }
 
     @Test
@@ -126,7 +126,7 @@ class ControlBlockModuleTest {
         assertThatCode(() -> compile("main.evo"))
                 .as("the block is exported, the procedure holding it is not")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("'P' of LIB is not marked EXPORT.");
+                .hasMessageContaining("main.evo:2: Cannot use 'LIB.P.WALK' as an argument: 'P' of LIB is not marked EXPORT.");
     }
 
     @Test

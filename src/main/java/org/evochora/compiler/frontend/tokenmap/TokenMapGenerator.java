@@ -1,10 +1,18 @@
 package org.evochora.compiler.frontend.tokenmap;
 
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
+import org.evochora.compiler.expression.INameResolution;
+import org.evochora.compiler.expression.ValueNotes;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.expression.Expression;
+import org.evochora.compiler.model.expression.LiteralExpression;
+import org.evochora.compiler.model.expression.NameExpression;
+import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.ast.RegisterNode;
 
 import org.evochora.compiler.frontend.ModuleContextTracker;
@@ -14,10 +22,12 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Traverses a syntactically and semantically valid Abstract Syntax Tree (AST)
@@ -31,13 +41,17 @@ import java.util.Optional;
  * <p>
  * Feature-specific AST node handling is delegated to {@link ITokenMapContributor}
  * implementations via the {@link TokenMapContributorRegistry}. Core node types
- * (IdentifierNode, RegisterNode) are handled as default logic: an identifier is classified by
- * the symbol it names, a register as a register.
+ * (IdentifierNode, ExpressionNode, RegisterNode) are handled as default logic: an identifier is
+ * classified by the symbol it names, every name of a computation but the cursor as an identifier
+ * at the position of its token, a register as a register. A computation whose value phase 4
+ * computed is noted with {@code [=value]} as {@link ValueNotes} places it, for the source view to
+ * show; one that only the layout computes is noted by the layout.
  */
 public class TokenMapGenerator implements ITokenMapContext {
 
     private final SymbolTable symbolTable;
     private final Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private final DiagnosticsEngine diagnostics;
     private final TokenMapContributorRegistry contributorRegistry;
     private final ModuleContextTracker contextTracker;
@@ -76,20 +90,22 @@ public class TokenMapGenerator implements ITokenMapContext {
     }
 
     /**
-     * Generates the token map by walking all provided AST nodes.
-     * This is useful when there are multiple top-level nodes (e.g., multiple procedures).
+     * Generates the token map and the notes of the computed values by walking all provided AST
+     * nodes. This is useful when there are multiple top-level nodes (e.g., multiple procedures).
      *
      * @param nodes The list of AST nodes to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token, with instance 0, and
-     *         the value is the detailed TokenInfo.
+     * @return The token map, keyed by the position of a token with instance 0, and the notes
+     *         {@code [=value]} of every computation phase 4 computed in a file, as
+     *         {@link ValueNotes} places them, at their full positions, each distinct note once, in
+     *         the order the walk met them.
      */
-    public Map<SourceInfo, TokenInfo> generateAll(List<AstNode> nodes) {
+    public TokenMapResult generateAll(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             if (node != null) {
                 walkAndVisit(node);
             }
         }
-        return tokenMap;
+        return new TokenMapResult(tokenMap, List.copyOf(notes));
     }
 
     // === ITokenMapContext implementation ===
@@ -174,21 +190,10 @@ public class TokenMapGenerator implements ITokenMapContext {
         }
 
         if (node instanceof IdentifierNode identifierNode) {
-            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo());
-            if (symbolOpt.isPresent()) {
-                ResolvedSymbol resolved = symbolOpt.get();
-                Symbol sym = resolved.symbol();
-                SourceInfo si = identifierNode.sourceInfo();
-                String qualifiedName = resolved.qualifiedName();
-                put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), resolved.scope(), qualifiedName));
-            } else {
-                diagnostics.reportError(
-                    "Internal error: symbol '" + identifierNode.text() +
-                    "' could not be resolved although the semantic analysis accepted it.",
-                    identifierNode.sourceInfo().fileName(),
-                    identifierNode.sourceInfo().lineNumber()
-                );
-            }
+            classifyName(identifierNode.text(), identifierNode.sourceInfo());
+        } else if (node instanceof ExpressionNode expressionNode) {
+            classifyNames(expressionNode.expression());
+            noteValue(expressionNode);
         } else if (node instanceof RegisterNode registerNode) {
             // A register is written as a register here: aliases and parameters are still
             // identifiers in Phase 5 and are replaced by registers only in Phase 6.
@@ -197,6 +202,53 @@ public class TokenMapGenerator implements ITokenMapContext {
                 TokenKind.REGISTER,
                 this.currentScopeName
             ));
+        }
+    }
+
+    /**
+     * Notes the value phase 4 recorded for a computation as {@link ValueNotes} places it; a
+     * computation the layout computes and one that failed get no note here.
+     */
+    private void noteValue(ExpressionNode expression) {
+        symbolTable.resultOf(expression)
+                .filter(outcome -> outcome.value() != null)
+                .ifPresent(outcome -> notes.addAll(ValueNotes.of(expression.expression(), outcome.value())));
+    }
+
+    /**
+     * Classifies a name by the symbol it names, at the position of its token.
+     */
+    private void classifyName(String name, SourceInfo at) {
+        Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(name, at);
+        if (symbolOpt.isPresent()) {
+            ResolvedSymbol resolved = symbolOpt.get();
+            Symbol sym = resolved.symbol();
+            put(at, new TokenInfo(name, TokenKindMapper.map(sym.type()), resolved.scope(), resolved.qualifiedName()));
+        } else {
+            diagnostics.reportError(
+                "Internal error: symbol '" + name +
+                "' could not be resolved although the semantic analysis accepted it.",
+                at.fileName(),
+                at.lineNumber()
+            );
+        }
+    }
+
+    /**
+     * Classifies every name of a computation as an identifier with that name, except the
+     * cursor, which names no symbol.
+     */
+    private void classifyNames(Expression expression) {
+        switch (expression) {
+            case NameExpression name -> {
+                if (!INameResolution.CURSOR.equals(name.name())) {
+                    classifyName(name.name(), name.sourceInfo());
+                }
+            }
+            case OperationExpression operation -> operation.operands().forEach(this::classifyNames);
+            case LiteralExpression literal -> {
+                // A literal names nothing
+            }
         }
     }
 

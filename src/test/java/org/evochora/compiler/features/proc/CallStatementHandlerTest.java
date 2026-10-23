@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.instruction.InstructionParsingHandler;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
@@ -36,7 +37,7 @@ class CallStatementHandlerTest {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register("CALL", new CallStatementHandler());
         reg.registerDefault(new InstructionParsingHandler());
-        Parser parser = new Parser(tokens, diagnostics, reg);
+        Parser parser = TestParsers.parser(tokens, diagnostics, reg);
         List<AstNode> ast = parser.parse();
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
@@ -46,7 +47,7 @@ class CallStatementHandlerTest {
 
     @Test
     void newSyntax_refAndVal() {
-        CallNode node = parseCall("CALL myProc REF %DR0 VAL 42");
+        CallNode node = parseCall("CALL myProc REF %DR0 VAL DATA:42");
 
         assertThat(node.procedureName()).isInstanceOf(IdentifierNode.class);
         assertThat(((IdentifierNode) node.procedureName()).text()).isEqualTo("myProc");
@@ -64,7 +65,7 @@ class CallStatementHandlerTest {
 
     @Test
     void newSyntax_valOnly() {
-        CallNode node = parseCall("CALL myProc VAL 42");
+        CallNode node = parseCall("CALL myProc VAL DATA:42");
 
         assertThat(node.valArguments()).hasSize(1);
         assertThat(node.refArguments()).isEmpty();

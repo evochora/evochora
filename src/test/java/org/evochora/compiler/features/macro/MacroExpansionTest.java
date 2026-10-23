@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * What a macro invocation expands to, checked on the token stream the preprocessor leaves
@@ -56,7 +58,7 @@ class MacroExpansionTest {
 
     /**
      * The body tokens stand in the expansion; an argument keeps the position it was written at
-     * and remembers the position of the parameter it replaced, in that expansion.
+     * and remembers the parameter it replaced, at its position in that expansion.
      */
     @Test
     void anArgumentKeepsItsPositionAndRemembersTheParameterItReplaces() {
@@ -72,7 +74,8 @@ class MacroExpansionTest {
         assertThat(seti.source()).isEqualTo(new SourceInfo("<memory>", 2, 3, "", 1));
         assertThat(seti.replaces()).isEmpty();
         assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 4, 5, "", 0));
-        assertThat(five.replaces()).containsExactly(new SourceInfo("<memory>", 2, 13, "", 1));
+        assertThat(five.replaces()).extracting(Token::text, Token::source)
+                .containsExactly(tuple("VALUE", new SourceInfo("<memory>", 2, 13, "", 1)));
     }
 
     /**
@@ -93,15 +96,15 @@ class MacroExpansionTest {
         assertThat(result.diagnostics.hasErrors()).isFalse();
         Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
         assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 7, 7, "", 0));
-        assertThat(five.replaces()).containsExactly(
-                new SourceInfo("<memory>", 5, 9, "", 1),
-                new SourceInfo("<memory>", 2, 13, "", 2));
+        assertThat(five.replaces()).extracting(Token::text, Token::source).containsExactly(
+                tuple("W", new SourceInfo("<memory>", 5, 9, "", 1)),
+                tuple("V", new SourceInfo("<memory>", 2, 13, "", 2)));
     }
 
     /**
      * An argument substituted into a body that defines a macro stands in that definition as it
-     * was written; expanding the inner macro keeps its position and adds its position in the body,
-     * in the inner expansion, to the positions it replaces.
+     * was written; expanding the inner macro keeps its position and adds the parameter it stands
+     * for in the body, at its position in the inner expansion, to the tokens it replaces.
      */
     @Test
     void anArgumentInsideADefinitionInABodyKeepsItsPositionInTheInnerExpansion() {
@@ -119,9 +122,9 @@ class MacroExpansionTest {
         Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
         assertThat(seti.source()).isEqualTo(new SourceInfo("<memory>", 3, 5, "", 2));
         assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 7, 7, "", 0));
-        assertThat(five.replaces()).containsExactly(
-                new SourceInfo("<memory>", 3, 15, "", 1),
-                new SourceInfo("<memory>", 3, 15, "", 2));
+        assertThat(five.replaces()).extracting(Token::text, Token::source).containsExactly(
+                tuple("VALUE", new SourceInfo("<memory>", 3, 15, "", 1)),
+                tuple("VALUE", new SourceInfo("<memory>", 3, 15, "", 2)));
     }
 
     @Test
@@ -146,6 +149,74 @@ class MacroExpansionTest {
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
         assertThat(result.texts()).containsExactly("SETI", "%DR0", "DATA", ":", "5");
+    }
+
+    @Test
+    void substitutesSignedVectorArgumentAsAWhole() {
+        Expansion result = expand(
+                ".MACRO STEP DIR",
+                "  SEKI DIR",
+                ".ENDMACRO",
+                "STEP -1|-2");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly("SEKI", "-", "1", "|", "-", "2");
+    }
+
+    @Test
+    void substitutesSignedNumberAndSignedTypedLiteralArgumentsAsAWhole() {
+        Expansion result = expand(
+                ".MACRO SET REG VALUE",
+                "  SETI REG VALUE",
+                ".ENDMACRO",
+                "SET -3 DATA:-5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly("SETI", "-", "3", "DATA", ":", "-", "5");
+    }
+
+    /**
+     * Whether a parenthesis opens a call is decided where the body is read: a parameter written
+     * against it is a call of the function the argument names, one written apart is not.
+     */
+    @Test
+    void aParameterWrittenAgainstAParenthesisIsCalled() {
+        Expansion result = expand(
+                ".MACRO APPLY F X",
+                "  SETI %DR0 F(X)",
+                "  SETI %DR1 F (X)",
+                ".ENDMACRO",
+                "APPLY NUMBER ENERGY:5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.tokens.stream().filter(t -> t.text().equals("(")).map(Token::type))
+                .containsExactly(TokenType.CALL_PARENTHESIS, TokenType.OPEN_PARENTHESIS);
+    }
+
+    @Test
+    void substitutesParenthesisAndCallArgumentsAsOneArgumentEach() {
+        Expansion result = expand(
+                ".MACRO PAIR FIRST SECOND",
+                "  SETI FIRST SECOND",
+                ".ENDMACRO",
+                "PAIR (W - (1)) MIN(A, 1)");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly(
+                "SETI", "(", "W", "-", "(", "1", ")", ")", "MIN", "(", "A", ",", "1", ")");
+    }
+
+    @Test
+    void substitutesTypedParenthesisAndIndexArgumentsAsOneArgumentEach() {
+        Expansion result = expand(
+                ".MACRO PAIR FIRST SECOND",
+                "  SETI FIRST SECOND",
+                ".ENDMACRO",
+                "PAIR DATA:(W-1) V[0][1]");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly(
+                "SETI", "DATA", ":", "(", "W", "-", "1", ")", "V", "[", "0", "]", "[", "1", "]");
     }
 
     @Test
@@ -272,7 +343,7 @@ class MacroExpansionTest {
                 "INC %DR0 %DR1");
 
         assertThat(result.diagnostics.hasErrors()).isTrue();
-        assertThat(result.diagnostics.summary()).contains("Macro 'INC' expects 1 arguments, but got 2");
+        assertThat(result.diagnostics.summary()).contains("<memory>:4: Macro 'INC' expects 1 arguments, but got 2");
         assertThat(result.texts()).isEmpty();
     }
 
@@ -439,7 +510,7 @@ class MacroExpansionTest {
         });
         List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", libraryTokens, MAIN, CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", libraryTokens, MAIN, CompilerOptions.defaults(), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
@@ -453,7 +524,7 @@ class MacroExpansionTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults(), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
