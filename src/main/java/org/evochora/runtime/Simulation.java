@@ -12,6 +12,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.OrganismRandom;
 import org.evochora.runtime.model.SplitMix64;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.GenomeRule;
 import org.evochora.runtime.spi.DeathContext;
@@ -125,16 +126,22 @@ public class Simulation {
      *                    1 = single-threaded (sequential code path, useful for debugging),
      *                    N &gt; 1 = exactly N threads via {@link TickWorkerPool}.
      *                    Determinism is guaranteed in every mode.
-     * @throws IllegalArgumentException if {@code parallelism} is negative, or if the
+     * @throws IllegalArgumentException if {@code parallelism} is negative, if the
      *                                  {@code genome-exclude} list of the organism configuration
      *                                  carries an entry that names no molecule type or no readable
-     *                                  value. Both are resolved while the simulation is built, so a
-     *                                  rejected value fails here and not at the first tick.
+     *                                  value, or if {@code max-energy} or {@code max-entropy} lies
+     *                                  outside the range of a molecule's value
+     *                                  ({@link ValueBounds}), where an organism's energy and entropy
+     *                                  registers could not hold it. All are resolved while the
+     *                                  simulation is built, so a rejected value fails here and not at
+     *                                  the first tick.
      */
     public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig, int parallelism) {
         this.environment = environment;
         this.policyManager = policyManager;
         this.organismConfig = organismConfig;
+        requireLimitWithinValueRange(organismConfig, "max-energy");
+        requireLimitWithinValueRange(organismConfig, "max-entropy");
         this.genomeRule = new GenomeRule(organismConfig.hasPath(GenomeRule.CONFIG_KEY)
                 ? organismConfig.getStringList(GenomeRule.CONFIG_KEY) : GenomeRule.DEFAULT_ENTRIES);
         this.organisms = new ArrayList<>();
@@ -152,6 +159,32 @@ public class Simulation {
             }
         } else {
             this.parallelInterceptContexts = null;
+        }
+    }
+
+    /**
+     * Rejects an organism limit that a molecule's value cannot hold.
+     * <p>
+     * An organism reads its energy and entropy as values, so a limit beyond the range of a value
+     * could never be read as it stands. A limit the configuration does not carry is left to the
+     * point where it is first read.
+     *
+     * @param organismConfig The organism configuration.
+     * @param key The key of the limit.
+     * @throws IllegalArgumentException if the limit lies outside the value range
+     */
+    private static void requireLimitWithinValueRange(Config organismConfig, String key) {
+        if (!organismConfig.hasPath(key)) {
+            return;
+        }
+        long limit = organismConfig.getLong(key);
+        if (limit > ValueBounds.MAX_VALUE) {
+            throw new IllegalArgumentException("Organism configuration '" + key + "' is " + limit
+                    + ", above the largest value a molecule holds, " + ValueBounds.MAX_VALUE + ".");
+        }
+        if (limit < ValueBounds.MIN_VALUE) {
+            throw new IllegalArgumentException("Organism configuration '" + key + "' is " + limit
+                    + ", below the smallest value a molecule holds, " + ValueBounds.MIN_VALUE + ".");
         }
     }
 

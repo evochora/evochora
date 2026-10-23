@@ -7,6 +7,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -112,6 +113,31 @@ public class SimulationTest {
         assertThatThrownBy(bare::tick)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("random provider");
+    }
+
+    /**
+     * An energy or entropy limit that a molecule's value cannot hold is rejected while the
+     * simulation is built, with the key, the configured value and the bound it exceeds; a limit
+     * at the largest value is accepted.
+     */
+    @Test
+    @Tag("unit")
+    void aLimitBeyondTheValueRangeIsRejectedWhenTheSimulationIsBuilt() {
+        int beyond = ValueBounds.MAX_VALUE + 1;
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, beyond, 8191, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-energy")
+                .hasMessageContaining(String.valueOf(beyond))
+                .hasMessageContaining(String.valueOf(ValueBounds.MAX_VALUE));
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, 32767, beyond, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-entropy")
+                .hasMessageContaining(String.valueOf(beyond))
+                .hasMessageContaining(String.valueOf(ValueBounds.MAX_VALUE));
+
+        Simulation atTheBound = SimulationTestUtils.createSimulation(
+                environment, ValueBounds.MAX_VALUE, ValueBounds.MAX_VALUE, 10);
+        assertThat(atTheBound.getOrganismConfig().getInt("max-energy")).isEqualTo(ValueBounds.MAX_VALUE);
     }
 
     /**

@@ -12,6 +12,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -2050,8 +2051,8 @@ public class VMConditionalSkipInstructionTest {
      */
     private int countHits(String opName, Map<Integer, Object> registers, int secondArgument, int samples) {
         Environment loopWorld = new Environment(new int[]{LOOP_WORLD_SIDE, LOOP_WORLD_SIDE}, true);
-        Simulation loopSim = SimulationTestUtils.createSimulation(loopWorld, 1_000_000, 1_000_000, 10);
-        Organism runner = Organism.create(loopSim, new int[]{0, 0}, 1_000_000);
+        Simulation loopSim = SimulationTestUtils.createSimulation(loopWorld, ValueBounds.MAX_VALUE, ValueBounds.MAX_VALUE, 10);
+        Organism runner = Organism.create(loopSim, new int[]{0, 0}, ValueBounds.MAX_VALUE);
         loopSim.addOrganism(runner);
         runner.writeOperand(0, molecule(0));
         runner.writeOperand(2, molecule(0));
