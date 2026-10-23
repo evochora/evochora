@@ -25,14 +25,17 @@ import java.util.stream.Collectors;
 public record OperationExpression(String operation, boolean function, List<Expression> operands, SourceInfo sourceInfo,
                                   SourceInfo end) implements Expression {
 
-    /** The name of the index access, {@code a[i]}. */
-    private static final String INDEX = "[]";
+    /** The name of the index access, {@code a[i]}, the one operation the parser names itself. */
+    public static final String INDEX = "[]";
 
-    /** The name of the chain that makes a vector, {@code 1|2}. */
-    private static final String CHAIN = "|";
+    /** The name of the vector of parts, {@code a|b|c}, which the tokenizer reads as its own token. */
+    public static final String VECTOR = "|";
 
-    /** The name of the typing operator, {@code T:n}. */
-    private static final String TYPING = ":";
+    /**
+     * The name of the typing operator, {@code T:n}, which the preprocessor reads as a label colon
+     * at the start of a statement only and so may share with it.
+     */
+    public static final String TYPING = ":";
 
     /**
      * Copies the operands.
@@ -80,7 +83,7 @@ public record OperationExpression(String operation, boolean function, List<Expre
         if (operands.size() == 1) {
             return operator.stripLeading() + grouped(operands.getFirst());
         }
-        if (CHAIN.equals(operation)) {
+        if (VECTOR.equals(operation)) {
             return operands.stream().map(OperationExpression::part).collect(Collectors.joining(operator));
         }
         return operands.stream().map(OperationExpression::grouped).collect(Collectors.joining(operator));

@@ -31,7 +31,7 @@ import java.util.Optional;
  *       applied to the parenthesis;</li>
  *   <li>a prefix {@code OP a}, an infix {@code a OP b}, and a chain {@code a|b|c} of one chain
  *       operator, read as one operation on all its parts;</li>
- *   <li>an index {@code a[b]}, the operation {@link OperationRegistry#INDEX};</li>
+ *   <li>an index {@code a[b]}, the operation {@link OperationExpression#INDEX};</li>
  *   <li>a molecule type the instruction set knows, followed by {@code :}, read as a type literal
  *       to which the typing operator applies, so {@code DATA:5} is the typing of {@code DATA}
  *       and {@code 5}; any other word before a colon is a name.</li>
@@ -228,7 +228,7 @@ public final class ExpressionParser {
         private Parsed postfix() {
             Parsed base = primary();
             while (check(TokenType.OPEN_BRACKET)) {
-                Optional<IOperation> index = operations.find(OperationRegistry.INDEX, Notation.INFIX);
+                Optional<IOperation> index = operations.find(OperationExpression.INDEX, Notation.INFIX);
                 if (index.isEmpty()) {
                     throw unexpected(peek());
                 }

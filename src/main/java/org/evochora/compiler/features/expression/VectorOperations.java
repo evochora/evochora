@@ -4,9 +4,9 @@ import org.evochora.compiler.expression.IOperation;
 import org.evochora.compiler.expression.IOperationGroup;
 import org.evochora.compiler.expression.Level;
 import org.evochora.compiler.expression.Notation;
-import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.OperationResult;
 import org.evochora.compiler.expression.Signature;
+import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 
@@ -29,14 +29,14 @@ final class VectorOperations implements IOperationGroup {
     @Override
     public List<IOperation> operations() {
         return List.of(
-                new DefinedOperation(OperationRegistry.VECTOR, Notation.CHAIN, Level.CHAIN,
+                new DefinedOperation(OperationExpression.VECTOR, Notation.CHAIN, Level.CHAIN,
                         List.of(new Signature(List.of(Kind.NUMBER), true, Kind.VECTOR)),
                         (operands, context) -> {
                             List<Long> components = new ArrayList<>(operands.size());
                             operands.forEach(operand -> components.add(((Value.Number) operand).value()));
                             return new OperationResult.Value(new Value.Vector(components));
                         }),
-                new DefinedOperation(OperationRegistry.INDEX, Notation.INFIX, Level.INDEX,
+                new DefinedOperation(OperationExpression.INDEX, Notation.INFIX, Level.INDEX,
                         List.of(Signature.of(Kind.NUMBER, Kind.VECTOR, Kind.NUMBER)),
                         (operands, context) -> Components.component(vector(operands.get(0)), number(operands.get(1)), "a vector")),
                 pairwise("+", Math::addExact),

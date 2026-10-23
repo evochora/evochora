@@ -5,9 +5,9 @@ import org.evochora.compiler.expression.IOperation;
 import org.evochora.compiler.expression.IOperationGroup;
 import org.evochora.compiler.expression.Level;
 import org.evochora.compiler.expression.Notation;
-import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.OperationResult;
 import org.evochora.compiler.expression.Signature;
+import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 
@@ -41,7 +41,7 @@ final class PositionOperations implements IOperationGroup {
                         (operands, context) -> operands.get(1) instanceof Value.Position other
                                 ? Components.pairwise(position(operands.get(0)), other.components(), Math::subtractExact, Value.Vector::new)
                                 : Components.pairwise(position(operands.get(0)), vector(operands.get(1)), Math::subtractExact, Value.Position::new)),
-                new DefinedOperation(OperationRegistry.INDEX, Notation.INFIX, Level.INDEX,
+                new DefinedOperation(OperationExpression.INDEX, Notation.INFIX, Level.INDEX,
                         List.of(Signature.of(Kind.NUMBER, Kind.POSITION, Kind.NUMBER)),
                         PositionOperations::component),
                 new DefinedOperation("POSITION", Notation.FUNCTION, Level.INDEX,

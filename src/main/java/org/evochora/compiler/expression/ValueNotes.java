@@ -59,11 +59,11 @@ public final class ValueNotes {
     }
 
     private static boolean isChain(OperationExpression operation) {
-        return OperationRegistry.VECTOR.equals(operation.operation());
+        return OperationExpression.VECTOR.equals(operation.operation());
     }
 
     private static boolean isTyping(OperationExpression operation) {
-        return OperationRegistry.TYPING.equals(operation.operation()) && operation.operands().size() == 2;
+        return OperationExpression.TYPING.equals(operation.operation()) && operation.operands().size() == 2;
     }
 
     private static void notePart(List<PositionedNote> notes, Expression part, String text) {

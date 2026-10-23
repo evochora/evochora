@@ -72,8 +72,8 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    hands an operation the cursor and the origin the line counts its vectors from
    (`IEvaluationContext`). The registry holds the operations against the words of the
    preprocessor, `:` excepted, which the preprocessor reads at the start of a statement only. The
-   data model writes a computation as text and knows the names `[]` and `:` for that as copies of
-   its own (`OperationExpression`), since `model` references nothing of `compiler/expression`.
+   three names are part of the tree the data model defines (`OperationExpression`), which writes a
+   computation as text by them; the machinery and the features take them from there.
    Which operations exist, and what they compute, is the `expression` feature's.
 
 Smaller instances: the tokenizer emits a colon token for `:` (label and typing); `Symbol.Type` is a closed

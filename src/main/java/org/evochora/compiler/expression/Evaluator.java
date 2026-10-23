@@ -169,7 +169,7 @@ public final class Evaluator {
                         .filter(kind -> kind != null)
                         .toList();
                 if (!expected.isEmpty() && !expected.contains(kinds.get(i))) {
-                    if (OperationRegistry.VECTOR.equals(operation.name())) {
+                    if (OperationExpression.VECTOR.equals(operation.name())) {
                         return new EvaluationResult.Error("Invalid vector component: '" + expression.operands().get(i).text()
                                 + "' is " + described(kinds.get(i)) + ".", expression.operands().get(i).sourceInfo());
                     }

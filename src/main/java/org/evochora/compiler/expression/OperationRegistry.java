@@ -1,5 +1,6 @@
 package org.evochora.compiler.expression;
 
+import org.evochora.compiler.model.expression.OperationExpression;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 
@@ -35,18 +36,6 @@ import java.util.Set;
  * preprocessor.
  */
 public final class OperationRegistry {
-
-    /** The name of the index access, {@code a[i]}, the one operation the parser names itself. */
-    public static final String INDEX = "[]";
-
-    /**
-     * The name of the typing operator, {@code T:n}, which the preprocessor reads as a label colon
-     * at the start of a statement only and so may share with it.
-     */
-    public static final String TYPING = ":";
-
-    /** The name of the vector of parts, {@code a|b|c}, which the tokenizer reads as its own token. */
-    public static final String VECTOR = "|";
 
     private final Map<Key, Overloads> operations = new LinkedHashMap<>();
 
@@ -148,7 +137,7 @@ public final class OperationRegistry {
         Set<String> words = new LinkedHashSet<>();
         preprocessorWords.forEach(word -> words.add(normalize(word)));
         for (Key key : operations.keySet()) {
-            if (!TYPING.equals(key.name()) && words.contains(key.name())) {
+            if (!OperationExpression.TYPING.equals(key.name()) && words.contains(key.name())) {
                 throw new IllegalStateException("Operation '" + key.name() + "' is a preprocessor directive.");
             }
         }
@@ -169,7 +158,7 @@ public final class OperationRegistry {
             case FUNCTION -> level == Level.INDEX;
             case PREFIX -> level == Level.PREFIX;
             case CHAIN -> level == Level.CHAIN;
-            case INFIX -> INDEX.equals(name)
+            case INFIX -> OperationExpression.INDEX.equals(name)
                     ? level == Level.INDEX
                     : level != Level.INDEX && level != Level.PREFIX && level != Level.CHAIN;
         };
