@@ -49,12 +49,12 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	/**
 	 * The characters a lexer symbol may consist of. The lexer tries symbols before identifiers,
 	 * numbers, strings, comments and registers, so letters, digits, {@code _}, {@code $}, {@code #},
-	 * {@code "}, {@code ;}, {@code %} and whitespace would cut into those; {@code |} and {@code :}
-	 * are read by the parser itself. Brackets, {@code \} and {@code §} are kept out as a reserve
-	 * for the core, and {@code @} is a name of its own. A character joins when a feature needs it
-	 * and the core does not claim it.
+	 * {@code "}, {@code ;}, {@code %} and whitespace would cut into those. The tokenizer reads
+	 * {@code |}, {@code :}, {@code ,} and the parentheses and brackets as tokens of its own, and
+	 * {@code @} is a name of its own; {@code \} and {@code §} are kept out as a reserve for the
+	 * core. A character joins when a feature needs it and the core does not claim it.
 	 */
-	private static final String LEXER_SYMBOL_ALPHABET = "!&*+,./<=>?^~-";
+	private static final String LEXER_SYMBOL_ALPHABET = "!&*+./<=>?^~-";
 
 	private final IInstructionSet isa;
 
