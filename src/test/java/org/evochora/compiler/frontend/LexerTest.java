@@ -183,7 +183,7 @@ public class LexerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         Lexer lexer = lexer(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        lexer.read(aSource, aFile.toString(), "");
+        lexer.read(aSource, aFile.toString().replace('\\', '/'), "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("b.evo:2: Circular dependency detected: " + aFile.toString().replace('\\', '/'));
