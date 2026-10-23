@@ -30,3 +30,6 @@ For architectural review criteria see **[.agents/architecture-guidelines.md](.ag
 - Comments in the source code must never be a reaction to a previous conversation
 - All comments need to be understandable without the context of previous conversations
 - Never comment what changed, but only explain the current code
+- A comment states no number, size or measure that the code or the configuration holds, unless it
+  is part of a contract, such as the extent a module's header declares: such a figure goes stale
+  with the next change of the code, and nothing reports it

@@ -143,9 +143,10 @@ Choose the smallest world that holds the program and its work (each side a multi
 and round the tick count generously: the engine drops a partial chunk of 50 ticks at the pause.
 A self-replicator needs three times its own body on each side, or it has no room to place a copy
 in every direction. It also needs the energy for one: a quiet world has none to harvest, a copy
-of the primordial costs roughly 45 energy per body cell, and `runtime.organism.max-energy` caps
-what the organism can hold, so a run that has to reach a `FORK` raises that cap and
-`initialEnergy` with it.
+costs what writing its wall and body cells costs under the configured thermodynamics, and
+`runtime.organism.max-energy` caps what the organism can hold, so a run that has to reach a
+`FORK` raises that cap and `initialEnergy` with it. Keep both within what a `DATA` value holds,
+or `NRG` reads the energy wrapped around.
 
 Load `tools/trace/views.sql` first; then ask, in this order:
 
