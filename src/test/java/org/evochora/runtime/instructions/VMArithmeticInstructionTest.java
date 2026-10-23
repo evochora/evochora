@@ -8,6 +8,7 @@ import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ValueBounds;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -681,6 +682,60 @@ public class VMArithmeticInstructionTest {
         assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 10).toInt());
 
         org.resetTickState();
+    }
+
+    // --- Saturation at the ends of the value range ---
+    /**
+     * A sum past the largest value stays at the largest value instead of coming back from the
+     * smallest one.
+     */
+    @Test
+    @Tag("unit")
+    void addiAtTheLargestValueStaysAtTheLargestValue() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, ValueBounds.MAX_VALUE).toInt());
+        placeInstruction("ADDI", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ValueBounds.MAX_VALUE).toInt());
+    }
+
+    /**
+     * The negation of the smallest value has no place in the range and ends at the largest value.
+     */
+    @Test
+    @Tag("unit")
+    void negrOfTheSmallestValueEndsAtTheLargestValue() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, ValueBounds.MIN_VALUE).toInt());
+        placeInstruction("NEGR", 0);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ValueBounds.MAX_VALUE).toInt());
+    }
+
+    /**
+     * A vector sum saturates component by component, at the same ends as a scalar.
+     */
+    @Test
+    @Tag("unit")
+    void addrOfVectorsSaturatesEachComponent() {
+        org.writeOperand(0, new int[]{ValueBounds.MAX_VALUE, ValueBounds.MIN_VALUE});
+        org.writeOperand(1, new int[]{1, -1});
+        placeInstruction("ADDR", 0, 1);
+        sim.tick();
+        assertThat((int[]) org.readOperand(0)).containsExactly(ValueBounds.MAX_VALUE, ValueBounds.MIN_VALUE);
+    }
+
+    /**
+     * A cross product of large components is computed at full width and saturates, rather than
+     * overflowing in its products.
+     */
+    @Test
+    @Tag("unit")
+    void crsrOfLargeComponentsSaturates() {
+        org.writeOperand(0, 0);
+        org.writeOperand(1, new int[]{ValueBounds.MAX_VALUE, ValueBounds.MIN_VALUE});
+        org.writeOperand(2, new int[]{ValueBounds.MAX_VALUE, ValueBounds.MAX_VALUE});
+        placeInstruction("CRSR", 0, 1, 2);
+        sim.tick();
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(ValueBounds.MAX_VALUE);
     }
 
     @org.junit.jupiter.api.AfterEach
