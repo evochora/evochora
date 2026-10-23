@@ -312,13 +312,13 @@ These instructions operate on the bit pattern of a scalar within the value width
 
 #### Rotation and Bit Utilities
 
-These operate on the lower VALUE_BITS of the scalar and preserve the molecule type.
+These operate on the bit pattern of the scalar within the value width and preserve the molecule type.
 
 * `ROTR %VAL_REG %AMT_REG`, `ROTI %VAL_REG <Amount>`, `ROTS`: Rotate bits.
   - The signed amount determines direction: positive rotates left, negative rotates right.
   - `ROTS` pops `<Amt>` then `<Val>` from the Data Stack and pushes the rotated result. All stack ops are destructive.
   - The amount is taken modulo the value width: rotations by 0 or by the full width leave the value unchanged.
-* `PCNR %DEST_REG %SRC_REG`, `PCNS`: Population count (number of set bits in the lower VALUE_BITS).
+* `PCNR %DEST_REG %SRC_REG`, `PCNS`: Population count (number of set bits within the value width).
   - `PCNR` writes the count into `%DEST_REG` with the same type as `%SRC_REG`.
   - `PCNS` pops a scalar and pushes the count with type `DATA`.
 * `BSNR %DEST_REG %SRC_REG %N_REG`, `BSNI %DEST_REG %SRC_REG <N>`, `BSNS`: Bit Scan N-th.

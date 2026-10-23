@@ -127,7 +127,7 @@ export class AnnotationUtils {
     /**
      * Resolves a label hash value to its name using the program artifact.
      *
-     * @param {number} hashValue - The 20-bit hash value of the label.
+     * @param {number} hashValue - The hash value of the label, its value bits.
      * @param {object} artifact - The program artifact containing `labelValueToName` map.
      * @returns {string|null} The label name, or null if not found.
      */
@@ -147,7 +147,7 @@ export class AnnotationUtils {
      * @param {string} name - The label or procedure name as it appears in source.
      * @param {object} artifact - The program artifact containing `labelNameToValue` map.
      * @param {string} [qualifiedName] - The canonical module-qualified name for lookup.
-     * @returns {number|null} The 20-bit hash value, or null if not found.
+     * @returns {number|null} The hash value, or null if not found.
      */
     static resolveLabelNameToHash(name, artifact, qualifiedName) {
         if (!artifact || !artifact.labelNameToValue) {
