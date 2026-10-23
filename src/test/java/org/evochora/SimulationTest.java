@@ -135,9 +135,34 @@ public class SimulationTest {
                 .hasMessageContaining(String.valueOf(beyond))
                 .hasMessageContaining(String.valueOf(ValueBounds.MAX_VALUE));
 
-        Simulation atTheBound = SimulationTestUtils.createSimulation(
-                environment, ValueBounds.MAX_VALUE, ValueBounds.MAX_VALUE, 10);
-        assertThat(atTheBound.getOrganismConfig().getInt("max-energy")).isEqualTo(ValueBounds.MAX_VALUE);
+        int belowMin = ValueBounds.MIN_VALUE - 1;
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, belowMin, 8191, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-energy")
+                .hasMessageContaining(String.valueOf(belowMin))
+                .hasMessageContaining(String.valueOf(ValueBounds.MIN_VALUE));
+        assertThatThrownBy(() -> SimulationTestUtils.createSimulation(environment, 32767, belowMin, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-entropy")
+                .hasMessageContaining(String.valueOf(belowMin))
+                .hasMessageContaining(String.valueOf(ValueBounds.MIN_VALUE));
+
+        Simulation atTheBounds = SimulationTestUtils.createSimulation(
+                environment, ValueBounds.MAX_VALUE, ValueBounds.MIN_VALUE, 10);
+        assertThat(atTheBounds.getOrganismConfig().getInt("max-energy")).isEqualTo(ValueBounds.MAX_VALUE);
+        assertThat(atTheBounds.getOrganismConfig().getInt("max-entropy")).isEqualTo(ValueBounds.MIN_VALUE);
+    }
+
+    /**
+     * A limit the configuration does not carry is not checked while the simulation is built; it is
+     * read, and missed, where an organism is created.
+     */
+    @Test
+    @Tag("unit")
+    void aMissingLimitIsLeftToThePointWhereItIsRead() {
+        com.typesafe.config.Config withoutLimits = com.typesafe.config.ConfigFactory.parseMap(java.util.Map.of("error-penalty-cost", 10));
+        Simulation built = new Simulation(environment, sim.getPolicyManager(), withoutLimits, 1);
+        assertThat(built.getOrganismConfig().hasPath("max-energy")).isFalse();
     }
 
     /**
