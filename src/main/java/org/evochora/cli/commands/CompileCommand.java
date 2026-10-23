@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.IntegerLiteral;
 
 import java.io.IOException;
@@ -109,7 +110,7 @@ public class CompileCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         Instruction.init();
 
-        Map<String, OptionalLong> defines;
+        Map<String, FlagSetting> defines;
         Map<String, String> values;
         try {
             defines = parseDefines(defineArgs != null ? defineArgs : List.of());
@@ -156,7 +157,7 @@ public class CompileCommand implements Callable<Integer> {
      *                                  among them two flag names or two value names that differ
      *                                  only in case.
      */
-    private CompilerOptions buildCompilerOptions(String programPath, Map<String, OptionalLong> defines,
+    private CompilerOptions buildCompilerOptions(String programPath, Map<String, FlagSetting> defines,
                                                  Map<String, String> values) {
         if (sourceRootArgs == null || sourceRootArgs.isEmpty()) {
             Path directory = Path.of(programPath).getParent();
@@ -183,28 +184,29 @@ public class CompileCommand implements Callable<Integer> {
      * Parses the arguments of {@code --define} into the flags of the compilation.
      *
      * @param defineArgs The arguments, each {@code NAME} or {@code NAME=NUMBER}.
-     * @return The flags by name as written, empty for a flag without a value.
+     * @return The flags by name as written, each set, with its value or without one.
      * @throws IllegalArgumentException if a name is empty, a value is not a number, or a name
      *                                  is given twice as written. Two names that differ only in
      *                                  case are left to {@link CompilerOptions}, which rejects them.
      */
-    static Map<String, OptionalLong> parseDefines(List<String> defineArgs) {
-        Map<String, OptionalLong> defines = new LinkedHashMap<>();
+    static Map<String, FlagSetting> parseDefines(List<String> defineArgs) {
+        Map<String, FlagSetting> defines = new LinkedHashMap<>();
         for (String arg : defineArgs) {
             int equalsIdx = arg.indexOf('=');
             String name = (equalsIdx < 0 ? arg : arg.substring(0, equalsIdx)).trim();
             if (name.isEmpty()) {
                 throw new IllegalArgumentException("--define '" + arg + "' has no flag name");
             }
-            OptionalLong value = OptionalLong.empty();
+            FlagSetting setting = FlagSetting.set();
             if (equalsIdx >= 0) {
                 String text = arg.substring(equalsIdx + 1);
-                value = IntegerLiteral.parse(text.trim());
+                OptionalLong value = IntegerLiteral.parse(text.trim());
                 if (value.isEmpty()) {
                     throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not a number");
                 }
+                setting = FlagSetting.set(value.getAsLong());
             }
-            if (defines.putIfAbsent(name, value) != null) {
+            if (defines.putIfAbsent(name, setting) != null) {
                 throw new IllegalArgumentException("--define " + name + ": the flag is given twice");
             }
         }

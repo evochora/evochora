@@ -18,9 +18,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -576,7 +576,7 @@ class SimulationEngineTest {
     void readDefines_readsTrueAsAFlagWithoutValueAndAnIntegerAsAFlagWithThatValue() {
         Config entry = ConfigFactory.parseString("defines { AGGRESSIVE = true, REDUNDANCY = 2, OFF = false }");
 
-        assertEquals(Map.of("AGGRESSIVE", OptionalLong.empty(), "REDUNDANCY", OptionalLong.of(2)),
+        assertEquals(Map.of("AGGRESSIVE", FlagSetting.set(), "REDUNDANCY", FlagSetting.set(2)),
                 SimulationEngine.readDefines(entry, 0));
     }
 

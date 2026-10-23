@@ -1,17 +1,22 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.model.expression.ReservedNames;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 /**
- * The preprocessor flags of one read-time phase: the names that are set, each with an integer
- * value or without one. Names are compared case-insensitively. The flags are global: one instance
+ * The preprocessor flags of one read-time phase. A name is in one of three states: set, with an
+ * integer value or without one; switched off by the configuration; or free, neither set nor
+ * switched off. A flag that is switched off counts as not set, and nothing can set it until
+ * {@link #undefine} frees it. Names are compared case-insensitively. The flags are global: one instance
  * serves the whole token stream of the preprocessor, another the whole reading of the Lexer
  * phase. The compiler creates both alike, from the flags of the compilation's options and the
  * names nothing may define; the directives of a feature fill them, and a computation at read
@@ -33,6 +38,7 @@ public final class Flags {
     }
 
     private final Map<String, Definition> entries = new HashMap<>();
+    private final Set<String> off = new HashSet<>();
     private final ReservedNames reservedNames;
 
     private Flags(ReservedNames reservedNames) {
@@ -40,16 +46,24 @@ public final class Flags {
     }
 
     /**
-     * Creates the flags as the configuration sets them. The configured names are taken as they
-     * are; {@link #configurationErrors} is how the compiler checks them first.
+     * Creates the flags as the configuration names them: a flag the configuration sets is set,
+     * with its value, a flag it switches off is switched off, and every other name is free. The
+     * configured names are taken as they are; {@link #configurationErrors} is how the compiler
+     * checks them first.
      *
-     * @param defines       The flags of the compilation's options, name to optional value.
+     * @param defines       The flags of the compilation's options, name to setting.
      * @param reservedNames The names nothing may define.
-     * @return Flags holding exactly the given names and values.
+     * @return Flags holding exactly the given names in the given states.
      */
-    public static Flags of(Map<String, OptionalLong> defines, ReservedNames reservedNames) {
+    public static Flags of(Map<String, FlagSetting> defines, ReservedNames reservedNames) {
         Flags flags = new Flags(reservedNames);
-        defines.forEach((name, value) -> flags.entries.put(key(name), new Definition(value, CONFIGURATION)));
+        defines.forEach((name, setting) -> {
+            if (setting.isSet()) {
+                flags.entries.put(key(name), new Definition(setting.value(), CONFIGURATION));
+            } else {
+                flags.off.add(key(name));
+            }
+        });
         return flags;
     }
 
@@ -57,11 +71,11 @@ public final class Flags {
      * Checks the flags the configuration sets: a name that is no flag name, and a name nothing
      * may define, as {@link #define} rejects it.
      *
-     * @param defines       The flags of the compilation's options, name to optional value.
+     * @param defines       The flags of the compilation's options, name to setting.
      * @param reservedNames The names nothing may define.
      * @return One message per name that fails, in the order of the names; empty when all pass.
      */
-    public static List<String> configurationErrors(Map<String, OptionalLong> defines,
+    public static List<String> configurationErrors(Map<String, FlagSetting> defines,
                                                    ReservedNames reservedNames) {
         List<String> errors = new ArrayList<>();
         defines.keySet().stream().sorted().forEach(name -> {
@@ -76,7 +90,8 @@ public final class Flags {
     }
 
     /**
-     * Sets a flag, in place of a definition it has. A reserved name is rejected.
+     * Sets a flag, in place of a definition it has. A reserved name is rejected, and so is a flag
+     * the configuration switched off.
      *
      * @param name   The flag name, as written.
      * @param value  The value, or empty for a flag without one.
@@ -88,6 +103,12 @@ public final class Flags {
         Optional<String> rejection = reservedNames.rejection(name, "defined");
         if (rejection.isPresent()) {
             return rejection;
+        }
+        if (isOff(name)) {
+            String upper = name.toUpperCase(Locale.ROOT);
+            return Optional.of("Cannot define flag " + upper + ": the configuration switched it off;"
+                    + " a default the configuration may override is written .DEFINE DEFAULT " + upper
+                    + ", and .UNDEF " + upper + " frees it");
         }
         entries.put(key(name), new Definition(value, origin));
         return Optional.empty();
@@ -104,16 +125,31 @@ public final class Flags {
     }
 
     /**
-     * Removes a flag. A flag that is not set stays unset; that is no error.
+     * Frees a flag: a flag that is set is no longer set, and a flag the configuration switched
+     * off is no longer switched off, as if the configuration had never named it. A flag that is
+     * free stays free; that is no error.
      *
      * @param name The flag name.
      */
     public void undefine(String name) {
         entries.remove(key(name));
+        off.remove(key(name));
     }
 
     /**
-     * Reports whether a flag is set, with or without a value.
+     * Reports whether the configuration switched a flag off and nothing has freed it since. Such
+     * a flag is not set.
+     *
+     * @param name The flag name.
+     * @return {@code true} if the flag is switched off.
+     */
+    public boolean isOff(String name) {
+        return off.contains(key(name));
+    }
+
+    /**
+     * Reports whether a flag is set, with or without a value. A flag that is switched off is not
+     * set.
      *
      * @param name The flag name.
      * @return {@code true} if the flag is set.

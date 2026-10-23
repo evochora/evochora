@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.emit;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.runtime.isa.Instruction;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -90,8 +90,8 @@ class ProgramIdentityTest {
     @Test
     void compilationsWithOtherFlagsAndTheSameCodeHaveDifferentIds() throws CompilationException {
         ProgramArtifact plain = compile(PINNED_PROGRAM, Map.of());
-        ProgramArtifact flagged = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalLong.empty()));
-        ProgramArtifact valued = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalLong.of(0)));
+        ProgramArtifact flagged = compile(PINNED_PROGRAM, Map.of("UNUSED", FlagSetting.set()));
+        ProgramArtifact valued = compile(PINNED_PROGRAM, Map.of("UNUSED", FlagSetting.set(0)));
 
         assertThat(flagged.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
         assertThat(valued.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
@@ -122,7 +122,7 @@ class ProgramIdentityTest {
         return new Compiler().compile(lines, "identity.evo", ENV);
     }
 
-    private static ProgramArtifact compile(List<String> lines, Map<String, OptionalLong> defines)
+    private static ProgramArtifact compile(List<String> lines, Map<String, FlagSetting> defines)
             throws CompilationException {
         return new Compiler().compile(lines, "identity.evo", ENV,
                 new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of()));

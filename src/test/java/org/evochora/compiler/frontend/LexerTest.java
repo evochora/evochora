@@ -4,6 +4,7 @@ import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
@@ -25,7 +26,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -402,7 +402,7 @@ public class LexerTest {
     @Test
     @Tag("unit")
     void options_areThoseTheLexerWasCreatedWith() {
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalLong.empty()), Map.of());
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", FlagSetting.set()), Map.of());
         List<CompilerOptions> seen = new ArrayList<>();
         Map<String, IDependencyScanHandler> handlers = Map.of(".MARK", handler((line, ctx) -> seen.add(ctx.options())));
 

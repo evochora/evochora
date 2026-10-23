@@ -5,6 +5,7 @@ import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -26,7 +27,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -407,7 +407,7 @@ class ConditionalExpansionTest {
 
     @Test
     void theSameDefinitionAsTheConfigurationIsAccepted() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", FlagSetting.set(2)), List.of(),
                 ".DEFINE LEVEL 2",
                 ".IFDEF LEVEL = 2",
                 "  NOP",
@@ -419,7 +419,7 @@ class ConditionalExpansionTest {
 
     @Test
     void anotherValueThanTheConfigurationIsRejected() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", FlagSetting.set(2)), List.of(),
                 ".DEFINE LEVEL 3");
 
         assertThat(result.errors()).containsExactly(MAIN + ":1: Cannot define flag LEVEL as 3: it is already"
@@ -438,7 +438,7 @@ class ConditionalExpansionTest {
                 "  JMPI END",
                 ".ENDDEF"};
 
-        Expansion configured = expandWith(Map.of("redundancy", OptionalLong.of(2)), List.of(), program);
+        Expansion configured = expandWith(Map.of("redundancy", FlagSetting.set(2)), List.of(), program);
         Expansion unconfigured = expand(program);
 
         assertThat(configured.errors()).isEmpty();
@@ -451,7 +451,7 @@ class ConditionalExpansionTest {
 
     @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty()), List.of(), "NOP");
+        Expansion result = expandWith(Map.of("NO-NAME", FlagSetting.set()), List.of(), "NOP");
 
         assertThat(result.errors()).isEmpty();
     }
@@ -1015,7 +1015,7 @@ class ConditionalExpansionTest {
      * configured flags, and a file {@code lib.evo} the main file may include with
      * {@code .SOURCE}.
      */
-    private static Expansion expandWith(Map<String, OptionalLong> defines, List<String> library, String... lines) {
+    private static Expansion expandWith(Map<String, FlagSetting> defines, List<String> library, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<Token> libraryTokens = new ArrayList<>(TestLexers.tokenizer(String.join("\n", library) + "\n", diagnostics, LIBRARY).scanTokens());
         Tokenizer.stripEofToken(libraryTokens);

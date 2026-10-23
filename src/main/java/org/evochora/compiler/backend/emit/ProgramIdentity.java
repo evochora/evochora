@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit;
 
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.PlacedMolecule;
 
 import java.nio.charset.StandardCharsets;
@@ -57,8 +58,9 @@ public final class ProgramIdentity {
      *
      * @param machineCode    The cell value at each coordinate the program's code occupies.
      * @param initialObjects The molecule at each coordinate the program places as an object.
-     * @param flags          The defines of the compilation's options, name to value or empty for a
-     *                       name defined without one, as {@link org.evochora.compiler.api.CompilerOptions}
+     * @param flags          The defines of the compilation's options, name to its setting: switched
+     *                       off, set without a value, or set with an integer value, as
+     *                       {@link org.evochora.compiler.api.CompilerOptions}
      *                       normalises them: every name upper-cased. The digest takes the names as
      *                       given.
      * @param values         The values of the compilation's options, name to the text of an operand,
@@ -67,7 +69,7 @@ public final class ProgramIdentity {
      * @return The identity: 16 lower-case hex characters.
      */
     public static String of(Map<int[], Integer> machineCode, Map<int[], PlacedMolecule> initialObjects,
-                            Map<String, OptionalLong> flags, Map<String, String> values) {
+                            Map<String, FlagSetting> flags, Map<String, String> values) {
         MessageDigest digest = sha256();
         int dimensions = !machineCode.isEmpty() ? machineCode.keySet().iterator().next().length
                 : !initialObjects.isEmpty() ? initialObjects.keySet().iterator().next().length
@@ -89,15 +91,15 @@ public final class ProgramIdentity {
             update(digest, molecule.marker());
         }
 
-        List<Map.Entry<String, OptionalLong>> sortedFlags = new ArrayList<>(flags.size());
+        List<Map.Entry<String, FlagSetting>> sortedFlags = new ArrayList<>(flags.size());
         sortedFlags.addAll(flags.entrySet());
         sortedFlags.sort(Map.Entry.comparingByKey());
         update(digest, sortedFlags.size());
-        for (Map.Entry<String, OptionalLong> flag : sortedFlags) {
+        for (Map.Entry<String, FlagSetting> flag : sortedFlags) {
             byte[] name = flag.getKey().getBytes(StandardCharsets.UTF_8);
             update(digest, name.length);
             digest.update(name);
-            OptionalLong value = flag.getValue();
+            OptionalLong value = flag.getValue().value();
             update(digest, value.isPresent() ? 1 : 0);
             update(digest, value.orElse(0L));
         }

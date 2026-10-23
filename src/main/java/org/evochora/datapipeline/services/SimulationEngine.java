@@ -11,7 +11,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -19,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
@@ -647,7 +647,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * of the organism entry, normalised by {@link CompilerOptions}. Two entries with the same
      * variant are compiled once.
      */
-    private record ProgramVariant(String programPath, Map<String, OptionalLong> defines, Map<String, String> values) {}
+    private record ProgramVariant(String programPath, Map<String, FlagSetting> defines, Map<String, String> values) {}
 
     /**
      * Compiles the programs of the configured organisms, once per distinct program path, flags
@@ -675,7 +675,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         for (int index = 0; index < organismConfigs.size(); index++) {
             Config orgConfig = organismConfigs.get(index);
             String programPath = orgConfig.getString("program");
-            Map<String, OptionalLong> defines = readDefines(orgConfig, index);
+            Map<String, FlagSetting> defines = readDefines(orgConfig, index);
             Map<String, String> values = readValues(orgConfig, index);
             CompilerOptions compilerOptions;
             try {
@@ -714,7 +714,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *                                  a boolean nor an integer;
      *                                  the message names the entry and the flag.
      */
-    static Map<String, OptionalLong> readDefines(Config orgConfig, int index) {
+    static Map<String, FlagSetting> readDefines(Config orgConfig, int index) {
         if (!orgConfig.hasPath("defines")) {
             return Map.of();
         }
@@ -723,16 +723,16 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             throw new IllegalArgumentException("organisms[" + index + "].defines must be an object of flags, got "
                     + definesValue.valueType().name().toLowerCase(Locale.ROOT));
         }
-        Map<String, OptionalLong> defines = new HashMap<>();
+        Map<String, FlagSetting> defines = new HashMap<>();
         for (Map.Entry<String, ConfigValue> entry : ((ConfigObject) definesValue).entrySet()) {
             String name = entry.getKey();
             Object value = entry.getValue().unwrapped();
             if (value instanceof Boolean set) {
                 if (set) {
-                    defines.put(name, OptionalLong.empty());
+                    defines.put(name, FlagSetting.set());
                 }
             } else if (value instanceof Integer || value instanceof Long) {
-                defines.put(name, OptionalLong.of(((Number) value).longValue()));
+                defines.put(name, FlagSetting.set(((Number) value).longValue()));
             } else {
                 throw new IllegalArgumentException("organisms[" + index + "].defines." + name
                         + " must be true, false or an integer, got " + entry.getValue().render(ConfigRenderOptions.concise()));
