@@ -14,9 +14,6 @@ import java.util.Set;
  */
 public final class ReservedNames {
 
-    /** No reserved names. */
-    public static final ReservedNames NONE = new ReservedNames(Map.of());
-
     private final Map<String, Optional<String>> names;
 
     private ReservedNames(Map<String, Optional<String>> names) {
@@ -53,25 +50,6 @@ public final class ReservedNames {
         }
         return Optional.of(what.map(w -> "'" + name + "' is " + w + " and cannot be " + role + ".")
                 .orElse("'" + name + "' cannot be " + role + "."));
-    }
-
-    /**
-     * Returns what a reserved name is.
-     *
-     * @param name The name, in any letter case.
-     * @return What it is, e.g. "a function"; empty if the name is reserved as it is or not at all.
-     */
-    public Optional<String> description(String name) {
-        return names.getOrDefault(key(name), Optional.empty());
-    }
-
-    /**
-     * Returns the reserved names, upper-cased.
-     *
-     * @return An unmodifiable set of the names.
-     */
-    public Set<String> names() {
-        return names.keySet();
     }
 
     private static String key(String name) {

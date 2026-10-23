@@ -1,5 +1,6 @@
 package org.evochora.compiler.expression;
 
+import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 import org.junit.jupiter.api.Tag;
@@ -131,18 +132,21 @@ class OperationRegistryTest {
         registry.register(op("MIN", Notation.FUNCTION, Level.INDEX, Kind.NUMBER, Kind.NUMBER));
         registry.register(op("-", Notation.INFIX, Level.ADDITIVE, Kind.NUMBER, Kind.NUMBER));
         registry.register(op("-", Notation.PREFIX, Level.PREFIX, Kind.NUMBER));
-        assertThat(registry.reservedNames().names()).containsExactlyInAnyOrder("SHL", "MIN", "-", "@");
-        assertThat(registry.reservedNames().description("shl")).contains("an operator");
-        assertThat(registry.reservedNames().description("Min")).contains("a function");
-        assertThat(registry.reservedNames().description("-")).contains("an operator");
-        assertThat(registry.reservedNames().description("@")).isEmpty();
+        ReservedNames reserved = registry.reservedNames();
+        assertThat(reserved.rejection("shl", "defined")).contains("'shl' is an operator and cannot be defined.");
+        assertThat(reserved.rejection("Min", "defined")).contains("'Min' is a function and cannot be defined.");
+        assertThat(reserved.rejection("-", "defined")).contains("'-' is an operator and cannot be defined.");
+        assertThat(reserved.rejection("@", "defined")).contains("'@' cannot be defined.");
+        assertThat(reserved.rejection("SPOT", "defined")).isEmpty();
     }
 
     @Test
     void theStandardOperationsRegisterAndPassTheirChecks() {
         OperationRegistry registry = ExpressionFixture.standard().operations();
-        assertThat(registry.reservedNames().names()).contains("+", "-", "*", "/", "MOD", "AND", "OR", "XOR", "SHL", "SHR", "NOT",
-                "|", "[]", ":", "TYPE", "NUMBER", "POSITION", "@");
+        ReservedNames reserved = registry.reservedNames();
+        assertThat(java.util.List.of("+", "-", "*", "/", "MOD", "AND", "OR", "XOR", "SHL", "SHR", "NOT",
+                "|", "[]", ":", "TYPE", "NUMBER", "POSITION", "@"))
+                .allSatisfy(name -> assertThat(reserved.rejection(name, "defined")).isPresent());
     }
 
     @Test
