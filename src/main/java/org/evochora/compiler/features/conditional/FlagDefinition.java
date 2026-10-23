@@ -7,9 +7,11 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * The rule of {@code .DEFINE} for a flag that is set already, for both read-time phases: it may
- * be defined again only with the same definition, both without a value or both with the same
- * value; {@code .UNDEF} first is how a flag changes.
+ * The rules of {@code .DEFINE} for a flag that is named already, for both read-time phases. A
+ * definition may set a flag that is set only with the same definition, both without a value or
+ * both with the same value; {@code .UNDEF} first is how a flag changes. A default, the
+ * {@code DEFAULT} option, yields to whatever is decided about the flag already: a flag that is
+ * set keeps its definition, a flag the configuration switched off stays off.
  */
 final class FlagDefinition {
 
@@ -39,6 +41,25 @@ final class FlagDefinition {
         return Optional.of("Cannot define flag " + name.toUpperCase(Locale.ROOT) + " " + describe(value)
                 + ": it is already defined " + describe(existing.get().value()) + " " + existing.get().origin()
                 + "; .UNDEF it first to change it");
+    }
+
+    /**
+     * Defines a flag as a default: a flag that is free takes the definition, a flag that is set
+     * or switched off is left as it is.
+     *
+     * @param flags  The flags of the phase.
+     * @param name   The flag name, as written.
+     * @param value  The value, or empty for a flag without one.
+     * @param origin Where the definition stands, as a phrase completing "defined …", e.g.
+     *               {@code "at main.evo:3"}.
+     * @return Empty when the default is accepted, whether it took effect or yielded, or the
+     *         message telling why it is not.
+     */
+    static Optional<String> defineDefault(Flags flags, String name, OptionalLong value, String origin) {
+        if (flags.isSet(name) || flags.isOff(name)) {
+            return Optional.empty();
+        }
+        return flags.define(name, value, origin);
     }
 
     private static String describe(OptionalLong value) {

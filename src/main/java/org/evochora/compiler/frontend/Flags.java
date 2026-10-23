@@ -16,8 +16,8 @@ import java.util.Set;
  * The preprocessor flags of one read-time phase. A name is in one of three states: set, with an
  * integer value or without one; switched off by the configuration; or free, neither set nor
  * switched off. A flag that is switched off counts as not set, and nothing can set it until
- * {@link #undefine} frees it. Names are compared case-insensitively. The flags are global: one instance
- * serves the whole token stream of the preprocessor, another the whole reading of the Lexer
+ * {@link #undefine} frees it. Names are compared case-insensitively. The flags are global: one
+ * instance serves the whole token stream of the preprocessor, another the whole reading of the Lexer
  * phase. The compiler creates both alike, from the flags of the compilation's options and the
  * names nothing may define; the directives of a feature fill them, and a computation at read
  * time reads them. What a directive may do to a flag that is set already is the directive's
@@ -26,6 +26,9 @@ import java.util.Set;
 public final class Flags {
 
     private static final String CONFIGURATION = "by the configuration";
+
+    /** The option of {@code .DEFINE} that makes the definition a default; no flag may bear the name. */
+    public static final String DEFAULT_OPTION = "DEFAULT";
 
     /**
      * The definition of a flag that is set.
@@ -68,7 +71,7 @@ public final class Flags {
     }
 
     /**
-     * Checks the flags the configuration sets: a name that is no flag name, and a name nothing
+     * Checks the flags the configuration names: a name that is no flag name, and a name nothing
      * may define, as {@link #define} rejects it.
      *
      * @param defines       The flags of the compilation's options, name to setting.
@@ -83,7 +86,7 @@ public final class Flags {
                 errors.add("Configured flag '" + name + "' is not a valid name: a flag name consists of"
                         + " letters, digits and _ and begins with a letter or _");
             } else {
-                reservedNames.rejection(name, "defined").ifPresent(rejection -> errors.add("Configured flag " + rejection));
+                rejection(name, reservedNames).ifPresent(rejection -> errors.add("Configured flag " + rejection));
             }
         });
         return errors;
@@ -100,7 +103,7 @@ public final class Flags {
      * @return Empty when the flag is set, or the message telling why it is not.
      */
     public Optional<String> define(String name, OptionalLong value, String origin) {
-        Optional<String> rejection = reservedNames.rejection(name, "defined");
+        Optional<String> rejection = rejection(name, reservedNames);
         if (rejection.isPresent()) {
             return rejection;
         }
@@ -112,6 +115,17 @@ public final class Flags {
         }
         entries.put(key(name), new Definition(value, origin));
         return Optional.empty();
+    }
+
+    /**
+     * Returns the message that rejects a name as a flag name, if it is reserved: the option word
+     * of {@code .DEFINE}, or a name nothing may define.
+     */
+    private static Optional<String> rejection(String name, ReservedNames reservedNames) {
+        if (key(name).equals(DEFAULT_OPTION)) {
+            return Optional.of("'" + name + "' is the default option of .DEFINE and cannot be defined.");
+        }
+        return reservedNames.rejection(name, "defined");
     }
 
     /**
