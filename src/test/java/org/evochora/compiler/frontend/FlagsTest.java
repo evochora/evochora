@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The flag store with the three states of a name: set, switched off by the configuration, and
- * free. A flag that is switched off is not set and cannot be defined, {@code .UNDEF} frees it,
+ * free. A flag that is switched off is not set, a definition or {@code .UNDEF} ends that state,
  * and the option word of {@code .DEFINE} is no flag name.
  */
 @Tag("unit")
@@ -35,14 +35,13 @@ class FlagsTest {
     }
 
     @Test
-    void aFlagThatIsSwitchedOffCannotBeDefined() {
+    void defineSetsAFlagThatIsSwitchedOffAndEndsThatState() {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
 
-        assertThat(flags.define("shell", OptionalLong.empty(), ORIGIN)).contains(
-                "Cannot define flag SHELL: the configuration switched it off; a default the configuration"
-                        + " may override is written .DEFINE DEFAULT SHELL, and .UNDEF SHELL frees it");
-        assertThat(flags.isSet("SHELL")).isFalse();
-        assertThat(flags.isOff("SHELL")).isTrue();
+        assertThat(flags.define("shell", OptionalLong.empty(), ORIGIN)).isEmpty();
+
+        assertThat(flags.isSet("SHELL")).isTrue();
+        assertThat(flags.isOff("SHELL")).isFalse();
     }
 
     @Test

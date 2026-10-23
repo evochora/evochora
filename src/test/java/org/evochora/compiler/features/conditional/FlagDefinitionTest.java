@@ -121,7 +121,10 @@ class FlagDefinitionTest {
     void aDefinitionOfAFlagThatIsSwitchedOffIsRejected() {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
 
-        assertThat(FlagDefinition.define(flags, "SHELL", OptionalLong.empty(), ORIGIN))
-                .hasValueSatisfying(message -> assertThat(message).startsWith("Cannot define flag SHELL: the configuration switched it off"));
+        assertThat(FlagDefinition.define(flags, "shell", OptionalLong.of(1), ORIGIN)).contains(
+                "Cannot define flag SHELL: the configuration switched it off; a default the configuration"
+                        + " may override is written .DEFINE DEFAULT SHELL, and .UNDEF SHELL frees it");
+        assertThat(flags.isSet("SHELL")).isFalse();
+        assertThat(flags.isOff("SHELL")).isTrue();
     }
 }

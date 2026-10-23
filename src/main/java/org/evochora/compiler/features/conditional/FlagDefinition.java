@@ -12,9 +12,10 @@ import java.util.function.Supplier;
 /**
  * The rules of {@code .DEFINE} for a flag that is named already, for both read-time phases. A
  * definition may set a flag that is set only with the same definition, both without a value or
- * both with the same value; {@code .UNDEF} first is how a flag changes. A default, the
- * {@code DEFAULT} option, yields to whatever is decided about the flag already: a flag that is
- * set keeps its definition, a flag the configuration switched off stays off.
+ * both with the same value, and it cannot set a flag the configuration switched off;
+ * {@code .UNDEF} first is how a flag changes. A default, the {@code DEFAULT} option, yields to
+ * whatever is decided about the flag already: a flag that is set keeps its definition, a flag the
+ * configuration switched off stays off.
  */
 final class FlagDefinition {
 
@@ -34,9 +35,10 @@ final class FlagDefinition {
     }
 
     /**
-     * Defines a flag by the rule: a flag that is not set takes the definition, one that is set
-     * keeps its own, and the definition is accepted when it is the same and rejected when the
-     * value differs or one of the two has a value and the other has none.
+     * Defines a flag by the rule: a flag that is free takes the definition, one the configuration
+     * switched off rejects it, and one that is set keeps its own, accepting the definition when
+     * it is the same and rejecting it when the value differs or one of the two has a value and
+     * the other has none.
      *
      * @param flags  The flags of the phase.
      * @param name   The flag name, as written.
@@ -46,6 +48,12 @@ final class FlagDefinition {
      * @return Empty when the definition is accepted, or the message telling why it is not.
      */
     static Optional<String> define(Flags flags, String name, OptionalLong value, String origin) {
+        if (flags.isOff(name)) {
+            String upper = name.toUpperCase(Locale.ROOT);
+            return Optional.of("Cannot define flag " + upper + ": the configuration switched it off;"
+                    + " a default the configuration may override is written .DEFINE DEFAULT " + upper
+                    + ", and .UNDEF " + upper + " frees it");
+        }
         Optional<Flags.Definition> existing = flags.definitionOf(name);
         if (existing.isEmpty()) {
             return flags.define(name, value, origin);
