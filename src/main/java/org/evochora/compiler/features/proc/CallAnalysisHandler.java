@@ -2,17 +2,14 @@ package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.expression.EvaluationResult;
-import org.evochora.compiler.expression.Evaluator;
-import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
-import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.OperandText;
-import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -43,7 +40,7 @@ import java.util.Set;
 public class CallAnalysisHandler implements IAnalysisHandler {
 
     private final IInstructionSet isa;
-    private final Evaluator evaluator;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the handler for an instruction set.
@@ -53,7 +50,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      */
     public CallAnalysisHandler(IInstructionSet isa, OperationRegistry operations) {
         this.isa = isa;
-        this.evaluator = new Evaluator(operations);
+        this.computations = new ComputationAnalysis(operations);
     }
 
     @Override
@@ -309,31 +306,20 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      */
     private EvaluationResult evaluate(ExpressionNode expression, Role role, SymbolTable symbolTable,
                                       DiagnosticsEngine diagnostics) {
-        EvaluationResult result = evaluator.evaluate(expression.expression(),
-                new SymbolTableResolution(symbolTable), IEvaluationContext.none());
-        switch (result) {
-            case EvaluationResult.Value value -> {
-                symbolTable.recordResult(expression, ExpressionOutcome.of(value.value()));
-                if (value.value() instanceof Value.Type) {
-                    reportUnusable(expression, role, "TYPE", diagnostics);
-                } else if (value.value() instanceof Value.Position) {
-                    reportUnusable(expression, role, "POSITION", diagnostics);
-                } else if (role == Role.VAL && value.value() instanceof Value.Number) {
-                    report(invalid(expression, "VAL", "is a number without a type", EXPECTED_BY_VAL),
-                            expression.sourceInfo(), diagnostics);
-                } else if (role == Role.TARGET) {
-                    reportUnusable(expression, role, value.value() instanceof Value.Vector ? "VECTOR" : "LITERAL", diagnostics);
-                }
+        EvaluationResult result = computations.evaluate(expression, symbolTable, diagnostics);
+        if (result instanceof EvaluationResult.Value value) {
+            if (value.value() instanceof Value.Type) {
+                reportUnusable(expression, role, "TYPE", diagnostics);
+            } else if (value.value() instanceof Value.Position) {
+                reportUnusable(expression, role, "POSITION", diagnostics);
+            } else if (role == Role.VAL && value.value() instanceof Value.Number) {
+                report(invalid(expression, "VAL", "is a number without a type", EXPECTED_BY_VAL),
+                        expression.sourceInfo(), diagnostics);
+            } else if (role == Role.TARGET) {
+                reportUnusable(expression, role, value.value() instanceof Value.Vector ? "VECTOR" : "LITERAL", diagnostics);
             }
-            case EvaluationResult.Partial partial -> {
-                symbolTable.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
-                reportUnusable(expression, role, partial.kind() == Kind.POSITION ? "POSITION" : null, diagnostics);
-            }
-            case EvaluationResult.Error error ->
-                    report(error.reason(), error.at() != null ? error.at() : expression.sourceInfo(), diagnostics);
-            case EvaluationResult.Reported reported -> {
-                // The error stands at the definition the computation uses
-            }
+        } else if (result instanceof EvaluationResult.Partial partial) {
+            reportUnusable(expression, role, partial.kind() == Kind.POSITION ? "POSITION" : null, diagnostics);
         }
         return result;
     }

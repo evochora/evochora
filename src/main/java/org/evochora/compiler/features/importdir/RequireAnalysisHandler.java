@@ -4,10 +4,8 @@ import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.expression.EvaluationResult;
-import org.evochora.compiler.expression.Evaluator;
-import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
-import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ExpressionNode;
@@ -46,7 +44,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  */
 public class RequireAnalysisHandler implements IAnalysisHandler {
 
-    private final Evaluator evaluator;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the handler.
@@ -54,7 +52,7 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
      * @param operations The operations of computations, read when the phase runs.
      */
     public RequireAnalysisHandler(OperationRegistry operations) {
-        this.evaluator = new Evaluator(operations);
+        this.computations = new ComputationAnalysis(operations);
     }
 
     @Override
@@ -149,25 +147,17 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
      */
     private ExpressionOutcome evaluate(ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics,
                                        ValueRequirementNode configuredFor) {
-        ExpressionOutcome outcome = switch (evaluator.evaluate(expression.expression(),
-                new SymbolTableResolution(symbolTable), IEvaluationContext.none())) {
-            case EvaluationResult.Value value -> ExpressionOutcome.of(value.value());
-            case EvaluationResult.Partial partial -> ExpressionOutcome.later(partial.expression(), partial.kind());
-            case EvaluationResult.Error error -> {
-                if (configuredFor != null) {
-                    diagnostics.reportError(ConfiguredValues.message(
-                            configuredFor.name(), configuredFor.configuredText(), error.reason()), "", 0);
-                } else {
-                    SourceInfo errorAt = error.at() != null ? error.at() : expression.sourceInfo();
-                    diagnostics.reportError(error.reason(), errorAt.fileName(), errorAt.lineNumber());
-                }
-                yield null;
+        EvaluationResult result;
+        if (configuredFor != null) {
+            result = computations.evaluate(expression, symbolTable);
+            if (result instanceof EvaluationResult.Error error) {
+                diagnostics.reportError(ConfiguredValues.message(
+                        configuredFor.name(), configuredFor.configuredText(), error.reason()), "", 0);
             }
-            case EvaluationResult.Reported reported -> null;
-        };
-        if (outcome != null) {
-            symbolTable.recordResult(expression, outcome);
+        } else {
+            result = computations.evaluate(expression, symbolTable, diagnostics);
         }
+        ExpressionOutcome outcome = ComputationAnalysis.outcomeOf(result).orElse(null);
         return outcome;
     }
 

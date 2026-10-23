@@ -13,7 +13,6 @@ import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.NameExpression;
-import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.Optional;
@@ -37,6 +36,7 @@ public final class LayoutArguments {
     public static final String EXPECTED_VECTOR = "Expected a vector.";
 
     private final Evaluator evaluator;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the checker.
@@ -45,6 +45,7 @@ public final class LayoutArguments {
      */
     public LayoutArguments(OperationRegistry operations) {
         this.evaluator = new Evaluator(operations);
+        this.computations = new ComputationAnalysis(operations);
     }
 
     /**
@@ -103,15 +104,7 @@ public final class LayoutArguments {
     private Optional<Kind> kindOf(OperandNode operand, SymbolTable symbols, DiagnosticsEngine diagnostics) {
         return switch (operand) {
             case LiteralNode literal -> Optional.of(literal.value().kind());
-            case ExpressionNode expression -> {
-                EvaluationResult result = evaluate(expression, symbols, diagnostics);
-                if (result instanceof EvaluationResult.Value value) {
-                    symbols.recordResult(expression, ExpressionOutcome.of(value.value()));
-                } else if (result instanceof EvaluationResult.Partial partial) {
-                    symbols.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
-                }
-                yield kindOf(result);
-            }
+            case ExpressionNode expression -> kindOf(computations.evaluate(expression, symbols, diagnostics));
             case IdentifierNode name -> kindOf(evaluator.evaluate(new NameExpression(name.text(), name.sourceInfo(),
                     name.sourceInfo().plusColumns(name.text().length())),
                     new SymbolTableResolution(symbols), IEvaluationContext.none()), name.sourceInfo(), diagnostics);
@@ -120,13 +113,6 @@ public final class LayoutArguments {
                 yield Optional.empty();
             }
         };
-    }
-
-    private EvaluationResult evaluate(ExpressionNode expression, SymbolTable symbols, DiagnosticsEngine diagnostics) {
-        EvaluationResult result = evaluator.evaluate(expression.expression(), new SymbolTableResolution(symbols),
-                IEvaluationContext.none());
-        reportError(result, expression.sourceInfo(), diagnostics);
-        return result;
     }
 
     private static Optional<Kind> kindOf(EvaluationResult result, SourceInfo at, DiagnosticsEngine diagnostics) {

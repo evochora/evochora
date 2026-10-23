@@ -1,17 +1,12 @@
 package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.expression.EvaluationResult;
-import org.evochora.compiler.expression.Evaluator;
-import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
-import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -43,7 +38,7 @@ import java.util.Map;
  */
 public class ImportAnalysisHandler implements IAnalysisHandler {
 
-    private final Evaluator evaluator;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the handler.
@@ -51,7 +46,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
      * @param operations The operations of computations, read when the phase runs.
      */
     public ImportAnalysisHandler(OperationRegistry operations) {
-        this.evaluator = new Evaluator(operations);
+        this.computations = new ComputationAnalysis(operations);
     }
 
     @Override
@@ -165,19 +160,6 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
      * computation that fails.
      */
     private void evaluate(ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        ExpressionOutcome outcome = switch (evaluator.evaluate(expression.expression(),
-                new SymbolTableResolution(symbolTable), IEvaluationContext.none())) {
-            case EvaluationResult.Value value -> ExpressionOutcome.of(value.value());
-            case EvaluationResult.Partial partial -> ExpressionOutcome.later(partial.expression(), partial.kind());
-            case EvaluationResult.Error error -> {
-                SourceInfo at = error.at() != null ? error.at() : expression.sourceInfo();
-                diagnostics.reportError(error.reason(), at.fileName(), at.lineNumber());
-                yield null;
-            }
-            case EvaluationResult.Reported reported -> null;
-        };
-        if (outcome != null) {
-            symbolTable.recordResult(expression, outcome);
-        }
+        computations.evaluate(expression, symbolTable, diagnostics);
     }
 }

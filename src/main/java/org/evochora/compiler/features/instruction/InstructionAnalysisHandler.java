@@ -2,10 +2,8 @@ package org.evochora.compiler.features.instruction;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.expression.EvaluationResult;
-import org.evochora.compiler.expression.Evaluator;
-import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
-import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.expression.Kind;
 import org.evochora.compiler.model.expression.Value;
@@ -40,7 +38,7 @@ import java.util.Optional;
 public class InstructionAnalysisHandler implements IAnalysisHandler {
 
     private final IInstructionSet isa;
-    private final Evaluator evaluator;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the handler for an instruction set.
@@ -50,7 +48,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      */
     public InstructionAnalysisHandler(IInstructionSet isa, OperationRegistry operations) {
         this.isa = isa;
-        this.evaluator = new Evaluator(operations);
+        this.computations = new ComputationAnalysis(operations);
     }
 
     /**
@@ -115,22 +113,11 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      * Evaluates a computation, records its outcome, and checks its value against the slot.
      */
     private void checkComputation(ExpressionNode expression, Slot slot, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        EvaluationResult result = evaluator.evaluate(expression.expression(),
-                new SymbolTableResolution(symbolTable), IEvaluationContext.none());
-        switch (result) {
-            case EvaluationResult.Value value -> {
-                symbolTable.recordResult(expression, ExpressionOutcome.of(value.value()));
-                checkValue(value.value(), expression.sourceInfo(), slot, diagnostics);
-            }
-            case EvaluationResult.Partial partial -> {
-                symbolTable.recordResult(expression, ExpressionOutcome.later(partial.expression(), partial.kind()));
-                reportLayoutValue(partial.kind(), slot, diagnostics);
-            }
-            case EvaluationResult.Error error ->
-                    report(error.reason(), error.at() != null ? error.at() : expression.sourceInfo(), diagnostics);
-            case EvaluationResult.Reported reported -> {
-                // The error stands at the definition the computation uses
-            }
+        EvaluationResult result = computations.evaluate(expression, symbolTable, diagnostics);
+        if (result instanceof EvaluationResult.Value value) {
+            checkValue(value.value(), expression.sourceInfo(), slot, diagnostics);
+        } else if (result instanceof EvaluationResult.Partial partial) {
+            reportLayoutValue(partial.kind(), slot, diagnostics);
         }
     }
 
@@ -252,10 +239,6 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     slot.instruction().sourceInfo().lineNumber()
             );
         }
-    }
-
-    private static void report(String message, SourceInfo at, DiagnosticsEngine diagnostics) {
-        diagnostics.reportError(message, at.fileName(), at.lineNumber());
     }
 
     private ArgKind getArgumentTypeFromNode(AstNode node) {

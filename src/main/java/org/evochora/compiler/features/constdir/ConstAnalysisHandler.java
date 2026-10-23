@@ -2,15 +2,11 @@ package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.expression.EvaluationResult;
-import org.evochora.compiler.expression.Evaluator;
-import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.OperationRegistry;
-import org.evochora.compiler.expression.symbols.SymbolTableResolution;
+import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -31,7 +27,7 @@ import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
  */
 public class ConstAnalysisHandler implements IAnalysisHandler {
 
-    private final Evaluator evaluator;
+    private final ComputationAnalysis computations;
 
     /**
      * Creates the handler.
@@ -39,7 +35,7 @@ public class ConstAnalysisHandler implements IAnalysisHandler {
      * @param operations The operations of computations, read when the phase runs.
      */
     public ConstAnalysisHandler(OperationRegistry operations) {
-        this.evaluator = new Evaluator(operations);
+        this.computations = new ComputationAnalysis(operations);
     }
 
     /**
@@ -70,20 +66,7 @@ public class ConstAnalysisHandler implements IAnalysisHandler {
      * and as the constant's value; reports the error of a computation that fails.
      */
     private void evaluate(ConstNode constNode, ExpressionNode expression, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        ExpressionOutcome outcome = switch (evaluator.evaluate(expression.expression(),
-                new SymbolTableResolution(symbolTable), IEvaluationContext.none())) {
-            case EvaluationResult.Value value -> ExpressionOutcome.of(value.value());
-            case EvaluationResult.Partial partial -> ExpressionOutcome.later(partial.expression(), partial.kind());
-            case EvaluationResult.Error error -> {
-                SourceInfo at = error.at() != null ? error.at() : expression.sourceInfo();
-                diagnostics.reportError(error.reason(), at.fileName(), at.lineNumber());
-                yield null;
-            }
-            case EvaluationResult.Reported reported -> null;
-        };
-        if (outcome != null) {
-            symbolTable.recordResult(expression, outcome);
-            symbolTable.recordDefinitionValue(constNode, outcome);
-        }
+        ComputationAnalysis.outcomeOf(computations.evaluate(expression, symbolTable, diagnostics))
+                .ifPresent(outcome -> symbolTable.recordDefinitionValue(constNode, outcome));
     }
 }
