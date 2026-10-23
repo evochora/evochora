@@ -35,9 +35,10 @@ public final class ValueEmissionContributor implements IEmissionContributor {
             context.constantValue(name.value(), context.constantValues().getOrDefault(value.value(), value.value()));
         } else if (dir.args().get("value") instanceof IrValue.Expression) {
             Value computed = context.namedValues().get(name.value());
-            if (computed != null) {
-                context.constantValue(name.value(), computed.text());
+            if (computed == null) {
+                throw new IllegalStateException("The layout recorded no value for the required value " + name.value() + ".");
             }
+            context.constantValue(name.value(), computed.text());
         }
     }
 }
