@@ -3,6 +3,7 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
@@ -10,7 +11,8 @@ import java.util.List;
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
- * Handles data movement instructions like SET, PUSH, and POP.
+ * Handles data movement instructions like SET, PUSH, and POP, and TYP, which gives a value
+ * another molecule type.
  * It supports different operand sources and destinations.
  */
 public class DataInstruction extends Instruction {
@@ -36,6 +38,10 @@ public class DataInstruction extends Instruction {
         reg(2, 6, "POP", REGISTER);
         // Operation 7: XCHG (exchange registers)
         reg(7, 7, "XCHG", REGISTER, REGISTER);
+        // Operation 8: TYP (give a value the type of another)
+        reg(8, 8, "TYPR", REGISTER, REGISTER);
+        reg(8, 9, "TYPI", REGISTER, IMMEDIATE);
+        reg(8, 10, "TYPS", STACK, STACK);
     }
 
     private static void reg(int op, int index, String name, OperandSource... sources) {
@@ -118,6 +124,25 @@ public class DataInstruction extends Instruction {
                 Object val2 = op2.value();
                 if (!writeOperand(reg1, val2)) { return; }
                 if (!writeOperand(reg2, val1)) { return; }
+                break;
+            }
+            case "TYPR":
+            case "TYPI":
+            case "TYPS": {
+                if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + opName); return; }
+                Operand target = operands.get(0);
+                if (!(target.value() instanceof Integer value) || !(operands.get(1).value() instanceof Integer typeSource)) {
+                    organism.instructionFailed(opName + " requires scalar operands");
+                    return;
+                }
+                // The number stays, the type is taken from the second operand; the marker is dropped
+                int result = new Molecule(Molecule.fromInt(typeSource).type(),
+                        Molecule.extractSignedValue(value)).toInt();
+                if (target.rawSourceId() != -1) {
+                    if (!writeOperand(target.rawSourceId(), result)) { return; }
+                } else if (!organism.pushData(result)) {
+                    return;
+                }
                 break;
             }
             default:
