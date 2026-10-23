@@ -55,7 +55,7 @@ public class DefineHandler implements IPreProcessorHandler {
                     ? Optional.of(OptionalLong.empty())
                     : preProcessorContext.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
             if (value.isPresent()) {
-                error = flags.define(operands.get(0).text(), value.get(),
+                error = FlagDefinition.define(flags, operands.get(0).text(), value.get(),
                         "at " + directive.source().fileName() + ":" + directive.source().lineNumber()).orElse(null);
             }
         }

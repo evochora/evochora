@@ -27,7 +27,7 @@ public class DefineScanHandler implements IDependencyScanHandler {
         Optional<OptionalLong> value = operands.size() == 1
                 ? Optional.of(OptionalLong.empty())
                 : ctx.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
-        value.ifPresent(v -> ctx.flags().define(operands.get(0).text(), v,
+        value.ifPresent(v -> FlagDefinition.define(ctx.flags(), operands.get(0).text(), v,
                 "at " + ctx.sourcePath() + ":" + ctx.lineNumber()));
     }
 }

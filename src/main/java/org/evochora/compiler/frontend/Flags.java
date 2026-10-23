@@ -14,19 +14,24 @@ import java.util.OptionalLong;
  * serves the whole token stream of the preprocessor, another the whole reading of the Lexer
  * phase. The compiler creates both alike, from the flags of the compilation's options and the
  * names nothing may define; the directives of a feature fill them, and a computation at read
- * time reads them.
- * <p>
- * A flag that is set may be defined again only with the same definition, both without a value
- * or both with the same value; {@link #undefine} first is how a flag changes.
+ * time reads them. What a directive may do to a flag that is set already is the directive's
+ * rule; the flags hold each definition with where it stands, so that the rule can name it.
  */
 public final class Flags {
 
     private static final String CONFIGURATION = "by the configuration";
 
-    private record Entry(OptionalLong value, String origin) {
+    /**
+     * The definition of a flag that is set.
+     *
+     * @param value  The value, or empty for a flag set without one.
+     * @param origin Where the definition stands, as a phrase completing "defined …", e.g.
+     *               {@code "at main.evo:3"} or {@code "by the configuration"}.
+     */
+    public record Definition(OptionalLong value, String origin) {
     }
 
-    private final Map<String, Entry> entries = new HashMap<>();
+    private final Map<String, Definition> entries = new HashMap<>();
     private final Map<String, String> reservedNames;
 
     private Flags(Map<String, String> reservedNames) {
@@ -51,7 +56,7 @@ public final class Flags {
      */
     public static Flags of(Map<String, OptionalLong> defines, Map<String, String> reservedNames) {
         Flags flags = new Flags(reservedNames);
-        defines.forEach((name, value) -> flags.entries.put(key(name), new Entry(value, CONFIGURATION)));
+        defines.forEach((name, value) -> flags.entries.put(key(name), new Definition(value, CONFIGURATION)));
         return flags;
     }
 
@@ -82,15 +87,13 @@ public final class Flags {
     }
 
     /**
-     * Sets a flag. A reserved name is rejected. A flag that is not set takes the definition; one
-     * that is set keeps its definition, and the call is accepted when the definition is the same
-     * and rejected when the value differs or one of the two has a value and the other has none.
+     * Sets a flag, in place of a definition it has. A reserved name is rejected.
      *
      * @param name   The flag name, as written.
      * @param value  The value, or empty for a flag without one.
      * @param origin Where the definition stands, as a phrase completing "defined …", e.g.
-     *               {@code "at main.evo:3"}; named when a later definition conflicts with it.
-     * @return Empty when the definition is accepted, or the message telling why it is not.
+     *               {@code "at main.evo:3"}.
+     * @return Empty when the flag is set, or the message telling why it is not.
      */
     public Optional<String> define(String name, OptionalLong value, String origin) {
         String key = key(name);
@@ -100,16 +103,18 @@ public final class Flags {
                     ? "'" + name + "' cannot be defined."
                     : "'" + name + "' is " + reserved + " and cannot be defined.");
         }
-        Entry existing = entries.get(key);
-        if (existing == null) {
-            entries.put(key, new Entry(value, origin));
-            return Optional.empty();
-        }
-        if (existing.value().equals(value)) {
-            return Optional.empty();
-        }
-        return Optional.of("Cannot define flag " + key + " " + describe(value) + ": it is already defined "
-                + describe(existing.value()) + " " + existing.origin() + "; .UNDEF it first to change it");
+        entries.put(key, new Definition(value, origin));
+        return Optional.empty();
+    }
+
+    /**
+     * Returns the definition of a flag.
+     *
+     * @param name The flag name.
+     * @return The definition, or empty if the flag is not set.
+     */
+    public Optional<Definition> definitionOf(String name) {
+        return Optional.ofNullable(entries.get(key(name)));
     }
 
     /**
@@ -138,7 +143,7 @@ public final class Flags {
      * @return The value, or empty if the flag is not set or set without a value.
      */
     public OptionalLong valueOf(String name) {
-        Entry entry = entries.get(key(name));
+        Definition entry = entries.get(key(name));
         return entry == null ? OptionalLong.empty() : entry.value();
     }
 
@@ -166,10 +171,6 @@ public final class Flags {
 
     private static boolean isLetter(char c) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-    }
-
-    private static String describe(OptionalLong value) {
-        return value.isPresent() ? "as " + value.getAsLong() : "without a value";
     }
 
     private static String key(String name) {
