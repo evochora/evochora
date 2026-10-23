@@ -280,7 +280,7 @@ class ModuleSourceConstIntegrationTest {
             circularSourceTokens.put(resolvedPath, srcTokens);
         }
 
-        PreProcessorContext circularContext = TestPreProcessorContexts.context("", circularSourceTokens, mainPath, CompilerOptions.defaults());
+        PreProcessorContext circularContext = TestPreProcessorContexts.context("", circularSourceTokens, mainPath, CompilerOptions.defaults(), diagnostics);
         circularContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         circularContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, circularContext);
@@ -349,7 +349,7 @@ class ModuleSourceConstIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
-        PreProcessorContext ppContext = TestPreProcessorContexts.context(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
+        PreProcessorContext ppContext = TestPreProcessorContexts.context(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults(), diagnostics);
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());

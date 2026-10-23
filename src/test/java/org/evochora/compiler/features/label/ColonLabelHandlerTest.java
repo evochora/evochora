@@ -37,7 +37,7 @@ class ColonLabelHandlerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics, "test.s");
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "test.s", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "test.s", CompilerOptions.defaults(), diagnostics);
         context.handlers().register(":", new ColonLabelHandler());
         PreProcessor pp = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

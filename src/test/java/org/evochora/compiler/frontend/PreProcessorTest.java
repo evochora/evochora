@@ -77,7 +77,7 @@ public class PreProcessorTest {
         Tokenizer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
-        PreProcessorContext context = TestPreProcessorContexts.context("", sourceTokens, mainFile.toString(), CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", sourceTokens, mainFile.toString(), CompilerOptions.defaults(), diagnostics);
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, context);

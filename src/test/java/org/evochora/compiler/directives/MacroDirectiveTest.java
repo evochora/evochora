@@ -56,7 +56,7 @@ public class MacroDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults(), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,
@@ -103,7 +103,7 @@ public class MacroDirectiveTest {
         List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines), diagnostics).scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(), "<memory>", "<memory>",
                 CompilerOptions.defaults(), TestRegistries.operations(), new RuntimeInstructionSetAdapter(),
-                Flags.of(Map.of(), TestRegistries.operations().reservedNames()));
+                Flags.of(Map.of(), TestRegistries.operations().reservedNames()), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         new PreProcessor(tokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), context)
                 .expand();

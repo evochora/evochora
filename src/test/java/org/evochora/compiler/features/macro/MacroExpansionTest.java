@@ -510,7 +510,7 @@ class MacroExpansionTest {
         });
         List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
-        PreProcessorContext context = TestPreProcessorContexts.context("", libraryTokens, MAIN, CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", libraryTokens, MAIN, CompilerOptions.defaults(), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
@@ -524,7 +524,7 @@ class MacroExpansionTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults(), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

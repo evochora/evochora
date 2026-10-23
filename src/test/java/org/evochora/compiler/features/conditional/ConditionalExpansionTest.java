@@ -1026,7 +1026,7 @@ class ConditionalExpansionTest {
         StandardFeatures.all().forEach(f -> f.register(features));
         PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), Map.of(), MAIN, MAIN,
                 options, features.operations(), new RuntimeInstructionSetAdapter(),
-                Flags.of(defines, features.operations().reservedNames()));
+                Flags.of(defines, features.operations().reservedNames()), diagnostics);
         features.preprocessorHandlers().forEach(context.handlers()::register);
         features.preprocessorBlocks().forEach(block ->
                 context.handlers().registerBlock(block.kind(), block.handler(), block.stored()));

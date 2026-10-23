@@ -1,5 +1,6 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.frontend.Flags;
@@ -36,14 +37,15 @@ public final class TestPreProcessorContexts {
      * @param mainPath       The resolved path of the main file; must not be null.
      * @param options        The options of the compilation, whose flags seed the context's
      *                       flags; must not be null.
+     * @param diagnostics    Where the context reports an error of a computation it reads.
      * @return The context, with no operations.
      */
     public static PreProcessorContext context(String rootAliasChain, Map<String, List<Token>> fileTokens,
                                               Map<String, List<String>> fileLines, String mainName,
-                                              String mainPath, CompilerOptions options) {
+                                              String mainPath, CompilerOptions options, DiagnosticsEngine diagnostics) {
         return new PreProcessorContext(rootAliasChain, fileTokens, fileLines, mainName, mainPath, options,
                 NO_OPERATIONS, new RuntimeInstructionSetAdapter(),
-                Flags.of(Objects.requireNonNull(options, "options").defines(), NO_OPERATIONS.reservedNames()));
+                Flags.of(Objects.requireNonNull(options, "options").defines(), NO_OPERATIONS.reservedNames()), diagnostics);
     }
 
     /**
@@ -56,10 +58,11 @@ public final class TestPreProcessorContexts {
      * @param mainPath       The resolved path of the main file, the file name of the initial
      *                       tokens; must not be null.
      * @param options        The options of the compilation; must not be null.
+     * @param diagnostics    Where the context reports an error of a computation it reads.
      * @return The context, with no operations.
      */
     public static PreProcessorContext context(String rootAliasChain, Map<String, List<Token>> fileTokens,
-                                              String mainPath, CompilerOptions options) {
-        return context(rootAliasChain, fileTokens, Map.of(), mainPath, mainPath, options);
+                                              String mainPath, CompilerOptions options, DiagnosticsEngine diagnostics) {
+        return context(rootAliasChain, fileTokens, Map.of(), mainPath, mainPath, options, diagnostics);
     }
 }

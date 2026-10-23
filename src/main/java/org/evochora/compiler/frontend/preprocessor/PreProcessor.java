@@ -62,7 +62,6 @@ public class PreProcessor {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
-        ppContext.reportTo(diagnostics, this::note);
         this.blockReader = new BlockReader(ppContext.handlers()::blockKindOf, true, token -> false, diagnostics);
         entries.add(ppContext.mainFile());
     }
@@ -116,6 +115,7 @@ public class PreProcessor {
         }
         SourceView view = new SourceView(entries, expansions);
         List<SourceInfo> lost = new ArrayList<>();
+        notes.addAll(ppContext.notes());
         List<PositionedNote> keptNotes = kept(view, notes, PositionedNote::at, lost);
         List<PositionedLeftOut> keptRegions = kept(view, leftOut, PreProcessor::placeOf, lost);
         if (!lost.isEmpty()) {

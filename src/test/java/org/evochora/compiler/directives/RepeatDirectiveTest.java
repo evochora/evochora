@@ -41,7 +41,7 @@ public class RepeatDirectiveTest {
         OperationRegistry operations = TestRegistries.operations();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(), fileName, fileName,
                 CompilerOptions.defaults(), operations, new RuntimeInstructionSetAdapter(),
-                Flags.of(Map.of(), operations.reservedNames()));
+                Flags.of(Map.of(), operations.reservedNames()), diagnostics);
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register("^", new CaretDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());

@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
@@ -72,6 +73,6 @@ class PreProcessorContextTest {
     }
 
     private static PreProcessorContext context(CompilerOptions options) {
-        return TestPreProcessorContexts.context("", Map.of(), "<memory>", options);
+        return TestPreProcessorContexts.context("", Map.of(), "<memory>", options, new DiagnosticsEngine());
     }
 }

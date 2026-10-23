@@ -325,7 +325,7 @@ class UsingClauseIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorContext ppContext = TestPreProcessorContexts.context(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
+        PreProcessorContext ppContext = TestPreProcessorContexts.context(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults(), diagnostics);
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());

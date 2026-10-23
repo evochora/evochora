@@ -386,12 +386,6 @@
       "notes": [
         {
           "expansion": 0,
-          "line": 59,
-          "column": 19,
-          "text": "[\u003d2]"
-        },
-        {
-          "expansion": 0,
           "line": 61,
           "column": 13,
           "text": "[\u003d2]"
@@ -458,6 +452,18 @@
         },
         {
           "expansion": 0,
+          "line": 166,
+          "column": 13,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
+          "line": 59,
+          "column": 19,
+          "text": "[\u003d2]"
+        },
+        {
+          "expansion": 0,
           "line": 87,
           "column": 13,
           "text": "[\u003d4]"
@@ -467,12 +473,6 @@
           "line": 91,
           "column": 9,
           "text": "[\u003d4]"
-        },
-        {
-          "expansion": 0,
-          "line": 166,
-          "column": 13,
-          "text": "[\u003d2]"
         },
         {
           "expansion": 0,
@@ -984,26 +984,6 @@
       "leftOut": [],
       "notes": []
     },
-    "1": {
-      "calledAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 53,
-        "columnNumber": 1,
-        "placement": "",
-        "expansion": 0
-      },
-      "definedAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 49,
-        "columnNumber": 8,
-        "placement": "",
-        "expansion": 0
-      },
-      "name": "NOTHING",
-      "bindings": [],
-      "leftOut": [],
-      "notes": []
-    },
     "5": {
       "calledAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
@@ -1030,6 +1010,26 @@
           "argument": "DATA:1"
         }
       ],
+      "leftOut": [],
+      "notes": []
+    },
+    "1": {
+      "calledAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 53,
+        "columnNumber": 1,
+        "placement": "",
+        "expansion": 0
+      },
+      "definedAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 49,
+        "columnNumber": 8,
+        "placement": "",
+        "expansion": 0
+      },
+      "name": "NOTHING",
+      "bindings": [],
       "leftOut": [],
       "notes": []
     }
@@ -7646,43 +7646,43 @@
     }
   },
   "callSiteBindings": {
-    "170": {
-      "1281": 257,
-      "1025": 1,
+    "243": {
       "1280": 256,
-      "1024": 0
-    },
-    "291": {
-      "1024": 0
-    },
-    "230": {
+      "1281": 257,
       "1024": 0
     },
     "187": {
       "1024": 3
     },
-    "243": {
-      "1281": 257,
-      "1280": 256,
+    "230": {
       "1024": 0
     },
-    "83": {
-      "1024": 1024
+    "291": {
+      "1024": 0
     },
-    "281": {
+    "170": {
+      "1025": 1,
+      "1281": 257,
+      "1024": 0,
+      "1280": 256
+    },
+    "275": {
+      "1024": 0
+    },
+    "156": {
+      "1280": 256,
+      "1281": 257,
       "1024": 0
     },
     "199": {
       "1280": 256,
       "1024": 0
     },
-    "156": {
-      "1281": 257,
-      "1280": 256,
+    "281": {
       "1024": 0
     },
-    "275": {
-      "1024": 0
+    "83": {
+      "1024": 1024
     }
   },
   "linearAddressToCoord": {

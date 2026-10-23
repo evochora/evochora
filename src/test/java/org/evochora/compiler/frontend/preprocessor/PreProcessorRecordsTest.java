@@ -144,7 +144,7 @@ class PreProcessorRecordsTest {
     private static PreProcessorResult run(DiagnosticsEngine diagnostics, Consumer<PreProcessor> records) {
         List<Token> tokens = TestLexers.tokenizer("REC\nNOP\nNOP\n", diagnostics, MAIN).scanTokens();
         PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), Map.of(MAIN, MAIN_LINES, LIB, LIB_LINES),
-                "main.evo", MAIN, CompilerOptions.defaults());
+                "main.evo", MAIN, CompilerOptions.defaults(), diagnostics);
         context.handlers().register("REC", (pp, ctx) -> {
             pp.includes(LIB_PLACEMENT);
             pp.includes(LIB_SOURCED);

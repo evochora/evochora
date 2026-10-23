@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.model.expression.ReservedNames;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -12,13 +13,15 @@ import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.BiConsumer;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -39,8 +42,8 @@ public class PreProcessorContext {
     private final CompilerOptions options;
     private final ReservedNames reservedNames;
     private final ReadTimeValues values;
-    private DiagnosticsEngine diagnostics;
-    private BiConsumer<SourceInfo, String> notes;
+    private final DiagnosticsEngine diagnostics;
+    private final Set<PositionedNote> notes = new LinkedHashSet<>();
     private final Map<Class<?>, Object> featureState = new HashMap<>();
     private int lastInstance;
 
@@ -63,11 +66,12 @@ public class PreProcessorContext {
      * @param isa            The instruction set, whose molecule types a computation recognises
      *                       before the typing colon.
      * @param flags          The flags of the phase, seeded from the options.
+     * @param diagnostics    Where {@link #evaluate} reports an error.
      */
     public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
                                Map<String, List<String>> fileLines, String mainName, String mainPath,
                                CompilerOptions options, OperationRegistry operations, IInstructionSet isa,
-                               Flags flags) {
+                               Flags flags, DiagnosticsEngine diagnostics) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
         this.fileLines = fileLines != null ? fileLines : Map.of();
@@ -76,6 +80,7 @@ public class PreProcessorContext {
         this.options = Objects.requireNonNull(options, "options");
         this.reservedNames = operations.reservedNames();
         this.values = new ReadTimeValues(flags, operations, isa);
+        this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
     }
 
     /**
@@ -180,28 +185,26 @@ public class PreProcessorContext {
     /**
      * Computes a number at read time: the tokens of one value, a number, a flag name or a
      * computation, read with the operations of the compilation, every name a flag of
-     * {@link #flags()} with its value. An error is reported to the diagnostics of the
-     * preprocessor that walks the stream, at the token or the node at fault, or else at the
+     * {@link #flags()} with its value. An error is reported to the diagnostics the context was
+     * created with, at the token or the node at fault, or else at the
      * first token: tokens that form no computation, a name that is no flag or a flag without a
      * value, a computation that fails, a result that is no number. A computation that gives a
-     * number, and a flag name written alone, are noted for the source view as {@code [=n]} right
-     * after their last token; a number written alone is not, nor is a value outside every file.
+     * number, and a flag name written alone, are noted as {@code [=n]} right after their last
+     * token, for the source view the preprocessor builds ({@link #notes()}); a number written
+     * alone is not, nor is a value outside every file.
      *
      * @param tokens The tokens of the value, as the directive delimits them; not empty.
      * @return The number, or empty if an error was reported.
-     * @throws IllegalStateException if no preprocessor walks a stream with this context.
      */
     public Optional<Long> evaluate(List<Token> tokens) {
         return switch (values.read(tokens)) {
             case ReadTimeValues.Reading.Number number -> {
-                requireWalk();
                 if (number.form() != ReadTimeValues.Reading.Form.NUMBER && tokens.getLast().source().inAFile()) {
-                    notes.accept(tokens.getLast().after(), "[=" + number.value() + "]");
+                    notes.add(new PositionedNote(tokens.getLast().after(), "[=" + number.value() + "]"));
                 }
                 yield Optional.of(number.value());
             }
             case ReadTimeValues.Reading.Failed failed -> {
-                requireWalk();
                 SourceInfo at = failed.at() != null ? failed.at()
                         : tokens.isEmpty() ? null : tokens.getFirst().source();
                 diagnostics.reportError(failed.message(), at == null ? "" : at.fileName(),
@@ -211,22 +214,13 @@ public class PreProcessorContext {
         };
     }
 
-    private void requireWalk() {
-        if (diagnostics == null) {
-            throw new IllegalStateException("No preprocessor reports for this context.");
-        }
-    }
-
     /**
-     * Sets where {@link #evaluate} reports and notes: to the diagnostics and the notes of the
-     * preprocessor that walks a stream with this context.
+     * Returns the notes {@link #evaluate} has recorded, in the order recorded, each once.
      *
-     * @param diagnostics The preprocessor's diagnostics.
-     * @param notes       Records a note at a position for the source view.
+     * @return An unmodifiable view of the notes.
      */
-    void reportTo(DiagnosticsEngine diagnostics, BiConsumer<SourceInfo, String> notes) {
-        this.diagnostics = diagnostics;
-        this.notes = notes;
+    Set<PositionedNote> notes() {
+        return Collections.unmodifiableSet(notes);
     }
 
     // --- Feature state ---
