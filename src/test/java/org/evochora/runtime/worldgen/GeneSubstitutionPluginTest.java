@@ -1091,12 +1091,6 @@ class GeneSubstitutionPluginTest {
                 Arguments.of(524287, 724));
     }
 
-    /** Distance on the ring of 20-bit values, where 524287 and -524288 are neighbours. */
-    private static int ringDistance(int a, int b) {
-        int distance = Math.abs(a - b);
-        return Math.min(distance, (1 << Config.VALUE_BITS) - distance);
-    }
-
     @ParameterizedTest(name = "|value|={0}, delta={1}")
     @MethodSource("dataMagnitudes")
     void dataPerturbationDependsOnMagnitudeOnly(int magnitude, int delta) {
@@ -1110,7 +1104,7 @@ class GeneSubstitutionPluginTest {
                 GeneSubstitutionPlugin plugin = dataOnlyPlugin(new SeededRandomProvider(seed));
                 plugin.substitute(child, environment);
 
-                int step = ringDistance(environment.getMolecule(5, 5).value(), original);
+                int step = Math.abs(environment.getMolecule(5, 5).value() - original);
                 assertThat(step).as("original=%d, seed=%d: step must not exceed delta", original, seed)
                         .isLessThanOrEqualTo(delta);
                 largestStep = Math.max(largestStep, step);

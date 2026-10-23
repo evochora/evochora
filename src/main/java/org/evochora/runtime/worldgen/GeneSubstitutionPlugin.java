@@ -200,7 +200,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private boolean cellChosen;
     /** Type bits (unshifted, as in the packed molecule int) of the candidate cell. */
     private int chosenType;
-    /** Raw 20-bit value of the candidate cell. */
+    /** Raw value pattern of the candidate cell, the value bits as they are stored. */
     private int chosenRawValue;
     /** Marker of the candidate cell. */
     private int chosenMarker;
@@ -1057,7 +1057,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * cell sees it. The remaining types carry identifiers, for which the raw pattern is correct.
      *
      * @param type The shifted type constant.
-     * @param value The raw 20-bit value pattern.
+     * @param value The raw value pattern, the value bits as they are stored.
      * @return The value in the representation that belongs to the type.
      */
     private static int displayValueForLog(int type, int value) {
