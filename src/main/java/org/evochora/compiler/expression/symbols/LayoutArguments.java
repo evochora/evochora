@@ -19,8 +19,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Checks the arguments of the directives the layout finishes, {@code .ORG}, {@code .DIR} and
- * {@code .PLACE}, for the analysis handlers of their features. Each argument is evaluated through
+ * Checks the arguments of a directive the layout finishes, for the analysis handler of its
+ * feature. Each argument is evaluated through
  * the bridge to the symbol table, as a constant's value is: a literal has the kind of its value; a
  * computation is evaluated and its outcome recorded for it, a value or the tree only the layout
  * computes; a name is answered by the bridge, a label and a definition whose value only the layout
@@ -76,8 +76,8 @@ public final class LayoutArguments {
     }
 
     /**
-     * Checks an argument that has to be a typed value, such as the molecule a {@code .PLACE}
-     * writes; a value only the layout knows passes with the kind it will have.
+     * Checks an argument that has to be a typed value, such as a molecule a directive writes; a
+     * value only the layout knows passes with the kind it will have.
      *
      * @param operand     The argument.
      * @param message     The message for a value of another kind.
