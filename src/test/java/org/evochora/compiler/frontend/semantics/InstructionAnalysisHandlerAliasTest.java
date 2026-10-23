@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
@@ -46,7 +47,7 @@ class InstructionAnalysisHandlerAliasTest {
     void setUp() {
         handler = new InstructionAnalysisHandler(new RuntimeInstructionSetAdapter(), new OperationRegistry());
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
     }

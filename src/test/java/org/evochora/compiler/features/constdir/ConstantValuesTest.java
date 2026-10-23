@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.TestEmissionContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
@@ -42,7 +43,7 @@ class ConstantValuesTest {
     @Test
     @Tag("unit")
     void theContributorRegistersTheValueOfAConstValueDirective_andIgnoresOtherDirectives() {
-        EmissionContext context = new EmissionContext();
+        EmissionContext context = TestEmissionContexts.emissionContext();
         ConstantValueEmissionContributor contributor = new ConstantValueEmissionContributor();
         SourceInfo at = new SourceInfo("main.evo", 1, 1, "", 0);
 

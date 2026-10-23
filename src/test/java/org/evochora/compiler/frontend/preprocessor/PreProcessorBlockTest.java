@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
@@ -197,7 +198,7 @@ class PreProcessorBlockTest {
 
     private static Run run(List<Token> tokens, IPreProcessorBlockHandler storeHandler) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), tokens.getFirst().source().fileName(),
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), tokens.getFirst().source().fileName(),
                 CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         Recorder recorder = new Recorder();

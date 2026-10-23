@@ -22,13 +22,6 @@ public final class EmissionContext {
     private final Map<String, Value> namedValues;
 
     /**
-     * Creates a context without named layout values, for a program the layout computed no name of.
-     */
-    public EmissionContext() {
-        this(Map.of());
-    }
-
-    /**
      * Creates a context that offers the named layout values to the contributors.
      *
      * @param namedValues The named layout values of the layout result, by qualified name: the

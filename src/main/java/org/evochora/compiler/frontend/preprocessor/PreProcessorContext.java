@@ -8,7 +8,6 @@ import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.frontend.ReadTimeValues;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;
@@ -31,8 +30,6 @@ import java.util.function.Supplier;
  * a slot in which features keep state of their own types.
  */
 public class PreProcessorContext {
-    private static final OperationRegistry NO_OPERATIONS = new OperationRegistry();
-
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
     private final String rootAliasChain;
     private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
@@ -49,38 +46,9 @@ public class PreProcessorContext {
 
     /**
      * Creates a context carrying the token streams that were pre-lexed and the lines that were
-     * read for the files found during dependency scanning, which knows no operation of
-     * computations: a value read at this time is a number or a flag, and an operator in it is
-     * unexpected. A null alias chain becomes the empty chain, a null map an empty map.
-     *
-     * @param rootAliasChain The alias chain for the compilation root module.
-     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
-     *                       resolved absolute path. Whether an inclusion is a module or plain
-     *                       text is decided by the directive that includes the file, not here.
-     * @param fileLines      The lines of every file read, the main file's included, keyed by
-     *                       resolved absolute path; the entries of one file share its list.
-     * @param mainName       The name the main file was given to the compiler under, which names
-     *                       its entry where the program's text is shown.
-     * @param mainPath       The resolved path of the main file, the file name of the initial
-     *                       tokens; the main file's entry, the first of the preprocessor's
-     *                       entries, stands under the root chain with the lines of this path.
-     *                       Must not be null.
-     * @param options        The options of the compilation, offered to handlers through
-     *                       {@link #options()}, whose flags seed {@link #flags()}; must not be
-     *                       null.
-     */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
-                               Map<String, List<String>> fileLines, String mainName, String mainPath,
-                               CompilerOptions options) {
-        this(rootAliasChain, fileTokens, fileLines, mainName, mainPath, options, NO_OPERATIONS,
-                new RuntimeInstructionSetAdapter(),
-                Flags.of(Objects.requireNonNull(options, "options").defines(), NO_OPERATIONS.reservedNames()));
-    }
-
-    /**
-     * Creates a context as {@link #PreProcessorContext(String, Map, Map, String, String, CompilerOptions)}
-     * does, which computes with the operations of the compilation and offers the names nothing in
-     * a program may define.
+     * read for the files found during dependency scanning, which computes with the operations of
+     * the compilation and offers the names nothing in a program may define. A null alias chain
+     * becomes the empty chain, a null map an empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
@@ -122,22 +90,6 @@ public class PreProcessorContext {
      */
     public Optional<String> reservedName(String name) {
         return Optional.ofNullable(reservedNames.get(name.toUpperCase(Locale.ROOT)));
-    }
-
-    /**
-     * Creates a context carrying pre-lexed token streams but no lines: the main file's entry is
-     * named by its path and shows no text.
-     *
-     * @param rootAliasChain The alias chain for the compilation root module.
-     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
-     *                       resolved absolute path.
-     * @param mainPath       The resolved path of the main file, the file name of the initial
-     *                       tokens; must not be null.
-     * @param options        The options of the compilation; must not be null.
-     */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, String mainPath,
-                               CompilerOptions options) {
-        this(rootAliasChain, fileTokens, Map.of(), mainPath, mainPath, options);
     }
 
     /**

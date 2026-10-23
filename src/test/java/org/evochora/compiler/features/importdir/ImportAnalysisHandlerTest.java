@@ -2,6 +2,7 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.symbols.ModuleScope;
@@ -36,7 +37,7 @@ class ImportAnalysisHandlerTest {
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
         handler = new ImportAnalysisHandler(TestRegistries.operations());
 
         symbolTable.registerModule(MAIN_CHAIN, MAIN_FILE);

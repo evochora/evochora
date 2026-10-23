@@ -1,6 +1,9 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestPreProcessorContexts;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.CompilerOptions;
@@ -322,7 +325,7 @@ class UsingClauseIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
+        PreProcessorContext ppContext = TestPreProcessorContexts.context(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
@@ -333,12 +336,12 @@ class UsingClauseIntegrationTest {
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 3: Parsing
-        Parser parser = new Parser(processedTokens, diagnostics, allHandlers());
+        Parser parser = TestParsers.parser(processedTokens, diagnostics, allHandlers());
         List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);

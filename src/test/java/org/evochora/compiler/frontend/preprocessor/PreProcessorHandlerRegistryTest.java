@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import java.util.Map;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.features.macro.MacroDefinition;
 import org.evochora.compiler.features.macro.MacroExpansionHandler;
@@ -25,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Tag("unit")
 class PreProcessorHandlerRegistryTest {
 
-    private final PreProcessorHandlerRegistry registry = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults()).handlers();
+    private final PreProcessorHandlerRegistry registry = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults()).handlers();
 
     @Test
     void registerAndRetrieve() {

@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.instruction.InstructionParsingHandler;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
@@ -36,7 +37,7 @@ class CallStatementHandlerTest {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register("CALL", new CallStatementHandler());
         reg.registerDefault(new InstructionParsingHandler());
-        Parser parser = new Parser(tokens, diagnostics, reg);
+        Parser parser = TestParsers.parser(tokens, diagnostics, reg);
         List<AstNode> ast = parser.parse();
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);

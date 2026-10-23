@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.label;
 
 import java.util.Map;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
@@ -36,7 +37,7 @@ class ColonLabelHandlerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics, "test.s");
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), "test.s", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "test.s", CompilerOptions.defaults());
         context.handlers().register(":", new ColonLabelHandler());
         PreProcessor pp = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

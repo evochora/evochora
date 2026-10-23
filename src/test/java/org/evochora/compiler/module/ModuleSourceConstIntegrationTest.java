@@ -1,5 +1,8 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestPreProcessorContexts;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
@@ -276,7 +279,7 @@ class ModuleSourceConstIntegrationTest {
             circularSourceTokens.put(resolvedPath, srcTokens);
         }
 
-        PreProcessorContext circularContext = new PreProcessorContext("", circularSourceTokens, mainPath, CompilerOptions.defaults());
+        PreProcessorContext circularContext = TestPreProcessorContexts.context("", circularSourceTokens, mainPath, CompilerOptions.defaults());
         circularContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         circularContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, circularContext);
@@ -345,7 +348,7 @@ class ModuleSourceConstIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
+        PreProcessorContext ppContext = TestPreProcessorContexts.context(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
@@ -356,12 +359,12 @@ class ModuleSourceConstIntegrationTest {
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 3: Parsing
-        Parser parser = new Parser(ppResult.tokens(), diagnostics, allHandlers());
+        Parser parser = TestParsers.parser(ppResult.tokens(), diagnostics, allHandlers());
         List<AstNode> ast = new ArrayList<>(parser.parse());
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 
         // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);

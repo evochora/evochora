@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -18,7 +19,7 @@ class SymbolTableFreezeTest {
 
     @BeforeEach
     void setUp() {
-        symbolTable = new SymbolTable(new DiagnosticsEngine());
+        symbolTable = TestSymbolTables.symbolTable(new DiagnosticsEngine());
         symbolTable.registerModule("MAIN", "test.evo");
         symbolTable.setCurrentModule("MAIN");
         symbolTable.define(new Symbol("TEST", new SourceInfo("test.evo", 1, 0, "", 0), Symbol.Type.LABEL, null, true));
@@ -103,7 +104,7 @@ class SymbolTableFreezeTest {
 
     @Test
     void moduleScopeTakesWritesBeforeFreeze() {
-        SymbolTable unfrozen = new SymbolTable(new DiagnosticsEngine());
+        SymbolTable unfrozen = TestSymbolTables.symbolTable(new DiagnosticsEngine());
         unfrozen.registerModule("MOD", "mod.evo");
         ModuleScope scope = unfrozen.getModuleScope("MOD").orElseThrow();
 

@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
@@ -76,7 +77,7 @@ public class PreProcessorTest {
         Tokenizer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
-        PreProcessorContext context = new PreProcessorContext("", sourceTokens, mainFile.toString(), CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", sourceTokens, mainFile.toString(), CompilerOptions.defaults());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, context);

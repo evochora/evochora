@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit;
 
+import org.evochora.compiler.TestEmissionContexts;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrValue;
@@ -27,7 +28,7 @@ class RegisterAliasEmissionContributorTest {
     }
 
     private EmissionContext runContributor(IrDirective directive) {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(directive, ctx);
         return ctx;
     }
@@ -108,7 +109,7 @@ class RegisterAliasEmissionContributorTest {
     @Tag("unit")
     @DisplayName("Should ignore non-reg_alias directives")
     void ignoresOtherDirectives() {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(new IrDirective("core", "proc_enter", Map.of(
                 "name", new IrValue.Str("X")), null), ctx);
 
@@ -119,7 +120,7 @@ class RegisterAliasEmissionContributorTest {
     @Tag("unit")
     @DisplayName("Should ignore non-directive IR items")
     void ignoresNonDirectives() {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(new IrInstruction("NOP", List.of(), null), ctx);
 
         assertThat(ctx.registerAliasMap()).isEmpty();
@@ -129,7 +130,7 @@ class RegisterAliasEmissionContributorTest {
     @Tag("unit")
     @DisplayName("Should handle multiple aliases")
     void handlesMultipleAliases() {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(regAliasDirective("A.X", "%DR0"), ctx);
         contributor.onItem(regAliasDirective("A.Y", "%PDR1"), ctx);
         contributor.onItem(regAliasDirective("B.Z", "%LR0"), ctx);

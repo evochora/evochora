@@ -3,6 +3,7 @@ package org.evochora.compiler.features.control;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.label.LabelNode;
@@ -263,7 +264,7 @@ class ControlDirectiveTest {
         features.parserStatementHandlers().forEach(registry::register);
         features.parserBlocks().forEach(block -> registry.registerBlock(block.kind(), block.handler()));
         registry.registerDefault(features.defaultParserStatementHandler());
-        Parser parser = new Parser(tokens, diagnostics, registry);
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry);
         return new Parsed(parser.parse(), diagnostics);
     }
 }

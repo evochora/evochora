@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit;
 
+import org.evochora.compiler.TestEmissionContexts;
 import org.evochora.compiler.features.proc.ProcedureEmissionContributor;
 import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.ParamType;
@@ -22,7 +23,7 @@ class ProcedureEmissionContributorTest {
     private final ProcedureEmissionContributor contributor = new ProcedureEmissionContributor();
 
     private EmissionContext runContributor(IrDirective directive) {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(directive, ctx);
         return ctx;
     }
@@ -72,7 +73,7 @@ class ProcedureEmissionContributorTest {
         Map<String, IrValue> args = new HashMap<>();
         args.put("name", new IrValue.Str("X"));
 
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(new IrDirective("core", "proc_exit", args, null), ctx);
 
         assertThat(ctx.procNameToParamNames()).isEmpty();
@@ -82,7 +83,7 @@ class ProcedureEmissionContributorTest {
     @Tag("unit")
     @DisplayName("Should ignore non-directive IR items")
     void ignoresNonDirectives() {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
         contributor.onItem(new IrInstruction("NOP", List.of(), null), ctx);
 
         assertThat(ctx.procNameToParamNames()).isEmpty();
@@ -92,7 +93,7 @@ class ProcedureEmissionContributorTest {
     @Tag("unit")
     @DisplayName("Should handle multiple procedures")
     void handlesMultipleProcedures() {
-        EmissionContext ctx = new EmissionContext();
+        EmissionContext ctx = TestEmissionContexts.emissionContext();
 
         Map<String, IrValue> args1 = new HashMap<>();
         args1.put("name", new IrValue.Str("MOD.PROC_A"));

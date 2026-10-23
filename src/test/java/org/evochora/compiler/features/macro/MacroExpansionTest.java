@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
@@ -509,7 +510,7 @@ class MacroExpansionTest {
         });
         List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", libraryTokens, MAIN, CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", libraryTokens, MAIN, CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
@@ -523,7 +524,7 @@ class MacroExpansionTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

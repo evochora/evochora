@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.postprocess;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.frontend.ScopeTracker;
@@ -47,7 +48,7 @@ class AstPostProcessorTest {
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
 
         // Register a default module and set it as current
         symbolTable.registerModule("TEST", "test.s");
@@ -150,7 +151,7 @@ class AstPostProcessorTest {
     void testProcess_ExportedLabelOfImportedModule_ReplacedByQualifiedName() {
         // Given: an exported label in module LIB and an import alias LIB in module MAIN
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        SymbolTable st = new SymbolTable(diags);
+        SymbolTable st = TestSymbolTables.symbolTable(diags);
         st.registerModule("LIB", "lib.s");
         st.registerModule("MAIN", "main.s");
         st.setCurrentModule("LIB");
@@ -172,7 +173,7 @@ class AstPostProcessorTest {
     void testProcess_NonExportedLabelOfImportedModule_NotReplaced() {
         // Given: a label in module LIB that is not exported
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        SymbolTable st = new SymbolTable(diags);
+        SymbolTable st = TestSymbolTables.symbolTable(diags);
         st.registerModule("LIB", "lib.s");
         st.registerModule("MAIN", "main.s");
         st.setCurrentModule("LIB");
@@ -279,7 +280,7 @@ class AstPostProcessorTest {
     void testProcess_AliasWithoutRegNode_NotBoundToRegister() {
         // Create a fresh symbol table with an ALIAS symbol that has no RegNode (node=null)
         DiagnosticsEngine freshDiags = new DiagnosticsEngine();
-        SymbolTable freshSt = new SymbolTable(freshDiags);
+        SymbolTable freshSt = TestSymbolTables.symbolTable(freshDiags);
         freshSt.registerModule("TEST", "test.s");
         freshSt.setCurrentModule("TEST");
         freshSt.define(new Symbol("ORPHAN", createSourceInfo(), Symbol.Type.MODULE_ALIAS));
@@ -341,7 +342,7 @@ class AstPostProcessorTest {
         String mainChain = "MAIN";
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        SymbolTable st = new SymbolTable(diags);
+        SymbolTable st = TestSymbolTables.symbolTable(diags);
         st.registerModule(mainChain, "/main.evo");
         st.registerModule(modAChain, "/mod_a.evo");
         st.registerModule(modBChain, "/mod_b.evo");

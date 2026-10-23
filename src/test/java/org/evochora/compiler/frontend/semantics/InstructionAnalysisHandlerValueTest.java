@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.constdir.ConstNode;
@@ -48,7 +49,7 @@ class InstructionAnalysisHandlerValueTest {
     void setUp() {
         handler = new InstructionAnalysisHandler(new RuntimeInstructionSetAdapter(), TestRegistries.operations());
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
     }

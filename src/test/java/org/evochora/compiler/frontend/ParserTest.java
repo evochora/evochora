@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
@@ -65,7 +66,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -101,7 +102,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -133,7 +134,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -162,7 +163,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -191,7 +192,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -222,7 +223,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -246,7 +247,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -275,7 +276,7 @@ public class ParserTest {
         // Arrange
         String source = "# A comment line.\nEXPORT NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -297,7 +298,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -325,7 +326,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -352,7 +353,7 @@ public class ParserTest {
         List<Token> tokens = TestLexers.tokenizer(".BROKEN\nNOP\n", diagnostics).scanTokens();
         ParserStatementRegistry reg = registry();
         reg.register(".BROKEN", context -> { throw new NullPointerException("defect in the handler"); });
-        Parser parser = new Parser(tokens, diagnostics, reg);
+        Parser parser = TestParsers.parser(tokens, diagnostics, reg);
 
         assertThatThrownBy(parser::parse)
                 .isInstanceOf(NullPointerException.class)
@@ -562,7 +563,7 @@ public class ParserTest {
     @Tag("unit")
     void aParserWithoutOperationsReportsAnOperatorAsUnexpected() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        new Parser(TestLexers.tokenizer("# A comment line.\nSETI %DR0 (A+1)", diagnostics).scanTokens(), diagnostics, registry()).parse();
+        TestParsers.parser(TestLexers.tokenizer("# A comment line.\nSETI %DR0 (A+1)", diagnostics).scanTokens(), diagnostics, registry()).parse();
 
         assertThat(diagnostics.getDiagnostics()).extracting(TestDiagnostics::located)
                 .containsExactly("<memory>:2: Unexpected '+'.");

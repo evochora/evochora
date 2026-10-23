@@ -1,5 +1,6 @@
 package org.evochora.compiler.expression.symbols;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.expression.NameAnswer;
@@ -66,7 +67,7 @@ class SymbolTableResolutionTest {
 
     @BeforeEach
     void setUp() {
-        table = new SymbolTable(new DiagnosticsEngine());
+        table = TestSymbolTables.symbolTable(new DiagnosticsEngine());
         table.registerModule("", MAIN);
         table.setCurrentModule("");
         resolution = new SymbolTableResolution(table);

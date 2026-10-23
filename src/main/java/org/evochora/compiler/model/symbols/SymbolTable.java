@@ -126,15 +126,6 @@ public class SymbolTable {
     private boolean frozen = false;
 
     /**
-     * Constructs a new symbol table. The current module must be set via
-     * {@link #setCurrentModule(String)} before any define/resolve operations.
-     * @param diagnostics The diagnostics engine for reporting errors.
-     */
-    public SymbolTable(DiagnosticsEngine diagnostics) {
-        this(diagnostics, Map.of());
-    }
-
-    /**
      * Constructs a new symbol table that rejects the given names wherever anything is defined.
      * The current module must be set via {@link #setCurrentModule(String)} before any
      * define/resolve operations.

@@ -6,7 +6,6 @@ import org.evochora.compiler.expression.parser.Computation;
 import org.evochora.compiler.expression.parser.ExpressionParser;
 import org.evochora.compiler.expression.parser.ParseResult;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
@@ -52,34 +51,6 @@ public class Parser implements IParsingContext {
 
     private final ParserState parserState = new ParserState();
     private boolean currentExported = false;
-
-    /**
-     * Constructs a new Parser that knows no placement of the compilation root and no values.
-     * @param tokens The list of tokens to parse.
-     * @param diagnostics The engine for reporting errors and warnings.
-     * @param statementRegistry The pre-built registry of statement handlers.
-     */
-    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
-                  ParserStatementRegistry statementRegistry) {
-        this(tokens, diagnostics, statementRegistry, null, Map.of());
-    }
-
-    /**
-     * Constructs a new Parser that knows no operations of computations: a computation in an
-     * operand reads only as far as it needs none, and an operator in it is unexpected.
-     * @param tokens The list of tokens to parse.
-     * @param diagnostics The engine for reporting errors and warnings.
-     * @param statementRegistry The pre-built registry of statement handlers.
-     * @param rootAliasChain The placement of the compilation root, or {@code null} for none.
-     * @param values The lexed text of every value of the compilation's options, by its name as
-     *               the options normalise it.
-     */
-    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
-                  ParserStatementRegistry statementRegistry, String rootAliasChain,
-                  Map<String, List<Token>> values) {
-        this(tokens, diagnostics, statementRegistry, rootAliasChain, values,
-                new OperationRegistry(), new RuntimeInstructionSetAdapter());
-    }
 
     /**
      * Constructs a new Parser for a compilation.

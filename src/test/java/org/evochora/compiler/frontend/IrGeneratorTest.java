@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -94,7 +95,7 @@ public class IrGeneratorTest {
         }
 
         String rootAliasChain = "";
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
         new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);

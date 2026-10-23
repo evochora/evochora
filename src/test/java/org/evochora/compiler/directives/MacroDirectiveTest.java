@@ -1,6 +1,7 @@
 package org.evochora.compiler.directives;
 
 import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.Flags;
 import java.util.Map;
@@ -55,7 +56,7 @@ public class MacroDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), "<memory>", CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,

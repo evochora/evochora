@@ -1,8 +1,8 @@
 package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
@@ -34,7 +34,7 @@ class RequireDirectiveHandlerTest {
         ParserStatementRegistry registry = new ParserStatementRegistry();
         registry.register(".REQUIRE", new RequireDirectiveHandler());
 
-        List<AstNode> ast = new Parser(tokens, diagnostics, registry).parse();
+        List<AstNode> ast = TestParsers.parser(tokens, diagnostics, registry).parse();
 
         assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
         assertThat(ast).singleElement().isInstanceOf(RequireNode.class);

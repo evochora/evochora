@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.TestLexers;
@@ -46,7 +47,7 @@ public class LayoutDirectiveTest {
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
-        Parser parser = new Parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -65,7 +66,7 @@ public class LayoutDirectiveTest {
     void testRotationAxisBeyondAnIntIsReported() {
         String source = ".DIR @+4294967296|1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         parser.parse();
 
@@ -84,7 +85,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG 0|@+2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -106,7 +107,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG @-3|@+2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -130,7 +131,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG @ -3|-1|@ +2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -153,7 +154,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = "# A comment line.\n.ORG 0|@+-2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         parser.parse();
@@ -172,7 +173,7 @@ public class LayoutDirectiveTest {
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
-        Parser parser = new Parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -193,7 +194,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".DIR @+0|1\n.DIR @-1|2\n.DIR 1|0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -216,7 +217,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = "# A comment line.\n.DIR %DR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -237,7 +238,7 @@ public class LayoutDirectiveTest {
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";
-        Parser parser = new Parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -261,7 +262,7 @@ public class LayoutDirectiveTest {
     void testPlaceRangeInHexadecimal() {
         String source = ".PLACE DATA:1 0x1..0x3|0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         List<AstNode> ast = parser.parse();
 

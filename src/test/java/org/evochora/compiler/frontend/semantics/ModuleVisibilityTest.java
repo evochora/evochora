@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.symbols.ModuleScope;
@@ -30,7 +31,7 @@ public class ModuleVisibilityTest {
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
 
         // Register both modules using alias chains
         symbolTable.registerModule(MAIN_CHAIN, "/test/main.evo");

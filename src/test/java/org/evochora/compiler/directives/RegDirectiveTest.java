@@ -1,6 +1,8 @@
 package org.evochora.compiler.directives;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.ScopeTracker;
 import org.evochora.runtime.Config;
@@ -56,14 +58,14 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
         // Semantic Analysis - Populates symbol table with aliases
         String rootAliasChain = "";
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
@@ -102,7 +104,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -121,7 +123,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -139,7 +141,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -157,7 +159,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -176,7 +178,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -199,7 +201,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -223,12 +225,12 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
         String rootAliasChain = "";
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
@@ -270,7 +272,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -293,14 +295,14 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
         // Semantic Analysis - Populates symbol table with aliases
         String rootAliasChain = "";
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
@@ -347,7 +349,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -364,7 +366,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -384,7 +386,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -403,7 +405,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry());
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry());
 
         parser.parse();
 
@@ -420,10 +422,10 @@ public class RegDirectiveTest {
     void testRegAliasWithADotInItsNameIsReported() {
         String source = "# A comment line.\n.REG %X.Y %DR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
+        List<AstNode> ast = TestParsers.parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         symbolTable.registerModule("", "<memory>");
         symbolTable.setCurrentModule("");
         new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry())

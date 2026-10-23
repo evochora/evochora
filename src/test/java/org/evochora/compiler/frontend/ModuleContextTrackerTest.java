@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -34,7 +35,7 @@ class ModuleContextTrackerTest {
     @BeforeEach
     void setUp() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        symbolTable = new SymbolTable(diagnostics);
+        symbolTable = TestSymbolTables.symbolTable(diagnostics);
 
         symbolTable.registerModule(MAIN, "/main.evo");
         symbolTable.registerModule(MATH, "/modules/math.evo");

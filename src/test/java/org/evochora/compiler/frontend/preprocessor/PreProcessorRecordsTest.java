@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceFile;
@@ -142,7 +143,7 @@ class PreProcessorRecordsTest {
      */
     private static PreProcessorResult run(DiagnosticsEngine diagnostics, Consumer<PreProcessor> records) {
         List<Token> tokens = TestLexers.tokenizer("REC\nNOP\nNOP\n", diagnostics, MAIN).scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(MAIN, MAIN_LINES, LIB, LIB_LINES),
+        PreProcessorContext context = TestPreProcessorContexts.context("", Map.of(), Map.of(MAIN, MAIN_LINES, LIB, LIB_LINES),
                 "main.evo", MAIN, CompilerOptions.defaults());
         context.handlers().register("REC", (pp, ctx) -> {
             pp.includes(LIB_PLACEMENT);

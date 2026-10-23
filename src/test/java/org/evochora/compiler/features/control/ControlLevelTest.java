@@ -2,6 +2,8 @@ package org.evochora.compiler.features.control;
 
 import org.evochora.compiler.TestDiagnostics;
 import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
@@ -11,7 +13,6 @@ import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.ModuleContextTracker;
-import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
@@ -395,9 +396,9 @@ class ControlLevelTest {
         features.parserStatementHandlers().forEach(registry::register);
         features.parserBlocks().forEach(block -> registry.registerBlock(block.kind(), block.handler()));
         registry.registerDefault(features.defaultParserStatementHandler());
-        List<AstNode> ast = new Parser(tokens, diagnostics, registry).parse();
+        List<AstNode> ast = TestParsers.parser(tokens, diagnostics, registry).parse();
 
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
         new SemanticAnalyzer(diagnostics, symbolTable, null, null,
                 TestRegistries.analysisRegistry(symbolTable, diagnostics), new ModuleSetupRegistry())
                 .analyze(ast);

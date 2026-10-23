@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -274,7 +275,7 @@ class ParserBlockTest {
         registry.registerBlock(GROUP, new GroupHandler());
         registry.registerBlock(SELECT, new SelectHandler());
         registry.registerDefault(new InstructionParsingHandler());
-        Parser parser = new Parser(tokens, diagnostics, registry);
+        Parser parser = TestParsers.parser(tokens, diagnostics, registry);
         return new Parsed(parser.parse(), diagnostics);
     }
 }

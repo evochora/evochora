@@ -1,6 +1,8 @@
 package org.evochora.compiler.backend;
 
 import org.evochora.compiler.TestLexers;
+import org.evochora.compiler.TestParsers;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.backend.rewrite.RewriteRegistry;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -100,10 +102,10 @@ public class EmissionIntegrationTest {
         Tokenizer lexer = TestLexers.tokenizer(src, diags);
         List<Token> tokens = lexer.scanTokens();
         // KORREKTUR: basePath hinzufügen
-        Parser parser = new Parser(tokens, diags, allHandlers());
+        Parser parser = TestParsers.parser(tokens, diags, allHandlers());
         List<AstNode> ast = parser.parse();
 
-        SymbolTable symbolTable = new SymbolTable(diags);
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diags);
         new SemanticAnalyzer(diags, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diags), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
 
         assertThat(diags.hasErrors()).as(diags.summary()).isFalse();

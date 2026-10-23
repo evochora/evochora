@@ -1,6 +1,7 @@
 package org.evochora.compiler.model.symbols;
 
 import org.evochora.compiler.TestDiagnostics;
+import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.SourceInfo;
@@ -45,7 +46,7 @@ class SymbolTableTest {
 
     @BeforeEach
     void setUp() {
-        table = new SymbolTable(new DiagnosticsEngine());
+        table = TestSymbolTables.symbolTable(new DiagnosticsEngine());
         table.registerModule("", MAIN);
         table.registerModule("LIB", LIB);
         table.getModuleScope("").orElseThrow().bindAlias("LIB", "LIB");
@@ -147,7 +148,7 @@ class SymbolTableTest {
     @Test
     void aNameWithADotIsReportedAndNotFiled() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        SymbolTable dotted = new SymbolTable(diagnostics);
+        SymbolTable dotted = TestSymbolTables.symbolTable(diagnostics);
         dotted.registerModule("", MAIN);
         dotted.setCurrentModule("");
 
