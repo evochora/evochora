@@ -119,6 +119,7 @@ class PassedOnRequirementTest {
                 ""));
 
         Files.writeString(tempDir.resolve("b.evo"), String.join("\n",
+                "# A comment line.",
                 ".IMPORT \"a.evo\" AS A",
                 "  NOP",
                 ""));
@@ -131,7 +132,7 @@ class PassedOnRequirementTest {
         assertThatCode(this::compileMain)
                 .as("two modules importing each other cannot be ordered")
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Circular");
+                .hasMessageContaining("b.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo"));
     }
 
     private ProgramArtifact compileMain() throws Exception {

@@ -134,10 +134,7 @@ public final class Lexer {
     }
 
     private void readModule(State state, String aliasChain, String path) {
-        if (!state.importPath.add(path)) {
-            diagnostics.reportError("Circular dependency detected: " + path, path, 0);
-            return;
-        }
+        state.importPath.add(path);
         List<IDependencyInfo> dependencies = readLines(state, aliasChain, path, false);
         state.placements.add(new ModulePlacement(aliasChain, path, dependencies));
         state.importPath.remove(path);
@@ -224,6 +221,11 @@ public final class Lexer {
 
         @Override
         public void scanNestedModule(String resolvedPath, String placementChain) throws IOException {
+            // A module that is being read already closes a circle at this line
+            if (state.importPath.contains(resolvedPath)) {
+                reportError("Circular dependency detected: " + resolvedPath);
+                return;
+            }
             load(resolvedPath);
             readModule(state, placementChain, resolvedPath);
         }

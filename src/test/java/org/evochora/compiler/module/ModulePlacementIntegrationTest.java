@@ -188,6 +188,7 @@ class ModulePlacementIntegrationTest {
         write("a.evo",
                 ".IMPORT \"b.evo\" AS B");
         write("b.evo",
+                "# A comment line.",
                 ".IMPORT \"a.evo\" AS A");
         write("main.evo",
                 ".IMPORT \"a.evo\" AS A",
@@ -196,7 +197,7 @@ class ModulePlacementIntegrationTest {
 
         assertThatThrownBy(() -> compile("main.evo", Map.of()))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Circular dependency detected: " + resolved("a.evo"));
+                .hasMessageContaining("b.evo:2: Circular dependency detected: " + resolved("a.evo"));
     }
 
     /** The number of machine addresses the given line of a file produced. */

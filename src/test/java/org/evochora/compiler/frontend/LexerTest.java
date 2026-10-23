@@ -177,7 +177,7 @@ public class LexerTest {
         Path aFile = tempDir.resolve("a.evo");
         Path bFile = tempDir.resolve("b.evo");
         Files.writeString(aFile, ".IMPORT \"b.evo\" AS B\n");
-        Files.writeString(bFile, ".IMPORT \"a.evo\" AS A\n");
+        Files.writeString(bFile, "# A comment line.\n.IMPORT \"a.evo\" AS A\n");
 
         String aSource = Files.readString(aFile);
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -186,7 +186,7 @@ public class LexerTest {
         lexer.read(aSource, aFile.toString(), "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).containsIgnoringCase("circular");
+        assertThat(diagnostics.summary()).contains("b.evo:2: Circular dependency detected: " + aFile);
     }
 
     @Test
@@ -270,7 +270,7 @@ public class LexerTest {
     void threeModuleCycle_isDetected() throws Exception {
         Files.writeString(tempDir.resolve("a.evo"), ".IMPORT \"b.evo\" AS B\nNOP\n");
         Files.writeString(tempDir.resolve("b.evo"), ".IMPORT \"c.evo\" AS C\nNOP\n");
-        Files.writeString(tempDir.resolve("c.evo"), ".IMPORT \"a.evo\" AS A\nNOP\n");
+        Files.writeString(tempDir.resolve("c.evo"), "# A comment line.\n.IMPORT \"a.evo\" AS A\nNOP\n");
 
         String mainSource = ".IMPORT \"a.evo\" AS A\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -281,10 +281,8 @@ public class LexerTest {
         lexer.read(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().toLowerCase().contains("circular")))
-                .as("Expected circular dependency error")
-                .isTrue();
+        assertThat(diagnostics.summary())
+                .contains("c.evo:2: Circular dependency detected: " + tempDir.resolve("a.evo"));
     }
 
     /** A scan handler that hands the line of its directive word and the context to an action. */
