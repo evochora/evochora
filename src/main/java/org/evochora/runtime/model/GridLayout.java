@@ -57,8 +57,9 @@ final class GridLayout {
      *                   index this layout converts to
      * @param tileSide   cells per tile along each dimension; a power of two, at least 1
      * @throws IllegalArgumentException if the world has no dimensions, if the tile side is not a
-     *                                  power of two, if a world dimension is not a multiple of the
-     *                                  tile side, if a tile would hold more cells than an
+     *                                  power of two, if a world dimension is longer than the largest
+     *                                  value a molecule holds, if a world dimension is not a multiple
+     *                                  of the tile side, if a tile would hold more cells than an
      *                                  {@code int} can index, or if the world holds more cells than
      *                                  an {@code int} can index
      */
