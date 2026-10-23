@@ -91,6 +91,11 @@ final class GridLayout {
                 throw new IllegalArgumentException("World dimension " + i + " is " + size
                         + "; every dimension must be at least " + tileSide);
             }
+            if (size > ValueBounds.MAX_VALUE) {
+                throw new IllegalArgumentException("World dimension " + i + " is " + size
+                        + ", longer than the largest value a molecule holds, " + ValueBounds.MAX_VALUE
+                        + "; an organism measures a distance along an axis as a value, so no axis may be longer");
+            }
             if (size % tileSide != 0) {
                 int below = size - size % tileSide;
                 int above = below + tileSide;

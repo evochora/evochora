@@ -216,6 +216,18 @@ class GridLayoutTest {
                 .hasMessageContaining("more cells than an int can index");
     }
 
+    /**
+     * An organism measures a distance along an axis as a value, so a side longer than the largest
+     * value is rejected before any distance can leave the value range.
+     */
+    @Test
+    void rejectsASideLongerThanTheLargestValue() {
+        int side = (ValueBounds.MAX_VALUE + 1 + 31) / 32 * 32;
+        assertThatThrownBy(() -> layout(new int[]{side, 32}, true, 32))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("longer than the largest value");
+    }
+
     @Test
     void rejectsAWorldThatAnIntCannotIndex() {
         assertThatThrownBy(() -> layout(new int[]{65536, 65536}, true, 32))

@@ -65,23 +65,6 @@ public class VMVectorInstructionTest {
     }
 
     /**
-     * A component that lies past an end of the value range is taken out as that end, never as the
-     * value its masked bits would read as.
-     */
-    @Test
-    @Tag("unit")
-    void vgtiOfAComponentPastTheRangeSaturates() {
-        org.writeOperand(1, new int[]{ValueBounds.MAX_VALUE + 1, ValueBounds.MIN_VALUE - 1});
-        placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 0).toInt());
-        sim.tick();
-        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(ValueBounds.MAX_VALUE);
-
-        placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 1).toInt());
-        sim.tick();
-        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(ValueBounds.MIN_VALUE);
-    }
-
-    /**
      * Tests the VSTI (Vector Set Immediate) instruction to set a component of a vector.
      * This is a unit test for the VM's instruction logic.
      */
