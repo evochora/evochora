@@ -38,6 +38,8 @@ public class SemanticAnalyzer {
     private final ModuleSetupRegistry setupRegistry;
     private final ModuleContextTracker contextTracker;
     private final ScopeTracker scopeTracker;
+    // The node whose handler the walk runs right now; null between two nodes
+    private AstNode walking;
     // The definitions whose handlers run on demand right now, the newest first
     private final Deque<Symbol> inProgress = new ArrayDeque<>();
 
@@ -142,7 +144,14 @@ public class SemanticAnalyzer {
             switchModuleContext(node);
             SymbolTable.Scope saved = scopeTracker.enterNode(node);
             Optional<IAnalysisHandler> handler = registry.resolveHandler(node.getClass());
-            handler.ifPresent(h -> h.analyze(node, symbolTable, diagnostics));
+            if (handler.isPresent()) {
+                walking = node;
+                try {
+                    handler.get().analyze(node, symbolTable, diagnostics);
+                } finally {
+                    walking = null;
+                }
+            }
             traverseAndAnalyze(node.getChildren());
             handler.ifPresent(h -> h.afterChildren(node, symbolTable, diagnostics));
             scopeTracker.leaveNode(saved);
@@ -160,14 +169,14 @@ public class SemanticAnalyzer {
      * afterwards. The handler records what it made of the definition's computation, and the
      * table finds it when it looks again. A definition without a handler is left as it is.
      * <p>
-     * A definition that is asked for while its own handler runs is circular: its computation
-     * needs, through the names it follows, its own value. The circle is reported once, at the
-     * definition it was entered through, naming the definitions in progress from it onward and
-     * the names the lookup followed back to it; nothing is recorded, so every computation in
-     * the circle fails with its error reported here.
+     * A definition that is asked for while its own handler runs, by the walk or on demand, is
+     * circular: its computation needs, through the names it follows, its own value. The circle
+     * is reported once, at the definition it was entered through, naming the definitions in
+     * progress from it onward and the names the lookup followed back to it; nothing is
+     * recorded, so every computation in the circle fails with its error reported here.
      */
     private void analyzeOnDemand(Symbol definition, SymbolTable.Scope scope, List<String> through) {
-        if (inProgress.stream().anyMatch(symbol -> symbol.node() == definition.node())) {
+        if (definition.node() == walking || inProgress.stream().anyMatch(symbol -> symbol.node() == definition.node())) {
             reportCircle(definition, through);
             return;
         }
@@ -195,19 +204,21 @@ public class SemanticAnalyzer {
     }
 
     /**
-     * Reports a circle of definitions: the definitions in progress from the one entered again to
-     * the newest, then the names the lookup followed from the newest back to it.
+     * Reports a circle of definitions: the one entered again, the definitions in progress after
+     * it, the newest last, then the names the lookup followed from the newest back to it. The
+     * walk's node, if it is the one entered again, is before every definition in progress.
      */
     private void reportCircle(Symbol entered, List<String> through) {
         List<String> names = new ArrayList<>();
+        names.add(entered.name());
         Iterator<Symbol> oldestFirst = inProgress.descendingIterator();
-        boolean inCircle = false;
+        boolean after = entered.node() == walking;
         while (oldestFirst.hasNext()) {
             Symbol symbol = oldestFirst.next();
-            inCircle = inCircle || symbol.node() == entered.node();
-            if (inCircle) {
+            if (after) {
                 names.add(symbol.name());
             }
+            after = after || symbol.node() == entered.node();
         }
         names.addAll(through);
         SourceInfo at = entered.sourceInfo();

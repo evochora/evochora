@@ -377,13 +377,16 @@ class ExpressionDiagnosticsTest {
         assertReportedAt("'FOO' is not defined.", 2);
     }
 
+    /**
+     * A computation may name a constant defined below it: a name is known anywhere on its level.
+     */
     @Test
-    void aConstantComputedBeforeItsNameIsDefinedIsReported() throws Exception {
+    void aConstantComputedFromAConstantDefinedBelowCompiles() throws Exception {
         write("main.evo",
                 ".CONST A (B+1)",
                 ".CONST B 1");
 
-        assertReportedAt("'B' is not defined.", 1);
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
     @Test
