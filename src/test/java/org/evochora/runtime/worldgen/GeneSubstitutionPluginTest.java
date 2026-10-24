@@ -313,6 +313,29 @@ class GeneSubstitutionPluginTest {
         assertThat(child.getBirthMutations()).isNullOrEmpty();
     }
 
+    /**
+     * A flip that produces NOP writes the empty cell, and the empty cell has no owner: WAIT, whose
+     * only operation-flip alternative is NOP, leaves its cell empty and unowned.
+     */
+    @Test
+    void aFlipToNopLeavesTheCellUnowned() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 1.0, operationFlipWeight = 1.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights {
+                  default = 1
+                  families = []
+                }
+                """);
+        placeCode(5, 5, Instruction.getInstructionIdByName("WAIT"));
+
+        new GeneSubstitutionPlugin(new SeededRandomProvider(1), config).substitute(child, environment);
+
+        assertThat(environment.getMolecule(5, 5).isEmpty()).as("the flipped cell").isTrue();
+        assertThat(environment.getOwnerId(5, 5)).as("owner of the flipped cell").isZero();
+    }
+
     @Test
     void operationFlipKeepsFamilyAndSignature() {
         int verified = 0;
@@ -555,8 +578,6 @@ class GeneSubstitutionPluginTest {
 
     @Test
     void codeSkipsWhenNoAlternatives() {
-        // NOP is the only opcode of its family that takes no operands, so no flip mode has an
-        // alternative for it.
         placeCode(5, 5, NOP_OPCODE);
         GeneSubstitutionPlugin plugin = codeOnlyPlugin(new SeededRandomProvider(42));
         plugin.substitute(child, environment);

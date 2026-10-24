@@ -305,6 +305,23 @@ class GeneInsertionPluginTest {
         assertThat(foundNonEmpty).as("Instruction chain should be inserted into NOP area").isTrue();
     }
 
+    /**
+     * An inserted NOP is the empty cell, and the empty cell has no owner: the insertion takes
+     * place, and the cells of the NOP area stay empty and unowned.
+     */
+    @Test
+    void anInsertedNopLeavesTheCellUnowned() {
+        createScanLine(LEFT, RIGHT, Y);
+
+        insertion(new SeededRandomProvider(42L), 1.0, entry(null, "", "NOP")).mutate(child, environment);
+
+        assertThat(child.getBirthMutations()).as("the insertion's record").isNotEmpty();
+        for (int x = LEFT + 1; x < RIGHT; x++) {
+            assertThat(environment.getMolecule(x, Y).isEmpty()).as("cell %d", x).isTrue();
+            assertThat(environment.getOwnerId(x, Y)).as("owner of cell %d", x).isZero();
+        }
+    }
+
     @Test
     void instructionHasCorrectMoleculeTypes() {
         // SETI has operands: REGISTER, IMMEDIATE -> chain = [CODE, REGISTER, DATA]
