@@ -65,7 +65,7 @@ dependencies {
     // REMOVED: sqlite-jdbc - not used, H2 is the primary database
     implementation("com.h2database:h2:2.4.240")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.20.1")
-    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("com.google.code.gson:gson:2.15.0")
     implementation("info.picocli:picocli:4.7.7")
     annotationProcessor("info.picocli:picocli-codegen:4.7.7")
     implementation("io.javalin:javalin:6.7.0")
