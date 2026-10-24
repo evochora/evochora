@@ -32,10 +32,11 @@ import java.util.Map;
  *       is resolved here as a use.</li>
  * </ul>
  * <p>A bound value that is a computation is evaluated here, in the importer's placement, with the
- * names defined above the import line; {@code @} is the importer's cursor. Its outcome is recorded
- * for the computation, where {@link RequireAnalysisHandler} finds it through the binding the
- * module's {@link Requirements} carry: a value, or the tree only the layout computes. A
- * computation that fails is reported here.
+ * names of the importer's level; {@code @} is the importer's cursor. Its outcome is recorded for
+ * the computation, where {@link RequireAnalysisHandler} finds it through the binding the module's
+ * {@link Requirements} carry: a value, or the tree only the layout computes. A computation that
+ * fails is reported here. A use of the module's value that needed the value first had it
+ * evaluated already, by {@link RequireAnalysisHandler}, which this line then finds recorded.
  */
 public class ImportAnalysisHandler implements IAnalysisHandler {
 

@@ -32,6 +32,8 @@ public class SemanticAnalyzer {
     private final ModuleSetupRegistry setupRegistry;
     private final ModuleContextTracker contextTracker;
     private final ScopeTracker scopeTracker;
+    // The demand of the walk of pass 2; null outside that walk
+    private DefinitionDemand demand;
 
     /**
      * Constructs a semantic analyzer with an externally built analysis registry. Nothing is
@@ -62,11 +64,17 @@ public class SemanticAnalyzer {
      * Analyzes the given list of AST statements.
      * This is the main entry point for the semantic analysis phase.
      * It first sets up the module relationships from the dependency graph, if there is one,
-     * then performs two passes: one to collect top-level symbols (labels, procedures),
-     * and a second to analyze the statements in detail. The second pass resolves names against
-     * the table the first one built; when the first pass reported an error, the table lacks what
-     * it rejected, and every resolution that misses it would only repeat the error as a
-     * consequence. So the second pass runs only when the first one was clean.
+     * then performs two passes: one to collect the names the program defines, labels,
+     * procedures, constants, aliases, and a second to analyze the statements in detail. The
+     * second pass resolves names against the table the first one built; when the first pass
+     * reported an error, the table lacks what it rejected, and every resolution that misses it
+     * would only repeat the error as a consequence. So the second pass runs only when the first
+     * one was clean.
+     * <p>
+     * The second pass walks the statements in text order, but a definition is analyzed the
+     * moment a name needs its value, which may be above its line: the symbol table hands such a
+     * definition to the {@link DefinitionDemand}, which runs its handler there and then. So a
+     * name may be used anywhere on its level, above or below its definition.
      *
      * @param statements The list of top-level AST nodes to analyze.
      */
@@ -78,11 +86,18 @@ public class SemanticAnalyzer {
         if (diagnostics.hasErrors()) {
             return;
         }
-        analyzeStatements(statements);
+        demand = new DefinitionDemand(symbolTable, diagnostics, registry);
+        symbolTable.setDefinitionDemand(demand);
+        try {
+            analyzeStatements(statements);
+        } finally {
+            symbolTable.setDefinitionDemand(null);
+            demand = null;
+        }
     }
 
     /**
-     * Pass 1: Collects top-level symbols (labels, procedures, constants) from the AST.
+     * Pass 1: Collects the names the program defines from the AST.
      *
      * @param statements The list of top-level AST nodes to collect symbols from.
      */
@@ -115,7 +130,9 @@ public class SemanticAnalyzer {
      * Walks the nodes in text order and runs the registered handler of each. A node that opened a
      * level in pass 1 has that level registered as its scope; the {@link ScopeTracker} enters it
      * before the node's handler and children and restores the enclosing scope afterwards, so that
-     * the names inside the level resolve from the level, whatever feature opened it.
+     * the names inside the level resolve from the level, whatever feature opened it. The
+     * {@link DefinitionDemand} is told which node's handler runs, so that a demand for that node
+     * is a circle.
      */
     private void traverseAndAnalyze(List<AstNode> nodes) {
         for (AstNode node : nodes) {
@@ -123,7 +140,14 @@ public class SemanticAnalyzer {
             switchModuleContext(node);
             SymbolTable.Scope saved = scopeTracker.enterNode(node);
             Optional<IAnalysisHandler> handler = registry.resolveHandler(node.getClass());
-            handler.ifPresent(h -> h.analyze(node, symbolTable, diagnostics));
+            if (handler.isPresent()) {
+                demand.walking(node);
+                try {
+                    handler.get().analyze(node, symbolTable, diagnostics);
+                } finally {
+                    demand.walking(null);
+                }
+            }
             traverseAndAnalyze(node.getChildren());
             handler.ifPresent(h -> h.afterChildren(node, symbolTable, diagnostics));
             scopeTracker.leaveNode(saved);

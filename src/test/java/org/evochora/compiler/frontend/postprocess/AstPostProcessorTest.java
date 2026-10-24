@@ -478,12 +478,12 @@ class AstPostProcessorTest {
     void aValueRequirementWithARecordedValueIsReplacedAsAWhole() {
         ExpressionNode binding = new ExpressionNode(new NameExpression("@", createSourceInfo(),
                 createSourceInfo().plusColumns(1)), createSourceInfo());
-        ValueBindingNode definition = new ValueBindingNode(binding);
+        ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
+                null, null, null, false, createSourceInfo());
+        ValueBindingNode definition = new ValueBindingNode(binding, requirement);
         symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
         NameExpression self = new NameExpression("TEST.P", createSourceInfo(), createSourceInfo().plusColumns(1));
         symbolTable.recordDefinitionValue(definition, ExpressionOutcome.later(self, Kind.POSITION));
-        ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
-                null, null, null, false, createSourceInfo());
 
         ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
 
@@ -493,10 +493,10 @@ class AstPostProcessorTest {
 
     @Test
     void aValueRequirementWithoutARecordedValueKeepsTheReplacementOfItsName() {
-        ValueBindingNode definition = new ValueBindingNode(new LiteralNode(new Value.Typed("DATA", 3), createSourceInfo()));
-        symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
         ValueRequirementNode requirement = new ValueRequirementNode("P", new IdentifierNode("P", createSourceInfo()),
                 null, null, null, false, createSourceInfo());
+        ValueBindingNode definition = new ValueBindingNode(new LiteralNode(new Value.Typed("DATA", 3), createSourceInfo()), requirement);
+        symbolTable.define(new Symbol("P", createSourceInfo(), Symbol.Type.CONSTANT, definition));
 
         ValueRequirementNode result = (ValueRequirementNode) processor.process(requirement);
 
