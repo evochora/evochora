@@ -13,11 +13,12 @@ import java.util.Optional;
  * <p>
  * The record is immutable: a declaration or a binding yields a new record, which pass 1 puts in
  * the scope's store through {@link org.evochora.compiler.model.symbols.ModuleScope#update}.
- * {@link RequireSymbolCollector} declares each requirement as it reaches the directive, and
- * {@link ImportSymbolCollector} binds the values of the import that creates the placement; the
- * record is complete after pass 1. In pass 2, {@link ImportAnalysisHandler} checks an import
- * against the requirements of the placement it creates, and {@link RequireAnalysisHandler} takes
- * the bound value of a value requirement.
+ * {@link RequireSymbolCollector} declares each requirement as it reaches the directive and takes
+ * the bound value of a value requirement into the constant it defines, and
+ * {@link ImportSymbolCollector} binds the values of the import that creates the placement, before
+ * the walk reaches the placement's directives; the record is complete after pass 1. In pass 2,
+ * {@link ImportAnalysisHandler} checks an import against the requirements of the placement it
+ * creates, and {@link RequireAnalysisHandler} asks whether a value requirement was bound.
  *
  * @param moduleRequirements The paths of the required modules by alias, in the order of declaration.
  * @param valueRequirements  Whether each required value carries a default, by name, in the order of

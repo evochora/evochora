@@ -9,7 +9,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Handles the semantic analysis of {@link DirNode}s: evaluates a written-out direction with the
- * names defined above the line and checks that its value is a vector, or a number, a vector of
+ * names of the line's level and checks that its value is a vector, or a number, a vector of
  * one component. A value only the layout
  * knows passes with the kind it will have; a rotation has numbers the parser read.
  */
