@@ -58,10 +58,9 @@ public final class Flags {
     public static Flags of(Map<String, FlagSetting> defines, ReservedNames reservedNames) {
         Flags flags = new Flags(reservedNames);
         defines.forEach((name, setting) -> {
-            if (setting.isSet()) {
-                flags.entries.put(key(name), new Definition(setting.value(), CONFIGURATION));
-            } else {
-                flags.off.add(key(name));
+            switch (setting) {
+                case FlagSetting.Set set -> flags.entries.put(key(name), new Definition(set.value(), CONFIGURATION));
+                case FlagSetting.Off off -> flags.off.add(key(name));
             }
         });
         return flags;

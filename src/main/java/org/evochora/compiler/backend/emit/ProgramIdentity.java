@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 /**
  * The identity of a compiled program: a digest of what the compiler puts into the world, its
@@ -100,10 +99,16 @@ public final class ProgramIdentity {
             byte[] name = flag.getKey().getBytes(StandardCharsets.UTF_8);
             update(digest, name.length);
             digest.update(name);
-            FlagSetting setting = flag.getValue();
-            OptionalLong value = setting.value();
-            update(digest, !setting.isSet() ? 0 : value.isPresent() ? 2 : 1);
-            update(digest, value.orElse(0L));
+            switch (flag.getValue()) {
+                case FlagSetting.Off off -> {
+                    update(digest, 0);
+                    update(digest, 0L);
+                }
+                case FlagSetting.Set set -> {
+                    update(digest, set.value().isPresent() ? 2 : 1);
+                    update(digest, set.value().orElse(0L));
+                }
+            }
         }
 
         List<Map.Entry<String, String>> sortedValues = new ArrayList<>(values.entrySet());
