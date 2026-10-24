@@ -364,7 +364,7 @@ guard in `_applyGenomeLineageTree`.
 Out of scope. No detection, no migration, no fallback — a database written before this change lacks
 the stored per-tick total, and the organisms endpoint fails for it the way any schema change fails
 today. Making format mismatches explicit is the subject of
-[PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md).
+[PERSISTED_FORMAT_VERSIONING](../declined_or_outdated/PERSISTED_FORMAT_VERSIONING.md).
 
 ### Points checked and deliberately not changed
 
@@ -428,7 +428,7 @@ automated tests. It is verified by hand in step 8, as frontend changes are today
 The published run cannot serve this purpose, and the reason is worth recording. Its organism blobs
 were written in February 2026, before commit `8919f646` renumbered the fields of `OrganismState`;
 a current build fails to parse them with *"Protocol message had invalid UTF-8"*, which is the exact
-consequence [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md) records as evidence. The
+consequence [PERSISTED_FORMAT_VERSIONING](../declined_or_outdated/PERSISTED_FORMAT_VERSIONING.md) records as evidence. The
 demo node serves that run only because its image predates the renumbering. This is independent of
 this change and blocks any browser check against existing data.
 
