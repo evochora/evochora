@@ -92,7 +92,7 @@ dependencies {
     implementation("org.apache.artemis:artemis-jakarta-client:2.51.0")
 
     // JMS session pooling for producer sends (eliminates TCP session creation overhead)
-    implementation("org.messaginghub:pooled-jms:3.2.2")
+    implementation("org.messaginghub:pooled-jms:3.2.5")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation(platform("org.junit:junit-bom:5.13.4"))
