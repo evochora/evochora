@@ -1,6 +1,11 @@
-requests
-pandas
-numpy
-matplotlib
-networkx
-duckdb
+# Exact versions, so that every analysis runs in the same environment. The notebooks install the
+# same versions themselves where a package is missing (as on Colab); keep both in step.
+requests==2.34.2
+pandas==3.1.0
+numpy==2.5.4
+matplotlib==3.11.2
+networkx==3.7
+duckdb==2.0.0
+pyarrow==26.0.0
+seaborn==0.13.2
+scipy==1.18.1

@@ -31,3 +31,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+`requirements.txt` names exact versions, so that an analysis runs in the same environment wherever it
+is repeated. Colab comes with its own versions of these packages and keeps them; there, a notebook installs
+only what is missing.
