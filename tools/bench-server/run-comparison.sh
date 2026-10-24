@@ -10,6 +10,8 @@
 #   config/<variant>/       the same pair for one variant, when the variants need different
 #                           configurations (a config key one side does not accept); a variant
 #                           without its own perf_server.conf uses config/perf_server.conf
+#   config/<variant>/image  the JRE image of one variant, when the JDK itself is part of the
+#                           change under comparison; a variant without it uses the default image
 #   logs/<variant>.log      node output of each run
 #   progress.txt            one line per variant: seconds and final TICKHASH
 #
@@ -19,7 +21,7 @@
 # to "auto-paused at tick"; identical TICKHASH lines prove identical behaviour.
 set -u
 CMP="${CMP:-$HOME/bench/cmp}"
-IMAGE="${BENCH_IMAGE:-eclipse-temurin@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037}"
+IMAGE="${BENCH_IMAGE:-eclipse-temurin:25-jre-resolute@sha256:41d9263c0d5b2a74d89af6e29e73b04298bc65e3cb705d03e9e2271ef49fef84}"
 MAX_LOAD="${BENCH_MAX_LOAD:-0.5}"
 rm -f "$CMP/progress.txt"
 for v in "$@"; do
@@ -29,7 +31,8 @@ for v in "$@"; do
         || { echo "$v SKIPPED host busy load=$load" >> "$CMP/progress.txt"; continue; }
     log="$CMP/logs/$v.log"; mkdir -p "$CMP/logs"; rm -rf "$CMP/perf-data" "$log"
     conf="/cmp/config/perf_server.conf"; [ -f "$CMP/config/$v/perf_server.conf" ] && conf="/cmp/config/$v/perf_server.conf"
-    docker run --rm -u "$(id -u):$(id -g)" -v "$CMP:/cmp" -w "/cmp/trees/$v" --name benchcmp "$IMAGE" \
+    image="$IMAGE"; [ -f "$CMP/config/$v/image" ] && image=$(cat "$CMP/config/$v/image")
+    docker run --rm -u "$(id -u):$(id -g)" -v "$CMP:/cmp" -w "/cmp/trees/$v" --name benchcmp "$image" \
         java -Xms4g -Xmx4g -XX:+AlwaysPreTouch -cp "/cmp/consumer-classes:lib/*" \
         org.evochora.cli.CommandLineInterface --config "$conf" node run > "$log" 2>&1 &
     for i in $(seq 1 720); do
