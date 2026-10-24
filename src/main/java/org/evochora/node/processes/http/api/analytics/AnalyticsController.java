@@ -243,45 +243,6 @@ public class AnalyticsController implements IController {
     public record RunInfo(String runId, Long startTime) {}
 
     /**
-     * Returns tick range and file count for a metric without reading file contents.
-     * <p>
-     * Route: GET /tick-range?runId=...&amp;metric=...&amp;lod=...
-     * <p>
-     * This lightweight endpoint only scans filenames to determine the tick range and
-     * file count. No Parquet files are opened or merged, making it near-instant (~1ms).
-     * The frontend uses this to decide whether tick-range windowing is needed before
-     * making the heavier /data or /parquet requests.
-     *
-     * @param ctx Javalin request context
-     */
-    @OpenApi(
-        path = "tick-range",
-        methods = {HttpMethod.GET},
-        summary = "Get tick range metadata",
-        description = "Returns the tick range and file count for a metric/LOD combination. "
-            + "Only scans filenames - no file I/O. Near-instant response (~1ms).",
-        tags = {"analyzer / analytics"},
-        queryParams = {
-            @OpenApiParam(name = "metric", description = "Metric identifier", required = true),
-            @OpenApiParam(name = "runId", description = "Run ID (optional, defaults to latest)", required = false),
-            @OpenApiParam(name = "lod", description = "LOD level (optional, auto-selects if omitted)", required = false)
-        },
-        responses = {
-            @OpenApiResponse(
-                status = "200",
-                description = "Tick range and file count",
-                content = @OpenApiContent(
-                    mimeType = "application/json",
-                    example = """
-                        {"tickMin": 0, "tickMax": 999900, "fileCount": 150, "lod": "lod1"}
-                        """
-                )
-            ),
-            @OpenApiResponse(status = "400", description = "Missing metric parameter"),
-            @OpenApiResponse(status = "404", description = "No data found")
-        }
-    )
-    /**
      * Returns the ticks a run holds analytics for, across every metric of it.
      * <p>
      * Route: GET /run-range?runId=...
@@ -353,6 +314,45 @@ public class AnalyticsController implements IController {
         }
     }
 
+    /**
+     * Returns tick range and file count for a metric without reading file contents.
+     * <p>
+     * Route: GET /tick-range?runId=...&amp;metric=...&amp;lod=...
+     * <p>
+     * This lightweight endpoint only scans filenames to determine the tick range and
+     * file count. No Parquet files are opened or merged, making it near-instant (~1ms).
+     * The frontend uses this to decide whether tick-range windowing is needed before
+     * making the heavier /data or /parquet requests.
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "tick-range",
+        methods = {HttpMethod.GET},
+        summary = "Get tick range metadata",
+        description = "Returns the tick range and file count for a metric/LOD combination. "
+            + "Only scans filenames - no file I/O. Near-instant response (~1ms).",
+        tags = {"analyzer / analytics"},
+        queryParams = {
+            @OpenApiParam(name = "metric", description = "Metric identifier", required = true),
+            @OpenApiParam(name = "runId", description = "Run ID (optional, defaults to latest)", required = false),
+            @OpenApiParam(name = "lod", description = "LOD level (optional, auto-selects if omitted)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                description = "Tick range and file count",
+                content = @OpenApiContent(
+                    mimeType = "application/json",
+                    example = """
+                        {"tickMin": 0, "tickMax": 999900, "fileCount": 150, "lod": "lod1"}
+                        """
+                )
+            ),
+            @OpenApiResponse(status = "400", description = "Missing metric parameter"),
+            @OpenApiResponse(status = "404", description = "No data found")
+        }
+    )
     private void getTickRange(Context ctx) {
         String metric = ctx.queryParam("metric");
         String lod = ctx.queryParam("lod");
