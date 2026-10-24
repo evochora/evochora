@@ -48,12 +48,16 @@ public class ImportFeature implements ICompilerFeature {
         ctx.dependencyScanHandler(".REQUIRE", new RequireDependencyScanHandler());
         ctx.preprocessorTopLevelOnly(".REQUIRE");
         ctx.parserStatement(".REQUIRE", new RequireDirectiveHandler());
-        ctx.symbolCollector(RequireNode.class, new RequireSymbolCollector());
-        ctx.analysisHandler(RequireNode.class, new RequireAnalysisHandler(ctx.operations()));
+        // One collector and one handler serve the module requirement, the value requirement and
+        // the binding behind the value's constant
+        RequireSymbolCollector requireCollector = new RequireSymbolCollector();
+        RequireAnalysisHandler requireHandler = new RequireAnalysisHandler(ctx.operations());
+        ctx.symbolCollector(RequireNode.class, requireCollector);
+        ctx.analysisHandler(RequireNode.class, requireHandler);
         ctx.irConverter(RequireNode.class, new RequireNodeConverter());
-        ctx.symbolCollector(ValueRequirementNode.class, new RequireSymbolCollector());
-        ctx.analysisHandler(ValueRequirementNode.class, new RequireAnalysisHandler(ctx.operations()));
-        ctx.analysisHandler(ValueBindingNode.class, new RequireAnalysisHandler(ctx.operations()));
+        ctx.symbolCollector(ValueRequirementNode.class, requireCollector);
+        ctx.analysisHandler(ValueRequirementNode.class, requireHandler);
+        ctx.analysisHandler(ValueBindingNode.class, requireHandler);
         ctx.postProcessHandler(ValueRequirementNode.class, new ValueRequirementPostProcessHandler());
         ctx.irConverter(ValueRequirementNode.class, new ValueRequirementNodeConverter());
         ctx.layoutHandler("importdir", "bound_value", new BoundValueLayoutHandler());
