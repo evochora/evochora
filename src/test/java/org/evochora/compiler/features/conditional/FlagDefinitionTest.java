@@ -28,7 +28,7 @@ class FlagDefinitionTest {
     void aDefaultTakesAFreeFlag() {
         Flags flags = Flags.of(Map.of(), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "REDUNDANCY", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "REDUNDANCY", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
 
         assertThat(flags.valueOf("REDUNDANCY")).hasValue(1);
         assertThat(flags.definitionOf("REDUNDANCY").orElseThrow().origin()).isEqualTo(ORIGIN);
@@ -38,7 +38,7 @@ class FlagDefinitionTest {
     void aDefaultYieldsToAFlagTheConfigurationSet() {
         Flags flags = Flags.of(Map.of("REDUNDANCY", FlagSetting.set(2)), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "REDUNDANCY", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "REDUNDANCY", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
 
         assertThat(flags.valueOf("REDUNDANCY")).hasValue(2);
     }
@@ -48,7 +48,7 @@ class FlagDefinitionTest {
         Flags flags = Flags.of(Map.of(), RESERVED);
         flags.define("SHELL", OptionalLong.empty(), "at lib.evo:4");
 
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "SHELL", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("SHELL")).isTrue();
         assertThat(flags.valueOf("SHELL")).isEmpty();
@@ -58,7 +58,7 @@ class FlagDefinitionTest {
     void aDefaultYieldsToAFlagTheConfigurationSwitchedOff() {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", () -> Optional.of(OptionalLong.empty()), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "SHELL", () -> Optional.of(OptionalLong.empty()), ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("SHELL")).isFalse();
         assertThat(flags.isOff("SHELL")).isTrue();
@@ -68,8 +68,8 @@ class FlagDefinitionTest {
     void aDefaultThatYieldsDoesNotComputeItsValue() {
         Flags flags = Flags.of(Map.of("HALF", FlagSetting.set(3), "SHELL", FlagSetting.off()), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "HALF", FlagDefinitionTest::notComputed, ORIGIN)).isEmpty();
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", FlagDefinitionTest::notComputed, ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "HALF", FlagDefinitionTest::notComputed, ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "SHELL", FlagDefinitionTest::notComputed, ORIGIN)).isEmpty();
 
         assertThat(flags.valueOf("HALF")).hasValue(3);
     }
@@ -78,7 +78,7 @@ class FlagDefinitionTest {
     void aDefaultWhoseValueCannotBeComputedSetsNothingAndReportsNothingItself() {
         Flags flags = Flags.of(Map.of(), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "HALF", Optional::empty, ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "HALF", Optional::empty, ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("HALF")).isFalse();
     }
@@ -92,7 +92,7 @@ class FlagDefinitionTest {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
         flags.undefine("SHELL");
 
-        assertThat(FlagDefinition.defineDefault(flags, "SHELL", () -> Optional.of(OptionalLong.empty()), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, true, "SHELL", () -> Optional.of(OptionalLong.empty()), ORIGIN)).isEmpty();
 
         assertThat(flags.isSet("SHELL")).isTrue();
     }
@@ -101,7 +101,7 @@ class FlagDefinitionTest {
     void aDefaultOfAReservedNameIsRejected() {
         Flags flags = Flags.of(Map.of(), RESERVED);
 
-        assertThat(FlagDefinition.defineDefault(flags, "MIN", () -> Optional.of(OptionalLong.empty()), ORIGIN))
+        assertThat(FlagDefinition.define(flags, true, "MIN", () -> Optional.of(OptionalLong.empty()), ORIGIN))
                 .contains("'MIN' is a function and cannot be defined.");
     }
 
@@ -109,10 +109,10 @@ class FlagDefinitionTest {
     void aDefinitionOfAFlagThatIsSetMustRepeatIt() {
         Flags flags = Flags.of(Map.of("ROWS", FlagSetting.set(4)), RESERVED);
 
-        assertThat(FlagDefinition.define(flags, "ROWS", OptionalLong.of(4), ORIGIN)).isEmpty();
-        assertThat(FlagDefinition.define(flags, "ROWS", OptionalLong.of(5), ORIGIN)).contains(
+        assertThat(FlagDefinition.define(flags, false, "ROWS", () -> Optional.of(OptionalLong.of(4)), ORIGIN)).isEmpty();
+        assertThat(FlagDefinition.define(flags, false, "ROWS", () -> Optional.of(OptionalLong.of(5)), ORIGIN)).contains(
                 "Cannot define flag ROWS as 5: it is already defined as 4 by the configuration; .UNDEF it first to change it");
-        assertThat(FlagDefinition.define(flags, "ROWS", OptionalLong.empty(), ORIGIN)).contains(
+        assertThat(FlagDefinition.define(flags, false, "ROWS", () -> Optional.of(OptionalLong.empty()), ORIGIN)).contains(
                 "Cannot define flag ROWS without a value: it is already defined as 4 by the configuration;"
                         + " .UNDEF it first to change it");
     }
@@ -121,7 +121,7 @@ class FlagDefinitionTest {
     void aDefinitionOfAFlagThatIsSwitchedOffIsRejected() {
         Flags flags = Flags.of(Map.of("SHELL", FlagSetting.off()), RESERVED);
 
-        assertThat(FlagDefinition.define(flags, "shell", OptionalLong.of(1), ORIGIN)).contains(
+        assertThat(FlagDefinition.define(flags, false, "shell", () -> Optional.of(OptionalLong.of(1)), ORIGIN)).contains(
                 "Cannot define flag SHELL: the configuration switched it off; a default the configuration"
                         + " may override is written .DEFINE DEFAULT SHELL, and .UNDEF SHELL frees it");
         assertThat(flags.isSet("SHELL")).isFalse();

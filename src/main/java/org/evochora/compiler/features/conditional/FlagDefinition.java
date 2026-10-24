@@ -42,6 +42,28 @@ final class FlagDefinition {
     }
 
     /**
+     * Applies a {@code .DEFINE} line to the flags, by the rule of its form: without the option,
+     * the value is computed and the flag set by {@link #set}; with it, the flag is set by
+     * {@link #setDefault}, which computes the value only for a flag that is free.
+     *
+     * @param flags     The flags of the phase.
+     * @param isDefault {@code true} for the {@code DEFAULT} form.
+     * @param name      The flag name, as written.
+     * @param value     Computes the value: the value, or empty for a flag without one; or nothing
+     *                  when the value cannot be computed, which the computation reports itself.
+     * @param origin    Where the definition stands, as a phrase completing "defined …", e.g.
+     *                  {@code "at main.evo:3"}.
+     * @return Empty when the line is accepted or its value cannot be computed; otherwise the
+     *         message telling why it is not.
+     */
+    static Optional<String> define(Flags flags, boolean isDefault, String name, Supplier<Optional<OptionalLong>> value,
+                                   String origin) {
+        return isDefault
+                ? setDefault(flags, name, value, origin)
+                : value.get().flatMap(v -> set(flags, name, v, origin));
+    }
+
+    /**
      * Defines a flag by the rule: a flag that is free takes the definition, one the configuration
      * switched off rejects it, and one that is set keeps its own, accepting the definition when
      * it is the same and rejecting it when the value differs or one of the two has a value and
@@ -54,7 +76,7 @@ final class FlagDefinition {
      *               {@code "at main.evo:3"}.
      * @return Empty when the definition is accepted, or the message telling why it is not.
      */
-    static Optional<String> define(Flags flags, String name, OptionalLong value, String origin) {
+    private static Optional<String> set(Flags flags, String name, OptionalLong value, String origin) {
         if (flags.isOff(name)) {
             String upper = name.toUpperCase(Locale.ROOT);
             return Optional.of("Cannot define flag " + upper + ": the configuration switched it off;"
@@ -87,8 +109,8 @@ final class FlagDefinition {
      * @return Empty when the default is accepted, whether it took effect or yielded, or when its
      *         value cannot be computed; otherwise the message telling why it is not.
      */
-    static Optional<String> defineDefault(Flags flags, String name, Supplier<Optional<OptionalLong>> value,
-                                          String origin) {
+    private static Optional<String> setDefault(Flags flags, String name, Supplier<Optional<OptionalLong>> value,
+                                               String origin) {
         if (flags.isSet(name) || flags.isOff(name)) {
             return Optional.empty();
         }

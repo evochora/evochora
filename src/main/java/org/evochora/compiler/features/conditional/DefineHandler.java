@@ -66,9 +66,7 @@ public class DefineHandler implements IPreProcessorHandler {
                     : preProcessorContext.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
             String name = operands.get(0).text();
             String origin = "at " + directive.source().fileName() + ":" + directive.source().lineNumber();
-            error = (isDefault
-                    ? FlagDefinition.defineDefault(flags, name, value, origin)
-                    : value.get().flatMap(v -> FlagDefinition.define(flags, name, v, origin))).orElse(null);
+            error = FlagDefinition.define(flags, isDefault, name, value, origin).orElse(null);
         }
         if (error != null) {
             preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());

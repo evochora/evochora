@@ -35,10 +35,6 @@ public class DefineScanHandler implements IDependencyScanHandler {
                 : ctx.evaluate(operands.subList(1, operands.size())).map(OptionalLong::of);
         String name = operands.get(0).text();
         String origin = "at " + ctx.sourcePath() + ":" + ctx.lineNumber();
-        if (isDefault) {
-            FlagDefinition.defineDefault(ctx.flags(), name, value, origin);
-        } else {
-            value.get().ifPresent(v -> FlagDefinition.define(ctx.flags(), name, v, origin));
-        }
+        FlagDefinition.define(ctx.flags(), isDefault, name, value, origin);
     }
 }
