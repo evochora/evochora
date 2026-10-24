@@ -73,13 +73,28 @@ class SeededRandomProviderTest {
                 .isInstanceOf(ParallelWaveViolation.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.nextDouble()))
                 .isInstanceOf(ParallelWaveViolation.class);
-        assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.setSeed(1L)))
-                .as("reseeding the shared generator from the wave is rejected too")
-                .isInstanceOf(ParallelWaveViolation.class);
 
         // Outside the wave the same provider works again
         assertThat(provider.nextInt(10)).isBetween(0, 9);
         assertThat(javaView.nextInt(10)).isBetween(0, 9);
+    }
+
+    @Test
+    void javaView_cannotReseedTheSharedGenerator() {
+        Random javaView = new SeededRandomProvider(7L).asJavaRandom();
+
+        assertThatThrownBy(() -> javaView.setSeed(1L))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void javaView_drawsFromTheProvidersGenerator() {
+        SeededRandomProvider viaProvider = new SeededRandomProvider(7L);
+        Random viaView = new SeededRandomProvider(7L).asJavaRandom();
+
+        for (int i = 0; i < 16; i++) {
+            assertThat(viaView.nextInt(1_000_000)).isEqualTo(viaProvider.nextInt(1_000_000));
+        }
     }
 
     private static List<Integer> draw(SeededRandomProvider provider, int count) {

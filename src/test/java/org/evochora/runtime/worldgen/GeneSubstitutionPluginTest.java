@@ -786,7 +786,7 @@ class GeneSubstitutionPluginTest {
         placeRegister(1, 0, 0);
         environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 1), child.getId() + 1, new int[]{2, 0});
 
-        registerOnlyPlugin(new SeededRandomProvider(3)).substitute(child, environment);
+        registerOnlyPlugin(new SeededRandomProvider(1)).substitute(child, environment);
 
         assertThat(environment.getMolecule(2, 0).value()).as("the foreign cell is untouched").isEqualTo(1);
         List<MutationRecord> records = child.getBirthMutations();

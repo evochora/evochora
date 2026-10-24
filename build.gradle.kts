@@ -76,8 +76,8 @@ dependencies {
     implementation("org.jline:jline:3.30.4")
     runtimeOnly("org.jline:jline-terminal-jansi:3.30.4")
 
-    // Apache Commons Math for scientifically-validated RNG with state serialization
-    implementation("org.apache.commons:commons-math3:3.6.1")
+    // Apache Commons RNG for scientifically-validated RNG with state serialization
+    implementation("org.apache.commons:commons-rng-simple:1.7")
 
     // Zstd compression library with bundled native binaries for cross-platform support
     implementation("com.github.luben:zstd-jni:1.5.5-11")
