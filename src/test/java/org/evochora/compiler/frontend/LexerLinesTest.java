@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
@@ -19,7 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.evochora.compiler.TestDiagnostics.located;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -164,7 +164,7 @@ class LexerLinesTest {
     void aConfiguredFlagIsSeenByTheFirstLineRead() throws Exception {
         Files.writeString(tempDir.resolve("big.evo"), "NOP\n");
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)),
-                Map.of("BIG", OptionalLong.empty()), Map.of());
+                Map.of("BIG", FlagSetting.set()), Map.of());
 
         Reading reading = read(".IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n", options);
 

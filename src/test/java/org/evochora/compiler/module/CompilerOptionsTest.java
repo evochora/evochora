@@ -1,6 +1,7 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -9,7 +10,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -32,31 +32,31 @@ public class CompilerOptionsTest {
     @Test
     @Tag("unit")
     void defines_namesAreUpperCased() {
-        CompilerOptions opts = new CompilerOptions(List.of(), Map.of("aggressive", OptionalLong.empty(), "Redundancy", OptionalLong.of(2)), Map.of());
+        CompilerOptions opts = new CompilerOptions(List.of(), Map.of("aggressive", FlagSetting.set(), "Redundancy", FlagSetting.set(2)), Map.of());
         assertThat(opts.defines()).containsOnly(
-                Map.entry("AGGRESSIVE", OptionalLong.empty()),
-                Map.entry("REDUNDANCY", OptionalLong.of(2)));
+                Map.entry("AGGRESSIVE", FlagSetting.set()),
+                Map.entry("REDUNDANCY", FlagSetting.set(2)));
     }
 
     @Test
     @Tag("unit")
     void defines_areCopiedAndUnmodifiable() {
-        Map<String, OptionalLong> source = new HashMap<>();
-        source.put("X", OptionalLong.of(1));
+        Map<String, FlagSetting> source = new HashMap<>();
+        source.put("X", FlagSetting.set(1));
         CompilerOptions opts = new CompilerOptions(List.of(), source, Map.of());
-        source.put("Y", OptionalLong.of(2));
+        source.put("Y", FlagSetting.set(2));
 
         assertThat(opts.defines()).containsOnlyKeys("X");
-        assertThatThrownBy(() -> opts.defines().put("Z", OptionalLong.empty()))
+        assertThatThrownBy(() -> opts.defines().put("Z", FlagSetting.set()))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
     @Tag("unit")
     void defines_twoKeysOfOneName_failNamingBoth() {
-        Map<String, OptionalLong> source = new LinkedHashMap<>();
-        source.put("a", OptionalLong.of(1));
-        source.put("A", OptionalLong.of(2));
+        Map<String, FlagSetting> source = new LinkedHashMap<>();
+        source.put("a", FlagSetting.set(1));
+        source.put("A", FlagSetting.set(2));
         assertThatThrownBy(() -> new CompilerOptions(List.of(), source, Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'a'")
@@ -84,8 +84,8 @@ public class CompilerOptionsTest {
     @Test
     @Tag("unit")
     void defines_differingOnlyInCase_areEqual() {
-        CompilerOptions lower = new CompilerOptions(List.of(), Map.of("x", OptionalLong.of(1)), Map.of());
-        CompilerOptions upper = new CompilerOptions(List.of(), Map.of("X", OptionalLong.of(1)), Map.of());
+        CompilerOptions lower = new CompilerOptions(List.of(), Map.of("x", FlagSetting.set(1)), Map.of());
+        CompilerOptions upper = new CompilerOptions(List.of(), Map.of("X", FlagSetting.set(1)), Map.of());
         assertThat(lower).isEqualTo(upper);
         assertThat(lower.hashCode()).isEqualTo(upper.hashCode());
     }

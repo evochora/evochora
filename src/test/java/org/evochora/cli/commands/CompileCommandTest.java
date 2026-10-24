@@ -2,6 +2,7 @@ package org.evochora.cli.commands;
 
 import com.google.gson.JsonParser;
 import org.evochora.cli.CommandLineInterface;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -16,7 +17,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -129,27 +129,38 @@ public class CompileCommandTest {
 
     @Test
     void testDefineArgumentsBecomeFlagsWithAndWithoutValue() {
-        Map<String, OptionalLong> defines = CompileCommand.parseDefines(List.of("A", "B=2"));
+        Map<String, FlagSetting> defines = CompileCommand.parseDefines(List.of("A", "B=2"));
 
         assertThat(defines).containsExactly(
-            Map.entry("A", OptionalLong.empty()),
-            Map.entry("B", OptionalLong.of(2)));
+            Map.entry("A", FlagSetting.set()),
+            Map.entry("B", FlagSetting.set(2)));
+    }
+
+    @Test
+    void testDefineArgumentsFalseAndTrueSwitchAFlagOffAndSetItWithoutValueInAnyCase() {
+        Map<String, FlagSetting> defines = CompileCommand.parseDefines(List.of("X=false", "Y=true", "x2=FALSE", "Y2=True"));
+
+        assertThat(defines).containsExactly(
+            Map.entry("X", FlagSetting.off()),
+            Map.entry("Y", FlagSetting.set()),
+            Map.entry("x2", FlagSetting.off()),
+            Map.entry("Y2", FlagSetting.set()));
     }
 
     @Test
     void testDefineValuesAreReadAsTheAssemblerReadsNumbers() {
-        Map<String, OptionalLong> defines = CompileCommand.parseDefines(
+        Map<String, FlagSetting> defines = CompileCommand.parseDefines(
             List.of("DEC=12", "HEX=0x1F", "OCT=0o17", "BIN=0b101", "NEG=-3", "NEGHEX=-0x10", "NEGBIN=-0b11"));
 
         assertThat(CompileCommand.parseDefines(List.of("BIG=5000000000")))
-            .containsEntry("BIG", OptionalLong.of(5000000000L));
-        assertThat(defines).containsEntry("DEC", OptionalLong.of(12))
-            .containsEntry("HEX", OptionalLong.of(31))
-            .containsEntry("OCT", OptionalLong.of(15))
-            .containsEntry("BIN", OptionalLong.of(5))
-            .containsEntry("NEG", OptionalLong.of(-3))
-            .containsEntry("NEGHEX", OptionalLong.of(-16))
-            .containsEntry("NEGBIN", OptionalLong.of(-3));
+            .containsEntry("BIG", FlagSetting.set(5000000000L));
+        assertThat(defines).containsEntry("DEC", FlagSetting.set(12))
+            .containsEntry("HEX", FlagSetting.set(31))
+            .containsEntry("OCT", FlagSetting.set(15))
+            .containsEntry("BIN", FlagSetting.set(5))
+            .containsEntry("NEG", FlagSetting.set(-3))
+            .containsEntry("NEGHEX", FlagSetting.set(-16))
+            .containsEntry("NEGBIN", FlagSetting.set(-3));
         for (String form : List.of("A=+3", "A=0o8", "A=--3", "A=0x", "A=-")) {
             assertThatThrownBy(() -> CompileCommand.parseDefines(List.of(form)))
                 .describedAs(form)
@@ -197,7 +208,11 @@ public class CompileCommandTest {
     @Test
     void testDefineRejectsAValueThatIsNoIntegerANameGivenTwiceAndAMissingName() {
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A=two")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not a number");
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("--define A: 'two' is not a number, true or false");
+        assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("X=maybe")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("--define X: 'maybe' is not a number, true or false");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A", "A=2")))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("given twice");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("=2")))
@@ -232,6 +247,24 @@ public class CompileCommandTest {
         String flagged = compileToJson(sourceFile.toString(), "--define", "A", "--define", "B=2");
 
         assertThat(programIdOf(flagged)).isNotEqualTo(programIdOf(plain));
+    }
+
+    @Test
+    void testDefineFalseSwitchesOffAFlagTheProgramSetsByDefault() throws Exception {
+        Path sourceFile = tempDir.resolve("defaulted.evo");
+        Files.writeString(sourceFile, """
+            .DEFINE DEFAULT X
+            NOP
+            .IFDEF X
+            SETI %DR0 DATA:1
+            .ENDDEF
+            """);
+
+        String plain = compileToJson(sourceFile.toString());
+        String switchedOff = compileToJson(sourceFile.toString(), "--define", "X=false");
+
+        assertThat(programIdOf(switchedOff)).isNotEqualTo(programIdOf(plain));
+        assertThat(codeSizeOf(switchedOff)).isLessThan(codeSizeOf(plain));
     }
 
     @Test
@@ -330,5 +363,9 @@ public class CompileCommandTest {
 
     private static String programIdOf(String json) {
         return JsonParser.parseString(json).getAsJsonObject().get("programId").getAsString();
+    }
+
+    private static int codeSizeOf(String json) {
+        return JsonParser.parseString(json).getAsJsonObject().getAsJsonArray("machineCodeLayout").size();
     }
 }

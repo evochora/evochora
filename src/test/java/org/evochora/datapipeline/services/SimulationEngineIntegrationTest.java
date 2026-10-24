@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -28,7 +29,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -212,7 +212,7 @@ class SimulationEngineIntegrationTest {
         Config defines = recorded.getConfigList("organisms").get(0).getConfig("defines");
         assertTrue(defines.getBoolean("AGGRESSIVE"));
         assertEquals(2, defines.getInt("REDUNDANCY"));
-        assertEquals(Map.of("AGGRESSIVE", OptionalLong.empty(), "REDUNDANCY", OptionalLong.of(2)),
+        assertEquals(Map.of("AGGRESSIVE", FlagSetting.set(), "REDUNDANCY", FlagSetting.set(2)),
                 SimulationEngine.readDefines(recorded.getConfigList("organisms").get(0), 0));
     }
 

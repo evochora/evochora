@@ -143,12 +143,13 @@ When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g.
 
 ### Flags (`--define`)
 
-Sets a flag for the conditional compilation directives (`.IFDEF` and its relatives, see `ASSEMBLY_SPEC.md`), as `.DEFINE` in the program would, before its first line:
+Decides a flag for the conditional compilation directives (`.IFDEF` and its relatives, see [ASSEMBLY_SPEC.md](ASSEMBLY_SPEC.md#conditional-compilation)) before the first line of the program:
 
-- `--define NAME` — sets the flag without a value
+- `--define NAME` or `--define NAME=true` — sets the flag without a value
 - `--define NAME=NUMBER` — sets it with that value; decimal, `0x…`, `0o…` and `0b…`, with an optional minus
+- `--define NAME=false` — switches the flag off: a `.DEFINE DEFAULT` of it in the program does not take effect
 
-The option may be repeated. Flag names are case-insensitive. In a simulation the same flags are set per organism in the configuration (`defines { … }` in the organism entry).
+A flag the option does not name is free, and the program's `.DEFINE DEFAULT` of it takes effect. The option may be repeated. Flag names, `true` and `false` are case-insensitive. In a simulation the same flags are decided per organism in the configuration: `defines { NAME = true }`, `NAME = 2` or `NAME = false` in the organism entry.
 
 ### Values (`--value`)
 

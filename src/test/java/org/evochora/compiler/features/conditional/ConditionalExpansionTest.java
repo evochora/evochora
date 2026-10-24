@@ -5,6 +5,7 @@ import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -26,7 +27,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -407,7 +407,7 @@ class ConditionalExpansionTest {
 
     @Test
     void theSameDefinitionAsTheConfigurationIsAccepted() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", FlagSetting.set(2)), List.of(),
                 ".DEFINE LEVEL 2",
                 ".IFDEF LEVEL = 2",
                 "  NOP",
@@ -419,7 +419,7 @@ class ConditionalExpansionTest {
 
     @Test
     void anotherValueThanTheConfigurationIsRejected() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", FlagSetting.set(2)), List.of(),
                 ".DEFINE LEVEL 3");
 
         assertThat(result.errors()).containsExactly(MAIN + ":1: Cannot define flag LEVEL as 3: it is already"
@@ -427,31 +427,143 @@ class ConditionalExpansionTest {
     }
 
     @Test
-    void theIfndefDefaultYieldsToTheConfiguration() {
+    void aDefaultYieldsToTheConfiguration() {
         String[] program = {
-                ".IFNDEF REDUNDANCY",
-                "  .DEFINE REDUNDANCY 1",
-                ".ENDDEF",
+                ".DEFINE DEFAULT REDUNDANCY 1",
                 ".IFDEF REDUNDANCY >= 2",
                 "  NOP",
                 ".ELSEDEF",
                 "  JMPI END",
                 ".ENDDEF"};
 
-        Expansion configured = expandWith(Map.of("redundancy", OptionalLong.of(2)), List.of(), program);
+        Expansion configured = expandWith(Map.of("redundancy", FlagSetting.set(2)), List.of(), program);
         Expansion unconfigured = expand(program);
+        Expansion switchedOff = expandWith(Map.of("REDUNDANCY", FlagSetting.off()), List.of(), program);
 
         assertThat(configured.errors()).isEmpty();
         assertThat(configured.texts()).containsExactly("NOP");
         assertThat(unconfigured.errors()).isEmpty();
         assertThat(unconfigured.texts()).containsExactly("JMPI", "END");
+        assertThat(switchedOff.errors()).isEmpty();
+        assertThat(switchedOff.texts()).containsExactly("JMPI", "END");
+    }
+
+    @Test
+    void aSwitchedOffFlagIsNotDefined() {
+        Expansion result = expandWith(Map.of("SHELL", FlagSetting.off()), List.of(),
+                ".IFNDEF SHELL",
+                "  NOP",
+                ".ENDDEF",
+                ".IFDEF SHELL",
+                "  JMPI END",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultComputesItsValue() {
+        Expansion result = expand(
+                ".DEFINE ROWS 4",
+                ".DEFINE DEFAULT HALF (ROWS / 2)",
+                ".IFDEF HALF = 2",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultThatYieldsReportsNothingAboutItsValue() {
+        String[] program = {
+                ".DEFINE DEFAULT HALF (ROWS / 2)",
+                ".IFDEF HALF = 3",
+                "  NOP",
+                ".ENDDEF"};
+
+        Expansion configured = expandWith(Map.of("HALF", FlagSetting.set(3)), List.of(), program);
+        Expansion switchedOff = expandWith(Map.of("HALF", FlagSetting.off()), List.of(), program);
+        Expansion unconfigured = expand(program);
+
+        assertThat(configured.errors()).isEmpty();
+        assertThat(configured.texts()).containsExactly("NOP");
+        assertThat(switchedOff.errors()).isEmpty();
+        assertThat(switchedOff.texts()).isEmpty();
+        assertThat(unconfigured.errors()).containsExactly(MAIN + ":1: 'ROWS' is not a flag.");
+    }
+
+    @Test
+    void aDefaultYieldsToAnEarlierDefinitionOfTheProgram() {
+        Expansion result = expand(
+                ".DEFINE LEVEL 3",
+                ".DEFINE DEFAULT LEVEL 1",
+                ".IFDEF LEVEL = 3",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aPlainDefineOfASwitchedOffFlagIsRejectedAndTheFlagStaysOff() {
+        Expansion result = expandWith(Map.of("SHELL", FlagSetting.off()), List.of(),
+                ".DEFINE SHELL",
+                ".IFDEF SHELL",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).hasSize(1);
+        assertThat(result.errors().get(0))
+                .startsWith(MAIN + ":1: Cannot define flag SHELL: the configuration switched it off");
+        assertThat(result.texts()).isEmpty();
+    }
+
+    @Test
+    void anUndefFreesASwitchedOffFlagForAPlainDefine() {
+        Expansion result = expandWith(Map.of("SHELL", FlagSetting.off()), List.of(),
+                ".UNDEF SHELL",
+                ".DEFINE SHELL",
+                ".IFDEF SHELL",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aDefaultWithoutAFlagNameIsReported() {
+        Expansion result = expand(
+                ".DEFINE DEFAULT",
+                ".DEFINE DEFAULT 42",
+                "NOP");
+
+        assertThat(result.errors()).containsExactly(
+                MAIN + ":1: .DEFINE DEFAULT needs a flag name",
+                MAIN + ":2: .DEFINE DEFAULT needs a flag name, found '42'; a constant is written .CONST");
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void theOptionWordIsReadByItsPositionAndIsNoReservedName() {
+        Expansion result = expandWith(Map.of("DEFAULT", FlagSetting.set(1)), List.of(),
+                ".DEFINE DEFAULT DEFAULT 2",
+                ".IFDEF DEFAULT = 1",
+                "  NOP",
+                ".ENDDEF");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP");
     }
 
 
 
     @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty()), List.of(), "NOP");
+        Expansion result = expandWith(Map.of("NO-NAME", FlagSetting.set()), List.of(), "NOP");
 
         assertThat(result.errors()).isEmpty();
     }
@@ -1015,7 +1127,7 @@ class ConditionalExpansionTest {
      * configured flags, and a file {@code lib.evo} the main file may include with
      * {@code .SOURCE}.
      */
-    private static Expansion expandWith(Map<String, OptionalLong> defines, List<String> library, String... lines) {
+    private static Expansion expandWith(Map<String, FlagSetting> defines, List<String> library, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<Token> libraryTokens = new ArrayList<>(TestLexers.tokenizer(String.join("\n", library) + "\n", diagnostics, LIBRARY).scanTokens());
         Tokenizer.stripEofToken(libraryTokens);

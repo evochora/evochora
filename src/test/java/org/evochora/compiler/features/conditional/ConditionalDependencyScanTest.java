@@ -4,6 +4,7 @@ import org.evochora.compiler.frontend.Flags;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
@@ -21,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -52,7 +52,7 @@ class ConditionalDependencyScanTest {
                 ".ENDDEF",
                 "NOP");
 
-        Scan withBig = scan(main, Map.of("BIG", OptionalLong.empty()));
+        Scan withBig = scan(main, Map.of("BIG", FlagSetting.set()));
         Scan withoutBig = scan(String.join("\n",
                 ".IFDEF BIG",
                 "  .IMPORT \"missing.evo\" AS LIB",
@@ -186,6 +186,25 @@ class ConditionalDependencyScanTest {
     }
 
     @Test
+    void theScanFollowsADefaultAsThePreprocessorDoes() throws Exception {
+        Files.writeString(root.resolve("lib.evo"), "NOP\n");
+        String main = String.join("\n",
+                ".DEFINE DEFAULT WITH_LIB",
+                ".IFDEF WITH_LIB",
+                "  .IMPORT \"lib.evo\" AS LIB",
+                ".ENDDEF",
+                "NOP");
+
+        Scan unconfigured = scan(main, Map.of());
+        Scan switchedOff = scan(main, Map.of("WITH_LIB", FlagSetting.off()));
+
+        assertThat(unconfigured.diagnostics.hasErrors()).as(unconfigured.diagnostics.summary()).isFalse();
+        assertThat(unconfigured.modules()).containsExactly("lib.evo", "main.evo");
+        assertThat(switchedOff.diagnostics.hasErrors()).as(switchedOff.diagnostics.summary()).isFalse();
+        assertThat(switchedOff.modules()).containsExactly("main.evo");
+    }
+
+    @Test
     void anUndefRemovesTheFlagForTheScan() throws Exception {
         String main = String.join("\n",
                 ".UNDEF A",
@@ -194,7 +213,7 @@ class ConditionalDependencyScanTest {
                 ".ENDDEF",
                 "NOP");
 
-        Scan result = scan(main, Map.of("A", OptionalLong.empty()));
+        Scan result = scan(main, Map.of("A", FlagSetting.set()));
 
         assertThat(result.diagnostics.hasErrors()).as(result.diagnostics.summary()).isFalse();
         assertThat(result.modules()).containsExactly("main.evo");
@@ -223,7 +242,7 @@ class ConditionalDependencyScanTest {
      */
     @Test
     void aHeadWithAWordBeforeItIsInvalidAndNoBranchOfItsBlockIsScanned() throws Exception {
-        for (Map<String, OptionalLong> defines : List.of(Map.<String, OptionalLong>of(), Map.of("X", OptionalLong.empty()))) {
+        for (Map<String, FlagSetting> defines : List.of(Map.<String, FlagSetting>of(), Map.of("X", FlagSetting.set()))) {
             Scan result = scan(String.join("\n",
                     "L: .IFDEF X",
                     "  .IMPORT \"missing.evo\" AS M",
@@ -328,7 +347,7 @@ class ConditionalDependencyScanTest {
         }
     }
 
-    private Scan scan(String mainSource, Map<String, OptionalLong> defines) {
+    private Scan scan(String mainSource, Map<String, FlagSetting> defines) {
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();

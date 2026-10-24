@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.preprocessor;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.TestPreProcessorContexts;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,7 +68,7 @@ class PreProcessorContextTest {
     @Test
     void options_areThoseGiven() {
         CompilerOptions options = new CompilerOptions(
-                List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalLong.of(2)), Map.of());
+                List.of(new SourceRoot(".", null)), Map.of("FLAG", FlagSetting.set(2)), Map.of());
         assertThat(context(options).options()).isSameAs(options);
     }
 
