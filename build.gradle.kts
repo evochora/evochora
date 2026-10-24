@@ -109,9 +109,15 @@ dependencies {
 // scripts of the distribution, the test tasks and the benchmarks.
 val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
 
+// Netty 4.1, which ActiveMQ Artemis brings along, allocates memory through sun.misc.Unsafe, which
+// the JVM warns about and a future release denies. The permission is owed to that Netty alone:
+// NettyUnsafeRulesTest fails once Artemis brings another line, and then this flag is checked.
+// The flag exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
+val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
+
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
-    applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess)
+    applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
 // Fix for Windows "Input line is too long" error
@@ -343,7 +349,7 @@ tasks.test {
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess)
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
@@ -369,7 +375,7 @@ tasks.register<Test>("unit") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess)
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = false
@@ -389,7 +395,7 @@ tasks.register<Test>("integration") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     maxParallelForks = testForks
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess)
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         // Only show output for failed tests (silent on success)
@@ -466,7 +472,7 @@ afterEvaluate {
 
 jmh {
     jmhVersion = "1.37"
-    jvmArgs.set(listOf("-Xmx8g", enableNativeAccess))
+    jvmArgs.set(listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess))
 }
 
 // Notebooks are committed without execution state (outputs, execution counts). This is done by a
