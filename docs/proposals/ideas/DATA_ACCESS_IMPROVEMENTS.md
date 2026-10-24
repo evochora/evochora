@@ -25,4 +25,4 @@ Items needed to move from API-hack-based analysis to clean, scalable data access
 
 ## Current Workarounds
 
-The `regime_diagnostic.ipynb` notebook fetches all ~5,300 tick snapshots via the Visualizer API (one HTTP call per tick). This works but is slow (~4 min) and fragile. The improvements above would make this unnecessary.
+A notebook that needs per-organism data, such as life histories, has to fetch every sampled tick snapshot through the Visualizer API, one HTTP call per tick. For the regime diagnostic analysis these were ~5,300 snapshots: it worked, but was slow (~4 min) and fragile. The improvements above would make this unnecessary.
