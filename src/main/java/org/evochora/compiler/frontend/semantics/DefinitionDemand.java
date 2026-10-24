@@ -110,8 +110,6 @@ final class DefinitionDemand implements IDefinitionDemand {
         }
         names.addAll(through);
         SourceInfo at = entered.sourceInfo();
-        diagnostics.reportError(
-                "Definition of " + entered.name() + " is circular: " + String.join(" -> ", names) + ".",
-                at.fileName(), at.lineNumber());
+        diagnostics.reportError(SymbolTable.circularDefinition(entered.name(), names), at.fileName(), at.lineNumber());
     }
 }

@@ -548,8 +548,9 @@ public class SymbolTable {
             }
             if (visited.contains(symbol)) {
                 if (reportedCircles.add(symbol.sourceInfo() + " " + symbol.name())) {
-                    diagnostics.reportError(
-                            "Definition of " + chain.get(0) + " is circular: " + String.join(" -> ", chain) + " -> " + current.text() + ".",
+                    List<String> circle = new ArrayList<>(chain);
+                    circle.add(current.text());
+                    diagnostics.reportError(circularDefinition(chain.get(0), circle),
                             firstDefinition != null ? firstDefinition.fileName() : "unknown",
                             firstDefinition != null ? firstDefinition.lineNumber() : 0);
                 }
@@ -576,6 +577,18 @@ public class SymbolTable {
             current = next;
         }
         return Optional.empty();
+    }
+
+    /**
+     * Words the error for a definition that needs its own value, through a chain of names or of
+     * computations: {@code Definition of A is circular: A -> B -> A.}
+     *
+     * @param name  The name of the definition the circle was entered through.
+     * @param names The names around the circle, that name first and last.
+     * @return The sentence.
+     */
+    public static String circularDefinition(String name, List<String> names) {
+        return "Definition of " + name + " is circular: " + String.join(" -> ", names) + ".";
     }
 
     /**
