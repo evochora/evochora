@@ -548,13 +548,14 @@ class ConditionalExpansionTest {
     }
 
     @Test
-    void aDefaultOfTheNameDefaultIsRejected() {
-        Expansion result = expand(
-                ".DEFINE DEFAULT DEFAULT",
-                "NOP");
+    void theOptionWordIsReadByItsPositionAndIsNoReservedName() {
+        Expansion result = expandWith(Map.of("DEFAULT", FlagSetting.set(1)), List.of(),
+                ".DEFINE DEFAULT DEFAULT 2",
+                ".IFDEF DEFAULT = 1",
+                "  NOP",
+                ".ENDDEF");
 
-        assertThat(result.errors()).containsExactly(
-                MAIN + ":1: 'DEFAULT' is the default option of .DEFINE and cannot be defined.");
+        assertThat(result.errors()).isEmpty();
         assertThat(result.texts()).containsExactly("NOP");
     }
 

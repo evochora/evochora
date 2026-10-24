@@ -52,7 +52,7 @@ public class DefineHandler implements IPreProcessorHandler {
 
         String error = null;
         boolean isDefault = FlagDefinition.isDefault(line.operands());
-        String form = isDefault ? ".DEFINE " + Flags.DEFAULT_OPTION : ".DEFINE";
+        String form = isDefault ? ".DEFINE " + FlagDefinition.DEFAULT_OPTION : ".DEFINE";
         List<Token> operands = isDefault
                 ? line.operands().subList(1, line.operands().size())
                 : line.operands();

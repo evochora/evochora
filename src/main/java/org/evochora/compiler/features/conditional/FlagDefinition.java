@@ -19,6 +19,13 @@ import java.util.function.Supplier;
  */
 final class FlagDefinition {
 
+    /**
+     * The option word of {@code .DEFINE} that makes the definition a default. Like the words of
+     * the other directives it is read by its position, as the first operand; a flag of that name
+     * is not defined by {@code .DEFINE}, but the name is not reserved.
+     */
+    static final String DEFAULT_OPTION = "DEFAULT";
+
     private FlagDefinition() {
     }
 
@@ -31,7 +38,7 @@ final class FlagDefinition {
      */
     static boolean isDefault(List<Token> operands) {
         return !operands.isEmpty() && Condition.isNameToken(operands.get(0))
-                && operands.get(0).text().equalsIgnoreCase(Flags.DEFAULT_OPTION);
+                && operands.get(0).text().equalsIgnoreCase(DEFAULT_OPTION);
     }
 
     /**

@@ -27,9 +27,6 @@ public final class Flags {
 
     private static final String CONFIGURATION = "by the configuration";
 
-    /** The option of {@code .DEFINE} that makes the definition a default; no flag may bear the name. */
-    public static final String DEFAULT_OPTION = "DEFAULT";
-
     /**
      * The definition of a flag that is set.
      *
@@ -86,7 +83,7 @@ public final class Flags {
                 errors.add("Configured flag '" + name + "' is not a valid name: a flag name consists of"
                         + " letters, digits and _ and begins with a letter or _");
             } else {
-                rejection(name, reservedNames).ifPresent(rejection -> errors.add("Configured flag " + rejection));
+                reservedNames.rejection(name, "defined").ifPresent(rejection -> errors.add("Configured flag " + rejection));
             }
         });
         return errors;
@@ -103,24 +100,13 @@ public final class Flags {
      * @return Empty when the flag is set, or the message telling why it is not.
      */
     public Optional<String> define(String name, OptionalLong value, String origin) {
-        Optional<String> rejection = rejection(name, reservedNames);
+        Optional<String> rejection = reservedNames.rejection(name, "defined");
         if (rejection.isPresent()) {
             return rejection;
         }
         off.remove(key(name));
         entries.put(key(name), new Definition(value, origin));
         return Optional.empty();
-    }
-
-    /**
-     * Returns the message that rejects a name as a flag name, if it is reserved: the option word
-     * of {@code .DEFINE}, or a name nothing may define.
-     */
-    private static Optional<String> rejection(String name, ReservedNames reservedNames) {
-        if (key(name).equals(DEFAULT_OPTION)) {
-            return Optional.of("'" + name + "' is the default option of .DEFINE and cannot be defined.");
-        }
-        return reservedNames.rejection(name, "defined");
     }
 
     /**

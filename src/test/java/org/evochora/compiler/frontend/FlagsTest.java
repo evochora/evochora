@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The flag store with the three states of a name: set, switched off by the configuration, and
- * free. A flag that is switched off is not set, a definition or {@code .UNDEF} ends that state,
- * and the option word of {@code .DEFINE} is no flag name.
+ * free. A flag that is switched off is not set, and a definition or {@code .UNDEF} ends that
+ * state.
  */
 @Tag("unit")
 class FlagsTest {
@@ -53,17 +53,6 @@ class FlagsTest {
         assertThat(flags.isOff("SHELL")).isFalse();
         assertThat(flags.define("SHELL", OptionalLong.of(2), ORIGIN)).isEmpty();
         assertThat(flags.valueOf("SHELL")).hasValue(2);
-    }
-
-    @Test
-    void theOptionWordOfDefineIsNoFlagName() {
-        Flags flags = Flags.of(Map.of(), RESERVED);
-
-        assertThat(flags.define("Default", OptionalLong.empty(), ORIGIN))
-                .contains("'Default' is the default option of .DEFINE and cannot be defined.");
-        assertThat(flags.isSet("DEFAULT")).isFalse();
-        assertThat(Flags.configurationErrors(Map.of("default", FlagSetting.set()), RESERVED))
-                .containsExactly("Configured flag 'default' is the default option of .DEFINE and cannot be defined.");
     }
 
     @Test
