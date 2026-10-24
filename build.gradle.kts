@@ -44,7 +44,7 @@ repositories {
 dependencies {
     implementation("com.google.protobuf:protobuf-java:4.36.2")
     implementation("com.google.protobuf:protobuf-java-util:4.36.2") // For JSON conversion
-    implementation("com.zaxxer:HikariCP:6.2.1") // High-performance JDBC connection pool
+    implementation("com.zaxxer:HikariCP:7.1.0") // High-performance JDBC connection pool
     implementation("it.unimi.dsi:fastutil:8.5.19") // High-performance primitive collections
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
