@@ -140,8 +140,8 @@ public class DataInstruction extends Instruction {
                         Molecule.extractSignedValue(value)).toInt();
                 if (target.rawSourceId() != -1) {
                     if (!writeOperand(target.rawSourceId(), result)) { return; }
-                } else if (!organism.pushData(result)) {
-                    return;
+                } else {
+                    organism.pushData(result);
                 }
                 break;
             }
