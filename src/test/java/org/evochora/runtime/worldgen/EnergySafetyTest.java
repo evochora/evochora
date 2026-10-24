@@ -28,10 +28,10 @@ public class EnergySafetyTest {
      * configured safety radius of an already owned cell.
      * This is a unit test for world generation logic.
      */
-    /** Builds a solar radiation creator from its configuration, with one execution per tick. */
-    private static SolarRadiationCreator solar(double probability, int amount, int safetyRadius) {
+    /** Builds a solar radiation creator from its configuration. */
+    private static SolarRadiationCreator solar(double fraction, int amount, int safetyRadius) {
         return new SolarRadiationCreator(new SeededRandomProvider(0L), ConfigFactory.parseMap(Map.of(
-                "probability", probability, "amount", amount, "safetyRadius", safetyRadius, "executionsPerTick", 1)));
+                "fraction", fraction, "energy-amount", amount, "safety-radius", safetyRadius)));
     }
 
     @Test
@@ -42,8 +42,8 @@ public class EnergySafetyTest {
         // Mark center owned
         env.setOwnerId(99, 2, 2);
 
-        // High probability, radius 2
-        SolarRadiationCreator solar = solar(1.0, 11, 2);
+        // One attempt per tick in the 25 cells, radius 2
+        SolarRadiationCreator solar = solar(0.04, 11, 2);
 
         // Create mock Simulation
         Simulation sim = mock(Simulation.class);

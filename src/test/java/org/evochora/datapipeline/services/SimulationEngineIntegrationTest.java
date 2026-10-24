@@ -697,10 +697,9 @@ class SimulationEngineIntegrationTest {
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.SolarRadiationCreator",
                                 "options", Map.of(
-                                        "probability", 0.1,
-                                        "amount", 50,
-                                        "safetyRadius", 2,
-                                        "executionsPerTick", 1
+                                        "fraction", 5e-5,
+                                        "energy-amount", 50,
+                                        "safety-radius", 2
                                 )
                         )
                 ))
@@ -743,10 +742,10 @@ class SimulationEngineIntegrationTest {
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.GeyserCreator",
                                 "options", Map.of(
-                                        "percentage", 0.03,
+                                        "fraction", 0.03,
                                         "interval", 5,
-                                        "amount", 100,
-                                        "safetyRadius", 2
+                                        "energy-amount", 100,
+                                        "safety-radius", 2
                                 )
                         )
                 ))
@@ -791,19 +790,18 @@ class SimulationEngineIntegrationTest {
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.SolarRadiationCreator",
                                 "options", Map.of(
-                                        "probability", 0.05,
-                                        "amount", 30,
-                                        "safetyRadius", 2,
-                                        "executionsPerTick", 1
+                                        "fraction", 2.5e-5,
+                                        "energy-amount", 30,
+                                        "safety-radius", 2
                                 )
                         ),
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.GeyserCreator",
                                 "options", Map.of(
-                                        "percentage", 0.02,
+                                        "fraction", 0.02,
                                         "interval", 10,
-                                        "amount", 80,
-                                        "safetyRadius", 2
+                                        "energy-amount", 80,
+                                        "safety-radius", 2
                                 )
                         )
                 ))

@@ -12,23 +12,28 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * A geyser-based energy distribution tick plugin. It creates geysers that erupt
  * at regular intervals, distributing energy to nearby cells.
  * <p>
  * The number of geysers scales with the environment size via a configurable
- * percentage of total cells.
+ * fraction of total cells.
  * <ul>
- *   <li><b>percentage:</b> Fraction of total cells to place as geyser sources (0.0–1.0).</li>
+ *   <li><b>fraction:</b> Fraction of total cells to place as geyser sources (0.0–1.0).</li>
  *   <li><b>interval:</b> Tick interval between eruptions.</li>
- *   <li><b>amount:</b> Energy amount placed per eruption.</li>
- *   <li><b>safetyRadius:</b> Radius around placement that must be unowned.</li>
+ *   <li><b>energy-amount:</b> Energy amount placed per eruption.</li>
+ *   <li><b>safety-radius:</b> Radius around placement that must be unowned.</li>
  * </ul>
  */
 public class GeyserCreator implements ITickPlugin {
 
-    private final double geyserPercentage;
+    /** The keys the options block may carry. */
+    private static final Set<String> OPTION_KEYS = Set.of("fraction", "interval", "energy-amount", "safety-radius");
+
+    private final double geyserFraction;
     private final int tickInterval;
     private final int energyAmount;
     /** Radius around a candidate cell that must be free of organism-owned cells. */
@@ -40,14 +45,14 @@ public class GeyserCreator implements ITickPlugin {
      * Creates a geyser-based energy distributor.
      *
      * @param randomProvider Source of randomness.
-     * @param percentage Fraction of total environment cells to place as geyser sources.
+     * @param fraction Fraction of total environment cells to place as geyser sources.
      * @param interval Tick interval for eruptions.
      * @param amount Energy amount placed per eruption.
      * @param safetyRadius Radius around placement that must be unowned.
      */
-    public GeyserCreator(IRandomProvider randomProvider, double percentage, int interval, int amount, int safetyRadius) {
+    public GeyserCreator(IRandomProvider randomProvider, double fraction, int interval, int amount, int safetyRadius) {
         this.random = randomProvider.asJavaRandom();
-        this.geyserPercentage = percentage;
+        this.geyserFraction = fraction;
         this.tickInterval = interval;
         this.energyAmount = amount;
         this.safetyRadius = Math.max(0, safetyRadius);
@@ -58,15 +63,26 @@ public class GeyserCreator implements ITickPlugin {
      *
      * @param randomProvider Source of randomness.
      * @param config Configuration object containing geyser parameters.
+     * @throws IllegalArgumentException if the block carries an unknown key.
      */
     public GeyserCreator(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this(
             randomProvider,
-            config.getDouble("percentage"),
+            requireKnownKeys(config).getDouble("fraction"),
             config.getInt("interval"),
-            config.getInt("amount"),
-            config.getInt("safetyRadius")
+            config.getInt("energy-amount"),
+            config.getInt("safety-radius")
         );
+    }
+
+    private static com.typesafe.config.Config requireKnownKeys(com.typesafe.config.Config config) {
+        for (String key : config.root().keySet()) {
+            if (!OPTION_KEYS.contains(key)) {
+                throw new IllegalArgumentException("Unknown key '" + key
+                        + "' in the options of GeyserCreator. Accepted keys: " + new TreeSet<>(OPTION_KEYS));
+            }
+        }
+        return config;
     }
 
     @Override
@@ -110,7 +126,7 @@ public class GeyserCreator implements ITickPlugin {
         for (int dim : shape) {
             totalCells *= dim;
         }
-        int geyserCount = Math.max(1, (int) (geyserPercentage * totalCells));
+        int geyserCount = Math.max(1, (int) (geyserFraction * totalCells));
 
         for (int i = 0; i < geyserCount; i++) {
             int[] coord = null;

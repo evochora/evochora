@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +33,7 @@ public class GeyserStrategyTest {
         // 3D world 3x3x3 to allow neighbors around random geyser locations
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
         Environment env = new Environment(new EnvironmentProperties(new int[]{3, 3, 3}, true), new HammingLabelMatchingStrategy(), 1);
-        // percentage yields 1 geyser for 27 cells, interval=1 to trigger on tick 1, amount=77
+        // fraction yields 1 geyser for 27 cells, interval=1 to trigger on tick 1, amount=77
         GeyserCreator strat = new GeyserCreator(
                 new org.evochora.runtime.internal.services.SeededRandomProvider(0L),
                 0.04, 1, 77, 2);
@@ -63,5 +64,20 @@ public class GeyserStrategyTest {
             if (found) break;
         }
         assertThat(found).isTrue();
+    }
+
+    /**
+     * A key the plugin does not know is rejected, so that a renamed or misspelled key fails at
+     * start instead of being ignored.
+     */
+    @Test
+    @Tag("unit")
+    void anUnknownKeyIsRejected() {
+        assertThatThrownBy(() -> new GeyserCreator(new org.evochora.runtime.internal.services.SeededRandomProvider(0L),
+                com.typesafe.config.ConfigFactory.parseMap(java.util.Map.of(
+                        "percentage", 0.04, "interval", 1, "energy-amount", 77, "safety-radius", 0))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("percentage")
+                .hasMessageContaining("fraction");
     }
 }
