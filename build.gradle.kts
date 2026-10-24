@@ -85,7 +85,7 @@ dependencies {
     implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
 
     // DuckDB JDBC driver for analytics
-    implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
+    implementation("org.duckdb:duckdb_jdbc:2.0.0.0")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
     implementation("org.apache.artemis:artemis-jakarta-server:2.57.0")
