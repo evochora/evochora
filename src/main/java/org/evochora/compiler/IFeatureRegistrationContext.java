@@ -187,7 +187,10 @@ public interface IFeatureRegistrationContext {
 	void symbolCollector(Class<? extends AstNode> nodeType, ISymbolCollector collector);
 
 	/**
-	 * Registers an analysis handler for Phase 4 (second pass: semantic validation).
+	 * Registers an analysis handler for Phase 4 (second pass: semantic validation). The pass
+	 * runs the handler when its walk reaches the node, and the handler of a definition whose
+	 * value is a computation earlier, when a name needs the value; what that asks of a handler
+	 * is stated at {@link IAnalysisHandler#analyze}.
 	 *
 	 * @param nodeType The AST node class this handler analyzes.
 	 * @param handler  The handler that validates matching nodes.

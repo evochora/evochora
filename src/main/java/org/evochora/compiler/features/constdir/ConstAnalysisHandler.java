@@ -1,29 +1,26 @@
 package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.symbols.ComputationAnalysis;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ExpressionNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.symbols.Resolution;
-import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 
 /**
- * Handles the semantic analysis of {@link ConstNode}s.
- * This involves defining the constant in the symbol table, with the node itself as the
- * symbol's node, so that a reference to the constant can be replaced by its value, and checking
- * that a name given as the value is defined at this line. The value itself is followed at a use
- * of the constant.
+ * Handles the semantic analysis of {@link ConstNode}s, whose name {@link ConstSymbolCollector}
+ * defined in pass 1: checks that a name given as the value is defined, and evaluates a
+ * computation given as the value. The value itself is followed at a use of the constant.
  * <p>
- * A computation given as the value is evaluated at this line, with the names defined above it.
- * Its outcome is recorded for the computation and as the value of the constant: a value, or the
- * tree only the layout computes, which makes the constant a layout value. A computation that
- * fails is reported here; the constant is defined either way, so that a use of it reports nothing
- * of its own.
+ * A computation given as the value is evaluated in the scope of the constant's line, with every
+ * name of that level. Its outcome is recorded for the computation and as the value of the
+ * constant: a value, or the tree only the layout computes, which makes the constant a layout
+ * value. A computation that fails is reported here, and the constant has no value, so that a use
+ * of it reports nothing of its own. The handler runs when the walk reaches the line or, earlier,
+ * when a use above the line needs the value; the computation is evaluated once either way.
  */
 public class ConstAnalysisHandler implements IAnalysisHandler {
 
@@ -53,11 +50,6 @@ public class ConstAnalysisHandler implements IAnalysisHandler {
             if (constNode.value() instanceof ExpressionNode expression) {
                 evaluate(constNode, expression, symbolTable, diagnostics);
             }
-            // Defined even when its value is missing, so that a use of it reports nothing of its own
-            symbolTable.define(new Symbol(constNode.name(), constNode.sourceInfo(), Symbol.Type.CONSTANT, constNode, constNode.exported()))
-                    .ifPresent(existing -> diagnostics.reportError(
-                            "Cannot define constant '" + constNode.name() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
-                            constNode.sourceInfo().fileName(), constNode.sourceInfo().lineNumber()));
         }
     }
 

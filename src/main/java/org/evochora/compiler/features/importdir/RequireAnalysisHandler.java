@@ -15,33 +15,39 @@ import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.expression.NameExpression;
 import org.evochora.compiler.model.symbols.ExpressionOutcome;
 import org.evochora.compiler.model.symbols.Resolution;
-import org.evochora.compiler.model.symbols.Symbol;
+import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
- * Pass-2 analysis handler for {@code .REQUIRE} directives.
+ * Pass-2 analysis handler for {@code .REQUIRE} directives and for the {@link ValueBindingNode}
+ * behind the constant a value requirement defines.
  *
  * <p>Reports a module requirement of the main program: nothing imports the main program, so
  * nothing can supply the module, whether or not the alias is used. A requirement of a module is
  * supplied through a {@code USING} clause of the importer's {@code .IMPORT}, which
  * {@link ImportAnalysisHandler} checks.
  *
- * <p>Defines the constant of a value requirement, as {@code .CONST} defines its constant in this
- * pass: with the value the import of the placement bound, found in the placement's
- * {@link Requirements}, or else the default, through a {@link ValueBindingNode}. A default that is
- * a name is resolved here, at the line, as a use. Without binding and default the constant is
- * defined without a value, so that its uses report nothing of their own; in the main program the
- * missing value is reported here, in a module by the import.
+ * <p>The constant of a value requirement was defined in pass 1 by {@link RequireSymbolCollector},
+ * with the value the import of the placement bound, or else the configured value or the default,
+ * behind a {@link ValueBindingNode}. At the requirement's line this handler resolves a default or
+ * a configured value that is a name, as a use, evaluates a default or a configured value that is
+ * a computation, so that a name in it is resolved whether or not it is the value the constant
+ * takes, reports a missing value of the main program, and uses the constant's name once. That use
+ * has the constant's value computed the way every use does: the symbol table hands the binding
+ * node to the phase, which runs this handler for it, and the handler computes and records the
+ * value. A use above the requirement's line does the same earlier; the value is recorded once,
+ * and a circle through the requirement's own value is reported at the requirement.
  *
- * <p>A value that is a computation gives the constant a recorded value. A bound computation was
- * evaluated at the import line, in the importer's placement, by {@link ImportAnalysisHandler}: its
- * value becomes the constant's value; a tree only the layout computes stays with the import line,
- * and the constant's value is its own qualified name, under which the layout records the value
- * the import line computes. A default and a configured value that are computations are evaluated
- * here, in the placement of the requirement, whether or not they are the value the constant
- * takes, as a name among them is resolved here; the constant's value is the value or the tree
- * only the layout computes. An error in a default is reported at its line, an error in a
- * configured value against the configuration, naming it, without a file or line.
+ * <p>A value that is a computation gives the constant a recorded value. A bound computation is
+ * evaluated in the importer's placement, where it is written, the first time it is needed: at the
+ * import line by {@link ImportAnalysisHandler}, or here; its value becomes the constant's value,
+ * and a tree only the layout computes stays with the import line, the constant's value being its
+ * own qualified name, under which the layout records the value the import line computes. A
+ * default and a configured value that are computations are evaluated in the placement of the
+ * requirement, whether or not they are the value the constant takes, as a name among them is
+ * resolved here; the constant's value is the value or the tree only the layout computes. An error
+ * in a default is reported at its line, an error in a configured value against the configuration,
+ * naming it, without a file or line.
  */
 public class RequireAnalysisHandler implements IAnalysisHandler {
 
@@ -58,6 +64,10 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
 
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        if (node instanceof ValueBindingNode binding) {
+            computeValue(binding, symbolTable, diagnostics);
+            return;
+        }
         if (node instanceof ValueRequirementNode valueNode) {
             analyzeValue(valueNode, symbolTable, diagnostics);
             return;
@@ -78,11 +88,7 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
             return;
         }
         SourceInfo at = valueNode.sourceInfo();
-        OperandNode bound = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain())
-                .flatMap(scope -> scope.record(Requirements.class, Requirements::none).boundValue(valueNode.name().toUpperCase(Locale.ROOT)))
-                .orElse(null);
-        // A default or a configured value that is a name is a use of that name here, bound or
-        // not: it is defined before this line, whatever the importer binds
+        // A default or a configured value that is a name is a use of that name here, bound or not
         for (AstNode given : new AstNode[]{valueNode.defaultValue(), valueNode.configured()}) {
             if (given instanceof IdentifierNode id
                     && symbolTable.resolve(id.text(), id.sourceInfo()) instanceof Resolution.Missing missing) {
@@ -91,28 +97,24 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
                         at.fileName(), at.lineNumber());
             }
         }
-        ExpressionOutcome defaultOutcome = valueNode.defaultValue() instanceof ExpressionNode expression
-                ? evaluate(expression, symbolTable, diagnostics, null) : null;
-        ExpressionOutcome configuredOutcome = valueNode.configured() instanceof ExpressionNode expression
-                ? evaluate(expression, symbolTable, diagnostics, valueNode) : null;
-        // The importer's binding first, then the configuration, then the default
-        OperandNode value = bound != null ? bound
-                : valueNode.configured() != null ? valueNode.configured()
-                : valueNode.defaultValue() instanceof OperandNode defaultValue ? defaultValue : null;
-        ExpressionOutcome outcome = bound != null
-                ? boundOutcome(bound, QualifiedNames.join(symbolTable.getCurrentAliasChain(), valueNode.name()), at,
-                        at.plusColumns(valueNode.name().length()), symbolTable)
-                : valueNode.configured() != null ? configuredOutcome : defaultOutcome;
-        ValueBindingNode definition = new ValueBindingNode(value);
-        if (outcome != null) {
-            symbolTable.recordDefinitionValue(definition, outcome);
+        ValueBindingNode binding = symbolTable.resolve(valueNode.name(), at) instanceof ResolvedSymbol resolved
+                && resolved.symbol().node() instanceof ValueBindingNode defined ? defined : null;
+        if (binding == null) {
+            throw new IllegalStateException("The value requirement '" + valueNode.name() + "' at " + SourceInfo.position(at)
+                    + " defines no constant, which pass 1 should have defined.");
         }
-        // Defined even without a value, so that a use of it reports nothing of its own
-        symbolTable.define(new Symbol(valueNode.name(), at, Symbol.Type.CONSTANT, definition, valueNode.exported()))
-                .ifPresent(existing -> diagnostics.reportError(
-                        "Cannot require value '" + valueNode.name() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
-                        at.fileName(), at.lineNumber()));
-        if (value == null && isRoot(symbolTable)) {
+        // A use of the name at this line: it has the value of a binding that is a computation
+        // computed and recorded, through the phase, by this handler run for the binding node.
+        // It comes before the default and the configured value are evaluated here, so that a
+        // circle through the constant's own value is entered through the binding.
+        symbolTable.chainEndOf(new IdentifierNode(valueNode.name(), at));
+        if (valueNode.defaultValue() instanceof ExpressionNode expression) {
+            evaluate(expression, symbolTable, diagnostics, null);
+        }
+        if (valueNode.configured() instanceof ExpressionNode expression) {
+            evaluate(expression, symbolTable, diagnostics, valueNode);
+        }
+        if (binding.value() == null && isRoot(symbolTable)) {
             diagnostics.reportError(
                     "The value '" + valueNode.name() + "' has no default and the configuration sets none; set it with values { "
                             + valueNode.name() + " = \"<value>\" } in the organism's entry or --value " + valueNode.name() + "=<value>.",
@@ -121,17 +123,43 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
     }
 
     /**
+     * Computes the value of the constant behind a binding and records it for the binding; a
+     * value that is no computation records nothing, as a use of the name follows it. Run by the
+     * phase when a use of the name needs the value, from the requirement's line or above it.
+     */
+    private void computeValue(ValueBindingNode binding, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        ValueRequirementNode valueNode = binding.requirement();
+        SourceInfo at = valueNode.sourceInfo();
+        boolean bound = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain())
+                .flatMap(scope -> scope.record(Requirements.class, Requirements::none).boundValue(valueNode.name().toUpperCase(Locale.ROOT)))
+                .isPresent();
+        ExpressionOutcome defaultOutcome = valueNode.defaultValue() instanceof ExpressionNode expression
+                ? evaluate(expression, symbolTable, diagnostics, null) : null;
+        ExpressionOutcome configuredOutcome = valueNode.configured() instanceof ExpressionNode expression
+                ? evaluate(expression, symbolTable, diagnostics, valueNode) : null;
+        ExpressionOutcome outcome = bound
+                ? boundOutcome(binding.value(), QualifiedNames.join(symbolTable.getCurrentAliasChain(), valueNode.name()), at,
+                        at.plusColumns(valueNode.name().length()), symbolTable, diagnostics)
+                : valueNode.configured() != null ? configuredOutcome : defaultOutcome;
+        if (outcome != null) {
+            symbolTable.recordDefinitionValue(binding, outcome);
+        }
+    }
+
+    /**
      * Returns the value a bound computation gives the constant: the value the import line
-     * computed, or, for a tree only the layout computes, the constant's own qualified name with
-     * the kind of that tree, standing from {@code at} to {@code end}, the written name. A binding
+     * computes, or, for a tree only the layout computes, the constant's own qualified name with
+     * the kind of that tree, standing from {@code at} to {@code end}, the written name. The
+     * computation is evaluated where it is written, in the importer's placement, if the import
+     * line has not evaluated it yet; its error is reported at its position either way. A binding
      * that is no computation, or whose computation failed, gives no recorded value.
      */
-    private static ExpressionOutcome boundOutcome(OperandNode bound, String qualifiedName, SourceInfo at, SourceInfo end,
-                                                  SymbolTable symbolTable) {
+    private ExpressionOutcome boundOutcome(OperandNode bound, String qualifiedName, SourceInfo at, SourceInfo end,
+                                           SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         if (!(bound instanceof ExpressionNode expression)) {
             return null;
         }
-        return symbolTable.resultOf(expression)
+        return ComputationAnalysis.outcomeOf(computations.evaluate(expression, symbolTable, diagnostics))
                 .map(result -> result.value() != null ? result
                         : ExpressionOutcome.later(new NameExpression(qualifiedName, at, end), result.kind()))
                 .orElse(null);

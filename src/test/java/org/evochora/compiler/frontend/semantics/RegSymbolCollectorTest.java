@@ -4,7 +4,7 @@ import org.evochora.compiler.TestSymbolTables;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.features.reg.RegAnalysisHandler;
+import org.evochora.compiler.features.reg.RegSymbolCollector;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -16,13 +16,13 @@ import org.junit.jupiter.api.Tag;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for RegAnalysisHandler: a .REG directive defines an alias of the register's kind,
- * data or location. Whether the register exists is settled before the node reaches the handler.
+ * Tests for RegSymbolCollector: a .REG directive defines an alias of the register's kind,
+ * data or location. Whether the register exists is settled before the node reaches the collector.
  */
 @Tag("unit")
-class RegAnalysisHandlerTest {
+class RegSymbolCollectorTest {
 
-    private RegAnalysisHandler handler;
+    private RegSymbolCollector collector;
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
@@ -30,7 +30,7 @@ class RegAnalysisHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new RegAnalysisHandler(new RuntimeInstructionSetAdapter());
+        collector = new RegSymbolCollector(new RuntimeInstructionSetAdapter());
         diagnostics = new DiagnosticsEngine();
         symbolTable = TestSymbolTables.symbolTable(diagnostics);
     }
@@ -39,7 +39,7 @@ class RegAnalysisHandlerTest {
     void testValidDataRegister() {
         RegNode regNode = new RegNode("COUNTER", "%DR0", TEST_SOURCE);
 
-        handler.analyze(regNode, symbolTable, diagnostics);
+        collector.collect(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("COUNTER", TEST_SOURCE).found().isPresent());
@@ -50,7 +50,7 @@ class RegAnalysisHandlerTest {
     void testValidLocationRegister() {
         RegNode regNode = new RegNode("POSITION", "%LR0", TEST_SOURCE);
 
-        handler.analyze(regNode, symbolTable, diagnostics);
+        collector.collect(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("POSITION", TEST_SOURCE).found().isPresent());
@@ -61,7 +61,7 @@ class RegAnalysisHandlerTest {
     void testValidLocationRegisterMaxIndex() {
         RegNode regNode = new RegNode("TARGET", "%LR" + (Config.NUM_LOCATION_REGISTERS - 1), TEST_SOURCE);
 
-        handler.analyze(regNode, symbolTable, diagnostics);
+        collector.collect(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("TARGET", TEST_SOURCE).found().isPresent());
@@ -71,7 +71,7 @@ class RegAnalysisHandlerTest {
     void testValidPdrRegister() {
         RegNode regNode = new RegNode("TMP", "%PDR0", TEST_SOURCE);
 
-        handler.analyze(regNode, symbolTable, diagnostics);
+        collector.collect(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("TMP", TEST_SOURCE).found().isPresent());

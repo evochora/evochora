@@ -2,39 +2,36 @@ package org.evochora.compiler.features.reg;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.ISymbolCollector;
+import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.isa.IInstructionSet.RegisterBankInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
-import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
-import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.isa.IInstructionSet.RegisterBankInfo;
 
 /**
- * Handles the semantic analysis of .REG directives.
- * Its sole responsibility is to define register aliases in the symbol table; the register
- * itself was checked when it was lexed and parsed.
+ * Collects the alias of a {@code .REG} during pass 1: defines it on the level it stands in, as
+ * an alias of the register's kind, data or location, so that the alias can be used anywhere on
+ * that level, above or below the line. The register itself was checked when it was lexed and
+ * parsed. An alias defined twice on one level is reported at the second definition, naming the
+ * first.
  */
-public class RegAnalysisHandler implements IAnalysisHandler {
+public class RegSymbolCollector implements ISymbolCollector {
 
     private final IInstructionSet isa;
 
     /**
-     * Creates the handler for an instruction set.
+     * Creates the collector for an instruction set.
      *
      * @param isa The instruction set, which tells a location register from a data register.
      */
-    public RegAnalysisHandler(IInstructionSet isa) {
+    public RegSymbolCollector(IInstructionSet isa) {
         this.isa = isa;
     }
 
     @Override
-    public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        if (node instanceof RegNode regNode) {
-            processRegDirective(regNode, symbolTable, diagnostics);
-        }
-    }
-
-    private void processRegDirective(RegNode regNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+    public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        RegNode regNode = (RegNode) node;
         RegisterBankInfo bank = isa.parseRegister(regNode.register())
                 .orElseThrow(() -> new IllegalStateException("Register the instruction set cannot read: " + regNode.register()))
                 .bank();

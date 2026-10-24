@@ -16,7 +16,10 @@ import java.util.Optional;
  * Evaluates a written computation in the analysis phase, as every analysis handler does with the
  * computations it meets: through the bridge to the symbol table, at the scope the symbol table
  * stands in, with the outcome recorded for the computation, a value or the tree only the layout
- * computes. What a handler checks beyond that stays with the handler.
+ * computes. A computation is evaluated once: a second evaluation answers from what the first
+ * recorded, its outcome or its failure, so that a handler run twice for one computation, once
+ * when a name needed its value and once when the walk reached its line, evaluates and reports
+ * once. What a handler checks beyond that stays with the handler.
  */
 public final class ComputationAnalysis {
 
@@ -32,18 +35,41 @@ public final class ComputationAnalysis {
     }
 
     /**
-     * Evaluates a computation and records its outcome for it; reports nothing, so that the caller
-     * can report an error in words of its own.
+     * Evaluates a computation and records its outcome or its failure for it; reports nothing, so
+     * that the caller can report an error in words of its own. A computation evaluated before
+     * answers from its record: its outcome, or {@link EvaluationResult.Reported} for a failure,
+     * whose error was reported the first time.
      *
      * @param expression  The computation.
      * @param symbolTable The symbol table, standing in the scope of the computation's line.
      * @return The result of the evaluation.
      */
     public EvaluationResult evaluate(ExpressionNode expression, SymbolTable symbolTable) {
+        Optional<ExpressionOutcome> recorded = symbolTable.resultOf(expression);
+        if (recorded.isPresent()) {
+            return resultOf(recorded.get());
+        }
+        if (symbolTable.failed(expression)) {
+            return new EvaluationResult.Reported();
+        }
         EvaluationResult result = evaluator.evaluate(expression.expression(),
                 new SymbolTableResolution(symbolTable), IEvaluationContext.none());
-        outcomeOf(result).ifPresent(outcome -> symbolTable.recordResult(expression, outcome));
+        Optional<ExpressionOutcome> outcome = outcomeOf(result);
+        if (outcome.isPresent()) {
+            symbolTable.recordResult(expression, outcome.get());
+        } else {
+            symbolTable.recordFailure(expression);
+        }
         return result;
+    }
+
+    /**
+     * The result a recorded outcome stands for: the value, or the tree a later phase computes.
+     */
+    private static EvaluationResult resultOf(ExpressionOutcome outcome) {
+        return outcome.value() != null
+                ? new EvaluationResult.Value(outcome.value())
+                : new EvaluationResult.Partial(outcome.remaining(), outcome.kind());
     }
 
     /**
