@@ -401,6 +401,10 @@ tasks.register<Test>("integration") {
 // the tests (-x test) still resolves its task graph.
 val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree
 
+jacoco {
+    toolVersion = "0.8.15"
+}
+
 tasks.jacocoTestReport {
     reports {
         xml.required.set(true)
