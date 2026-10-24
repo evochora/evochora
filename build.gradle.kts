@@ -73,8 +73,6 @@ dependencies {
     annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation("org.jline:jline:3.30.4")
-    runtimeOnly("org.jline:jline-terminal-jansi:3.30.4")
 
     // Apache Commons RNG for scientifically-validated RNG with state serialization
     implementation("org.apache.commons:commons-rng-simple:1.7")
@@ -84,9 +82,6 @@ dependencies {
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
-
-    // Reflections library for dynamic subcommand registration (video renderers)
-    implementation("org.reflections:reflections:0.10.2")
 
     // DuckDB JDBC driver for analytics
     implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
