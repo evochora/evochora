@@ -301,14 +301,14 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - **Typesafe Config**: Application configuration with environment variable support (`Config` objects)
 - **SLF4J + Logback**: Structured logging (`LoggerFactory.getLogger()` instead of `System.out.println`)
 - **PicoCLI**: CLI framework with annotations (`@Command`, `@Option`, `@Parameters`)
-- **Javalin**: HTTP server for REST APIs (`Javalin.create().start()`)
+- **Javalin**: HTTP server for REST APIs; the node creates every instance through `JavalinFactory`
 - **Protobuf**: Data pipeline communication (binary serialization)
-- **JUnit 5**: Testing with tags (`@Tag("unit")` or `@Tag("integration")`)
+- **JUnit**: Testing with tags (`@Tag("unit")` or `@Tag("integration")`)
 
 ## Testing Guidelines
 
 **Framework & Tagging:**
-- Use JUnit 5 with `@Tag("unit")` or `@Tag("integration")`
+- Use JUnit with `@Tag("unit")` or `@Tag("integration")`
 - **Unit tests**: <0.2s runtime, no I/O (filesystem, network, database)
 - **Integration tests**: Everything else, but MUST still be fast (target: <1s per test)
 
