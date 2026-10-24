@@ -238,6 +238,22 @@ class ForwardReferenceTest {
     }
 
     /**
+     * A circle through the default of a required value is reported at the requirement, the
+     * definition the walk entered it through, as a circle of two constants is.
+     */
+    @Test
+    void aCircleThroughARequiredDefaultIsReportedAtTheRequirement() throws Exception {
+        write("main.evo",
+                "# A comment line.",
+                ".REQUIRE VALUE X DATA:(Y+1)",
+                ".CONST Y (X+1)",
+                "START:",
+                "  NOP");
+
+        assertSingleError("main.evo:2: Definition of X is circular: X -> Y -> X.");
+    }
+
+    /**
      * A computation that needs its own value is a circle of one.
      */
     @Test

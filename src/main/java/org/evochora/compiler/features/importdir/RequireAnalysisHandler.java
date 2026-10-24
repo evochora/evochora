@@ -30,10 +30,13 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * <p>The constant of a value requirement was defined in pass 1 by {@link RequireSymbolCollector},
  * with the value the import of the placement bound, or else the configured value or the default,
  * behind a {@link ValueBindingNode}. At the requirement's line this handler resolves a default or
- * a configured value that is a name, as a use, reports a missing value of the main program, and
- * computes the constant's value. The value is computed for the binding node, which is also what
- * the handler is run for when a use of the name above the requirement's line needs the value
- * first; computed either way, it is recorded once.
+ * a configured value that is a name, as a use, evaluates a default or a configured value that is
+ * a computation, so that a name in it is resolved whether or not it is the value the constant
+ * takes, reports a missing value of the main program, and uses the constant's name once. That use
+ * has the constant's value computed the way every use does: the symbol table hands the binding
+ * node to the phase, which runs this handler for it, and the handler computes and records the
+ * value. A use above the requirement's line does the same earlier; the value is recorded once,
+ * and a circle through the requirement's own value is reported at the requirement.
  *
  * <p>A value that is a computation gives the constant a recorded value. A bound computation is
  * evaluated in the importer's placement, where it is written, the first time it is needed: at the
@@ -100,7 +103,17 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
             throw new IllegalStateException("The value requirement '" + valueNode.name() + "' at " + SourceInfo.position(at)
                     + " defines no constant, which pass 1 should have defined.");
         }
-        computeValue(binding, symbolTable, diagnostics);
+        // A use of the name at this line: it has the value of a binding that is a computation
+        // computed and recorded, through the phase, by this handler run for the binding node.
+        // It comes before the default and the configured value are evaluated here, so that a
+        // circle through the constant's own value is entered through the binding.
+        symbolTable.chainEndOf(new IdentifierNode(valueNode.name(), at));
+        if (valueNode.defaultValue() instanceof ExpressionNode expression) {
+            evaluate(expression, symbolTable, diagnostics, null);
+        }
+        if (valueNode.configured() instanceof ExpressionNode expression) {
+            evaluate(expression, symbolTable, diagnostics, valueNode);
+        }
         if (binding.value() == null && isRoot(symbolTable)) {
             diagnostics.reportError(
                     "The value '" + valueNode.name() + "' has no default and the configuration sets none; set it with values { "
@@ -111,8 +124,8 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
 
     /**
      * Computes the value of the constant behind a binding and records it for the binding; a
-     * value that is no computation records nothing, as a use of the name follows it. The
-     * computations are evaluated once, so running this a second time records the same value.
+     * value that is no computation records nothing, as a use of the name follows it. Run by the
+     * phase when a use of the name needs the value, from the requirement's line or above it.
      */
     private void computeValue(ValueBindingNode binding, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ValueRequirementNode valueNode = binding.requirement();
