@@ -23,6 +23,10 @@ import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueType;
 
 import io.javalin.Javalin;
+import io.javalin.compression.CompressionStrategy;
+import io.javalin.compression.CompressionType;
+import io.javalin.compression.Gzip;
+import io.javalin.compression.Zstd;
 import io.javalin.config.RoutesConfig;
 
 /**
@@ -128,6 +132,12 @@ public class HttpServerProcess extends AbstractProcess {
 
         app = JavalinFactory.create(config -> {
             config.startup.showJavalinBanner = false;
+
+            // Compression runs on the machine that simulates. zstd costs a fraction of gzip's CPU
+            // for a slightly larger answer, so it is preferred; a client without zstd gets gzip.
+            final CompressionStrategy compression = new CompressionStrategy(null, new Gzip(), new Zstd());
+            compression.setPreferredCompressors(List.of(CompressionType.ZSTD, CompressionType.GZIP));
+            config.http.compressionStrategy = compression;
             
             config.requestLogger.http((ctx, ms) -> {
                 if (LOGGER.isDebugEnabled()) {
