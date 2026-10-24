@@ -15,13 +15,13 @@ import java.util.Set;
 /**
  * The preprocessor flags of one read-time phase. A name is in one of three states: set, with an
  * integer value or without one; switched off by the configuration; or free, neither set nor
- * switched off. A flag that is switched off counts as not set; what a directive may do to it is
- * the directive's rule. Names are compared case-insensitively. The flags are global: one
- * instance serves the whole token stream of the preprocessor, another the whole reading of the Lexer
- * phase. The compiler creates both alike, from the flags of the compilation's options and the
- * names nothing may define; the directives of a feature fill them, and a computation at read
- * time reads them. What a directive may do to a flag that is set already is the directive's
- * rule; the flags hold each definition with where it stands, so that the rule can name it.
+ * switched off. A flag that is switched off counts as not set. Names are compared
+ * case-insensitively. The flags are global: one instance serves the whole token stream of the
+ * preprocessor, another the whole reading of the Lexer phase. The compiler creates both alike,
+ * from the flags of the compilation's options and the names nothing may define; the directives
+ * of a feature fill them, and a computation at read time reads them. What a directive may do to
+ * a flag in any state is the directive's rule; the flags hold each definition with where it
+ * stands, so that the rule can name it.
  */
 public final class Flags {
 
