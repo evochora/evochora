@@ -54,10 +54,11 @@ JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4
 #
 # Every round reads energy and entropy once, into %ER and %SR, for every block to test. The head
 # of a block holds the behavior's gates, each a conditional jump to OPEN on its own, or behind a
-# skip where two conditions have to hold together, so that any open gate calls the behavior; OPEN calls it, and DATA:0 back means it acted and the round starts
-# again. A closed gate, or anything else back, goes on to the next block, whose name stands at
-# the end of the block: a behavior inserted between two blocks changes that name in the block
-# before it. The last block has no gate.
+# skip where two conditions have to hold together, so that any open gate calls the behavior;
+# OPEN calls it, and DATA:0 back means it acted and the round starts again. A closed gate, or
+# anything else back, goes on to the next block, whose name stands at the end of the block: a
+# behavior inserted between two blocks changes that name in the block before it. The last block
+# has no gate.
 # ===========================================================================
 MAIN_LOOP: NOP^2
   NRG %ER; NOP^4                          # Energy for the gates of this round
