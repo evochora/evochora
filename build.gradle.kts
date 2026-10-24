@@ -1,6 +1,9 @@
 import com.google.protobuf.gradle.*
+import java.io.ByteArrayOutputStream
 import java.util.Properties
+import javax.inject.Inject
 import org.gradle.jvm.application.tasks.CreateStartScripts
+import org.gradle.process.ExecOperations
 
 // Show deprecation details for test sources to fix root causes
 tasks.withType<JavaCompile>().configureEach {
@@ -191,35 +194,53 @@ tasks.named("processResources") {
 //
 // The value is resolved while the build is configured and registered as an input of the task, so
 // the file is rewritten when the revision changes and left alone when it does not.
-fun gitOutput(vararg command: String): String? = try {
-    val process = ProcessBuilder(*command)
-        .directory(rootProject.projectDir)
-        .redirectErrorStream(true)
-        .start()
-    val output = process.inputStream.bufferedReader().readText().trim()
-    if (process.waitFor() == 0) output else null
-} catch (e: Exception) {
-    null
-}
+// Gradle runs the git commands of a value source itself and tracks them, which it does not allow
+// for processes a build script starts on its own while it is configured.
+abstract class BuildRevisionSource : ValueSource<String, BuildRevisionSource.Parameters> {
+    interface Parameters : ValueSourceParameters {
+        val projectDir: DirectoryProperty
+    }
 
-val buildRevision: String = run {
-    // Absent in source archives and container builds; in a worktree it is a file, not a directory.
-    val head = if (rootProject.file(".git").exists()) gitOutput("git", "rev-parse", "HEAD") else null
-    if (!head.isNullOrBlank()) {
-        // Only tracked files count: an untracked file is not part of the sources a checkout yields.
-        // A status that cannot be taken leaves the tree's state unknown, not clean.
-        val status = gitOutput("git", "status", "--porcelain", "--untracked-files=no")
-        when {
-            status == null -> "unknown"
-            status.isBlank() -> head
-            else -> head + "-dirty"
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    override fun obtain(): String {
+        val projectDir = parameters.projectDir.get().asFile
+        // Absent in source archives and container builds; in a worktree it is a file, not a directory.
+        val head = if (projectDir.resolve(".git").exists()) gitOutput(projectDir, "rev-parse", "HEAD") else null
+        if (!head.isNullOrBlank()) {
+            // Only tracked files count: an untracked file is not part of the sources a checkout yields.
+            // A status that cannot be taken leaves the tree's state unknown, not clean.
+            val status = gitOutput(projectDir, "status", "--porcelain", "--untracked-files=no")
+            return when {
+                status == null -> "unknown"
+                status.isBlank() -> head
+                else -> head + "-dirty"
+            }
         }
-    } else {
-        val shipped = rootProject.file("GIT_REVISION")
+        val shipped = projectDir.resolve("GIT_REVISION")
         val recorded = if (shipped.isFile) shipped.readText().trim() else ""
-        recorded.ifBlank { "unknown" }
+        return recorded.ifBlank { "unknown" }
+    }
+
+    private fun gitOutput(projectDir: File, vararg arguments: String): String? = try {
+        val output = ByteArrayOutputStream()
+        val result = execOperations.exec {
+            workingDir = projectDir
+            commandLine("git", *arguments)
+            standardOutput = output
+            errorOutput = output
+            isIgnoreExitValue = true
+        }
+        if (result.exitValue == 0) output.toString().trim() else null
+    } catch (e: Exception) {
+        null
     }
 }
+
+val buildRevision: String = providers.of(BuildRevisionSource::class) {
+    parameters.projectDir.set(rootProject.layout.projectDirectory)
+}.get()
 
 val writeBuildInfo = tasks.register("writeBuildInfo") {
     group = "build"
