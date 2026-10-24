@@ -7,7 +7,9 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.isA;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 import io.restassured.response.Response;
 
 /**
@@ -103,7 +106,7 @@ class OrganismControllerDescentTest {
         final ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, database);
         controller = new OrganismController(registry, options);
-        app = Javalin.create(config -> controller.registerRoutes(config.routes, BASE)).start(0);
+        app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, BASE)).start(0);
         port = app.port();
     }
 
@@ -158,6 +161,18 @@ class OrganismControllerDescentTest {
             .body("totalOrganismCount", equalTo(5))
             .body("$", not(hasKey("descent")))
             .body("$", not(hasKey("genomeAncestors")));
+    }
+
+    /**
+     * A genome hash uses all 64 bits, more than a JavaScript number holds exactly, so the answer
+     * carries it as text.
+     */
+    @Test
+    void theGenomeHashOfAnOrganismIsWrittenAsText() {
+        given().port(port).queryParam("runId", runId).get(BASE + "/20")
+        .then()
+            .statusCode(200)
+            .body("organisms.genomeHash", everyItem(isA(String.class)));
     }
 
     @Test

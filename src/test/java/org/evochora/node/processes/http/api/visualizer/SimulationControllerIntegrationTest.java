@@ -46,6 +46,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 
 /**
  * Integration test for SimulationController.
@@ -193,7 +194,7 @@ class SimulationControllerIntegrationTest {
             """);
         SimulationController controller = new SimulationController(registry, controllerConfig);
         // Setup HTTP server
-        app = Javalin.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        app = JavalinFactory.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
         int port = app.port();
 
         // When: Request metadata
@@ -239,7 +240,7 @@ class SimulationControllerIntegrationTest {
         Config controllerConfig = ConfigFactory.empty();
         SimulationController controller = new SimulationController(registry, controllerConfig);
         // Setup HTTP server
-        app = Javalin.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        app = JavalinFactory.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
         int port = app.port();
 
         // When: Request metadata WITHOUT runId parameter (should fallback to latest)
@@ -266,7 +267,7 @@ class SimulationControllerIntegrationTest {
         Config controllerConfig = ConfigFactory.empty();
         SimulationController controller = new SimulationController(registry, controllerConfig);
         // Setup HTTP server
-        app = Javalin.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        app = JavalinFactory.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
         int port = app.port();
 
         // When: Request metadata without runId parameter

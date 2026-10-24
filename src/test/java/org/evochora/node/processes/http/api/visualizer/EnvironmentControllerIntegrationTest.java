@@ -65,6 +65,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 import io.javalin.config.RoutesConfig;
 import io.restassured.response.Response;
 
@@ -404,7 +405,7 @@ class EnvironmentControllerIntegrationTest {
      * test shows when the server was done with each answer.
      */
     private Javalin startApp(final Consumer<RoutesConfig> routes) {
-        return Javalin.create(config -> {
+        return JavalinFactory.create(config -> {
                 config.requestLogger.http((ctx, ms) ->
                     LOGGER.info("Server finished {} {}{} with {} in {} ms on {}", ctx.method(), ctx.path(),
                             ctx.queryString() == null ? "" : "?" + ctx.queryString(), ctx.statusCode(), ms,

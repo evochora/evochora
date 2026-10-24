@@ -1,7 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
@@ -216,7 +216,7 @@ public class SimulationController extends VisualizerBaseController {
 
             // Expand resolvedConfigJson into top-level fields for API backward compatibility
             if (root.has("resolvedConfigJson")) {
-                final String configJson = root.get("resolvedConfigJson").asText();
+                final String configJson = root.get("resolvedConfigJson").asString();
                 if (configJson != null && !configJson.isEmpty()) {
                     final ObjectNode configNode = (ObjectNode) mapper.readTree(configJson);
 

@@ -126,7 +126,7 @@ public class HttpServerProcess extends AbstractProcess {
         final String host = options.getString("network.host");
         final int port = options.getInt("network.port");
 
-        app = Javalin.create(config -> {
+        app = JavalinFactory.create(config -> {
             config.startup.showJavalinBanner = false;
             
             config.requestLogger.http((ctx, ms) -> {

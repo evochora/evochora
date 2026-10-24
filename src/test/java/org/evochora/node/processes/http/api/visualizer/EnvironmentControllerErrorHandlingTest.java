@@ -22,6 +22,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 
 import java.nio.file.Path;
 
@@ -64,7 +65,7 @@ class EnvironmentControllerErrorHandlingTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, database);
         EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
-        app = Javalin.create(config -> controller.registerRoutes(config.routes, "/visualizer/api/environment")).start(0);
+        app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/visualizer/api/environment")).start(0);
         port = app.port();
     }
 

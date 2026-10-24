@@ -1,8 +1,8 @@
 package org.evochora.node.processes.http.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
@@ -337,7 +337,7 @@ public class OpenApiController extends AbstractController {
                 final String[] tags = annotation.tags();
                 if (tags != null && tags.length > 0) {
                     methodObject.remove("tags");
-                    final com.fasterxml.jackson.databind.node.ArrayNode tagsArray = methodObject.putArray("tags");
+                    final tools.jackson.databind.node.ArrayNode tagsArray = methodObject.putArray("tags");
                     for (final String tag : tags) {
                         tagsArray.add(tag);
                     }
@@ -477,8 +477,8 @@ public class OpenApiController extends AbstractController {
 
                         final ObjectNode contentTypeObject = (ObjectNode) contentTypeNode;
                         final JsonNode exampleNode = contentTypeObject.get("example");
-                        if (exampleNode != null && exampleNode.isTextual()) {
-                            final String exampleString = exampleNode.asText();
+                        if (exampleNode != null && exampleNode.isString()) {
+                            final String exampleString = exampleNode.asString();
                             
                             // Check if example should be converted to JSON object
                             // Prefix "JSON:" signals that the string should be parsed as JSON
