@@ -88,8 +88,8 @@ dependencies {
     implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
-    implementation("org.apache.artemis:artemis-jakarta-server:2.51.0")
-    implementation("org.apache.artemis:artemis-jakarta-client:2.51.0")
+    implementation("org.apache.artemis:artemis-jakarta-server:2.57.0")
+    implementation("org.apache.artemis:artemis-jakarta-client:2.57.0")
 
     // JMS session pooling for producer sends (eliminates TCP session creation overhead)
     implementation("org.messaginghub:pooled-jms:3.2.5")
