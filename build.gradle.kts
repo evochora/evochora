@@ -60,7 +60,7 @@ dependencies {
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("org.slf4j:slf4j-api:2.0.20")
     implementation("ch.qos.logback:logback-classic:1.5.26")
     // REMOVED: sqlite-jdbc - not used, H2 is the primary database
     implementation("com.h2database:h2:2.4.240")
