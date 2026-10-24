@@ -52,7 +52,7 @@ dependencies {
     testImplementation("org.mockito:mockito-junit-jupiter:5.24.0")
     testImplementation("org.assertj:assertj-core:3.27.7")
     testImplementation("org.awaitility:awaitility:4.3.0")
-    testImplementation("io.rest-assured:rest-assured:5.4.0") // For API integration testing
+    testImplementation("io.rest-assured:rest-assured:6.3.0") // For API integration testing
     testImplementation("io.javalin:javalin-testtools:6.7.0")
     testImplementation("com.tngtech.archunit:archunit:1.5.1") // Package dependency rules
     
