@@ -71,6 +71,9 @@ The header of a behavior names what someone needs to take it into a main loop, a
 - what it places outside its extent, in or around the body, and the condition that puts on the main file,
 - its extent in the body, for each variant the flags select.
 
+A behavior that a main file places last, so that its rows close the body, exports the rows of its
+extent as `ROWS`.
+
 ## Names
 
 A flag that concerns the whole organism has a plain name, such as `AGGRESSIVE`; a flag that

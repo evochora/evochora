@@ -34,7 +34,7 @@
 #
 # The data pointers carry no meaning after a return.
 #
-# Extent: 100 x 51 cells, with and without AGGRESSIVE and HOARDING.
+# Extent: 100 x 51 cells, with and without AGGRESSIVE and HOARDING; the rows exported as ROWS.
 
 # ----------------------------
 # Values and constants
