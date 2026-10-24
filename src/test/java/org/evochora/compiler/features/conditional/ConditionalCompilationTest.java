@@ -3,6 +3,7 @@ package org.evochora.compiler.features.conditional;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceRoot;
@@ -17,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,6 +63,27 @@ class ConditionalCompilationTest {
     }
 
     @Test
+    void aDefaultIncludesASourceUnlessTheConfigurationSwitchesTheFlagOff() throws Exception {
+        write("shell.evo",
+                "  NOP");
+        write("main.evo",
+                ".DEFINE DEFAULT SHELL",
+                "START:",
+                ".IFDEF SHELL",
+                "  .SOURCE \"shell.evo\"",
+                ".ENDDEF",
+                "  NOP");
+
+        ProgramArtifact withShell = compile("main.evo", Map.of());
+        ProgramArtifact withoutShell = compile("main.evo", Map.of("SHELL", FlagSetting.off()));
+
+        assertThat(resolvedPaths(withShell)).anySatisfy(path -> assertThat(path).endsWith("shell.evo"));
+        assertThat(withShell.machineCodeLayout()).hasSize(LABEL + 2);
+        assertThat(resolvedPaths(withoutShell)).noneSatisfy(path -> assertThat(path).endsWith("shell.evo"));
+        assertThat(withoutShell.machineCodeLayout()).hasSize(LABEL + 1);
+    }
+
+    @Test
     void aSourceAndAnImportInASkippedBranchAreNeverLoaded() throws Exception {
         write("main.evo",
                 "START:",
@@ -99,7 +120,7 @@ class ConditionalCompilationTest {
                 "START:",
                 "  CALL LIB.WORK");
 
-        ProgramArtifact big = compile("main.evo", Map.of("BIG", OptionalLong.empty()));
+        ProgramArtifact big = compile("main.evo", Map.of("BIG", FlagSetting.set()));
         ProgramArtifact small = compile("main.evo", Map.of());
 
         assertThat(resolvedPaths(big))
@@ -154,8 +175,8 @@ class ConditionalCompilationTest {
                 ".ENDDEF",
                 "  NOP");
 
-        assertThat(compile("main.evo", Map.of("level", OptionalLong.of(2))).machineCodeLayout()).hasSize(LABEL + 3);
-        assertThat(compile("main.evo", Map.of("LEVEL", OptionalLong.of(1))).machineCodeLayout()).hasSize(LABEL + 1);
+        assertThat(compile("main.evo", Map.of("level", FlagSetting.set(2))).machineCodeLayout()).hasSize(LABEL + 3);
+        assertThat(compile("main.evo", Map.of("LEVEL", FlagSetting.set(1))).machineCodeLayout()).hasSize(LABEL + 1);
     }
 
     @Test
@@ -164,7 +185,7 @@ class ConditionalCompilationTest {
                 "START:",
                 "  NOP");
 
-        assertThatThrownBy(() -> compile("main.evo", Map.of("NOT A NAME", OptionalLong.empty())))
+        assertThatThrownBy(() -> compile("main.evo", Map.of("NOT A NAME", FlagSetting.set())))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] Configured flag 'NOT A NAME' is not a valid name: a flag name consists of"
@@ -178,7 +199,7 @@ class ConditionalCompilationTest {
                 "  NOP",
                 ".ENDREPEAT");
 
-        assertThatThrownBy(() -> compile("main.evo", Map.of("SHL", OptionalLong.of(1), "NUMBER", OptionalLong.empty())))
+        assertThatThrownBy(() -> compile("main.evo", Map.of("SHL", FlagSetting.set(1), "NUMBER", FlagSetting.set())))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] Configured flag 'NUMBER' is a function and cannot be defined.",
@@ -230,7 +251,7 @@ class ConditionalCompilationTest {
                 "START:",
                 "  NOP");
 
-        assertThatThrownBy(() -> compile("main.evo", Map.of("X", OptionalLong.empty())))
+        assertThatThrownBy(() -> compile("main.evo", Map.of("X", FlagSetting.set())))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("main.evo")
@@ -245,7 +266,7 @@ class ConditionalCompilationTest {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
 
-    private ProgramArtifact compile(String fileName, Map<String, OptionalLong> defines) throws Exception {
+    private ProgramArtifact compile(String fileName, Map<String, FlagSetting> defines) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines, Map.of());
         return new Compiler().compile(fileName, ENV, options);
     }

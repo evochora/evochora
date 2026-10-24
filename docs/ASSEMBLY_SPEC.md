@@ -668,15 +668,13 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 Code can be kept or left out depending on *flags*. A flag is a name that is set or not set; a set flag may carry a number as its value. Flags belong to the whole compilation: a flag set in one file is set in every line the compiler reads after it, whatever file that line stands in.
 
-* `.DEFINE <NAME> [<Number>]`: Sets the flag `<NAME>`, with the number as its value if one is given. A set flag may be set again with the same definition; a different one is an error. To change a flag, remove it first.
-* `.UNDEF <NAME>`: Removes the flag. Removing a flag that is not set does nothing.
+* `.DEFINE [DEFAULT] <NAME> [<Number>]`: Sets the flag `<NAME>`, with the number as its value if one is given. A set flag may be set again with the same definition; a different one is an error. To change a flag, remove it first. With `DEFAULT`, the line does nothing if an earlier `.DEFINE` has set the flag or the simulation's configuration has decided it.
+* `.UNDEF <NAME>`: Removes the flag. Removing a flag nobody has named does nothing.
 * `.IFDEF <NAME> [<Op> <Operand>]` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is set and, when a comparison is given, if its value compares as stated. `<Op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`; `==` and `!=` mean the same as `=` and `<>`. `<Operand>` is a number or the name of another flag. Comparing a flag that has no value is an error.
 * `.IFNDEF <NAME>` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is not set.
 * `.ELSEIFDEF <NAME> [<Op> <Operand>]`, `.ELSEIFNDEF <NAME>`, `.ELSEDEF`: Further branches of the same block. The first branch whose condition holds is kept and every other branch is left out; `.ELSEDEF` is the last branch.
     ```
-    .IFNDEF REDUNDANCY
-      .DEFINE REDUNDANCY 1       # The default, unless the configuration set the flag
-    .ENDDEF
+    .DEFINE DEFAULT REDUNDANCY 1   # Unless the configuration decided the flag
 
     .IFDEF REDUNDANCY >= 2
       JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP
@@ -687,7 +685,7 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
 * **A branch that is left out** is not assembled: no constant, label or macro in it exists, and no file named in it is read.
 * **Lines of their own**: the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
 * **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
-* **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
+* **Flags from outside**: The configuration of a simulation (`defines { … }` in the organism's entry) and `evochora compile --define` decide flags before the first line of the program is read: a flag is set, with or without a value, or switched off, which `.IFDEF` and `.IFNDEF` treat as not set; a `.DEFINE` of such a flag is an error, and `.UNDEF` frees it like any other. A flag they do not name is free, and a `.DEFINE DEFAULT` of it takes effect. The forms are in [CLI_USAGE.md](CLI_USAGE.md#flags---define).
 * **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by the directives that read the program; a flag is seen only by `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` and cannot be used as an operand.
 
 ### Modules and Procedures

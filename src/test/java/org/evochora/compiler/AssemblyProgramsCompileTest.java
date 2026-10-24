@@ -3,9 +3,9 @@ package org.evochora.compiler;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.runtime.isa.Instruction;
@@ -54,7 +54,7 @@ class AssemblyProgramsCompileTest {
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName, String flag) throws Exception {
         String sourceRoot = Path.of("").toAbsolutePath().resolve(sourceRootPath).toString();
         String library = Path.of("").toAbsolutePath().resolve("assembly/lib").toString();
-        Map<String, OptionalLong> defines = flag.isEmpty() ? Map.of() : Map.of(flag, OptionalLong.empty());
+        Map<String, FlagSetting> defines = flag.isEmpty() ? Map.of() : Map.of(flag, FlagSetting.set());
         CompilerOptions options = new CompilerOptions(List.of(
                 new SourceRoot(sourceRoot, null), new SourceRoot(library, "LIB")), defines, Map.of());
 

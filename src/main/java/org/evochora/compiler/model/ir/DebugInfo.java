@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.ir;
 
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.PositionedNote;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceView;
@@ -9,7 +10,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 /**
  * What a program carries for a debugger and a source view besides its items: the text of its
@@ -24,13 +24,14 @@ import java.util.OptionalLong;
  * @param notes    The notes {@code [=value]} of every computation the frontend computed, each at the
  *                 end of the expression it belongs to, each distinct note once, not yet in the view.
  * @param flags    The defines of the compilation's options as the options normalise them: each
- *                 name upper-cased, each value an integer or empty for a name defined without
- *                 one. The regions and notes of the sources were recorded under them.
+ *                 name upper-cased, each value the name's setting: switched off, set without a
+ *                 value, or set with an integer value. The regions and notes of the sources were
+ *                 recorded under them.
  * @param values   The values of the compilation's options as the options normalise them: each
  *                 name upper-cased, each value the text of an operand.
  */
 public record DebugInfo(SourceView view, Map<SourceInfo, TokenInfo> tokenMap, List<PositionedNote> notes,
-                        Map<String, OptionalLong> flags, Map<String, String> values) {
+                        Map<String, FlagSetting> flags, Map<String, String> values) {
 
     /**
      * Makes the record immutable by copying the list and the maps; the copy of the token map
