@@ -26,7 +26,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 
 ## Build & Run (Java/Gradle)
 
-**Java 21 required.** Configure in IDE or use `JAVA_HOME`.
+**Java 25 required.** Configure in IDE or use `JAVA_HOME`.
 
 ```bash
 ./gradlew build              # Full build with tests

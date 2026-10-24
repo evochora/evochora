@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Evochora! We are building a found
 
 ## Quick Start (How to Build)
 
-You need **Java 21** and **Git**.
+You need **Java 25** and **Git**.
 
 ```bash
 # Clone the repository
