@@ -265,6 +265,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 * `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`.
 * `SETV %REG <Vector>`: Sets `<%REG>` to the specified vector.
 * `XCHG %REG1 %REG2`: Exchanges (swaps) the contents of two registers atomically.
+* `TYPR %REG1 %REG2`, `TYPI %REG1 <Literal>`, `TYPS`: Gives the first value the type of the second and keeps its number.
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack.
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`.
 * `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack.

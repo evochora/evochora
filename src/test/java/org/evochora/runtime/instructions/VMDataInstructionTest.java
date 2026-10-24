@@ -278,4 +278,74 @@ public class VMDataInstructionTest {
         assertThat(org.getFailureReason()).contains("Data stack underflow");
         assertThat(org.getDataStack()).isEmpty();
     }
+
+    /**
+     * Verifies that TYPI gives a register value the type of the literal and keeps its number,
+     * a negative one included.
+     */
+    @Test
+    @Tag("unit")
+    void testTypiKeepsTheNumberAndTakesTheTypeOfTheLiteral() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, -1234).toInt());
+        placeInstruction("TYPI", 0, new Molecule(Config.TYPE_ENERGY, 0).toInt());
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_ENERGY, -1234).toInt());
+    }
+
+    /**
+     * Verifies that TYPR takes the type of the value in its second register and leaves that
+     * register as it was.
+     */
+    @Test
+    @Tag("unit")
+    void testTyprTakesTheTypeOfTheSecondRegister() {
+        int typeSource = new Molecule(Config.TYPE_STRUCTURE, 7).toInt();
+        org.writeOperand(0, new Molecule(Config.TYPE_ENERGY, 500).toInt());
+        org.writeOperand(1, typeSource);
+        placeInstruction("TYPR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STRUCTURE, 500).toInt());
+        assertThat(org.readOperand(1)).isEqualTo(typeSource);
+    }
+
+    /**
+     * Verifies that TYPS takes the value from the top of the data stack and the type from the
+     * value below it, and pushes the result in their place.
+     */
+    @Test
+    @Tag("unit")
+    void testTypsTakesTheValueFromTheTopAndTheTypeFromBelow() {
+        org.getDataStack().push(new Molecule(Config.TYPE_ENERGY, 0).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 42).toInt());
+        placeInstruction("TYPS");
+        sim.tick();
+        assertThat(org.getDataStack()).hasSize(1);
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_ENERGY, 42).toInt());
+    }
+
+    /**
+     * Verifies that the result carries no marker, as the result of a computation does not.
+     */
+    @Test
+    @Tag("unit")
+    void testTypDropsTheMarker() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 9, 3).toInt());
+        placeInstruction("TYPI", 0, new Molecule(Config.TYPE_ENERGY, 0).toInt());
+        sim.tick();
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).marker()).isZero();
+    }
+
+    /**
+     * Verifies that a vector in the register fails the instruction and stays where it is.
+     */
+    @Test
+    @Tag("unit")
+    void testTypFailsOnAVector() {
+        org.writeOperand(0, new int[]{1, 0});
+        placeInstruction("TYPI", 0, new Molecule(Config.TYPE_ENERGY, 0).toInt());
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat((int[]) org.readOperand(0)).containsExactly(1, 0);
+    }
 }

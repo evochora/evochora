@@ -23,7 +23,7 @@ public final class Family {
     /** Bitwise operations: AND, OR, XOR, NOT, shifts. */
     public static final int BITWISE = 2;
 
-    /** Data operations: SET, PUSH, POP, XCHG. */
+    /** Data operations: SET, PUSH, POP, XCHG, TYP. */
     public static final int DATA = 3;
 
     /** Conditional skips: IF, comparisons that skip the next instruction. */
