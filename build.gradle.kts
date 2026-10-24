@@ -79,7 +79,7 @@ dependencies {
     implementation("org.apache.commons:commons-rng-simple:1.7")
 
     // Zstd compression library with bundled native binaries for cross-platform support
-    implementation("com.github.luben:zstd-jni:1.5.5-11")
+    implementation("com.github.luben:zstd-jni:1.5.7-24")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
     implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
