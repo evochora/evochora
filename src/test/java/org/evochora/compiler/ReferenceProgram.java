@@ -4,9 +4,9 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -27,8 +27,8 @@ final class ReferenceProgram {
     static final String MAIN_FILE = "main.evo";
 
     /** The flags the configuration sets: one with a value, one without. */
-    static final Map<String, OptionalLong> DEFINES =
-            Map.of("ROWS", OptionalLong.of(4), "VERBOSE", OptionalLong.empty());
+    static final Map<String, FlagSetting> DEFINES =
+            Map.of("ROWS", FlagSetting.set(4), "VERBOSE", FlagSetting.set());
 
     /** The values the configuration sets: a literal, and a computation with the program's names. */
     static final Map<String, String> VALUES = Map.of("GAP", "DATA:3", "SPAN", "(SIZE * 2)");

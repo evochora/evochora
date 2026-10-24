@@ -4,15 +4,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.OptionalLong;
 
 /**
  * Configuration options for the compiler, controlling path resolution and other settings.
  *
  * @param sourceRoots Ordered list of source root directories for path resolution.
  * @param defines     Preprocessor flags of the compilation: each key is a flag name, each value
- *                    the flag's integer value, or empty for a flag set without a value. A name
- *                    absent from the map is not set. The compact constructor upper-cases the
+ *                    the flag's {@link FlagSetting}: switched off, set without a value, or set
+ *                    with an integer value. A name absent from the map is not named by the
+ *                    configuration. The compact constructor upper-cases the
  *                    names and keeps an unmodifiable copy, so that two options whose flags differ
  *                    only in the case of a name are equal. The syntax of a name is not checked
  *                    here; that is left to whoever reads the flags.
@@ -23,7 +23,7 @@ import java.util.OptionalLong;
  *                    keeps an unmodifiable copy, as it does for the flags. The text is not checked
  *                    here; the compiler reports a text that is not one operand.
  */
-public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalLong> defines,
+public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, FlagSetting> defines,
                               Map<String, String> values) {
 
     /**

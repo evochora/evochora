@@ -23,6 +23,7 @@ import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.StandardFeatures;
+import org.evochora.compiler.api.FlagSetting;
 import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
@@ -251,8 +252,8 @@ class CompilerArchitectureRulesTest {
      * of the code tells a role from a kind of data, so the kinds of data are listed here, and each
      * entry is a decision: the types every AST node, AST operand, IR item, IR operand and IR value
      * implements, the value family the formats share, the outcome of a name lookup, the expression
-     * tree, and the outcomes of reading an operand and of parsing, answering and computing an
-     * expression. A nested interface is named by its owner, as in
+     * tree, the outcomes of reading an operand and of parsing, answering and computing an
+     * expression, and the configuration's decision about a flag. A nested interface is named by its owner, as in
      * {@code IInstructionSet.Signature}, and is not covered.
      */
     @Test
@@ -260,7 +261,7 @@ class CompilerArchitectureRulesTest {
         classes().that().areInterfaces().and().areTopLevelClasses()
                 .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class,
                         Expression.class, OperationResult.class, EvaluationResult.class, NameAnswer.class, ParseResult.class,
-                        OperandReading.class)
+                        OperandReading.class, FlagSetting.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
                 .check(compilerClasses);
     }
