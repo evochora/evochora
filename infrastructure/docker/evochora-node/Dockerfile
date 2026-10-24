@@ -11,23 +11,18 @@ FROM gradle:9.8.2-jdk25-resolute@sha256:ca424744a6a45a575f333edea680696d980999c4
 ARG RELEASE_TAG
 WORKDIR /app
 
-# 1. Copy only the necessary build files
+# 1. Copy the build files
 COPY build.gradle.kts settings.gradle.kts ./
 COPY gradlew .
 COPY gradle ./gradle
 
-# 2. Download dependencies into a persistent cache. This layer is cached by Docker
-#    and the Gradle cache itself is persisted across runs via --mount.
-RUN --mount=type=cache,target=/root/.gradle/caches \
-    --mount=type=cache,target=/root/.gradle/wrapper \
-    ./gradlew dependencies --no-daemon
-
-# 3. Copy the rest of the source code
+# 2. Copy the rest of the source code
 COPY src ./src
 COPY assembly ./assembly
 
-# 4. Build the installable distribution (unpacked) instead of a zip archive.
-#    This is cleaner for the COPY step in the next stage.
+# 3. Build the installable distribution (unpacked) instead of a zip archive.
+#    This is cleaner for the COPY step in the next stage. The Gradle cache is kept across
+#    builds on the same machine via --mount; it resolves only what the distribution needs.
 RUN --mount=type=cache,target=/root/.gradle/caches \
     --mount=type=cache,target=/root/.gradle/wrapper \
     ./gradlew installDist -x test --no-daemon --stacktrace
