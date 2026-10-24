@@ -1039,7 +1039,7 @@ Every file has an origin: in the main file it is `0|0`, in a file brought in wit
 * A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Apart from these and the component `P[i]`, an operation on a position is an error.
 * A position, and a value computed from one, cannot be an instruction argument.
 * An expression with `@` means the place where it is written: `.CONST HERE @` is the position of the `.CONST` line, wherever `HERE` is used.
-* A label in an expression must stand above that expression.
+* A label in an expression must stand above that expression. So must a constant whose value is a position, or is computed from one or from `@`: it is used below its line, as a label is.
 * In `.ORG 0|@+2`, `@+` is the marker of `.ORG` (see [Layout Control](#layout-control)), not `@` plus 2; the same holds for `@-` and for the markers of `.DIR`.
 * **Example**: `main.evo` gives `shell.evo` the two corners of its code; `shell.evo` places a shell one cell outside them, wherever `main.evo` imports it.
     ```
