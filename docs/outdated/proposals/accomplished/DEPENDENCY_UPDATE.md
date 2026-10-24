@@ -31,9 +31,11 @@ Deviations from the procedure below:
   Firefox and by executing the data analysis guide.
 - **No broker restart against an old journal,** for the same reason: a run does not change its
   build while it runs.
-- **Behaviour.** The tick hash of a real-run comparison between the commons-rng commit on the merged
-  main and the final state shows whether anything but the random number generator changed the
-  simulation.
+- **Behaviour.** A real-run comparison on the benchmark host — the commons-rng commit on the merged
+  main, on Java 21, against the final state, on Java 25; two rounds of 10 M ticks in swapped order —
+  gave the same tick hash on every run: nothing but the random number generator changed the
+  simulation. The final state took 233–234 s against 255 s for the base, about 8 % less, with a
+  spread of at most one second on either side.
 
 Found on the way and fixed in the same branch: CLI commands without `--help`, the OpenAPI
 annotations of the analyzer's tick and run range, a test comparing label values as signed numbers,
