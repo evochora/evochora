@@ -4,9 +4,9 @@
   "description": "Development dependencies for Evochora VS Code extension",
   "private": true,
   "devDependencies": {
-    "@vscode/vsce": "^3.2.1"
+    "@vscode/vsce": "4.0.0"
   },
   "scripts": {
-    "build": "cd extension && vsce package --out ../evochora-syntax.vsix"
+    "build": "cd extension && vsce package --no-dependencies --out ../evochora-syntax.vsix"
   }
 }
