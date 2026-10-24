@@ -7,7 +7,7 @@
  */
 
     // esm.sh automatically resolves all dependencies including apache-arrow
-    const DUCKDB_VERSION = '1.30.0';
+    const DUCKDB_VERSION = '1.32.0';
     const ESM_URL = `https://esm.sh/@duckdb/duckdb-wasm@${DUCKDB_VERSION}`;
     
     // State
