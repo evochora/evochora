@@ -519,7 +519,7 @@ tasks.named("build") {
 // Code that is written but never reached: the compiler accepts it and the tests pass over it, so
 // nothing else in this build would ever report it.
 pmd {
-    toolVersion = "7.26.0"
+    toolVersion = "7.28.0"
     threads = 4
     // On by default, stated here because the CI workflow restores and saves the resulting
     // build/tmp/pmd*/incremental.cache between runs; without it that step would cache nothing.
@@ -530,9 +530,15 @@ pmd {
     isIgnoreFailures = false
 }
 
+// PMD resolves the types of the JDK through the jrt-fs.jar on its auxiliary classpath. Given the
+// toolchain's, it checks against the JDK the code is compiled with, whatever JVM PMD runs on.
+val pmdJdkTypes = javaToolchains.launcherFor(java.toolchain)
+    .map { it.metadata.installationPath.file("lib/jrt-fs.jar") }
+
 tasks.withType<Pmd>().configureEach {
     // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
     exclude("**/org/evochora/datapipeline/api/contracts/**")
+    classpath = (classpath ?: files()) + files(pmdJdkTypes)
 }
 
 // Javadoc that no longer resolves — a link to a method that was renamed, markup that does not
