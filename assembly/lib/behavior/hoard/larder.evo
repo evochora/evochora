@@ -78,7 +78,8 @@ EXPORT .PROC STEP REF RESULT REF STOCKED
   .ORG 0|@+2
   STEP_READ: NOP^2
     SETR %NEW %OLD; NOP^2                   # Nothing moves unless a mode says so
-    SETI %RES ENERGY:NUMBER(RESERVE); NOP^2 # RESERVE as ENERGY, read here alone
+    SETI %RES RESERVE; NOP^2                # RESERVE, read here alone...
+    TYPI %RES ENERGY:0; NOP^2               # ...as ENERGY at run time: an ENERGY operand would reach a child as ENERGY:0
     NRG %E; TYPI %E ENERGY:0; NOP^2         # The energy, of the same type as the store
     JMPI MODE; NOP^4; JMPI MODE
 
