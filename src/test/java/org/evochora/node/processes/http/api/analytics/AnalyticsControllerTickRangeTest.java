@@ -176,8 +176,7 @@ class AnalyticsControllerTickRangeTest {
         registry.register(IAnalyticsStorageRead.class, storage);
         AnalyticsController controller = new AnalyticsController(
                 registry, ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 1)));
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = Javalin.create(config -> controller.registerRoutes(config.routes, "/api"));
         return app;
     }
 }

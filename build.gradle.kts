@@ -53,7 +53,7 @@ dependencies {
     testImplementation("org.assertj:assertj-core:3.27.7")
     testImplementation("org.awaitility:awaitility:4.3.0")
     testImplementation("io.rest-assured:rest-assured:6.3.0") // For API integration testing
-    testImplementation("io.javalin:javalin-testtools:6.7.0")
+    testImplementation("io.javalin:javalin-testtools:7.2.3")
     testImplementation("com.tngtech.archunit:archunit:1.5.1") // Package dependency rules
     
     
@@ -68,10 +68,10 @@ dependencies {
     implementation("com.google.code.gson:gson:2.15.0")
     implementation("info.picocli:picocli:4.7.7")
     annotationProcessor("info.picocli:picocli-codegen:4.7.7")
-    implementation("io.javalin:javalin:6.7.0")
+    implementation("io.javalin:javalin:7.2.3")
     // Javalin OpenAPI Plugin for API documentation
-    implementation("io.javalin.community.openapi:javalin-openapi-plugin:6.7.0-1")
-    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
+    implementation("io.javalin.community.openapi:javalin-openapi-plugin:7.2.3")
+    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:7.2.3")
     implementation("com.typesafe:config:1.4.9")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
 

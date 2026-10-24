@@ -1,7 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
 import com.typesafe.config.Config;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.openapi.HttpMethod;
@@ -98,7 +98,7 @@ public class OrganismController extends VisualizerBaseController {
     }
 
     @Override
-    public void registerRoutes(final Javalin app, final String basePath) {
+    public void registerRoutes(final RoutesConfig routes, final String basePath) {
         final String listPath = (basePath + "/{tick}").replaceAll("//", "/");
         final String detailPath = (basePath + "/{tick}/{organismId}").replaceAll("//", "/");
         final String mutationsPath = (basePath + "/{tick}/{organismId}/mutations").replaceAll("//", "/");
@@ -109,13 +109,13 @@ public class OrganismController extends VisualizerBaseController {
 
         // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
         // Javalin matches routes in registration order, so /ticks must come first
-        app.get(ticksPath, this::getTicks);
-        app.get(listPath, this::getOrganismsAtTick);
-        app.get(detailPath, this::getOrganismDetails);
-        app.get(mutationsPath, this::getOrganismMutations);
+        routes.get(ticksPath, this::getTicks);
+        routes.get(listPath, this::getOrganismsAtTick);
+        routes.get(detailPath, this::getOrganismDetails);
+        routes.get(mutationsPath, this::getOrganismMutations);
 
         // Setup common exception handlers from base class
-        setupExceptionHandlers(app);
+        setupExceptionHandlers(routes);
     }
 
     /**

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.openapi.HttpMethod;
@@ -62,10 +62,10 @@ public class OpenApiController extends AbstractController {
     }
 
     @Override
-    public void registerRoutes(final Javalin app, final String basePath) {
+    public void registerRoutes(final RoutesConfig routes, final String basePath) {
         final String fullPath = (basePath + "/openapi.json").replaceAll("//", "/");
         LOGGER.debug("Registering OpenAPI endpoint at: {}", fullPath);
-        app.get(fullPath, this::getOpenApiSpec);
+        routes.get(fullPath, this::getOpenApiSpec);
     }
 
     @OpenApi(

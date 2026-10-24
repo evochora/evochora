@@ -66,13 +66,11 @@ class OrganismControllerMutationsTest {
                 .setResolvedConfigJson(TestMetadataHelper.createResolvedConfigJson(100, 100))
                 .build());
 
-        app = Javalin.create().start(0);
-        port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, provider);
         OrganismController controller = new OrganismController(registry, ConfigFactory.empty());
-        controller.registerRoutes(app, "/visualizer/api/organisms");
+        app = Javalin.create(config -> controller.registerRoutes(config.routes, "/visualizer/api/organisms")).start(0);
+        port = app.port();
     }
 
     @AfterEach

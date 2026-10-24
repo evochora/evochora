@@ -31,7 +31,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.typesafe.config.Config;
 
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.openapi.HttpMethod;
 import io.javalin.openapi.OpenApi;
@@ -121,14 +121,14 @@ public class AnalyticsController implements IController {
     }
 
     @Override
-    public void registerRoutes(Javalin app, String basePath) {
-        app.get(basePath + "/runs", this::listRuns);
-        app.get(basePath + "/manifest", this::getManifest);
-        app.get(basePath + "/tick-range", this::getTickRange);
-        app.get(basePath + "/run-range", this::getRunRange);
-        app.get(basePath + "/data", this::queryData);
+    public void registerRoutes(RoutesConfig routes, String basePath) {
+        routes.get(basePath + "/runs", this::listRuns);
+        routes.get(basePath + "/manifest", this::getManifest);
+        routes.get(basePath + "/tick-range", this::getTickRange);
+        routes.get(basePath + "/run-range", this::getRunRange);
+        routes.get(basePath + "/data", this::queryData);
         // Merged Parquet streaming for client-side DuckDB WASM queries
-        app.get(basePath + "/parquet", this::getParquet);
+        routes.get(basePath + "/parquet", this::getParquet);
     }
     
     /**

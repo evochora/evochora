@@ -178,10 +178,6 @@ class SimulationControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
 
-        // Setup HTTP server
-        app = Javalin.create().start(0);
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
@@ -196,7 +192,9 @@ class SimulationControllerIntegrationTest {
             }
             """);
         SimulationController controller = new SimulationController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/simulation");
+        // Setup HTTP server
+        app = Javalin.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        int port = app.port();
 
         // When: Request metadata
         io.restassured.response.Response resp = given()
@@ -235,16 +233,14 @@ class SimulationControllerIntegrationTest {
         SimulationMetadata newMetadata = createMetadata(newRunId, new int[]{20, 20}, false, 10);
         indexMetadata(newRunId, newMetadata);
 
-        // Setup HTTP server
-        app = Javalin.create().start(0);
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         Config controllerConfig = ConfigFactory.empty();
         SimulationController controller = new SimulationController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/simulation");
+        // Setup HTTP server
+        app = Javalin.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        int port = app.port();
 
         // When: Request metadata WITHOUT runId parameter (should fallback to latest)
         io.restassured.response.Response resp = given()
@@ -264,16 +260,14 @@ class SimulationControllerIntegrationTest {
     @Test
     void getMetadata_returns404OnNoRuns() {
         // Given: Empty database (no runs)
-        // Setup HTTP server
-        app = Javalin.create().start(0);
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         Config controllerConfig = ConfigFactory.empty();
         SimulationController controller = new SimulationController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/simulation");
+        // Setup HTTP server
+        app = Javalin.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        int port = app.port();
 
         // When: Request metadata without runId parameter
         io.restassured.response.Response resp = given()

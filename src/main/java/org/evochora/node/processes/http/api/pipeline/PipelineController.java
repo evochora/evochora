@@ -1,7 +1,7 @@
 package org.evochora.node.processes.http.api.pipeline;
 
 import com.typesafe.config.Config;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.openapi.HttpMethod;
@@ -49,28 +49,28 @@ public class PipelineController extends AbstractController {
     }
 
     @Override
-    public void registerRoutes(final Javalin app, final String basePath) {
+    public void registerRoutes(final RoutesConfig routes, final String basePath) {
         final String fullPath = (basePath).replaceAll("//", "/");
 
         // Global control
-        app.get(fullPath + "status", this::getPipelineStatus);
-        app.post(fullPath + "start", this::handleStart);
-        app.post(fullPath + "stop", this::handleStop);
-        app.post(fullPath + "restart", this::handleRestart);
-        app.post(fullPath + "pause", this::handlePause);
-        app.post(fullPath + "resume", this::handleResume);
+        routes.get(fullPath + "status", this::getPipelineStatus);
+        routes.post(fullPath + "start", this::handleStart);
+        routes.post(fullPath + "stop", this::handleStop);
+        routes.post(fullPath + "restart", this::handleRestart);
+        routes.post(fullPath + "pause", this::handlePause);
+        routes.post(fullPath + "resume", this::handleResume);
 
         // Individual service control
         final String servicePath = fullPath + "service/{serviceName}";
-        app.get(servicePath + "/status", this::getServiceStatus);
-        app.post(servicePath + "/start", this::handleServiceStart);
-        app.post(servicePath + "/stop", this::handleServiceStop);
-        app.post(servicePath + "/restart", this::handleServiceRestart);
-        app.post(servicePath + "/pause", this::handleServicePause);
-        app.post(servicePath + "/resume", this::handleServiceResume);
+        routes.get(servicePath + "/status", this::getServiceStatus);
+        routes.post(servicePath + "/start", this::handleServiceStart);
+        routes.post(servicePath + "/stop", this::handleServiceStop);
+        routes.post(servicePath + "/restart", this::handleServiceRestart);
+        routes.post(servicePath + "/pause", this::handleServicePause);
+        routes.post(servicePath + "/resume", this::handleServiceResume);
 
         // Exception handling
-        app.exception(IllegalArgumentException.class, (e, ctx) -> {
+        routes.exception(IllegalArgumentException.class, (e, ctx) -> {
             // This is typically thrown by ServiceManager when a service is not found.
             LOGGER.warn("Not found handler triggered for request {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(ErrorResponseDto.of(
@@ -79,7 +79,7 @@ public class PipelineController extends AbstractController {
                 e.getMessage()
             ));
         });
-        app.exception(IllegalStateException.class, (e, ctx) -> {
+        routes.exception(IllegalStateException.class, (e, ctx) -> {
             LOGGER.warn("Invalid state transition for request {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.CONFLICT).json(ErrorResponseDto.of(
                 HttpStatus.CONFLICT.getCode(),
@@ -87,7 +87,7 @@ public class PipelineController extends AbstractController {
                 e.getMessage()
             ));
         });
-        app.exception(Exception.class, (e, ctx) -> {
+        routes.exception(Exception.class, (e, ctx) -> {
             LOGGER.error("Unhandled exception for request {}", ctx.path(), e);
             ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(ErrorResponseDto.of(
                 HttpStatus.INTERNAL_SERVER_ERROR.getCode(),

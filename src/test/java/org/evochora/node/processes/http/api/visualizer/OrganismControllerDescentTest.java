@@ -103,9 +103,8 @@ class OrganismControllerDescentTest {
         final ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, database);
         controller = new OrganismController(registry, options);
-        app = Javalin.create().start(0);
+        app = Javalin.create(config -> controller.registerRoutes(config.routes, BASE)).start(0);
         port = app.port();
-        controller.registerRoutes(app, BASE);
     }
 
     @AfterEach

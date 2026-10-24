@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 
@@ -72,30 +72,30 @@ public abstract class VisualizerBaseController extends AbstractController {
      *   <li>Exception → 500 Internal Server Error</li>
      * </ul>
      *
-     * @param app The Javalin application instance
+     * @param routes The routes of the Javalin application being configured
      */
-    protected void setupExceptionHandlers(final Javalin app) {
-        app.exception(IllegalArgumentException.class, (e, ctx) -> {
+    protected void setupExceptionHandlers(final RoutesConfig routes) {
+        routes.exception(IllegalArgumentException.class, (e, ctx) -> {
             LOGGER.warn("Invalid request parameters for {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.BAD_REQUEST).json(createErrorBody(HttpStatus.BAD_REQUEST, e.getMessage()));
         });
-        app.exception(NoRunIdException.class, (e, ctx) -> {
+        routes.exception(NoRunIdException.class, (e, ctx) -> {
             LOGGER.debug("No run ID available for request {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
         });
-        app.exception(TickNotFoundException.class, (e, ctx) -> {
+        routes.exception(TickNotFoundException.class, (e, ctx) -> {
             LOGGER.debug("Client requested a tick that was not found for {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
         });
-        app.exception(OrganismNotFoundException.class, (e, ctx) -> {
+        routes.exception(OrganismNotFoundException.class, (e, ctx) -> {
             LOGGER.debug("Client requested an organism that was not found for {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
         });
-        app.exception(PoolExhaustionException.class, (e, ctx) -> {
+        routes.exception(PoolExhaustionException.class, (e, ctx) -> {
             LOGGER.warn("Connection pool exhausted for request {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.TOO_MANY_REQUESTS).json(createErrorBody(HttpStatus.TOO_MANY_REQUESTS, "Server is under heavy load, please try again later"));
         });
-        app.exception(SQLException.class, (e, ctx) -> {
+        routes.exception(SQLException.class, (e, ctx) -> {
             // Which codes mean "the requested run is not there" is decided in one place, so that
             // this net answers the same way as the endpoints that catch the exception themselves.
             if (isSchemaNotFound(e)) {
@@ -110,7 +110,7 @@ public abstract class VisualizerBaseController extends AbstractController {
                     HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred", reference));
             }
         });
-        app.exception(Exception.class, (e, ctx) -> {
+        routes.exception(Exception.class, (e, ctx) -> {
             final String reference = newErrorReference();
             LOGGER.error("Unhandled exception for request {} [{}]: {}", ctx.path(), reference, describeCauses(e));
             LOGGER.debug("Unhandled exception stack trace", e);

@@ -40,7 +40,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.typesafe.config.Config;
 
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.openapi.HttpMethod;
@@ -182,7 +182,7 @@ public class EnvironmentController extends VisualizerBaseController {
     }
 
     @Override
-    public void registerRoutes(final Javalin app, final String basePath) {
+    public void registerRoutes(final RoutesConfig routes, final String basePath) {
         final String tickPath = (basePath + "/{tick}").replaceAll("//", "/");
         final String ticksPath = (basePath + "/ticks").replaceAll("//", "/");
         final String bodyPath = (basePath + "/{tick}/organism/{organismId}").replaceAll("//", "/");
@@ -192,12 +192,12 @@ public class EnvironmentController extends VisualizerBaseController {
 
         // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
         // Javalin matches routes in registration order, so /ticks must come first
-        app.get(ticksPath, this::getTicks);
-        app.get(tickPath, this::getEnvironment);
-        app.get(bodyPath, this::getOrganismBody);
+        routes.get(ticksPath, this::getTicks);
+        routes.get(tickPath, this::getEnvironment);
+        routes.get(bodyPath, this::getOrganismBody);
         
         // Setup common exception handlers from base class
-        setupExceptionHandlers(app);
+        setupExceptionHandlers(routes);
     }
 
     /**
@@ -355,7 +355,7 @@ public class EnvironmentController extends VisualizerBaseController {
             ctx.header("X-Timing-Total-Ms", String.valueOf(totalTimeMs));
             ctx.header("X-Cell-Count", String.valueOf(cellCount));
             // Note: Content-Length is intentionally NOT set here.
-            // Jetty's GzipHandler compresses the response, so setting Content-Length
+            // Javalin compresses the response, so setting Content-Length
             // to the uncompressed size would cause HTTP/2 stream errors.
             
             // Return Protobuf binary

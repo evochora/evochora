@@ -3,7 +3,7 @@ package org.evochora.node.processes.http.api.visualizer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.openapi.HttpMethod;
@@ -55,15 +55,15 @@ public class SimulationController extends VisualizerBaseController {
     }
 
     @Override
-    public void registerRoutes(final Javalin app, final String basePath) {
+    public void registerRoutes(final RoutesConfig routes, final String basePath) {
         final String metadataPath = (basePath + "/metadata").replaceAll("//", "/");
         
         LOGGER.debug("Registering simulation endpoint: metadata={}", metadataPath);
         
-        app.get(metadataPath, this::getMetadata);
+        routes.get(metadataPath, this::getMetadata);
         
         // Setup common exception handlers from base class
-        setupExceptionHandlers(app);
+        setupExceptionHandlers(routes);
     }
 
     /**
