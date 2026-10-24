@@ -63,7 +63,7 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.20")
     implementation("ch.qos.logback:logback-classic:1.5.26")
     // REMOVED: sqlite-jdbc - not used, H2 is the primary database
-    implementation("com.h2database:h2:2.4.240")
+    implementation("com.h2database:h2:2.5.252")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.20.1")
     implementation("com.google.code.gson:gson:2.15.0")
     implementation("info.picocli:picocli:4.7.7")
