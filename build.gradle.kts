@@ -18,7 +18,7 @@ plugins {
     application
     jacoco
     `java-test-fixtures`
-    id("com.google.protobuf") version "0.9.6"
+    id("com.google.protobuf") version "0.10.0"
     id("me.champeau.jmh") version "0.7.3"
     id("pmd")
 }
