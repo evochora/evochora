@@ -33,7 +33,7 @@ for v in "$@"; do
     conf="/cmp/config/perf_server.conf"; [ -f "$CMP/config/$v/perf_server.conf" ] && conf="/cmp/config/$v/perf_server.conf"
     image="$IMAGE"; [ -f "$CMP/config/$v/image" ] && image=$(cat "$CMP/config/$v/image")
     docker run --rm -u "$(id -u):$(id -g)" -v "$CMP:/cmp" -w "/cmp/trees/$v" --name benchcmp "$image" \
-        java -Xms4g -Xmx4g -XX:+AlwaysPreTouch -cp "/cmp/consumer-classes:lib/*" \
+        java -Xms4g -Xmx4g -XX:+AlwaysPreTouch --enable-native-access=ALL-UNNAMED -cp "/cmp/consumer-classes:lib/*" \
         org.evochora.cli.CommandLineInterface --config "$conf" node run > "$log" 2>&1 &
     for i in $(seq 1 720); do
         sleep 10

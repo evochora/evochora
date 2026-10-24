@@ -79,7 +79,7 @@ scp -q -o BatchMode=yes "$jar" "$HOST:~/bench/$name.jar"
 uid_gid="$("${SSH[@]}" 'echo "$(id -u):$(id -g)"')"
 "${SSH[@]}" "docker run --rm -u $uid_gid -v \$HOME/bench:/bench -w /bench \
     --name bench-$name $IMAGE \
-    java -Xmx8g -jar $name.jar $JMH_ARGS -rf json -rff $name.json"
+    java -Xmx8g --enable-native-access=ALL-UNNAMED -jar $name.jar $JMH_ARGS -rf json -rff $name.json"
 
 scp -q -o BatchMode=yes "$HOST:~/bench/$name.json" "$out"
 echo "run-benchmark: result written to $out"

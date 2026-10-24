@@ -103,9 +103,15 @@ dependencies {
 
 }
 
+// zstd-jni and DuckDB load native libraries, which the JVM warns about and a future release blocks
+// unless native access is enabled. Everything runs from the classpath, so it is enabled for the
+// unnamed module as a whole. Every JVM that runs Evochora's code carries the flag: the start
+// scripts of the distribution, the test tasks and the benchmarks.
+val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
+
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
-    applicationDefaultJvmArgs = listOf("-Xmx8g")
+    applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess)
 }
 
 // Fix for Windows "Input line is too long" error
@@ -337,6 +343,7 @@ tasks.test {
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
+    jvmArgs(enableNativeAccess)
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
@@ -362,6 +369,7 @@ tasks.register<Test>("unit") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
+    jvmArgs(enableNativeAccess)
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = false
@@ -381,6 +389,7 @@ tasks.register<Test>("integration") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     maxParallelForks = testForks
     jvmArgs("-Xshare:off")
+    jvmArgs(enableNativeAccess)
     testLogging {
         events("passed", "skipped", "failed")
         // Only show output for failed tests (silent on success)
@@ -457,7 +466,7 @@ afterEvaluate {
 
 jmh {
     jmhVersion = "1.37"
-    jvmArgs.set(listOf("-Xmx8g"))
+    jvmArgs.set(listOf("-Xmx8g", enableNativeAccess))
 }
 
 // Notebooks are committed without execution state (outputs, execution counts). This is done by a
