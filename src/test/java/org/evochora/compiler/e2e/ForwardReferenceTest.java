@@ -254,6 +254,26 @@ class ForwardReferenceTest {
     }
 
     /**
+     * A circle that runs through a module's value and back into the importer is reported once,
+     * at the importer's definition the walk entered it through, and the placements are restored
+     * afterwards: a later name of the importer resolves and adds no error.
+     */
+    @Test
+    void aCircleAcrossAPlacementIsReportedOnceAtTheImporter() throws Exception {
+        write("m.evo",
+                "EXPORT .REQUIRE VALUE N",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"m.evo\" AS M USING VALUE N (X+1)",
+                ".CONST X (M.N*2)",
+                "START:",
+                "  SETI %DR0 OK",
+                ".CONST OK DATA:1");
+
+        assertSingleError("main.evo:2: Definition of X is circular: X -> N -> X.");
+    }
+
+    /**
      * A computation that needs its own value is a circle of one.
      */
     @Test
