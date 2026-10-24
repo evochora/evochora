@@ -117,4 +117,4 @@ MAIN_LOOP: NOP^2
 
 # The reproduction comes last: its rows end the body, and the row after them holds the corner labels
 .ORG 0|@+2
-.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|@[1]+51)
+.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|@[1]+REPRODUCE.ROWS)
