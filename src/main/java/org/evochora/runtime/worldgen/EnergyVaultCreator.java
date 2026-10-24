@@ -3,6 +3,8 @@ package org.evochora.runtime.worldgen;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.Set;
+import java.util.TreeSet;
 
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
@@ -36,20 +38,20 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * {@code 3^n - 1} shell cells with {@code 2n}.
  * <p>
  * <strong>The shell's hardness.</strong> A {@code PEEK} is charged per molecule value, so
- * {@code structureValue} is what a breach costs: with the read rules of the shipped configuration
+ * {@code structure-value} is what a breach costs: with the read rules of the shipped configuration
  * a foreign structure molecule costs ten times its value in energy and as much in entropy. The
  * value is therefore chosen against the energy a core holds and against {@code max-entropy}, not
  * as a cosmetic weight.
  * <ul>
- *   <li><b>percentage:</b> Fraction of total cells to place as vault centres.</li>
- *   <li><b>coreRadius:</b> Manhattan radius of the energy core; {@code 0} is a single cell.</li>
- *   <li><b>wallThickness:</b> Number of shell layers around the core.</li>
- *   <li><b>energyAmount:</b> Energy placed in each core cell.</li>
- *   <li><b>structureValue:</b> Value of each shell molecule, which is what a breach costs.</li>
- *   <li><b>structureOwner:</b> Owner id of the shell; must be negative, because organism ids
+ *   <li><b>fraction:</b> Fraction of total cells to place as vault centres.</li>
+ *   <li><b>core-radius:</b> Manhattan radius of the energy core; {@code 0} is a single cell.</li>
+ *   <li><b>wall-thickness:</b> Number of shell layers around the core.</li>
+ *   <li><b>energy-amount:</b> Energy placed in each core cell.</li>
+ *   <li><b>structure-value:</b> Value of each shell molecule, which is what a breach costs.</li>
+ *   <li><b>structure-owner:</b> Owner id of the shell; must be negative, because organism ids
  *       start at one and a positive value would collide with a living organism.</li>
  *   <li><b>interval:</b> Tick interval at which emptied core cells are refilled.</li>
- *   <li><b>safetyRadius:</b> Additional distance from organism-owned cells a placement keeps.</li>
+ *   <li><b>safety-radius:</b> Additional distance from organism-owned cells a placement keeps.</li>
  * </ul>
  */
 public class EnergyVaultCreator implements ITickPlugin {
@@ -63,8 +65,12 @@ public class EnergyVaultCreator implements ITickPlugin {
 
     private static final int[] NO_CELLS = new int[0];
 
+    /** The keys the options block may carry. */
+    private static final Set<String> OPTION_KEYS = Set.of("fraction", "core-radius", "wall-thickness",
+            "energy-amount", "structure-value", "structure-owner", "interval", "safety-radius");
+
     private final Random random;
-    private final double vaultPercentage;
+    private final double vaultFraction;
     private final int coreRadius;
     private final int wallThickness;
     private final int structureOwner;
@@ -103,7 +109,7 @@ public class EnergyVaultCreator implements ITickPlugin {
      * Creates an energy vault creator.
      *
      * @param randomProvider Source of randomness.
-     * @param percentage Fraction of total environment cells to place as vault centres.
+     * @param fraction Fraction of total environment cells to place as vault centres.
      * @param coreRadius Manhattan radius of the energy core; 0 places a single cell.
      * @param wallThickness Number of shell layers around the core; at least 1.
      * @param energyAmount Energy placed in each core cell; positive.
@@ -112,37 +118,37 @@ public class EnergyVaultCreator implements ITickPlugin {
      * @param interval Tick interval at which emptied core cells are refilled; at least 1.
      * @param safetyRadius Additional distance from organism-owned cells a placement keeps.
      */
-    public EnergyVaultCreator(IRandomProvider randomProvider, double percentage, int coreRadius,
+    public EnergyVaultCreator(IRandomProvider randomProvider, double fraction, int coreRadius,
                               int wallThickness, int energyAmount, int structureValue,
                               int structureOwner, int interval, int safetyRadius) {
-        if (percentage < 0.0) {
-            throw new IllegalArgumentException("percentage must not be negative, is " + percentage);
+        if (fraction < 0.0) {
+            throw new IllegalArgumentException("fraction must not be negative, is " + fraction);
         }
         if (coreRadius < 0) {
-            throw new IllegalArgumentException("coreRadius must not be negative, is " + coreRadius);
+            throw new IllegalArgumentException("core-radius must not be negative, is " + coreRadius);
         }
         if (wallThickness < 1) {
-            throw new IllegalArgumentException("wallThickness must be at least 1, is " + wallThickness);
+            throw new IllegalArgumentException("wall-thickness must be at least 1, is " + wallThickness);
         }
         if (energyAmount <= 0) {
-            throw new IllegalArgumentException("energyAmount must be positive, is " + energyAmount);
+            throw new IllegalArgumentException("energy-amount must be positive, is " + energyAmount);
         }
         if (structureValue <= 0) {
-            throw new IllegalArgumentException("structureValue must be positive, is " + structureValue);
+            throw new IllegalArgumentException("structure-value must be positive, is " + structureValue);
         }
         if (structureOwner >= 0) {
             throw new IllegalArgumentException(
-                    "structureOwner must be negative so that it cannot collide with an organism id, is "
+                    "structure-owner must be negative so that it cannot collide with an organism id, is "
                     + structureOwner);
         }
         if (interval < 1) {
             throw new IllegalArgumentException("interval must be at least 1, is " + interval);
         }
         if (safetyRadius < 0) {
-            throw new IllegalArgumentException("safetyRadius must not be negative, is " + safetyRadius);
+            throw new IllegalArgumentException("safety-radius must not be negative, is " + safetyRadius);
         }
         this.random = randomProvider.asJavaRandom();
-        this.vaultPercentage = percentage;
+        this.vaultFraction = fraction;
         this.coreRadius = coreRadius;
         this.wallThickness = wallThickness;
         this.structureOwner = structureOwner;
@@ -157,19 +163,30 @@ public class EnergyVaultCreator implements ITickPlugin {
      *
      * @param randomProvider Source of randomness.
      * @param config Configuration object containing the vault parameters.
+     * @throws IllegalArgumentException if the block carries an unknown key.
      */
     public EnergyVaultCreator(IRandomProvider randomProvider, Config config) {
         this(
             randomProvider,
-            config.getDouble("percentage"),
-            config.getInt("coreRadius"),
-            config.getInt("wallThickness"),
-            config.getInt("energyAmount"),
-            config.getInt("structureValue"),
-            config.getInt("structureOwner"),
+            requireKnownKeys(config).getDouble("fraction"),
+            config.getInt("core-radius"),
+            config.getInt("wall-thickness"),
+            config.getInt("energy-amount"),
+            config.getInt("structure-value"),
+            config.getInt("structure-owner"),
             config.getInt("interval"),
-            config.getInt("safetyRadius")
+            config.getInt("safety-radius")
         );
+    }
+
+    private static Config requireKnownKeys(Config config) {
+        for (String key : config.root().keySet()) {
+            if (!OPTION_KEYS.contains(key)) {
+                throw new IllegalArgumentException("Unknown key '" + key
+                        + "' in the options of EnergyVaultCreator. Accepted keys: " + new TreeSet<>(OPTION_KEYS));
+            }
+        }
+        return config;
     }
 
     @Override
@@ -200,8 +217,8 @@ public class EnergyVaultCreator implements ITickPlugin {
         this.coordBuffer = new int[dimensions];
 
         int totalCells = environment.getTotalCells();
-        int vaultCount = (int) (vaultPercentage * totalCells);
-        if (vaultCount == 0 && vaultPercentage > 0.0) {
+        int vaultCount = (int) (vaultFraction * totalCells);
+        if (vaultCount == 0 && vaultFraction > 0.0) {
             vaultCount = 1;
         }
         if (vaultCount == 0) {

@@ -51,9 +51,9 @@ public class SeedEnergyCreatorTest {
     void seedsTheConfiguredPercentageOfTheEnvironment() {
         Environment env = new Environment(new int[]{32, 32}, false); // 1024 cells
         Map<String, Object> configMap = new HashMap<>();
-        configMap.put("percentage", 0.5); // 50%
-        configMap.put("amount", 100);
-        configMap.put("amountVariance", 0.0);
+        configMap.put("fraction", 0.5); // 50%
+        configMap.put("energy-amount", 100);
+        configMap.put("energy-amount-variance", 0.0);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
 
@@ -73,8 +73,8 @@ public class SeedEnergyCreatorTest {
     void runsOnlyAtTickZero() {
         Environment env = new Environment(new int[]{32, 32}, false);
         Map<String, Object> configMap = new HashMap<>();
-        configMap.put("percentage", 0.5);
-        configMap.put("amount", 100);
+        configMap.put("fraction", 0.5);
+        configMap.put("energy-amount", 100);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
 
@@ -101,9 +101,9 @@ public class SeedEnergyCreatorTest {
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
         Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1}, false), new HammingLabelMatchingStrategy(), 1);
         Map<String, Object> configMap = new HashMap<>();
-        configMap.put("percentage", 1.0); // 100%
-        configMap.put("amount", 100);
-        configMap.put("amountVariance", 0.2);
+        configMap.put("fraction", 1.0); // 100%
+        configMap.put("energy-amount", 100);
+        configMap.put("energy-amount-variance", 0.2);
 
         // Use a predictable random provider
         IRandomProvider seededRandom = createDeterministicRandomProvider(42L);
@@ -134,8 +134,8 @@ public class SeedEnergyCreatorTest {
         Map<String, Object> configMap = new HashMap<>();
         // Half of the two cells, so exactly one is asked for - and the only empty one is where
         // it has to land.
-        configMap.put("percentage", 0.5);
-        configMap.put("amount", 100);
+        configMap.put("fraction", 0.5);
+        configMap.put("energy-amount", 100);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
 
@@ -163,8 +163,8 @@ public class SeedEnergyCreatorTest {
         }
 
         Map<String, Object> configMap = new HashMap<>();
-        configMap.put("percentage", 0.5);
-        configMap.put("amount", 100);
+        configMap.put("fraction", 0.5);
+        configMap.put("energy-amount", 100);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(
                 createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
@@ -202,5 +202,19 @@ public class SeedEnergyCreatorTest {
             coord[dim] = i;
             iterateCoordinates(shape, coord, dim + 1, action);
         }
+    }
+
+    /**
+     * A key the plugin does not know is rejected, so that a renamed optional key such as the
+     * variance fails at start instead of being ignored.
+     */
+    @Test
+    @Tag("unit")
+    void anUnknownKeyIsRejected() {
+        assertThatThrownBy(() -> new SeedEnergyCreator(new org.evochora.runtime.internal.services.SeededRandomProvider(0L),
+                ConfigFactory.parseMap(Map.of("fraction", 0.5, "energy-amount", 100, "amountVariance", 0.2))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("amountVariance")
+                .hasMessageContaining("energy-amount-variance");
     }
 }

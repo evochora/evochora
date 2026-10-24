@@ -222,12 +222,12 @@ public class EnergyVaultStrategyTest {
         assertThatThrownBy(() -> new EnergyVaultCreator(
                 new SeededRandomProvider(0L), 0.02, 0, 1, ENERGY, HARDNESS, 1, 500, 0))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("structureOwner");
+                .hasMessageContaining("structure-owner");
 
         assertThatThrownBy(() -> new EnergyVaultCreator(
                 new SeededRandomProvider(0L), 0.02, 0, 1, ENERGY, HARDNESS, 0, 500, 0))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("structureOwner");
+                .hasMessageContaining("structure-owner");
 
         Environment tiny = world(2, 2);
         assertThatThrownBy(() -> creator(0.5, 0, 1, 500).execute(simulationAt(tiny, 0L)))
@@ -268,14 +268,14 @@ public class EnergyVaultStrategyTest {
     /**
      * Builds a creator with the test's energy, hardness and owner.
      *
-     * @param percentage Fraction of cells to place as vault centres.
+     * @param fraction Fraction of cells to place as vault centres.
      * @param coreRadius Manhattan radius of the core.
      * @param wallThickness Shell layers around the core.
      * @param interval Ticks between refills.
      * @return A new creator.
      */
-    private static EnergyVaultCreator creator(double percentage, int coreRadius, int wallThickness, int interval) {
-        return new EnergyVaultCreator(new SeededRandomProvider(0L), percentage, coreRadius,
+    private static EnergyVaultCreator creator(double fraction, int coreRadius, int wallThickness, int interval) {
+        return new EnergyVaultCreator(new SeededRandomProvider(0L), fraction, coreRadius,
                 wallThickness, ENERGY, HARDNESS, SHELL_OWNER, interval, 0);
     }
 
@@ -322,5 +322,23 @@ public class EnergyVaultStrategyTest {
             }
         }
         return found;
+    }
+
+    /**
+     * A key the plugin does not know is rejected, so that a renamed or misspelled key fails at
+     * start instead of being ignored.
+     */
+    @Test
+    @Tag("unit")
+    void anUnknownKeyIsRejected() {
+        java.util.Map<String, Object> options = new java.util.HashMap<>(java.util.Map.of(
+                "fraction", 0.01, "core-radius", 0, "wall-thickness", 1, "energy-amount", 10,
+                "structure-value", 1, "structure-owner", -1, "interval", 5, "safety-radius", 0));
+        options.put("energyAmount", 10);
+        assertThatThrownBy(() -> new EnergyVaultCreator(new SeededRandomProvider(0L),
+                com.typesafe.config.ConfigFactory.parseMap(options)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("energyAmount")
+                .hasMessageContaining("energy-amount");
     }
 }

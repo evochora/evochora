@@ -26,7 +26,7 @@
 .REQUIRE VALUE HOARD_CRITICAL DATA:5000            # Draw a ration from the store below this; above what a round
                                                    # costs, and with the reserve below the reproduction's UNIT_ENERGY
 .REQUIRE VALUE HOARD_AFFORD   REPRODUCE_ENERGY_GATE # Put aside what lies above this, until the reserve is stocked
-.REQUIRE VALUE HOARD_OVERFLOW DATA:144000          # Put aside all above this: max-energy less the largest harvest
+.REQUIRE VALUE HOARD_OVERFLOW DATA:140000          # Put aside all above this: max-energy less the largest harvest
 .REQUIRE VALUE HOARD_RESERVE  DATA:10000           # What the store keeps for an emergency
 .ENDDEF
 

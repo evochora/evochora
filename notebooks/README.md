@@ -2,7 +2,6 @@
 
 Analysis notebooks for simulation data.
 
-- `regime_diagnostic.ipynb` — ANOVA-based diagnostic for detecting adaptation across configuration changes
 - `data_analysis_guide.ipynb` — guide to accessing simulation data from a notebook
 
 ## One-time setup

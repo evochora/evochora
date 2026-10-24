@@ -640,7 +640,7 @@ class SimulationRestorerTest {
         String geyser = org.evochora.runtime.worldgen.GeyserCreator.class.getName();
         SimulationMetadata metadata = createMinimalMetadata(
                 "[{ \"className\": \"" + geyser + "\", \"options\": "
-                + "{ \"percentage\": 0.0001, \"interval\": 100, \"amount\": 10000, \"safetyRadius\": 3 } }]");
+                + "{ \"fraction\": 0.0001, \"interval\": 100, \"energy-amount\": 10000, \"safety-radius\": 3 } }]");
         TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
             .addPluginStates(org.evochora.datapipeline.api.contracts.PluginState.newBuilder()
                 .setPluginClass(geyser)
