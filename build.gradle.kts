@@ -61,7 +61,7 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.slf4j:slf4j-api:2.0.20")
-    implementation("ch.qos.logback:logback-classic:1.5.26")
+    implementation("ch.qos.logback:logback-classic:1.6.5")
     // REMOVED: sqlite-jdbc - not used, H2 is the primary database
     implementation("com.h2database:h2:2.5.252")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.20.1")
@@ -73,7 +73,7 @@ dependencies {
     implementation("io.javalin.community.openapi:javalin-openapi-plugin:6.7.0-1")
     annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
     implementation("com.typesafe:config:1.4.9")
-    implementation("net.logstash.logback:logstash-logback-encoder:8.1")
+    implementation("net.logstash.logback:logstash-logback-encoder:9.0")
 
     // Apache Commons RNG for scientifically-validated RNG with state serialization
     implementation("org.apache.commons:commons-rng-simple:1.7")
@@ -97,7 +97,7 @@ dependencies {
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation(platform("org.junit:junit-bom:6.1.3"))
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api")
-    testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
+    testFixturesImplementation("ch.qos.logback:logback-classic:1.6.5")
     testFixturesImplementation("com.google.protobuf:protobuf-java:4.36.2")
     testFixturesImplementation("com.typesafe:config:1.4.9")
 
