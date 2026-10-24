@@ -82,7 +82,7 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.5.5-11")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
 
     // DuckDB JDBC driver for analytics
     implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
