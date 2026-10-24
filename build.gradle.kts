@@ -46,7 +46,7 @@ dependencies {
     implementation("com.google.protobuf:protobuf-java-util:4.36.2") // For JSON conversion
     implementation("com.zaxxer:HikariCP:7.1.0") // High-performance JDBC connection pool
     implementation("it.unimi.dsi:fastutil:8.5.19") // High-performance primitive collections
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.mockito:mockito-core:5.24.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.24.0")
@@ -95,7 +95,7 @@ dependencies {
     implementation("org.messaginghub:pooled-jms:3.2.5")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
-    testFixturesImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testFixturesImplementation(platform("org.junit:junit-bom:6.1.3"))
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
     testFixturesImplementation("com.google.protobuf:protobuf-java:4.36.2")
