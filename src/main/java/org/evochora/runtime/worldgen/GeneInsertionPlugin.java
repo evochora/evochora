@@ -1131,7 +1131,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         for (Molecule mol : chainBuffer) {
             recordBuilder.cell(env.properties.toFlatIndex(walkPos),
                     env.getMoleculeIntAt(walkPos), mol.toInt());
-            env.setMolecule(mol, childId, walkPos);
+            env.setMolecule(mol, mol.isEmpty() ? 0 : childId, walkPos); // an inserted NOP is the empty cell, which has no owner
             walkPos[dvDim] += dvStep;
             if (walkPos[dvDim] >= shapeDvDim) {
                 walkPos[dvDim] -= shapeDvDim;

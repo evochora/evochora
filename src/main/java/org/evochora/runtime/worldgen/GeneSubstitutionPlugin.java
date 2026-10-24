@@ -310,8 +310,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Reads the child's genome in the machine's reading frame, iterates its owned cells via
      * weighted reservoir sampling to select one random non-empty code-encoding molecule — each
      * cell weighted by its type and by the operand slot it stands in — then applies a type-specific
-     * mutation and writes the result back via {@link Environment#setMoleculeAt(int[], Molecule)}:
-     * one cell, or the two cells a register swap exchanges.
+     * mutation and writes the result back: one cell, which a flip to NOP leaves empty and
+     * unowned, or the two cells a register swap exchanges.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -406,8 +406,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             return;
         }
 
+        // A flip to NOP writes the empty cell, which has no owner
         Molecule written = new Molecule(selectedType, newValue, chosenMarker);
-        env.setMoleculeAt(chosen, written);
+        env.setMoleculeAt(chosen, written, written.isEmpty() ? 0 : childId);
 
         // The one changed cell, as the flat index the environment persists cells by, the slot code
         // it stood in and what was done to it. A run that decided to change nothing has already
