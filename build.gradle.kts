@@ -147,28 +147,6 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
-// Fix empty info section in generated OpenAPI files
-tasks.named("compileJava") {
-    // ÄNDERUNG: Werte in der Konfigurationsphase erfassen
-    val apiVersion = project.version.toString()
-    val buildDir = layout.buildDirectory.get().asFile
-
-    doLast {
-        // ÄNDERUNG: Keine Verwendung von file() oder project.* hier drin
-        val openApiDir = buildDir.resolve("classes/java/main/openapi-plugin")
-        val openApiFile = openApiDir.resolve("openapi-default.json")
-        
-        if (openApiFile.exists()) {
-            val content = openApiFile.readText()
-            // Verwendung der zuvor erfassten Variable
-            val fixedContent = content
-                .replace("\"title\": \"\"", "\"title\": \"Evochora API\"")
-                .replace("\"version\": \"\"", "\"version\": \"$apiVersion\"")
-            openApiFile.writeText(fixedContent)
-        }
-    }
-}
-
 // Copy generated OpenAPI files to resources directory
 tasks.named("processResources") {
     doLast {
@@ -198,7 +176,9 @@ tasks.named("processResources") {
 // The revision of the sources a build was made from, put on its classpath as
 // evochora-build.properties and read there by org.evochora.BuildInfo. The engine writes that
 // revision into the metadata of every run, because a run is reproduced exactly only by the build
-// that wrote it; whoever reads a run compares the two and warns when they differ.
+// that wrote it; whoever reads a run compares the two and warns when they differ. Beside it the
+// file holds the version of the build - the release tag, or "latest" - which the API documentation
+// names.
 //
 // The value comes from the first of these that answers:
 //   1. the git checkout — the commit hash, with "-dirty" appended when a tracked file carries
@@ -259,17 +239,19 @@ val buildRevision: String = providers.of(BuildRevisionSource::class) {
 
 val writeBuildInfo = tasks.register("writeBuildInfo") {
     group = "build"
-    description = "Records the revision of the sources on the classpath"
+    description = "Records the revision of the sources and the version of the build on the classpath"
 
     val revision = buildRevision
+    val buildVersion = project.version.toString()
     val propertiesFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
     inputs.property("revision", revision)
+    inputs.property("version", buildVersion)
     outputs.file(propertiesFile)
 
     doLast {
         val target = propertiesFile.get().asFile
         target.parentFile.mkdirs()
-        target.writeText("revision=$revision\n")
+        target.writeText("revision=$revision\nversion=$buildVersion\n")
     }
 }
 
