@@ -42,8 +42,8 @@ repositories {
 }
 
 dependencies {
-    implementation("com.google.protobuf:protobuf-java:4.33.0")
-    implementation("com.google.protobuf:protobuf-java-util:4.33.0") // For JSON conversion
+    implementation("com.google.protobuf:protobuf-java:4.36.2")
+    implementation("com.google.protobuf:protobuf-java-util:4.36.2") // For JSON conversion
     implementation("com.zaxxer:HikariCP:6.2.1") // High-performance JDBC connection pool
     implementation("it.unimi.dsi:fastutil:8.5.12") // High-performance primitive collections
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
@@ -98,7 +98,7 @@ dependencies {
     testFixturesImplementation(platform("org.junit:junit-bom:5.13.4"))
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
-    testFixturesImplementation("com.google.protobuf:protobuf-java:4.33.0")
+    testFixturesImplementation("com.google.protobuf:protobuf-java:4.36.2")
     testFixturesImplementation("com.typesafe:config:1.4.3")
 
 }
@@ -434,7 +434,7 @@ apply(from = "gradle/new-code-coverage.gradle.kts")
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:4.33.0"
+        artifact = "com.google.protobuf:protoc:4.36.2"
     }
 }
 
