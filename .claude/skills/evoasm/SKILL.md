@@ -56,8 +56,8 @@ session an iteration.
 - A module names what it needs with `.REQUIRE MODULE "x.evo" AS A` and `.REQUIRE VALUE N [default]`;
   the importer supplies both on its `.IMPORT` with `USING MODULE M AS A VALUE N value`, a name
   bound as a value being one the importer defines, above or below the import. A module never
-  sees the importer's names otherwise. The main program's values come from the configuration, `values { … }` or
-  `--value N=TEXT`.
+  sees the importer's names otherwise. The main program's values come from the configuration,
+  `values { … }` or `--value N=TEXT`.
 - A name inside a `.PROC` (label, constant, register alias, parameter) may repeat a name of the
   module around it; inside the procedure the inner one is meant, by its plain name and by its
   path. A label inside a procedure is reached from outside only with `EXPORT` on it, as
