@@ -32,6 +32,10 @@ for v in "$@"; do
     log="$CMP/logs/$v.log"; mkdir -p "$CMP/logs"; rm -rf "$CMP/perf-data" "$log"
     conf="/cmp/config/perf_server.conf"; [ -f "$CMP/config/$v/perf_server.conf" ] && conf="/cmp/config/$v/perf_server.conf"
     image="$IMAGE"; [ -f "$CMP/config/$v/image" ] && image=$(cat "$CMP/config/$v/image")
+    # An image docker run had to fetch first would leave no container to watch while it downloads,
+    # and the loop below would take that for a finished run.
+    docker image inspect "$image" > /dev/null 2>&1 || docker pull -q "$image" > /dev/null \
+        || { echo "$v FAILED image not available: $image" >> "$CMP/progress.txt"; continue; }
     docker run --rm -u "$(id -u):$(id -g)" -v "$CMP:/cmp" -w "/cmp/trees/$v" --name benchcmp "$image" \
         java -Xms4g -Xmx4g -XX:+AlwaysPreTouch --enable-native-access=ALL-UNNAMED -cp "/cmp/consumer-classes:lib/*" \
         org.evochora.cli.CommandLineInterface --config "$conf" node run > "$log" 2>&1 &
