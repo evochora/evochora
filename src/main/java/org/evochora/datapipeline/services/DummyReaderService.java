@@ -37,6 +37,7 @@ public class DummyReaderService extends AbstractService {
     private final AtomicLong validationErrors = new AtomicLong(0);
     private final AtomicLong readErrors = new AtomicLong(0);
     private final Set<StoragePath> processedFiles = ConcurrentHashMap.newKeySet();
+    private final Set<StoragePath> failedOnce = ConcurrentHashMap.newKeySet();
 
     // Track expected tick range for validation
     private long minTickSeen = Long.MAX_VALUE;
@@ -136,13 +137,21 @@ public class DummyReaderService extends AbstractService {
                             log.debug("Read chunk batch {} with {} chunks", path, state[1]);
 
                         } catch (Exception e) {
-                            log.warn("Failed to read chunk batch {}", path);
-                            readErrors.incrementAndGet();
-                            recordError(
-                                "READ_BATCH_ERROR",
-                                "Failed to read chunk batch",
-                                String.format("Path: %s", path)
-                            );
+                            if (failedOnce.add(path)) {
+                                // The listing can show a file its writer is still moving into place,
+                                // and on some file systems it cannot be opened until the move ends;
+                                // it stays unprocessed and is read again in the next round
+                                log.debug("Chunk batch {} not readable yet, reading it again next round: {}",
+                                    path, e.getMessage());
+                            } else {
+                                log.warn("Failed to read chunk batch {}: {}", path, e.getMessage());
+                                readErrors.incrementAndGet();
+                                recordError(
+                                    "READ_BATCH_ERROR",
+                                    "Failed to read chunk batch",
+                                    String.format("Path: %s, cause: %s", path, e.getMessage())
+                                );
+                            }
                         } finally {
                             setShutdownPhase(ShutdownPhase.WAITING);
                         }
