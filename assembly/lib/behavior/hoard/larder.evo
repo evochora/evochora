@@ -30,7 +30,7 @@
 #
 # The data pointers carry no meaning after a return.
 #
-# Extent: 66 x 21 cells, the store among them.
+# Extent: 99 x 11 cells, the store among them.
 
 # ----------------------------
 # Values and constants
@@ -75,7 +75,6 @@ EXPORT .PROC STEP REF RESULT REF STOCKED
     JNTI %OLD ENERGY:0 STEP_RETURN; NOP^2   # Something else stands there: not ours to replace
     JMPI STEP_READ; NOP^4; JMPI STEP_READ
 
-  .ORG 0|@+2
   STEP_READ: NOP^2
     SETR %NEW %OLD; NOP^2                   # Nothing moves unless a mode says so
     SETI %RES RESERVE; NOP^2                # RESERVE, read here alone...
@@ -101,12 +100,10 @@ EXPORT .PROC STEP REF RESULT REF STOCKED
     MAXI %NEW ENERGY:0; NOP^2               # ...but never below empty
     SETI RESULT EMERGENCY; NOP^2            # For the search, if it comes out
     JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
-  .ORG 0|@+2
   .CASE SURPLUS
     SETR %NEW %OLD; ADDR %NEW %TMP; NOP^2   # The store and the surplus; a full store holds what it can
     SETI RESULT DATA:0; NOP^2               # Acted, if it goes in
     JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
-  .ORG 0|@+2
   .CASE STOCK
     SETR %NEW %RES; SUBR %NEW %OLD; NOP^2   # Room left below RESERVE...
     MINR %TMP %NEW; NOP^2                   # ...or what can be afforded, the smaller
@@ -124,7 +121,6 @@ EXPORT .PROC STEP REF RESULT REF STOCKED
     SETR %TMP %NEW; PPKI %TMP 1|0; NOP^2    # Take out the old, put in the new, in one tick
     JFER STEP_IDLE; NOP^2                   # Failed: nothing moved
     JMPI STEP_SETTLE; NOP^4; JMPI STEP_SETTLE
-  .ORG 0|@+2
   STEP_IDLE: NOP^2
     SETI RESULT CODE:0; NOP^2               # Nothing moved
     SETR %NEW %OLD; NOP^2                   # The store as it was
@@ -139,7 +135,6 @@ EXPORT .PROC STEP REF RESULT REF STOCKED
     GETR %NEW %RES                          # ...unless it holds at least that much
       SETI STOCKED DATA:1; NOP^2
     JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
-  .ORG 0|@+2
   STEP_RETURN:
     # Multiple RET instructions for mutation resistance
     NOP^4; RET; NOP^12; RET; NOP^4; RET
