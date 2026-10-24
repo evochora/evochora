@@ -43,10 +43,8 @@ dependencies {
     implementation("com.google.protobuf:protobuf-java-util:4.33.0") // For JSON conversion
     implementation("com.zaxxer:HikariCP:6.2.1") // High-performance JDBC connection pool
     implementation("it.unimi.dsi:fastutil:8.5.12") // High-performance primitive collections
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
-    testImplementation("ch.qos.logback:logback-classic:1.5.26")
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
@@ -57,7 +55,7 @@ dependencies {
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("ch.qos.logback:logback-classic:1.5.26")
@@ -94,7 +92,8 @@ dependencies {
     implementation("org.messaginghub:pooled-jms:3.2.2")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
-    testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testFixturesImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testFixturesImplementation("org.junit.jupiter:junit-jupiter-api")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
     testFixturesImplementation("com.google.protobuf:protobuf-java:4.33.0")
     testFixturesImplementation("com.typesafe:config:1.4.3")
