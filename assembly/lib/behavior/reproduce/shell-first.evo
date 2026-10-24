@@ -17,6 +17,9 @@
 # Inside the child's shell foreign cells are overwritten in either variant; with AGGRESSIVE only
 # while energy and entropy allow it.
 #
+# Flag HOARDING: an ENERGY molecule of the body is copied as ENERGY:0, so that a store of energy
+# in the body reaches the child empty and every child holds the same molecule there.
+#
 # Value CHILD_ENERGY, without default: the energy the child is given. A birth needs CHILD_ENERGY
 # and UNIT_ENERGY, so a gate that sends the main loop here has to lie above their sum.
 #
@@ -31,7 +34,7 @@
 #
 # The data pointers carry no meaning after a return.
 #
-# Extent: 100 x 51 cells, with and without AGGRESSIVE.
+# Extent: 100 x 51 cells, with and without AGGRESSIVE and HOARDING; the rows exported as ROWS.
 
 # ----------------------------
 # Values and constants
@@ -39,6 +42,8 @@
 .REQUIRE VALUE CHILD_ENERGY              # What the child is given at birth
 .REQUIRE VALUE BODY_NW                   # Position of the body's north-west cell
 .REQUIRE VALUE BODY_SE                   # Position of the body's south-east cell
+
+EXPORT .CONST ROWS 51                    # Rows of the extent, as the header declares; the main file closes the body with them
 
 .CONST UNIT_ENERGY  DATA:20000           # At least this much before an edge or a row, and besides CHILD_ENERGY before the birth
 .CONST ENTROPY_ROOM DATA:45000           # Above this a foreign cell is not taken: taking it costs entropy
@@ -484,6 +489,10 @@ EXPORT .PROC STEP REF RESULT
   .IFDEF AGGRESSIVE
     TAKE_CELL TAKE_ROW_CELL %ALONG %E BODY_OCCUPIED BODY_LOW # With AGGRESSIVE: may a foreign cell here be taken?
   .ENDDEF
+  .IFDEF HOARDING
+    IFTI %M ENERGY:0                        # Energy in the body...
+      SETI %M ENERGY:0; NOP^2               # ...reaches the child as ENERGY:0: a store is not inherited
+  .ENDDEF
     PPKR %M %ALONG; NOP^2                   # Clear whatever is there and write, in one tick
     SEEK %ALONG; NOP^2                      # The cell is ours now; a rare failure costs the child, not us
     JMPI BODY_CELL; NOP^4; JMPI BODY_CELL
@@ -499,6 +508,10 @@ EXPORT .PROC STEP REF RESULT
     ADPI DATA:1; NOP^2                      # Through the write pointer
   .IFDEF AGGRESSIVE
     TAKE_CELL TAKE_CLEARED %ALONG %E BODY_OCCUPIED BODY_LOW # With AGGRESSIVE: may a foreign cell here be taken?
+  .ENDDEF
+  .IFDEF HOARDING
+    IFTI %M ENERGY:0                        # Energy in the body...
+      SETI %M ENERGY:0; NOP^2               # ...reaches the child as ENERGY:0: a store is not inherited
   .ENDDEF
     PPKR %M %ALONG; NOP^2                   # Clear whatever is there and write, in one tick
     SEEK %ALONG; NOP^2                      # Unchecked as above

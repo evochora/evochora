@@ -28,6 +28,9 @@ position it depends on. When that is missing it returns before acting on it, and
 done so far for the next call to go on from.
 When the step is worth taking is not the behavior's decision: the thresholds that choose between
 behaviors stand in the main file.
+A behavior whose gates need values it requires exports them, `EXPORT .REQUIRE VALUE`, so that a
+gate reads the value the behavior received, as `<ALIAS>.<NAME>`. A state the gates need and only
+the behavior knows, it hands back through a further reference parameter.
 
 ## The result
 
@@ -48,7 +51,7 @@ On every return:
 - the marker register is 0,
 - the active data pointer is DP0,
 - the data and location stacks are as high as at the call,
-- no global register has changed but the result,
+- no global register has changed but those handed in by reference,
 
 and every behavior finds the marker 0 and DP0 active when it is called.
 
@@ -67,6 +70,9 @@ The header of a behavior names what someone needs to take it into a main loop, a
 - what the behavior requires of the main file,
 - what it places outside its extent, in or around the body, and the condition that puts on the main file,
 - its extent in the body, for each variant the flags select.
+
+A behavior that a main file places last, so that its rows close the body, exports the rows of its
+extent as `ROWS`.
 
 ## Names
 

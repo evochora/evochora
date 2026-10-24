@@ -5,8 +5,14 @@
 # the library, and the main loop that chooses among them. How a behavior is taken into the loop
 # stands in LIB:behavior/README.md.
 #
-# Extent: the body measures WIDTH x HEIGHT cells; the reproduction behavior places the shell
-# around it, and a label on each of the body's corner cells.
+# Flag HOARDING, set unless the configuration switches it off: the organism keeps a store of
+# energy in its body (LIB:behavior/hoard/larder.evo), put aside in good times and drawn on in danger.
+#
+# Extent: the body measures WIDTH columns and as many rows as the behaviors take, the reproduction
+# last; the reproduction behavior places the shell around it, and a label on each of the body's
+# corner cells.
+
+.DEFINE DEFAULT HOARDING
 
 # ----------------------------
 # Values, set from the configuration with values { ... } in the organism's entry
@@ -16,12 +22,18 @@
 .REQUIRE VALUE REPRODUCE_CHILD_ENERGY DATA:25000   # What a child is given; a birth needs it and the
                                                    # reproduction's UNIT_ENERGY, so the energy gate has to
                                                    # lie well above their sum
+.IFDEF HOARDING
+.REQUIRE VALUE HOARD_CRITICAL DATA:5000            # Draw a ration from the store below this; above what a round
+                                                   # costs, and with the reserve below the reproduction's UNIT_ENERGY
+.REQUIRE VALUE HOARD_AFFORD   REPRODUCE_ENERGY_GATE # Put aside what lies above this, until the reserve is stocked
+.REQUIRE VALUE HOARD_OVERFLOW DATA:144000          # Put aside all above this: max-energy less the largest harvest
+.REQUIRE VALUE HOARD_RESERVE  DATA:10000           # What the store keeps for an emergency
+.ENDDEF
 
 # ----------------------------
 # The body
 # ----------------------------
 .CONST WIDTH  100                        # Columns of the body
-.CONST HEIGHT 70                         # Rows of the body
 
 # ----------------------------
 # Register aliases (main loop only)
@@ -29,6 +41,9 @@
 .REG %ER     %DR0   # Energy, read once per round
 .REG %SR     %DR1   # Entropy, read once per round
 .REG %RESULT %DR2   # What the behavior called last reported
+.IFDEF HOARDING
+.REG %HOARD_STOCKED %DR3   # Whether the store holds its reserve, as the store last reported
+.ENDDEF
 
 # The IP starts on 0|0, on the label the reproduction behavior places there, one cell before the jump
 .ORG 1|0
@@ -38,16 +53,38 @@ JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4
 # MAIN LOOP - one block per behavior, in the order of their priority
 #
 # Every round reads energy and entropy once, into %ER and %SR, for every block to test. The head
-# of a block holds the behavior's gates, each a conditional jump to OPEN on its own, so that any
-# open gate calls the behavior; OPEN calls it, and DATA:0 back means it acted and the round starts
-# again. A closed gate, or anything else back, goes on to the next block, whose name stands at
-# the end of the block: a behavior inserted between two blocks changes that name in the block
-# before it. The last block has no gate.
+# of a block holds the behavior's gates, each a conditional jump to OPEN on its own, or behind a
+# skip where two conditions have to hold together, so that any open gate calls the behavior;
+# OPEN calls it, and DATA:0 back means it acted and the round starts again. A closed gate, or
+# anything else back, goes on to the next block, whose name stands at the end of the block: a
+# behavior inserted between two blocks changes that name in the block before it. The last block
+# has no gate.
 # ===========================================================================
 MAIN_LOOP: NOP^2
   NRG %ER; NOP^4                          # Energy for the gates of this round
   NTR %SR; NOP^4                          # Entropy for the gates of this round
+.IFDEF HOARDING
+  JMPI HOARDING; NOP^4; JMPI HOARDING
+.ELSEDEF
   JMPI REPRODUCING; NOP^4; JMPI REPRODUCING
+.ENDDEF
+
+.IFDEF HOARDING
+.ORG 0|@+2
+.CONTROL HOARDING
+  JLTI %ER HOARD.CRITICAL OPEN; NOP^2     # In danger...
+  JGTI %ER HOARD.OVERFLOW OPEN; NOP^2     # ...or the next harvest would be lost at the limit...
+  INI %HOARD_STOCKED DATA:1               # ...or the reserve is not stocked, as before the first call...
+    JGTI %ER HOARD.AFFORD OPEN; NOP^2     # ...and can be afforded
+  JMPI END; NOP^4; JMPI END; NOP^4
+.CASE OPEN
+  SETI %RESULT CODE:0; NOP^2              # Silence counts as "not acted"
+  CALL HOARD.STEP REF %RESULT REF %HOARD_STOCKED; NOP^2 # One move into the store or out of it
+  JFI %RESULT DATA:0 MAIN_LOOP; NOP^2     # Acted: the round starts again
+  JFI %RESULT HOARD.EMERGENCY HARVESTING; NOP^2 # A ration: it pays the search, not a reproduction
+.ENDCONTROL
+  JMPI REPRODUCING; NOP^4; JMPI REPRODUCING; NOP^4
+.ENDDEF
 
 .ORG 0|@+2
 .CONTROL REPRODUCING
@@ -73,5 +110,11 @@ MAIN_LOOP: NOP^2
 .ORG 0|@+2
 .IMPORT "LIB:behavior/harvest/random-run.evo" AS HARVEST
 
+.IFDEF HOARDING
 .ORG 0|@+2
-.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|HEIGHT-1)
+.IMPORT "LIB:behavior/hoard/larder.evo" AS HOARD USING VALUE CRITICAL HOARD_CRITICAL VALUE AFFORD HOARD_AFFORD VALUE OVERFLOW HOARD_OVERFLOW VALUE RESERVE HOARD_RESERVE
+.ENDDEF
+
+# The reproduction comes last: its rows end the body, and the row after them holds the corner labels
+.ORG 0|@+2
+.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY VALUE BODY_NW POSITION(0|0) VALUE BODY_SE POSITION(WIDTH-1|@[1]+REPRODUCE.ROWS)

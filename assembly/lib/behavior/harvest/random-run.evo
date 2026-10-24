@@ -1,5 +1,6 @@
 # behavior/harvest/random-run.evo
 # Harvesting: straight runs in random directions, eating the energy found beside the way.
+# Energy the organism owns is left where it is.
 #
 # STEP REF RESULT takes no further parameters and makes at most one run per call.
 #
@@ -12,7 +13,7 @@
 # Reads no flag and no value. DP0 is left where the next call goes on from: next to the eaten
 # cell, at the end of the run, or on the instruction pointer. Requires nothing of the main file.
 #
-# Extent: 87 x 13 cells.
+# Extent: 92 x 13 cells.
 
 # ----------------------------
 # Constants
@@ -67,7 +68,8 @@ EXPORT .PROC STEP REF RESULT
     RBIR %VEC %MASK; NOP^2                  # Pick one of them
     B2VR %VEC %VEC; NOP^2                   # ...as a direction
     SCAN %MASK %VEC; NOP^2                  # Read the cell again
-    JLEI %MASK DATA:0 STEP_GO; NOP^2        # Our own ENERGY:0 operands hold nothing; eating them blinds this scan
+    JFMR %VEC STEP_GO; NOP^2                # Our own energy is no food: a store, or an operand of our code
+    JLEI %MASK DATA:0 STEP_GO; NOP^2        # ENERGY:0 holds nothing; eating it blinds this scan
     JNTI %MASK ENERGY:0 STEP_GO; NOP^2      # Still energy? The last look before we take it
     PEEK %MASK %VEC; NOP^2                  # Eat it
     SETI RESULT DATA:0; NOP^2               # Acted

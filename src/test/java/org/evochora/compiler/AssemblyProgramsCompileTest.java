@@ -49,12 +49,15 @@ class AssemblyProgramsCompileTest {
             "assembly/primordial,                shell-first/main.evo,  ''",
             "assembly/primordial,                default/main.evo,      ''",
             "assembly/primordial,                default/main.evo,      AGGRESSIVE",
+            "assembly/primordial,                default/main.evo,      HOARDING=false",
     })
     @Tag("integration")
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName, String flag) throws Exception {
         String sourceRoot = Path.of("").toAbsolutePath().resolve(sourceRootPath).toString();
         String library = Path.of("").toAbsolutePath().resolve("assembly/lib").toString();
-        Map<String, FlagSetting> defines = flag.isEmpty() ? Map.of() : Map.of(flag, FlagSetting.set());
+        Map<String, FlagSetting> defines = flag.isEmpty() ? Map.of()
+                : flag.endsWith("=false") ? Map.of(flag.substring(0, flag.indexOf('=')), FlagSetting.off())
+                : Map.of(flag, FlagSetting.set());
         CompilerOptions options = new CompilerOptions(List.of(
                 new SourceRoot(sourceRoot, null), new SourceRoot(library, "LIB")), defines, Map.of());
 
