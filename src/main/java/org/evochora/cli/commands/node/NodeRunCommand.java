@@ -17,7 +17,8 @@ import java.util.concurrent.Callable;
  */
 @Command(
     name = "run",
-    description = "Starts the Evochora Node server in foreground mode"
+    description = "Starts the Evochora Node server in foreground mode",
+    mixinStandardHelpOptions = true
 )
 public class NodeRunCommand implements Callable<Integer> {
 

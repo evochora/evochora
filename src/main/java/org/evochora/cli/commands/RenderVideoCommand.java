@@ -26,6 +26,7 @@ import picocli.CommandLine.Command;
  */
 @Command(name = "video", description = "Renders a simulation run to a video file using ffmpeg. "
     + "Defaults to MKV for resilience against interruptions.",
+    mixinStandardHelpOptions = true,
     subcommands = {
         ExactFrameRenderer.class,
         MinimapFrameRenderer.class,

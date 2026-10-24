@@ -67,7 +67,8 @@ import java.util.concurrent.Callable;
  */
 @Command(
     name = "compile",
-    description = "Compiles an assembly source file to a ProgramArtifact JSON"
+    description = "Compiles an assembly source file to a ProgramArtifact JSON",
+    mixinStandardHelpOptions = true
 )
 public class CompileCommand implements Callable<Integer> {
 

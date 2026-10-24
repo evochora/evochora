@@ -24,7 +24,8 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "cleanup",
-    description = "Clean up simulation runs from storage, database, and topics"
+    description = "Clean up simulation runs from storage, database, and topics",
+    mixinStandardHelpOptions = true
 )
 public class CleanupCommand implements Callable<Integer> {
 

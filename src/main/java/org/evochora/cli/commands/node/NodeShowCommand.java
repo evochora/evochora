@@ -22,7 +22,8 @@ import picocli.CommandLine.ParentCommand;
  */
 @Command(
     name = "show",
-    description = "Starts the Evochora Node server for viewing indexed runs only"
+    description = "Starts the Evochora Node server for viewing indexed runs only",
+    mixinStandardHelpOptions = true
 )
 public class NodeShowCommand implements Callable<Integer> {
 

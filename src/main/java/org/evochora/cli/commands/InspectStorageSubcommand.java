@@ -41,7 +41,8 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "storage",
-    description = "Inspect tick data from storage for debugging purposes"
+    description = "Inspect tick data from storage for debugging purposes",
+    mixinStandardHelpOptions = true
 )
 public class InspectStorageSubcommand implements Callable<Integer> {
 

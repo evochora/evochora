@@ -24,7 +24,8 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "resume",
-    description = "Continues a simulation run from its latest checkpoint"
+    description = "Continues a simulation run from its latest checkpoint",
+    mixinStandardHelpOptions = true
 )
 public class NodeResumeCommand implements Callable<Integer> {
 

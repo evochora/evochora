@@ -26,7 +26,8 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "fork",
-    description = "Records a tick window of a run again as a new run"
+    description = "Records a tick window of a run again as a new run",
+    mixinStandardHelpOptions = true
 )
 public class NodeForkCommand implements Callable<Integer> {
 

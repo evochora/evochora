@@ -45,6 +45,9 @@ class NodeShowCommandTest {
     void theCommandTakesNoOptionsOfItsOwn() {
         CommandLine commandLine = new CommandLine(new NodeShowCommand());
 
-        assertThat(commandLine.getCommandSpec().options()).isEmpty();
+        // The help and version options are the ones every command carries, not options of its own
+        assertThat(commandLine.getCommandSpec().options())
+            .filteredOn(option -> !option.usageHelp() && !option.versionHelp())
+            .isEmpty();
     }
 }
