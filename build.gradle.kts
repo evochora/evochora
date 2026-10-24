@@ -41,6 +41,9 @@ repositories {
     mavenCentral()
 }
 
+// Every dependency names an exact version, the newest stable one when it is updated. What a library
+// brings along stays at the version that library chose; it is raised over that choice only for a
+// stated reason, such as a security fix, which the comment at the pin names.
 dependencies {
     implementation("com.google.protobuf:protobuf-java:4.36.2")
     implementation("com.google.protobuf:protobuf-java-util:4.36.2") // For JSON conversion
