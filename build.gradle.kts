@@ -50,7 +50,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.mockito:mockito-core:5.24.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.24.0")
-    testImplementation("org.assertj:assertj-core:3.26.3")
+    testImplementation("org.assertj:assertj-core:3.27.7")
     testImplementation("org.awaitility:awaitility:4.2.1")
     testImplementation("io.rest-assured:rest-assured:5.4.0") // For API integration testing
     testImplementation("io.javalin:javalin-testtools:6.7.0")
