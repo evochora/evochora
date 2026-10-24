@@ -452,6 +452,7 @@ afterEvaluate {
 }
 
 jmh {
+    jmhVersion = "1.37"
     jvmArgs.set(listOf("-Xmx8g"))
 }
 
