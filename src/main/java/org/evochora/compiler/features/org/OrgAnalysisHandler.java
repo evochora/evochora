@@ -9,7 +9,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Handles the semantic analysis of {@link OrgNode}s: evaluates every component with the names
- * defined above the line and checks the kind of its value. A directive of one piece gives the
+ * of the line's level and checks the kind of its value. A directive of one piece gives the
  * whole origin and has to be a vector, a number, which is a vector of one component, or, unmarked,
  * a position; each piece of a longer list is a number. A value only the layout knows passes with the kind it will have.
  */

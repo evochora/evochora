@@ -800,6 +800,10 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:6: Invalid argument: 'LIB' for REF is not a register or a label; expected a data register.");
     }
 
+    /**
+     * Two constants that name each other are reported once, as a circle, at the definition the
+     * circle was entered through; neither name is reported as undefined.
+     */
     @Test
     void aCircularDefinitionNamesTheCircle() throws Exception {
         write("main.evo",
@@ -811,12 +815,15 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("main.evo:2: Cannot define constant 'A' from 'B': the name is not defined.")
-                .hasMessageContaining("main.evo:2: Definition of A is circular: A -> B -> A.");
+                .hasMessageContaining("main.evo:2: Definition of A is circular: A -> B -> A.")
+                .hasMessageNotContaining("is not defined");
     }
 
+    /**
+     * A constant may name a constant defined below it: a name is known anywhere on its level.
+     */
     @Test
-    void aConstantNamingALaterConstantIsReportedAtItsLine() throws Exception {
+    void aConstantNamingALaterConstantCompiles() throws Exception {
         write("main.evo",
                 "# A comment line.",
                 ".CONST A B",
@@ -824,9 +831,7 @@ class CompilerDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 A");
 
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("main.evo:2: Cannot define constant 'A' from 'B': the name is not defined.");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
     @Test

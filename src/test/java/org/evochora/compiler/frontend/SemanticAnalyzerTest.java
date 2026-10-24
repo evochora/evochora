@@ -457,12 +457,12 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * An unknown name is reported where a vector is expected as it is anywhere else; a constant
-     * defined below its use is such a name.
+     * A vector constant defined below its use is known where a vector is expected, as a name
+     * anywhere on its level is.
      */
     @Test
     @Tag("unit")
-    void testUnknownNameWhereVectorIsExpectedIsReported() {
+    void testVectorConstantDefinedBelowItsUseIsAllowed() {
         String source = String.join("\n",
                 "# A comment line.",
                 "SETV %DR0 LATE",
@@ -475,9 +475,29 @@ public class SemanticAnalyzerTest {
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    /**
+     * An unknown name is reported where a vector is expected as it is anywhere else.
+     */
+    @Test
+    @Tag("unit")
+    void testUnknownNameWhereVectorIsExpectedIsReported() {
+        String source = String.join("\n",
+                "# A comment line.",
+                "SETV %DR0 NOWHERE"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(source, diagnostics);
+
+        SymbolTable symbolTable = TestSymbolTables.symbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        analyzer.analyze(ast);
+
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(located(diagnostics.getDiagnostics().get(0)))
-                .isEqualTo("<memory>:2: Cannot use 'LATE' as an argument: the name is not defined.");
+                .isEqualTo("<memory>:2: Cannot use 'NOWHERE' as an argument: the name is not defined.");
     }
 
     /**

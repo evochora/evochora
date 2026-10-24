@@ -6,8 +6,8 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Interface for pass-1 symbol collection handlers.
- * Each collector is responsible for registering symbols (labels, procedures, scopes)
- * into the symbol table before the main analysis pass.
+ * Each collector is responsible for registering symbols (labels, procedures, constants,
+ * aliases, scopes) into the symbol table before the main analysis pass.
  */
 public interface ISymbolCollector {
     /**

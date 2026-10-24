@@ -592,7 +592,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Definitions and Aliases
 
-* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` below the definition with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
+* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler replaces every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
@@ -710,7 +710,7 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 * **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING [MODULE <source> AS <target> ...] [VALUE <name> <value> ...]]`. `MODULE` and `VALUE` each open a list, in any order and as often as needed.
 * **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
 * **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
-* **`USING`**: Supplies what the imported module declared with `.REQUIRE`. For every `.REQUIRE MODULE … AS <target>` of the imported module, `MODULE <source> AS <target>` names the module that takes its place: one this file imported, or one this file requires itself and so hands on. For every `.REQUIRE VALUE <name>` of the imported module, `VALUE <name> <value>` gives its value, written as the value of a `.CONST` is; a name is one this file defined before the import. A value with a default may be left out, every other requirement must be supplied.
+* **`USING`**: Supplies what the imported module declared with `.REQUIRE`. For every `.REQUIRE MODULE … AS <target>` of the imported module, `MODULE <source> AS <target>` names the module that takes its place: one this file imported, or one this file requires itself and so hands on. For every `.REQUIRE VALUE <name>` of the imported module, `VALUE <name> <value>` gives its value, written as the value of a `.CONST` is; a name is one this file defines. A value with a default may be left out, every other requirement must be supplied.
 * **Example**: `.IMPORT "walk.evo" AS SLOW USING MODULE MATH AS CALC VALUE STEPS DATA:4 VALUE SPEED SLOW_SPEED`
 
 #### `.SOURCE`
@@ -868,7 +868,7 @@ EXPORT .PROC GO REF X
 
 **File 2: `main.evo`**
 ```
-.CONST SHORT DATA:3                       # defined before the import that uses it
+.CONST SHORT DATA:3                       # used by the import below
 .IMPORT "walk.evo" AS FAR                 # STEPS is DATA:10, the default
 .IMPORT "walk.evo" AS NEAR USING VALUE STEPS SHORT
 
@@ -984,7 +984,7 @@ A function name is directly followed by its arguments in parentheses.
 
 A name in an expression is a constant ([`.CONST`](#definitions-and-aliases)) or a value ([`.REQUIRE VALUE`](#require)). A label, a procedure and a control block are names as well; they stand for positions (see [Positions](#positions)).
 
-* A constant or a value is used below its definition; above it, the name is not defined.
+* Definitions that need each other's values are circular and an error.
 * The operators written as words and the functions are taken: none of them can be defined or name a macro.
 * A value of the main program set from outside (`values { … }` or `--value`) may be an expression with the names of the main program.
 * **Examples**:
@@ -1039,7 +1039,7 @@ Every file has an origin: in the main file it is `0|0`, in a file brought in wit
 * A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Apart from these and the component `P[i]`, an operation on a position is an error.
 * A position, and a value computed from one, cannot be an instruction argument.
 * An expression with `@` means the place where it is written: `.CONST HERE @` is the position of the `.CONST` line, wherever `HERE` is used.
-* A label in an expression must stand above that expression.
+* A label in an expression must stand above that expression. So must a constant whose value is a position, or is computed from one or from `@`: it is used below its line, as a label is.
 * In `.ORG 0|@+2`, `@+` is the marker of `.ORG` (see [Layout Control](#layout-control)), not `@` plus 2; the same holds for `@-` and for the markers of `.DIR`.
 * **Example**: `main.evo` gives `shell.evo` the two corners of its code; `shell.evo` places a shell one cell outside them, wherever `main.evo` imports it.
     ```

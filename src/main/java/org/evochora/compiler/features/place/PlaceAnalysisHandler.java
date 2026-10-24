@@ -15,8 +15,8 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Handles the semantic analysis of {@link PlaceNode}s: evaluates the molecule, which has to be a
- * typed value, and every operand of every placement with the names defined above the
- * line, and checks the kind of its value. A placement that is one
+ * typed value, and every operand of every placement with the names of the line's level, and
+ * checks the kind of its value. A placement that is one
  * single value gives the whole place and has to be a vector, a number, which is a vector of one
  * component, or a position; every other component
  * is made of numbers, a value, the bounds of a range and its step. A value only the layout knows
