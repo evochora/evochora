@@ -72,7 +72,7 @@ dependencies {
     // Javalin OpenAPI Plugin for API documentation
     implementation("io.javalin.community.openapi:javalin-openapi-plugin:6.7.0-1")
     annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
-    implementation("com.typesafe:config:1.4.3")
+    implementation("com.typesafe:config:1.4.9")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
 
     // Apache Commons RNG for scientifically-validated RNG with state serialization
@@ -99,7 +99,7 @@ dependencies {
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
     testFixturesImplementation("com.google.protobuf:protobuf-java:4.36.2")
-    testFixturesImplementation("com.typesafe:config:1.4.3")
+    testFixturesImplementation("com.typesafe:config:1.4.9")
 
 }
 
