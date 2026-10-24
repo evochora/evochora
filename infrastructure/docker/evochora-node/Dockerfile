@@ -1,7 +1,12 @@
+# Both base images are pinned by digest and the packages by a snapshot of the Ubuntu archive, so
+# that building the same commit again yields the same image. Updating either is a change of its
+# own: a new digest, or a new snapshot timestamp.
+ARG UBUNTU_SNAPSHOT=20261024T000000Z
+
 # ====================================================================================
 # STAGE 1: Build the application using Gradle with persistent caching
 # ====================================================================================
-FROM gradle:8.8.0-jdk21-jammy AS builder
+FROM gradle:9.8.2-jdk25-resolute@sha256:ca424744a6a45a575f333edea680696d980999c461be38b1574a4c70d5455f24 AS builder
 
 ARG RELEASE_TAG
 WORKDIR /app
@@ -30,12 +35,18 @@ RUN --mount=type=cache,target=/root/.gradle/caches \
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
 # ====================================================================================
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-resolute@sha256:41d9263c0d5b2a74d89af6e29e73b04298bc65e3cb705d03e9e2271ef49fef84
+
+ARG UBUNTU_SNAPSHOT
 
 # Install runtime dependencies and gosu for privilege dropping.
 # gosu is a lightweight su/sudo alternative ideal for containers.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg gosu && \
+# apt knows the snapshot server of archive.ubuntu.com, which serves amd64, but not of
+# ports.ubuntu.com, which serves arm64; the snapshot of the archive carries both.
+RUN echo 'Acquire::Snapshots::URI::Host::ports.ubuntu.com "https://snapshot.ubuntu.com/ubuntu/@SNAPSHOTID@/";' \
+        > /etc/apt/apt.conf.d/50snapshot-ports && \
+    apt-get update --snapshot "$UBUNTU_SNAPSHOT" && \
+    apt-get install -y --no-install-recommends --snapshot "$UBUNTU_SNAPSHOT" ffmpeg gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group with a default ID.
