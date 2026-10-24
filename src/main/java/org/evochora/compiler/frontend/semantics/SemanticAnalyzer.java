@@ -4,11 +4,17 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 import org.evochora.compiler.frontend.lexer.ModulePlacement;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.ScopeTracker;
+import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +38,8 @@ public class SemanticAnalyzer {
     private final ModuleSetupRegistry setupRegistry;
     private final ModuleContextTracker contextTracker;
     private final ScopeTracker scopeTracker;
+    // The definitions whose handlers run on demand right now, the newest first
+    private final Deque<Symbol> inProgress = new ArrayDeque<>();
 
     /**
      * Constructs a semantic analyzer with an externally built analysis registry. Nothing is
@@ -62,11 +70,17 @@ public class SemanticAnalyzer {
      * Analyzes the given list of AST statements.
      * This is the main entry point for the semantic analysis phase.
      * It first sets up the module relationships from the dependency graph, if there is one,
-     * then performs two passes: one to collect top-level symbols (labels, procedures),
-     * and a second to analyze the statements in detail. The second pass resolves names against
-     * the table the first one built; when the first pass reported an error, the table lacks what
-     * it rejected, and every resolution that misses it would only repeat the error as a
-     * consequence. So the second pass runs only when the first one was clean.
+     * then performs two passes: one to collect the names the program defines, labels,
+     * procedures, constants, aliases, and a second to analyze the statements in detail. The
+     * second pass resolves names against the table the first one built; when the first pass
+     * reported an error, the table lacks what it rejected, and every resolution that misses it
+     * would only repeat the error as a consequence. So the second pass runs only when the first
+     * one was clean.
+     * <p>
+     * The second pass walks the statements in text order, but a definition is analyzed the
+     * moment a name needs its value, which may be above its line: the symbol table hands such a
+     * definition to {@link #analyzeOnDemand}, which runs its handler there and then. So a name
+     * may be used anywhere on its level, above or below its definition.
      *
      * @param statements The list of top-level AST nodes to analyze.
      */
@@ -78,11 +92,16 @@ public class SemanticAnalyzer {
         if (diagnostics.hasErrors()) {
             return;
         }
-        analyzeStatements(statements);
+        symbolTable.setDefinitionDemand(this::analyzeOnDemand);
+        try {
+            analyzeStatements(statements);
+        } finally {
+            symbolTable.setDefinitionDemand(null);
+        }
     }
 
     /**
-     * Pass 1: Collects top-level symbols (labels, procedures, constants) from the AST.
+     * Pass 1: Collects the names the program defines from the AST.
      *
      * @param statements The list of top-level AST nodes to collect symbols from.
      */
@@ -132,6 +151,69 @@ public class SemanticAnalyzer {
 
     private void switchModuleContext(AstNode node) {
         contextTracker.handleNode(node);
+    }
+
+    /**
+     * Analyzes a definition the moment a chain of names needs its value, before the walk reaches
+     * its line: runs the handler registered for the defining node, as the walk would, with the
+     * symbol table standing in the scope and the placement of the definition, and restores both
+     * afterwards. The handler records what it made of the definition's computation, and the
+     * table finds it when it looks again. A definition without a handler is left as it is.
+     * <p>
+     * A definition that is asked for while its own handler runs is circular: its computation
+     * needs, through the names it follows, its own value. The circle is reported once, at the
+     * definition it was entered through, naming the definitions in progress from it onward and
+     * the names the lookup followed back to it; nothing is recorded, so every computation in
+     * the circle fails with its error reported here.
+     */
+    private void analyzeOnDemand(Symbol definition, SymbolTable.Scope scope, List<String> through) {
+        if (inProgress.stream().anyMatch(symbol -> symbol.node() == definition.node())) {
+            reportCircle(definition, through);
+            return;
+        }
+        Optional<IAnalysisHandler> handler = registry.resolveHandler(definition.node().getClass());
+        if (handler.isEmpty()) {
+            return;
+        }
+        SymbolTable.Scope savedScope = symbolTable.getCurrentScope();
+        String savedModule = symbolTable.getCurrentAliasChain();
+        String placement = definition.sourceInfo().placement();
+        inProgress.push(definition);
+        try {
+            symbolTable.setCurrentScope(scope);
+            if (placement != null && symbolTable.getModuleScope(placement).isPresent()) {
+                symbolTable.setCurrentModule(placement);
+            }
+            handler.get().analyze(definition.node(), symbolTable, diagnostics);
+        } finally {
+            inProgress.pop();
+            if (savedModule != null) {
+                symbolTable.setCurrentModule(savedModule);
+            }
+            symbolTable.setCurrentScope(savedScope);
+        }
+    }
+
+    /**
+     * Reports a circle of definitions: the definitions in progress from the one entered again to
+     * the newest, then the names the lookup followed from the newest back to it.
+     */
+    private void reportCircle(Symbol entered, List<String> through) {
+        List<String> names = new ArrayList<>();
+        Iterator<Symbol> oldestFirst = inProgress.descendingIterator();
+        boolean inCircle = false;
+        while (oldestFirst.hasNext()) {
+            Symbol symbol = oldestFirst.next();
+            inCircle = inCircle || symbol.node() == entered.node();
+            if (inCircle) {
+                names.add(symbol.name());
+            }
+        }
+        names.addAll(through);
+        SourceInfo at = entered.sourceInfo();
+        diagnostics.reportError(
+                "Definition of " + entered.name() + " is circular: " + String.join(" -> ", names) + ".",
+                at.fileName(), at.lineNumber());
     }
 
     /**

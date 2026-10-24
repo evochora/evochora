@@ -53,6 +53,7 @@ public class ImportFeature implements ICompilerFeature {
         ctx.irConverter(RequireNode.class, new RequireNodeConverter());
         ctx.symbolCollector(ValueRequirementNode.class, new RequireSymbolCollector());
         ctx.analysisHandler(ValueRequirementNode.class, new RequireAnalysisHandler(ctx.operations()));
+        ctx.analysisHandler(ValueBindingNode.class, new RequireAnalysisHandler(ctx.operations()));
         ctx.postProcessHandler(ValueRequirementNode.class, new ValueRequirementPostProcessHandler());
         ctx.irConverter(ValueRequirementNode.class, new ValueRequirementNodeConverter());
         ctx.layoutHandler("importdir", "bound_value", new BoundValueLayoutHandler());

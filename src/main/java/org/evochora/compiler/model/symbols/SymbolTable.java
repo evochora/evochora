@@ -110,6 +110,10 @@ public class SymbolTable {
     private final Map<ExpressionNode, ExpressionOutcome> expressionResults = new IdentityHashMap<>();
     // The values of definitions, keyed by the identity of the defining node.
     private final Map<AstNode, ExpressionOutcome> definitionValues = new IdentityHashMap<>();
+    // The computations that were evaluated and have no value, by identity; their error is reported.
+    private final Set<ExpressionNode> failedComputations = Collections.newSetFromMap(new IdentityHashMap<>());
+    // Analyzes a definition a chain of names needs before the walk reaches it; null outside phase 4.
+    private IDefinitionDemand demand;
 
     private final DiagnosticsEngine diagnostics;
 
@@ -345,6 +349,41 @@ public class SymbolTable {
     }
 
     /**
+     * Records that a computation was evaluated and has no value: it failed, and its error has been
+     * reported. A failed computation is not evaluated again, and a definition whose value it is
+     * is not asked for again.
+     *
+     * @param node The node of the computation, used as the key by identity.
+     * @throws IllegalStateException if the table is frozen.
+     */
+    public void recordFailure(ExpressionNode node) {
+        guardFrozen();
+        failedComputations.add(node);
+    }
+
+    /**
+     * Tells whether a computation was evaluated and failed.
+     *
+     * @param node The node of the computation, matched by identity.
+     * @return {@code true} if its failure was recorded.
+     */
+    public boolean failed(ExpressionNode node) {
+        return failedComputations.contains(node);
+    }
+
+    /**
+     * Sets what analyzes a definition the moment a chain of names needs its value, before the
+     * walk of phase 4 reaches it (see {@link #chainEndOf}). The phase sets it for its second
+     * pass and withdraws it afterwards; without it, a definition whose computation has no
+     * recorded value has no value.
+     *
+     * @param demand The demand, or {@code null} for none.
+     */
+    public void setDefinitionDemand(IDefinitionDemand demand) {
+        this.demand = demand;
+    }
+
+    /**
      * Records the value of a definition whose value is a computation, so that a name bound to it
      * stands for that value: a value now, or, for a value only a later phase knows, the
      * definition's qualified name (see {@link #chainEndOf}).
@@ -468,8 +507,11 @@ public class SymbolTable {
      * <p>
      * A definition with a recorded value ends the chain: a value as a literal at the position of
      * the identifier that names it, a value only a later phase knows at the definition's symbol.
-     * A definition whose value is a computation without a recorded outcome has no value: the
-     * computation failed and was reported where it was evaluated.
+     * A definition whose value is a computation without a recorded outcome is handed to the
+     * {@link IDefinitionDemand}, if one is set and the computation has not failed, so that the
+     * phase analyzes it now; what it recorded ends the chain the same way. A definition that has
+     * no value after that has none: its computation failed and was reported where it was
+     * evaluated.
      *
      * @param reference The identifier as written.
      * @return Where the chain ends: at the node the last binding binds to, at the literal of a
@@ -502,9 +544,7 @@ public class SymbolTable {
             }
             ExpressionOutcome recorded = definitionValues.get(symbol.node());
             if (recorded != null) {
-                return Optional.of(recorded.value() != null
-                        ? new ChainEnd(new LiteralNode(recorded.value(), current.sourceInfo()), null, null, current.sourceInfo())
-                        : new ChainEnd(symbol.node(), symbol, resolved.get().qualifiedName(), current.sourceInfo()));
+                return Optional.of(recordedEnd(recorded, symbol, resolved.get().qualifiedName(), current.sourceInfo()));
             }
             if (visited.contains(symbol)) {
                 if (reportedCircles.add(symbol.sourceInfo() + " " + symbol.name())) {
@@ -522,14 +562,45 @@ public class SymbolTable {
             }
             from = lookup.scope();
             AstNode bound = binding.bind(current);
+            if (bound instanceof ExpressionNode computation) {
+                ExpressionOutcome demanded = demandedValueOf(symbol, computation, lookup.scope(), chain);
+                return demanded == null
+                        ? Optional.empty()
+                        : Optional.of(recordedEnd(demanded, symbol, resolved.get().qualifiedName(), current.sourceInfo()));
+            }
             if (!(bound instanceof IdentifierNode next)) {
-                return bound == null || bound instanceof ExpressionNode
+                return bound == null
                         ? Optional.empty()
                         : Optional.of(new ChainEnd(bound, null, null, current.sourceInfo()));
             }
             current = next;
         }
         return Optional.empty();
+    }
+
+    /**
+     * The end of a chain at a definition with a recorded value: the literal of a value, at the
+     * position of the identifier that names the definition, or the definition's symbol for a
+     * value only a later phase knows.
+     */
+    private static ChainEnd recordedEnd(ExpressionOutcome recorded, Symbol symbol, String qualifiedName, SourceInfo at) {
+        return recorded.value() != null
+                ? new ChainEnd(new LiteralNode(recorded.value(), at), null, null, at)
+                : new ChainEnd(symbol.node(), symbol, qualifiedName, at);
+    }
+
+    /**
+     * Has a definition whose value is a computation without a recorded value analyzed now, if a
+     * demand is set and the computation has not failed, and returns what was recorded for it.
+     *
+     * @return The value recorded for the definition; {@code null} if it has none.
+     */
+    private ExpressionOutcome demandedValueOf(Symbol symbol, ExpressionNode computation, Scope scope, List<String> through) {
+        if (demand == null || failedComputations.contains(computation)) {
+            return null;
+        }
+        demand.analyze(symbol, scope, List.copyOf(through));
+        return definitionValues.get(symbol.node());
     }
 
     /**

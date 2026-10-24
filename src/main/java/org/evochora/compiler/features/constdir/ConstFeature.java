@@ -20,6 +20,7 @@ public class ConstFeature implements ICompilerFeature {
         ctx.parserStatement(".CONST", new ConstDirectiveHandler());
 
         // Phase 4: Semantic Analysis
+        ctx.symbolCollector(ConstNode.class, new ConstSymbolCollector());
         ctx.analysisHandler(ConstNode.class, new ConstAnalysisHandler(ctx.operations()));
 
         // Phase 7: IR Generation
