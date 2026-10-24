@@ -558,7 +558,7 @@ tasks.withType<Javadoc>().configureEach {
 // back every absent comment, tag and description — so it is recognised by its text. A future JDK
 // could word it differently; the failure would be loud rather than silent, because the build would
 // start reporting warnings it used to pass.
-val javadocLint by tasks.registering {
+val javadocLint = tasks.register("javadocLint") {
     dependsOn(tasks.named("javadoc"))
     val optionsFile = layout.buildDirectory.file("tmp/javadoc/javadoc.options")
     val lintDir = layout.buildDirectory.dir("tmp/javadocLint")
