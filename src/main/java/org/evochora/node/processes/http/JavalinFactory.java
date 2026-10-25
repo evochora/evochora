@@ -11,8 +11,10 @@ import io.javalin.json.JavalinJackson3;
  * <p>
  * Javalin writes JSON through Jackson 2 unless told otherwise, while the response types of the
  * node carry Jackson 3 annotations - among them the one that sends 64-bit identifiers as strings,
- * because JavaScript cannot hold them as numbers. A server, or a test, that created its Javalin
- * directly would ignore those annotations; created here, it writes what the node writes.
+ * because JavaScript cannot hold them as numbers. Jackson 2 is not on the classpath, so a server,
+ * or a test, that created its Javalin directly fails on its first JSON response instead of quietly
+ * ignoring those annotations; {@code JacksonTwoAbsenceRulesTest} fails the build should Jackson 2
+ * come back. Created here, an application writes what the node writes.
  */
 public final class JavalinFactory {
 

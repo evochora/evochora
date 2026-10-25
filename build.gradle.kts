@@ -74,8 +74,8 @@ dependencies {
     implementation("info.picocli:picocli:4.7.7")
     annotationProcessor("info.picocli:picocli-codegen:4.7.7")
     implementation("io.javalin:javalin:7.2.3")
-    // Javalin OpenAPI Plugin for API documentation
-    implementation("io.javalin.community.openapi:javalin-openapi-plugin:7.2.3")
+    // The OpenAPI annotations of the controllers; the annotation processor generates the specification from them
+    implementation("io.javalin.community.openapi:openapi-specification:7.2.3")
     annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:7.2.3")
     implementation("com.typesafe:config:1.4.9")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
