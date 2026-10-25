@@ -146,7 +146,7 @@ public class CleanupService {
      * <p>
      * This will only succeed if there are no other active connections to the database.
      * Active connections are never disconnected - if they exist, the method returns
-     * a failure result suggesting to retry later with --compact.
+     * a failure result suggesting to retry later with --compact --force.
      *
      * @return result indicating success or failure with explanation
      */

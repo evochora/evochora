@@ -177,7 +177,7 @@ public class CleanupCommand implements Callable<Integer> {
             } else if (force && doDatabase && result.database() != null && result.database().deleted() > 0) {
                 // Hint about compaction when deletions occurred
                 out.println();
-                out.println("Tip: Run 'cleanup --compact' to reclaim disk space.");
+                out.println("Tip: Run 'cleanup --compact --force' to reclaim disk space.");
             }
 
             return 0;
@@ -227,7 +227,7 @@ public class CleanupCommand implements Callable<Integer> {
                 out.println("Warning: " + result.message());
             } else {
                 out.println("Warning: " + result.message());
-                out.println("Run 'cleanup --compact' later to reclaim disk space.");
+                out.println("Run 'cleanup --compact --force' later to reclaim disk space.");
             }
         }
     }
