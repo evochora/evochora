@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gradle/npm-cache
-          key: npm-${{ runner.os }}-${{ hashFiles('src/main/frontend/package-lock.json') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
       # PMD keys its incremental cache on file content, ruleset and classpath, so a cache from an
       # earlier commit is valid for every unchanged file. Without it every run analyses the whole
@@ -227,7 +227,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gradle/npm-cache
-          key: npm-${{ runner.os }}-${{ hashFiles('src/main/frontend/package-lock.json') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
 
       - name: Build Distribution Archives with Gradle

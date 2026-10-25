@@ -18,6 +18,7 @@ WORKDIR /app
 COPY build.gradle.kts settings.gradle.kts ./
 COPY gradlew .
 COPY gradle ./gradle
+COPY package.json package-lock.json .npmrc ./
 
 # 2. Copy the rest of the source code
 COPY src ./src

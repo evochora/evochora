@@ -279,7 +279,7 @@ sourceSets.main {
 
 // The libraries and fonts of the web frontend are served by the node itself rather than fetched
 // from a CDN, so that the frontend works without internet access and no third party sees its use.
-// src/main/frontend/package.json names every package at an exact version, the newest stable one
+// package.json names every package at an exact version, the newest stable one
 // when it is updated; what a package brings along stays at the version it chose, and
 // package-lock.json holds all of them with their checksums, which npm ci verifies. Gradle fetches
 // Node itself, so building needs nothing but Java. After a version in package.json changes:
@@ -288,10 +288,9 @@ node {
     download = true
     version = "24.22.1"
     npmInstallCommand = providers.gradleProperty("npmInstallCommand").orElse("ci")
-    nodeProjectDir = file("src/main/frontend")
 }
 
-val frontendModules = layout.projectDirectory.dir("src/main/frontend/node_modules")
+val frontendModules = layout.projectDirectory.dir("node_modules")
 
 // DuckDB-WASM imports apache-arrow, whose browser module in turn imports packages published only
 // as CommonJS; esbuild joins them into the one module the analyzer loads.
@@ -299,10 +298,9 @@ val bundleDuckDb = tasks.register<com.github.gradle.node.npm.task.NpxTask>("bund
     dependsOn(tasks.named("npmInstall"))
     val out = layout.buildDirectory.file("generated/duckdb-bundle/duckdb-browser.mjs")
     command = "esbuild"
-    args = listOf("entry/duckdb.mjs", "--bundle", "--format=esm", "--minify",
+    args = listOf("@duckdb/duckdb-wasm", "--bundle", "--format=esm", "--minify",
         "--outfile=" + out.get().asFile.absolutePath)
-    inputs.file("src/main/frontend/entry/duckdb.mjs")
-    inputs.file("src/main/frontend/package-lock.json")
+    inputs.file("package-lock.json")
     outputs.file(out)
 }
 

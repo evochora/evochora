@@ -54,7 +54,6 @@ bin/
 
 # VS Code extension - ignore build artifacts but keep the distributed .vsix
 extensions/vscode/src/node_modules/
-src/main/frontend/node_modules/
 extensions/vscode/src/*.vsix
 !extensions/vscode/evochora-syntax-*.vsix
 
@@ -74,3 +73,6 @@ __pycache__/
 
 # Personal Claude Code instructions of the maintainer
 CLAUDE.local.md
+
+# npm installs the web frontend's packages here
+/node_modules/

@@ -23,7 +23,7 @@ one commit per dependency and the dependency graph compared after each.
 - **Frontend served by the node:** the libraries, fonts and DuckDB's Parquet extension the web
   frontend loaded from CDNs, Google Fonts and `extensions.duckdb.org` now come from the node
   itself, so the frontend works without internet access and no third party sees its use. They are
-  npm packages at exact versions in `src/main/frontend/package.json`, with every version and
+  npm packages at exact versions in `package.json`, with every version and
   checksum held in its lock file; Gradle fetches Node itself, so building still needs nothing but
   Java. DuckDB-WASM is bundled with apache-arrow by esbuild, the way DuckDB documents for local
   builds. Optional content — the start page's badges and demo video, Redoc's logo — still comes
