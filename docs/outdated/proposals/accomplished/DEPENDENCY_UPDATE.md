@@ -10,18 +10,28 @@ one commit per dependency and the dependency graph compared after each.
 
 - **Toolchain:** Java 25 (the current long-term support release) and Gradle 9; the Docker images
   build and run on Java 25 and Ubuntu 26.04.
-- **Majors:** JUnit 6, Javalin 7 with its OpenAPI plugin (routes are registered while the server is
-  configured), Jackson 3 in the node's own code, Logback 1.6 with the Logstash encoder 9,
+- **Majors:** JUnit 6, Javalin 7 with its OpenAPI annotation processor (routes are registered
+  while the server is configured), Jackson 3 in the node's own code, Logback 1.6 with the Logstash encoder 9,
   HikariCP 7, REST Assured 6, DuckDB 2, the Protocol Buffers Gradle plugin 0.10.
 - **Commons Math → Commons RNG:** the discontinued library gave way to its successor; the same seed
   now yields a different sequence, and a run stays reproducible with the build that wrote it.
 - **Pinning:** every dependency names an exact version; what a library brings along stays at the
   version it chose unless a stated reason raises it. Docker base images are pinned by digest and
-  their packages by an Ubuntu archive snapshot; scripts from a CDN carry integrity hashes; the
-  notebooks' Python packages are pinned; GitHub Actions by commit, except the Claude review
+  their packages by an Ubuntu archive snapshot; the notebooks' Python packages are pinned; GitHub Actions by commit, except the Claude review
   action, which follows its moving tag on purpose. Every download of the build is verified against
   `gradle/verification-metadata.xml`.
-- **Removed:** JLine and Reflections, which nothing used.
+- **Frontend served by the node:** the libraries, fonts and DuckDB's Parquet extension the web
+  frontend loaded from CDNs, Google Fonts and `extensions.duckdb.org` now come from the node
+  itself, so the frontend works without internet access and no third party sees its use. They are
+  npm packages at exact versions in `src/main/frontend/package.json`, with every version and
+  checksum held in its lock file; Gradle fetches Node itself, so building still needs nothing but
+  Java. DuckDB-WASM is bundled with apache-arrow by esbuild, the way DuckDB documents for local
+  builds. Optional content — the start page's badges and demo video, Redoc's logo — still comes
+  from the internet, and the pages work without it.
+- **Removed:** JLine and Reflections, which nothing used, and the Javalin OpenAPI plugin, of which
+  only the annotations were used: they now come from `openapi-specification`, and with the plugin
+  Jackson 2 left the classpath, so a Javalin created past `JavalinFactory` fails on its first JSON
+  response instead of writing it without the node's Jackson 3 annotations.
 
 Deviations from the procedure below:
 

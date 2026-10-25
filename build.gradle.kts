@@ -21,6 +21,7 @@ plugins {
     id("com.google.protobuf") version "0.10.0"
     id("me.champeau.jmh") version "0.7.3"
     id("pmd")
+    id("com.github.node-gradle.node") version "7.1.0"
 }
 
 java {
@@ -39,6 +40,14 @@ if (version.toString().endsWith("-SNAPSHOT")) {
 
 repositories {
     mavenCentral()
+    // DuckDB's own extension repository, for the extensions the analyzer's DuckDB-WASM loads; see
+    // duckdbExtensions below
+    ivy {
+        url = uri("https://extensions.duckdb.org")
+        patternLayout { artifact("[revision]/[classifier]/[module].duckdb_extension.[ext]") }
+        metadataSources { artifact() }
+        content { includeGroup("org.duckdb.extensions") }
+    }
 }
 
 // Every dependency names an exact version, the newest stable one when it is updated. What a library
@@ -260,6 +269,88 @@ val writeBuildInfo = tasks.register("writeBuildInfo") {
 
 sourceSets.main {
     resources.srcDir(layout.buildDirectory.dir("generated/build-info"))
+}
+
+// The libraries and fonts of the web frontend are served by the node itself rather than fetched
+// from a CDN, so that the frontend works without internet access and no third party sees its use.
+// src/main/frontend/package.json names every package at an exact version, the newest stable one
+// when it is updated; what a package brings along stays at the version it chose, and
+// package-lock.json holds all of them with their checksums, which npm ci verifies. Gradle fetches
+// Node itself, so building needs nothing but Java. After a version in package.json changes:
+// ./gradlew npmInstall -PnpmInstallCommand=install, then the checksums as described above.
+node {
+    download = true
+    version = "24.22.1"
+    npmInstallCommand = providers.gradleProperty("npmInstallCommand").orElse("ci")
+    nodeProjectDir = file("src/main/frontend")
+}
+
+val frontendModules = layout.projectDirectory.dir("src/main/frontend/node_modules")
+
+// DuckDB-WASM imports apache-arrow, whose browser module in turn imports packages published only
+// as CommonJS; esbuild joins them into the one module the analyzer loads.
+val bundleDuckDb = tasks.register<com.github.gradle.node.npm.task.NpxTask>("bundleDuckDb") {
+    dependsOn(tasks.named("npmInstall"))
+    val out = layout.buildDirectory.file("generated/duckdb-bundle/duckdb-browser.mjs")
+    command = "esbuild"
+    args = listOf("entry/duckdb.mjs", "--bundle", "--format=esm", "--minify",
+        "--outfile=" + out.get().asFile.absolutePath)
+    inputs.file("src/main/frontend/entry/duckdb.mjs")
+    inputs.file("src/main/frontend/package-lock.json")
+    outputs.file(out)
+}
+
+// The DuckDB extensions the analyzer loads, served from the node like the rest of the frontend.
+// An extension is built for one DuckDB core: the version is the core inside the DuckDB-WASM of
+// package.json and changes with it, else DuckDB fails to load the extension.
+val duckdbExtensions = configurations.create("duckdbExtensions") {
+    isTransitive = false
+    isCanBeConsumed = false
+}
+dependencies {
+    duckdbExtensions("org.duckdb.extensions:parquet:v1.4.3:wasm_mvp@wasm")
+}
+
+val webVendor = tasks.register<Sync>("webVendor") {
+    dependsOn(tasks.named("npmInstall"))
+    into(layout.buildDirectory.dir("generated/web-vendor"))
+    into("web/shared/vendor") {
+        from(bundleDuckDb) { into("duckdb") }
+        from(frontendModules.dir("chart.js/dist")) { include("chart.umd.min.js"); into("chart.js") }
+        from(frontendModules.dir("pixi.js/dist")) { include("pixi.min.js"); into("pixi.js") }
+        from(frontendModules.dir("protobufjs/dist")) { include("protobuf.min.js"); into("protobufjs") }
+        from(frontendModules.dir("redoc/bundles")) { include("redoc.standalone.js"); into("redoc") }
+        from(frontendModules.dir("@duckdb/duckdb-wasm/dist")) {
+            include("duckdb-mvp.wasm", "duckdb-browser-mvp.worker.js")
+            into("duckdb")
+        }
+        // DuckDB asks its extension repository for <version>/<platform>/<name>.duckdb_extension.wasm
+        from(duckdbExtensions) {
+            rename { "parquet.duckdb_extension.wasm" }
+            into("duckdb/extensions/v1.4.3/wasm_mvp")
+        }
+        // The weights the pages use, each with its stylesheet and the woff2 files it names
+        mapOf(
+            "doto" to listOf("900"),
+            "ibm-plex-sans" to listOf("400", "500", "600"),
+            "roboto" to listOf("400", "700"),
+            "roboto-mono" to listOf("400", "500"),
+        ).forEach { (font, weights) ->
+            from(frontendModules.dir("@fontsource/$font")) {
+                include("LICENSE")
+                weights.forEach { include("$it.css", "files/*-$it-normal.woff2") }
+                into("fonts/$font")
+            }
+        }
+        from(frontendModules.dir("@fontsource-variable/source-serif-4")) {
+            include("LICENSE", "opsz.css", "opsz-italic.css", "files/*-opsz-normal.woff2", "files/*-opsz-italic.woff2")
+            into("fonts/source-serif-4")
+        }
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(webVendor)
 }
 
 tasks.named<ProcessResources>("processResources") {

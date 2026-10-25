@@ -54,6 +54,7 @@ bin/
 
 # VS Code extension - ignore build artifacts but keep the distributed .vsix
 extensions/vscode/src/node_modules/
+src/main/frontend/node_modules/
 extensions/vscode/src/*.vsix
 !extensions/vscode/evochora-syntax-*.vsix
 
