@@ -266,7 +266,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 message_id VARCHAR(255) NOT NULL,
                 timestamp BIGINT NOT NULL,
                 envelope BYTEA NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 
                 CONSTRAINT uk_topic_message UNIQUE (topic_name, message_id)
             )
@@ -284,9 +284,9 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 consumer_group VARCHAR(255) NOT NULL,
                 message_id VARCHAR(255) NOT NULL,
                 claimed_by VARCHAR(255),
-                claimed_at TIMESTAMP,
+                claimed_at TIMESTAMP WITH TIME ZONE,
                 claim_version INT DEFAULT 0,
-                acknowledged_at TIMESTAMP,
+                acknowledged_at TIMESTAMP WITH TIME ZONE,
                 
                 PRIMARY KEY (topic_name, consumer_group, message_id)
             )
