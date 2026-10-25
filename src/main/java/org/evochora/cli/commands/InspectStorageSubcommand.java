@@ -2,7 +2,6 @@ package org.evochora.cli.commands;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -17,14 +16,13 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.BuildRevisionCheck;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
+import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.typesafe.config.ConfigFactory;
 
 import picocli.CommandLine.Command;
@@ -62,11 +60,15 @@ public class InspectStorageSubcommand implements Callable<Integer> {
     )
     private String runId;
 
+    /** The forms the tick data is written in. */
+    enum Format { json, summary, raw }
+
     @Option(
         names = {"-f", "--format"},
-        description = "Output format: json, summary, raw (default: summary)"
+        description = "Output format: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})",
+        defaultValue = "summary"
     )
-    private String format = "summary";
+    private Format format;
 
     @Option(
         names = {"-s", "--storage"},
@@ -106,11 +108,11 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             StoragePath batchPath = storage.findBatchFileContaining(runId + "/raw/", tickNumber).orElse(null);
 
             if (batchPath == null) {
-                spec.commandLine().getOut().println("No batch file found containing tick " + tickNumber + " for run " + runId);
+                spec.commandLine().getErr().println("No batch file found containing tick " + tickNumber + " for run " + runId);
                 return 1;
             }
             
-            spec.commandLine().getOut().println("Found batch file: " + batchPath.asString());
+            spec.commandLine().getErr().println("Found batch file: " + batchPath.asString());
             
             // Find the chunk containing the target tick (early exit on match)
             TickDataChunk[] found = {null};
@@ -127,7 +129,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             TickDataChunk targetChunk = found[0];
 
             if (targetChunk == null) {
-                spec.commandLine().getOut().println("Tick " + tickNumber + " not found in any chunk in batch " + batchPath);
+                spec.commandLine().getErr().println("Tick " + tickNumber + " not found in any chunk in batch " + batchPath);
                 printChunkRanges(chunkRanges);
                 return 1;
             }
@@ -207,28 +209,30 @@ public class InspectStorageSubcommand implements Callable<Integer> {
     }
 
     private void printChunkRanges(List<String> chunkRanges) {
-        spec.commandLine().getOut().println("Available chunks in batch:");
-        chunkRanges.forEach(range -> spec.commandLine().getOut().println(range));
+        spec.commandLine().getErr().println("Available chunks in batch:");
+        chunkRanges.forEach(range -> spec.commandLine().getErr().println(range));
     }
 
-    private void outputTickData(TickData tick, TickDataChunk chunk, TickDelta delta, String format) {
-        switch (format.toLowerCase(Locale.ROOT)) {
-            case "json":
-                Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                spec.commandLine().getOut().println(gson.toJson(tick));
-                break;
-                
-            case "summary":
-                outputSummary(tick, chunk, delta);
-                break;
-                
-            case "raw":
-                spec.commandLine().getOut().println(tick.toString());
-                break;
-                
-            default:
-                spec.commandLine().getErr().println("Unknown format: " + format + ". Supported formats: json, summary, raw");
+    /**
+     * Writes the tick data to standard output, which then holds nothing else: what the command
+     * reports on the way goes to standard error, so that {@code -f json} can be piped on.
+     */
+    private void outputTickData(TickData tick, TickDataChunk chunk, TickDelta delta, Format format) {
+        switch (format) {
+            case json -> spec.commandLine().getOut().println(tickAsJson(tick));
+            case summary -> outputSummary(tick, chunk, delta);
+            case raw -> spec.commandLine().getOut().println(tick.toString());
         }
+    }
+
+    /**
+     * The tick in protobuf's JSON form, with the message's field names.
+     *
+     * @param tick the tick to write
+     * @return the JSON text
+     */
+    static String tickAsJson(TickData tick) {
+        return ProtobufConverter.toJson(tick);
     }
 
     private void outputSummary(TickData tick, TickDataChunk chunk, TickDelta delta) {

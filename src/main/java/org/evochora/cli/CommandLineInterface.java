@@ -96,6 +96,7 @@ public class CommandLineInterface implements Callable<Integer> {
     public static CommandLine createCommandLine() {
         final CommandLine commandLine = new CommandLine(new CommandLineInterface());
         commandLine.setCommandName("evochora");
+        commandLine.setCaseInsensitiveEnumValuesAllowed(true);
         answerVersion(commandLine, new BuildVersionProvider());
         return commandLine;
     }

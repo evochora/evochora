@@ -15,8 +15,6 @@ For day-to-day usage (including production deployments and release archives), th
 - On Linux/macOS: `bin/evochora`
 - On Windows: `bin\evochora.bat`
 
-Gradle (`./gradlew run --args="..."`) and the standalone JAR (`java -jar ...`) are mainly intended for **developers working in the source repository** (see sections further below).
-
 ---
 
 ## Getting Help
@@ -58,7 +56,7 @@ The node will:
 
 - Load the configuration from the specified file  
   - With `--config`: the file you pass (e.g. `config/my-config.conf`)  
-  - Without `--config`: `config/evochora.conf`
+  - Without `--config`: `config/evochora.conf` in the working directory, else in the installation directory
 - Start all configured services (simulation engine, persistence, indexers, HTTP server, etc.)
 - Expose the HTTP API for monitoring and control
 - Run until interrupted (Ctrl+C)
@@ -75,7 +73,7 @@ bin/evochora node resume --run <run-id>
 
 **Parameters:**
 - `--run, -r`: Run ID to continue (default: the newest run in storage)
-- `--storage, -s`: Storage resource the newest run is looked up in (default: tick-storage)
+- `--storage, -s`: Storage resource the run is read from (default: tick-storage)
 
 Continues an interrupted run where its recorded data ends.
 
@@ -94,8 +92,8 @@ bin/evochora node fork --run <run-id> --from 150000 --to 200000 --sampling 10
 - `--from <tick>`: First tick that must be recorded (required)
 - `--to <tick>`: Last tick that must be recorded (required)
 - `--profile, -p <name>`: Tuning profile from the configuration (`detailed`, `sampled`, `sparse`; default: the configured one)
-- `--sampling <n>`: Ticks between two recorded ticks, on top of the profile
-- `--storage, -s`: Storage resource the newest run is looked up in (default: tick-storage)
+- `--sampling <n>`: Ticks between two recorded ticks, in place of the profile's
+- `--storage, -s`: Storage resource the run is read from (default: tick-storage)
 
 Records a stretch of an existing run again as a new run, typically more densely than the original. The recorded window may begin a little before `--from` and end a little after `--to`; the more densely the new run records, the closer to `--from` it begins. After the last tick of the window the simulation pauses; `POST /pipeline/api/service/simulation-engine/resume` continues it.
 
@@ -282,15 +280,15 @@ bin/evochora video lineage --help
 
 **Shared Parameters** (all renderers):
 - `--run-id`: Simulation run ID (defaults to the latest run)
-- `--out`: Output filename (default: simulation.mkv)
+- `--out`: Output file; its extension follows `--format` (default: simulation.mkv)
 - `--fps`: Frames per second for the output video (default: 60)
-- `--sampling-interval`: Render every Nth tick (default: 1)
+- `--sampling-interval`: Render the ticks that are multiples of N, best a multiple of the run's sampling interval (default: every recorded tick)
 - `--start-tick` / `--end-tick`: Restrict the rendered tick range (inclusive)
 - `--format`: Output video format: mkv/mp4/avi/mov/webm (default: mkv)
-- `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow (default: fast)
+- `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow, not used for WebM (default: fast)
 - `--crf`: H.264 constant rate factor for mkv/mp4/avi/mov output, 0 = lossless to 51 = worst (default: 18)
 - `--threads`: Number of threads for parallel chunk rendering (default: 1)
-- `--overlay`: Overlays to apply, comma-separated; currently `info`
+- `--overlay`: Overlays to apply, comma-separated: `info`, `diversity`, `graph`, `logo`
 - `--storage`: Storage resource name (default: tick-storage)
 - `--verbose`: Show detailed debug output from ffmpeg
 
@@ -329,12 +327,13 @@ bin/evochora cleanup --keep "20260117*" --database --topics
 | `--storage` | Target storage directories only |
 | `--database` | Target database schemas only |
 | `--topics` | Target Artemis topics/queues only |
-| `--force` | Execute deletion (default: dry-run preview only) |
+| `--compact` | Compact the H2 database to reclaim disk space; can be given alone |
+| `--force` | Execute deletion and compaction (default: dry-run preview only) |
 
 **Notes:**
 - `--keep` and `--delete` are mutually exclusive (use one or the other)
 - If no area flags are specified, all three areas are targeted
-- The default mode is **dry-run** - nothing is deleted without `--force`
+- The default mode is **dry-run** - nothing is deleted or compacted without `--force`
 - Pattern uses glob syntax: `*` matches any characters, `?` matches single character
 
 **Example output (dry-run):**
@@ -389,35 +388,11 @@ bin/evochora --config my-config.conf node run
 
 The configuration file uses HOCON format (`.conf` extension). See `config/evochora.conf` for the experiment template and `src/main/resources/reference.conf` for all defaults.
 
-## Running with JAR (Developers)
-
-You can also build a standalone JAR and run it without the start script or Gradle. This is mainly useful for development and integration scenarios:
-
-```bash
-# Build the JAR
-./gradlew jar
-
-# Run the node
-java -jar build/libs/evochora.jar node run
-
-# Run with custom config
-java -jar build/libs/evochora.jar --config my-config.conf node run
-
-# Compile EvoASM
-java -jar build/libs/evochora.jar compile --source-root assembly/examples --file=simple.evo
-
-# Inspect storage data
-java -jar build/libs/evochora.jar inspect storage --tick=1000 --run-id=my-simulation-run
-
-# Render video
-java -jar build/libs/evochora.jar video --run-id my-simulation-run --out simulation.mp4
-```
-
 ## Exit Codes
 
 - `0` - Success
-- `1` - Command error (invalid arguments, compilation error, etc.)
-- `2` - System error (file not found, configuration error, etc.)
+- `1` - The command failed (compilation error, missing file or configuration, etc.)
+- `2` - Invalid command line (unknown option, missing required parameter)
 
 ## Troubleshooting
 
