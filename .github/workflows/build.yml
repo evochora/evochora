@@ -268,6 +268,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.tag }}
           build-args: |
             RELEASE_TAG=${{ steps.version.outputs.tag }}
+            GIT_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

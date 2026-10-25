@@ -11,7 +11,11 @@ ARG UBUNTU_SNAPSHOT=20261024T000000Z
 # same for every target platform, so each runtime image below takes the same distribution.
 FROM --platform=$BUILDPLATFORM gradle:9.8.2-jdk25-resolute@sha256:ca424744a6a45a575f333edea680696d980999c461be38b1574a4c70d5455f24 AS builder
 
+# The release tag becomes the build's version, and the commit its revision: the build context
+# carries no .git, so the revision is written to the GIT_REVISION file the build reads instead.
+# Without them, as in a local build, the build records "latest" and "unknown".
 ARG RELEASE_TAG
+ARG GIT_REVISION
 WORKDIR /app
 
 # 1. Copy the build files
@@ -31,7 +35,8 @@ COPY assembly ./assembly
 RUN --mount=type=cache,target=/root/.gradle/caches \
     --mount=type=cache,target=/root/.gradle/wrapper \
     --mount=type=cache,target=/app/.gradle/npm-cache \
-    ./gradlew installDist -x test --no-daemon --stacktrace
+    if [ -n "$GIT_REVISION" ]; then echo "$GIT_REVISION" > GIT_REVISION; fi && \
+    ./gradlew installDist -x test --no-daemon --stacktrace "-PRELEASE_TAG=${RELEASE_TAG:-latest}"
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
