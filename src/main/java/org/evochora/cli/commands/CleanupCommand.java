@@ -24,7 +24,7 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "cleanup",
-    description = "Clean up simulation runs from storage, database, and topics",
+    description = "Clean up simulation runs from storage, database, and topics (all three unless --storage, --database or --topics is given)",
     mixinStandardHelpOptions = true
 )
 public class CleanupCommand implements Callable<Integer> {
@@ -37,13 +37,13 @@ public class CleanupCommand implements Callable<Integer> {
     static class PatternOptions {
         @Option(
             names = {"--keep"},
-            description = "Glob pattern for runs to KEEP (delete all others)"
+            description = "Glob pattern for runs to KEEP (delete all others); this or --delete is required"
         )
         String keepPattern;
 
         @Option(
             names = {"--delete"},
-            description = "Glob pattern for runs to DELETE (keep all others)"
+            description = "Glob pattern for runs to DELETE (keep all others); this or --keep is required"
         )
         String deletePattern;
     }
@@ -77,7 +77,7 @@ public class CleanupCommand implements Callable<Integer> {
 
     @Option(
         names = {"--compact"},
-        description = "Compact H2 database to reclaim disk space (only works when no other connections are active)"
+        description = "Compact H2 database to reclaim disk space (only works when no other connections are active); can be given alone"
     )
     private boolean compact;
 

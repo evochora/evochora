@@ -77,7 +77,7 @@ public class LineageRenderer extends AbstractFrameRenderer {
     private double scale;
 
     @Option(names = "--hue-shift",
-            description = "Hue shift per mutation generation in degrees (default: ${DEFAULT-VALUE})",
+            description = "Hue shift per mutation generation in degrees, not with --clade (default: ${DEFAULT-VALUE})",
             defaultValue = "25")
     private float hueShift;
 
@@ -92,8 +92,8 @@ public class LineageRenderer extends AbstractFrameRenderer {
     private int clusterGrid;
 
     @Option(names = "--clade",
-            description = "Clade coloring: <genomeHash>:<hue> (repeatable). Genomes descending from "
-                    + "<genomeHash> are drawn in hues around <hue> (degrees, 0-360); all other "
+            description = "Clade coloring: <genomeHash>:<hue> (repeatable), the genome hash in full decimal. "
+                    + "Genomes descending from <genomeHash> are drawn in hues around <hue> (degrees, 0-359); all other "
                     + "organisms are gray. Without this option, hues follow parent lineage.")
     private java.util.List<String> clades;
 

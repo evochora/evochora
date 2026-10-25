@@ -37,7 +37,7 @@ public class NodeResumeCommand implements Callable<Integer> {
 
     @Option(
         names = {"-s", "--storage"},
-        description = "Storage resource the newest run is looked up in (default: tick-storage)"
+        description = "Storage resource the run is read from (default: tick-storage)"
     )
     private String storageName = "tick-storage";
 

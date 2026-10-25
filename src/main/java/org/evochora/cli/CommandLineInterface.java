@@ -58,7 +58,7 @@ public class CommandLineInterface implements Callable<Integer> {
 
     @Option(
         names = {"-c", "--config"},
-        description = "Path to custom configuration file (default: config/evochora.conf)"
+        description = "Path to custom configuration file (default: config/evochora.conf in the working or the installation directory)"
     )
     private File configFile;
 

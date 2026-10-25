@@ -39,7 +39,7 @@ public class VideoRenderOptions {
      * <p>
      * An existing file at that path is overwritten without a prompt.
      */
-    @Option(names = "--out", description = "Output filename.", defaultValue = "simulation.mkv")
+    @Option(names = "--out", description = "Output file; its extension follows --format (default: ${DEFAULT-VALUE}).", defaultValue = "simulation.mkv")
     public File outputFile;
 
     /**
@@ -48,7 +48,7 @@ public class VideoRenderOptions {
      * Every rendered tick becomes one frame, so with a sampling interval of {@code n} one
      * second of video spans {@code fps * n} simulation ticks.
      */
-    @Option(names = "--fps", description = "Frames per second for the output video.", defaultValue = "60")
+    @Option(names = "--fps", description = "Frames per second for the output video (default: ${DEFAULT-VALUE}).", defaultValue = "60")
     public int fps;
 
     /**
@@ -59,7 +59,7 @@ public class VideoRenderOptions {
      * sampled tick from the nearest preceding accumulated delta rather than replaying every
      * intermediate tick.
      */
-    @Option(names = "--sampling-interval", description = "Render every Nth tick.", defaultValue = "1")
+    @Option(names = "--sampling-interval", description = "Render the ticks that are multiples of N, best a multiple of the run's sampling interval (default: every recorded tick).", defaultValue = "1")
     public int samplingInterval;
 
     /**
@@ -106,7 +106,7 @@ public class VideoRenderOptions {
      * The value is not checked here, so an unknown preset surfaces as an ffmpeg failure. WebM
      * output is encoded with libvpx-vp9 and ignores this option.
      */
-    @Option(names = "--preset", description = "ffmpeg encoding preset (ultrafast/fast/medium/slow). Default: fast", defaultValue = "fast")
+    @Option(names = "--preset", description = "ffmpeg encoding preset (ultrafast/fast/medium/slow), not used for WebM. Default: fast", defaultValue = "fast")
     public String preset;
 
     /**
