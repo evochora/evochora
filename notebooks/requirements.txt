@@ -1,5 +1,6 @@
-# Exact versions, so that every analysis runs in the same environment. The notebooks install the
-# same versions themselves where a package is missing (as on Colab); keep both in step.
+# Exact versions of the packages the notebooks use; what these bring along, pip resolves when it
+# installs them. The notebooks install the same versions themselves where a package is missing
+# (as on Colab); keep both in step.
 requests==2.34.2
 pandas==3.1.0
 numpy==2.5.4
