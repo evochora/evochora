@@ -20,5 +20,9 @@
   "devDependencies": {
     "esbuild": "0.28.2",
     "vitest": "5.0.5"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "fsevents": false
   }
 }
