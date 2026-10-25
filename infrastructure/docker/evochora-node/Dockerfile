@@ -6,7 +6,10 @@ ARG UBUNTU_SNAPSHOT=20261024T000000Z
 # ====================================================================================
 # STAGE 1: Build the application using Gradle with persistent caching
 # ====================================================================================
-FROM gradle:9.8.2-jdk25-resolute@sha256:ca424744a6a45a575f333edea680696d980999c461be38b1574a4c70d5455f24 AS builder
+# The build runs once, on the platform of the machine that builds the image: what it produces -
+# bytecode, the web frontend and jars that carry the native libraries for every platform - is the
+# same for every target platform, so each runtime image below takes the same distribution.
+FROM --platform=$BUILDPLATFORM gradle:9.8.2-jdk25-resolute@sha256:ca424744a6a45a575f333edea680696d980999c461be38b1574a4c70d5455f24 AS builder
 
 ARG RELEASE_TAG
 WORKDIR /app
