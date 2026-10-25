@@ -84,22 +84,6 @@ public class OpenApiController extends AbstractController {
             @OpenApiResponse(status = "500", description = "Internal server error")
         }
     )
-    /**
-     * Names the API and the build that serves it in the {@code info} section, which the generated
-     * file leaves empty: the title, the version the build was made as, and in the description the
-     * git revision of its sources.
-     *
-     * @param openApiJson The specification to complete.
-     */
-    private static void describeTheBuild(final ObjectNode openApiJson) {
-        final ObjectNode info = openApiJson.get("info") instanceof ObjectNode existing
-            ? existing
-            : openApiJson.putObject("info");
-        info.put("title", API_TITLE);
-        info.put("version", BuildInfo.version());
-        info.put("description", "Build revision " + BuildInfo.revision());
-    }
-
     private void getOpenApiSpec(final Context ctx) {
         try {
             // Load the generated OpenAPI file from classpath and parse it
@@ -220,6 +204,22 @@ public class OpenApiController extends AbstractController {
             ctx.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .result("Failed to generate OpenAPI specification: " + e.getMessage());
         }
+    }
+
+    /**
+     * Names the API and the build that serves it in the {@code info} section, which the generated
+     * file leaves empty: the title, the version the build was made as, and in the description the
+     * git revision of its sources.
+     *
+     * @param openApiJson The specification to complete.
+     */
+    private static void describeTheBuild(final ObjectNode openApiJson) {
+        final ObjectNode info = openApiJson.get("info") instanceof ObjectNode existing
+            ? existing
+            : openApiJson.putObject("info");
+        info.put("title", API_TITLE);
+        info.put("version", BuildInfo.version());
+        info.put("description", "Build revision " + BuildInfo.revision());
     }
 
     /**
