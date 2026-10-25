@@ -71,6 +71,15 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
           cache: 'gradle'
+      # npm keeps the packages of the web frontend in the project's .gradle/npm-cache, which the
+      # Gradle cache above does not cover. Keyed on the lock file, npm ci downloads them again only
+      # when the lock file changes.
+      - name: Restore npm cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gradle/npm-cache
+          key: npm-${{ runner.os }}-${{ hashFiles('src/main/frontend/package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       # PMD keys its incremental cache on file content, ruleset and classpath, so a cache from an
       # earlier commit is valid for every unchanged file. Without it every run analyses the whole
       # tree, and the test sources alone take PMD longer than compiling the project.
@@ -210,6 +219,16 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
           cache: 'gradle'
+
+      # npm keeps the packages of the web frontend in the project's .gradle/npm-cache, which the
+      # Gradle cache above does not cover. Keyed on the lock file, npm ci downloads them again only
+      # when the lock file changes.
+      - name: Restore npm cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gradle/npm-cache
+          key: npm-${{ runner.os }}-${{ hashFiles('src/main/frontend/package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
 
       - name: Build Distribution Archives with Gradle
         env:

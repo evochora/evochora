@@ -21,10 +21,12 @@ COPY src ./src
 COPY assembly ./assembly
 
 # 3. Build the installable distribution (unpacked) instead of a zip archive.
-#    This is cleaner for the COPY step in the next stage. The Gradle cache is kept across
-#    builds on the same machine via --mount; it resolves only what the distribution needs.
+#    This is cleaner for the COPY step in the next stage. The Gradle cache and the npm cache of
+#    the web frontend are kept across builds on the same machine via --mount; the build resolves
+#    only what the distribution needs.
 RUN --mount=type=cache,target=/root/.gradle/caches \
     --mount=type=cache,target=/root/.gradle/wrapper \
+    --mount=type=cache,target=/app/.gradle/npm-cache \
     ./gradlew installDist -x test --no-daemon --stacktrace
 
 # ====================================================================================
