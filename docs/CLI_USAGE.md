@@ -161,15 +161,15 @@ The option may be repeated. Value names are case-insensitive. A value no `.REQUI
 
 Syntax:
 
-- `--env=<dimensions>[:<toroidal>]`
+- `--env=<dimensions>[:<topology>]`
 - `dimensions`: world dimensions, e.g. `100x100`, `2000x2000`, `1000x1000x100`
-- `toroidal` (optional): `toroidal` (default) or `flat`
+- `topology` (optional): `torus` (default) or `bound`, as in the simulation's configuration
 
 Examples:
 
-- `100x100` → 100x100 world, toroidal (default)
-- `2000x2000:flat` → 2000x2000 world, flat
-- `1000x1000x100:toroidal` → 3D world, toroidal
+- `100x100` → 100x100 world, torus (default)
+- `2000x2000:bound` → 2000x2000 world, bounded
+- `1000x1000x100:torus` → 3D world, torus
 
 ### JSON Output (ProgramArtifact)
 
