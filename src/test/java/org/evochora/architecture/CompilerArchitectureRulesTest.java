@@ -16,8 +16,10 @@ import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.junit.AnalyzeClasses;
+import com.tngtech.archunit.junit.ArchTag;
+import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
@@ -47,9 +49,6 @@ import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.model.expression.Expression;
 import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.symbols.Resolution;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 
 /**
  * Enforces the structure of the compiler described in the <em>Compiler</em> section of
@@ -62,7 +61,8 @@ import org.junit.jupiter.api.Test;
  * dependency, or edit this class and let the edit be reviewed. The rules are kept to what the
  * section states, so that a new one is a decision about the architecture, not a reflex.
  */
-@Tag("unit")
+@AnalyzeClasses(packages = "org.evochora", importOptions = {ImportOption.DoNotIncludeTests.class, ExcludeTestFixturesAndJmh.class})
+@ArchTag("integration")
 class CompilerArchitectureRulesTest {
 
     /** Package holding the whole compiler. */
@@ -104,21 +104,6 @@ class CompilerArchitectureRulesTest {
             COMPILER + ".backend.emit..",
     };
 
-    private static JavaClasses compilerClasses;
-
-    /**
-     * Imports the compiled production classes of the compiler once for all rules in this class,
-     * with the same exclusions as {@link PackageDependencyRulesTest}.
-     */
-    @BeforeAll
-    static void importCompilerClasses() {
-        compilerClasses = new ClassFileImporter()
-                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-                .withImportOption(location -> !location.contains("test-fixtures"))
-                .withImportOption(location -> !location.contains("-jmh"))
-                .importPackages(COMPILER);
-    }
-
     /**
      * The core never references a feature: the only place that knows which features exist is
      * {@code StandardFeatures}.
@@ -127,13 +112,13 @@ class CompilerArchitectureRulesTest {
      * or a data format that named a feature class would have to change whenever that feature
      * does, and a new feature could not be added without touching the core.
      */
-    @Test
-    void onlyStandardFeaturesReferencesFeatures() {
+    @ArchTest
+    static void onlyStandardFeaturesReferencesFeatures(JavaClasses classes) {
         noClasses().that().resideInAPackage(COMPILER + "..")
                 .and().resideOutsideOfPackage(FEATURES + "..")
                 .and().doNotBelongToAnyOf(StandardFeatures.class)
                 .should().dependOnClassesThat().resideInAPackage(FEATURES + "..")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -146,14 +131,14 @@ class CompilerArchitectureRulesTest {
      * the rule reads that declaration rather than a list of its own, so what is allowed is
      * exactly what the features declare.
      */
-    @Test
-    void featuresReferenceOnlyTheFeaturesTheyRequire() {
+    @ArchTest
+    static void featuresReferenceOnlyTheFeaturesTheyRequire(JavaClasses classes) {
         Map<Class<?>, Set<Class<? extends ICompilerFeature>>> declared = new HashMap<>();
         StandardFeatures.all().forEach(feature -> declared.put(feature.getClass(), feature.requires()));
 
         classes().that().resideInAPackage(FEATURES + "..")
                 .should(referenceOtherFeaturesOnlyAsDeclared(declared))
-                .check(compilerClasses);
+                .check(classes);
     }
 
     private static ArchCondition<JavaClass> referenceOtherFeaturesOnlyAsDeclared(
@@ -200,11 +185,11 @@ class CompilerArchitectureRulesTest {
      * survives a compilation, or a constructor parameter that has to be supplied by whoever
      * instantiates the feature.
      */
-    @Test
-    void featuresHaveNoFields() {
+    @ArchTest
+    static void featuresHaveNoFields(JavaClasses classes) {
         classes().that().implement(ICompilerFeature.class)
                 .should(haveNoFields())
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -215,13 +200,13 @@ class CompilerArchitectureRulesTest {
      * field has to be final, and it may not hold an atomic, the usual shape of a counter. A
      * collection is not examined: its type does not tell whether it can change.
      */
-    @Test
-    void featureStaticFieldsAreConstants() {
+    @ArchTest
+    static void featureStaticFieldsAreConstants(JavaClasses classes) {
         fields().that().areDeclaredInClassesThat().resideInAPackage(FEATURES + "..")
                 .and().areStatic()
                 .should().beFinal()
                 .andShould().notHaveRawType(resideInAPackage("java.util.concurrent.atomic.."))
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -232,13 +217,13 @@ class CompilerArchitectureRulesTest {
      * package for interfaces. A sub-package of a phase is such a package under another name, and
      * it splits the phase's surface across two places for no reason the phase has.
      */
-    @Test
-    void phasePackagesAreFlat() {
+    @ArchTest
+    static void phasePackagesAreFlat(JavaClasses classes) {
         for (String phasePackage : PHASE_PACKAGES) {
             String flat = phasePackage.substring(0, phasePackage.length() - 2);
             classes().that().resideInAPackage(phasePackage)
                     .should().resideInAPackage(flat)
-                    .check(compilerClasses);
+                    .check(classes);
         }
     }
 
@@ -256,14 +241,14 @@ class CompilerArchitectureRulesTest {
      * expression, and the configuration's decision about a flag. A nested interface is named by its owner, as in
      * {@code IInstructionSet.Signature}, and is not covered.
      */
-    @Test
-    void topLevelInterfacesCarryThePrefix() {
-        classes().that().areInterfaces().and().areTopLevelClasses()
+    @ArchTest
+    static void topLevelInterfacesCarryThePrefix(JavaClasses classes) {
+        classes().that().resideInAPackage(COMPILER + "..").and().areInterfaces().and().areTopLevelClasses()
                 .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class, Resolution.class, Value.class,
                         Expression.class, OperationResult.class, EvaluationResult.class, NameAnswer.class, ParseResult.class,
                         OperandReading.class, FlagSetting.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -278,8 +263,8 @@ class CompilerArchitectureRulesTest {
      * them, and so are the parts of the expression package only the frontend may use: the
      * parser, which reads tokens, and the bridge to the symbol table.
      */
-    @Test
-    void backendReadsOnlyTheIrAndTheInstructionSet() {
+    @ArchTest
+    static void backendReadsOnlyTheIrAndTheInstructionSet(JavaClasses classes) {
         noClasses().that().resideInAPackage(COMPILER + ".backend..")
                 .or().implement(ILayoutDirectiveHandler.class)
                 .or().implement(ILinkingRule.class)
@@ -295,7 +280,7 @@ class CompilerArchitectureRulesTest {
                         COMPILER + ".model.symbols..",
                         EXPRESSION + ".parser..",
                         EXPRESSION + ".symbols..")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -308,13 +293,13 @@ class CompilerArchitectureRulesTest {
      * Reading them from the runtime in one place and through the view in another gives the
      * compiler two pictures of the same target, and a test can replace neither.
      */
-    @Test
-    void onlyTheAdapterReadsTheRuntime() {
+    @ArchTest
+    static void onlyTheAdapterReadsTheRuntime(JavaClasses classes) {
         noClasses().that().resideInAPackage(COMPILER + "..")
                 .and().resideOutsideOfPackage(COMPILER + ".isa..")
                 .should().dependOnClassesThat(resideInAPackage("org.evochora.runtime..")
                         .and(not(type(EnvironmentProperties.class))))
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -325,12 +310,12 @@ class CompilerArchitectureRulesTest {
      * register alias. A phase that branches on them knows those features. What a phase may do
      * with a symbol, it learns from the capabilities of the node that defined it.
      */
-    @Test
-    void phasesDoNotBranchOnSymbolKinds() {
+    @ArchTest
+    static void phasesDoNotBranchOnSymbolKinds(JavaClasses classes) {
         noClasses().that().resideInAnyPackage(COMPILER + ".frontend..", COMPILER + ".backend..")
                 .and().resideOutsideOfPackage(COMPILER + ".frontend.tokenmap..")
                 .should().dependOnClassesThat().haveFullyQualifiedName(COMPILER + ".model.symbols.Symbol$Type")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -340,13 +325,13 @@ class CompilerArchitectureRulesTest {
      * {@code IJumpTarget} that it marks a place in the code. Those capabilities are the
      * model's, the kinds are the features'.
      */
-    @Test
-    void nobodyReadsTheKindOfASymbol() {
+    @ArchTest
+    static void nobodyReadsTheKindOfASymbol(JavaClasses classes) {
         noClasses().that().resideInAPackage(COMPILER + "..")
                 .and().resideOutsideOfPackage(COMPILER + ".frontend.tokenmap..")
                 .and().doNotHaveFullyQualifiedName(Symbol.class.getName())
                 .should().callMethod(Symbol.class, "type")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -356,13 +341,13 @@ class CompilerArchitectureRulesTest {
      * {@code IrInstruction}: a feature may subtype it to carry operands beyond the main ones,
      * which a record cannot do, and {@code IrCallInstruction} does.
      */
-    @Test
-    void dataTypesAreRecords() {
+    @ArchTest
+    static void dataTypesAreRecords(JavaClasses classes) {
         classes().that().implement(AstNode.class).or().implement(IrItem.class)
                 .and().areNotInterfaces()
                 .and().areNotAssignableTo(IrInstruction.class)
                 .should().beRecords()
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -373,10 +358,10 @@ class CompilerArchitectureRulesTest {
      * is not data has no place among the data formats. The helpers that walk the AST for a
      * phase live with that phase.
      */
-    @Test
-    void modelPackageHoldsOnlyItsSubPackages() {
+    @ArchTest
+    static void modelPackageHoldsOnlyItsSubPackages(JavaClasses classes) {
         noClasses().should().resideInAPackage(COMPILER + ".model")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -388,25 +373,25 @@ class CompilerArchitectureRulesTest {
      * formats share ({@code model.expression}) reference none of them either, so that no format
      * reaches another through a value.
      */
-    @Test
-    void dataFormatsDoNotReferenceEachOther() {
+    @ArchTest
+    static void dataFormatsDoNotReferenceEachOther(JavaClasses classes) {
         noClasses().that().resideInAPackage(COMPILER + ".model.token..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".model.ast..", COMPILER + ".model.ir..")
-                .check(compilerClasses);
+                .check(classes);
         noClasses().that().implement(AstNode.class).or().resideInAPackage(COMPILER + ".model.ast..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".model.token..", COMPILER + ".model.ir..")
-                .check(compilerClasses);
+                .check(classes);
         noClasses().that().implement(IrItem.class).or().resideInAPackage(COMPILER + ".model.ir..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".model.token..", COMPILER + ".model.ast..")
-                .check(compilerClasses);
+                .check(classes);
         noClasses().that().resideInAPackage(COMPILER + ".model.expression..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".model.token..", COMPILER + ".model.ast..",
                         COMPILER + ".model.ir..", COMPILER + ".model.symbols..")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -419,8 +404,8 @@ class CompilerArchitectureRulesTest {
      * part and lie in sub-packages, which the backend may not reference; a root class that
      * reached them would carry them into the backend.
      */
-    @Test
-    void expressionRootReadsNothingOfTheFrontend() {
+    @ArchTest
+    static void expressionRootReadsNothingOfTheFrontend(JavaClasses classes) {
         noClasses().that().resideInAPackage(EXPRESSION)
                 .should().dependOnClassesThat().resideInAnyPackage(
                         EXPRESSION + ".parser..",
@@ -428,7 +413,7 @@ class CompilerArchitectureRulesTest {
                         COMPILER + ".model.token..",
                         COMPILER + ".model.ast..",
                         COMPILER + ".model.symbols..")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -439,11 +424,11 @@ class CompilerArchitectureRulesTest {
      * The tree is data every phase may hold; if it reached the evaluator or the registry, a
      * format would depend on the operations a compilation happens to register.
      */
-    @Test
-    void computationDataReferencesNoBehaviour() {
+    @ArchTest
+    static void computationDataReferencesNoBehaviour(JavaClasses classes) {
         noClasses().that().resideInAnyPackage(COMPILER + ".model.expression..", COMPILER + ".model.symbols..")
                 .should().dependOnClassesThat().resideInAPackage(EXPRESSION + "..")
-                .check(compilerClasses);
+                .check(classes);
     }
 
     /**
@@ -452,12 +437,12 @@ class CompilerArchitectureRulesTest {
      * A phase receives its input from the compiler and returns its result to it. A phase that
      * reached into another phase would fix the order of the pipeline in a second place.
      */
-    @Test
-    void phasesDoNotReferenceEachOther() {
+    @ArchTest
+    static void phasesDoNotReferenceEachOther(JavaClasses classes) {
         for (String phase : PHASE_CLASSES) {
             noClasses().that().haveFullyQualifiedName(phase)
                     .should().dependOnClassesThat().haveNameMatching(otherPhasesThan(phase))
-                    .check(compilerClasses);
+                    .check(classes);
         }
     }
 
@@ -470,8 +455,8 @@ class CompilerArchitectureRulesTest {
      * the data formats, the diagnostics or the instruction set, are outside the layering and
      * may be used by every phase.
      */
-    @Test
-    void phasePackagesReferenceOnlyEarlierPhases() {
+    @ArchTest
+    static void phasePackagesReferenceOnlyEarlierPhases(JavaClasses classes) {
         var layers = layeredArchitecture().consideringOnlyDependenciesInLayers();
         for (String phasePackage : PHASE_PACKAGES) {
             layers = layers.layer(phasePackage).definedBy(phasePackage);
@@ -482,7 +467,7 @@ class CompilerArchitectureRulesTest {
                     ? layers.whereLayer(PHASE_PACKAGES[i]).mayNotAccessAnyLayer()
                     : layers.whereLayer(PHASE_PACKAGES[i]).mayOnlyAccessLayers(earlier);
         }
-        layers.check(compilerClasses);
+        layers.check(classes);
     }
 
     /**
@@ -507,22 +492,22 @@ class CompilerArchitectureRulesTest {
      * interface of a phase package counts as data here, because the form of a class is all a
      * rule can judge. A reviewer reads such methods.
      */
-    @Test
-    void phasesShareOnlyData() {
+    @ArchTest
+    static void phasesShareOnlyData(JavaClasses classes) {
         for (String phasePackage : PHASE_PACKAGES) {
             String[] others = java.util.Arrays.stream(PHASE_PACKAGES)
                     .filter(other -> !other.equals(phasePackage)).toArray(String[]::new);
             noClasses().that().resideInAnyPackage(others)
                     .should().dependOnClassesThat(resideInAPackage(phasePackage).and(not(recordOrInterface())))
-                    .check(compilerClasses);
+                    .check(classes);
         }
         classes().that().resideInAPackage(FEATURES + "..")
                 .should(useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes())
-                .check(compilerClasses);
+                .check(classes);
         noClasses().that().resideInAnyPackage(COMPILER + ".frontend", COMPILER + ".isa..", COMPILER + ".diagnostics..",
                         COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..", EXPRESSION + "..")
                 .should().dependOnClassesThat().resideInAnyPackage(PHASE_PACKAGES)
-                .check(compilerClasses);
+                .check(classes);
     }
 
     private static DescribedPredicate<JavaClass> recordOrInterface() {

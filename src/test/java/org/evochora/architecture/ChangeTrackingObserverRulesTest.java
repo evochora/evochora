@@ -3,13 +3,12 @@ package org.evochora.architecture;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.junit.AnalyzeClasses;
+import com.tngtech.archunit.junit.ArchTag;
+import com.tngtech.archunit.junit.ArchTest;
 import org.evochora.runtime.model.FlatIndexCellVisitor;
 import org.evochora.runtime.model.Environment;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 
 /**
  * Enforces that the environment's change tracking has one observer in production code.
@@ -21,35 +20,25 @@ import org.junit.jupiter.api.Test;
  * exactly one encoder, and this rule makes that the only class allowed to touch the four methods,
  * so a second observer surfaces as a failing build instead of as silently incomplete deltas.
  */
-@Tag("unit")
+@AnalyzeClasses(packages = "org.evochora", importOptions = {ImportOption.DoNotIncludeTests.class, ExcludeTestFixturesAndJmh.class})
+@ArchTag("integration")
 class ChangeTrackingObserverRulesTest {
 
     private static final String OBSERVER = "org.evochora.datapipeline.utils.delta.DeltaCodec$Encoder";
 
-    private static JavaClasses productionClasses;
-
-    @BeforeAll
-    static void importProductionClasses() {
-        productionClasses = new ClassFileImporter()
-                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-                .withImportOption(location -> !location.contains("test-fixtures"))
-                .withImportOption(location -> !location.contains("-jmh"))
-                .importPackages("org.evochora");
-    }
-
-    @Test
-    void onlyTheEncoderReadsTheChangedCells() {
+    @ArchTest
+    static void onlyTheEncoderReadsTheChangedCells(JavaClasses classes) {
         noClasses().that().doNotHaveFullyQualifiedName(OBSERVER)
                 .should().callMethod(Environment.class, "forEachCellChangedSinceLastSample", FlatIndexCellVisitor.class)
                 .orShould().callMethod(Environment.class, "forEachCellChangedSinceLastSnapshot", FlatIndexCellVisitor.class)
-                .check(productionClasses);
+                .check(classes);
     }
 
-    @Test
-    void onlyTheEncoderTakesSamplesAndSnapshots() {
+    @ArchTest
+    static void onlyTheEncoderTakesSamplesAndSnapshots(JavaClasses classes) {
         noClasses().that().doNotHaveFullyQualifiedName(OBSERVER)
                 .should().callMethod(Environment.class, "markSampleTaken")
                 .orShould().callMethod(Environment.class, "markSnapshotTaken")
-                .check(productionClasses);
+                .check(classes);
     }
 }

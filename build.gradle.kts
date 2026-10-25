@@ -60,6 +60,7 @@ dependencies {
     testImplementation("io.rest-assured:rest-assured:6.3.0") // For API integration testing
     testImplementation("io.javalin:javalin-testtools:7.2.3")
     testImplementation("com.tngtech.archunit:archunit:1.5.1") // Package dependency rules
+    testImplementation("com.tngtech.archunit:archunit-junit6:1.5.1") // Runs the rule classes, sharing one import
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
