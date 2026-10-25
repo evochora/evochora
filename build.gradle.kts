@@ -159,6 +159,12 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
+// The web frontend is a source tree of its own, src/main/web, and goes into the jar under web/:
+// the node serves it from the classpath there, apart from the other resources.
+tasks.named<ProcessResources>("processResources") {
+    from("src/main/web") { into("web") }
+}
+
 // Copy generated OpenAPI files to resources directory
 tasks.named("processResources") {
     doLast {

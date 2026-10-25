@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AnalyticsChartTypesTest {
 
     private static final String PLUGINS = "pipeline.analytics-plugins";
-    private static final Path CHART_DIR = Path.of("src/main/resources/web/analyzer/js/charts");
+    private static final Path CHART_DIR = Path.of("src/main/web/analyzer/js/charts");
     // Matches the registration as it is written today: the chart type is a quoted literal directly
     // after the call. Registered any other way it is not seen here, and the plugin naming that type
     // fails this test.

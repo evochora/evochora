@@ -29,7 +29,7 @@ client the procedure below refers to.
   load), some only on small ones (the camera held at the world's edge). Pick the run for the
   question.
 - To check new web files against a node that is already running and should stay untouched, a
-  small local server can serve the working tree's `src/main/resources/web` and pass every other
+  small local server can serve the working tree's `src/main/web` and pass every other
   request (`/…/api/…`) on to the node.
 
 ## 1 · Browsers
