@@ -30,12 +30,22 @@ class VideoRenderEngineOptionValidationTest {
         return options;
     }
 
+    /** Fails the test: the options are validated before the configuration is asked for. */
+    private static com.typesafe.config.Config noConfiguration() {
+        throw new AssertionError("the configuration was asked for before the options were validated");
+    }
+
+    /** Ends the run where the options have passed validation and the configuration is asked for. */
+    private static com.typesafe.config.Config configurationReached() {
+        throw new IllegalStateException("the options passed validation");
+    }
+
     private String executeAndCaptureError(VideoRenderOptions options) throws Exception {
         PrintStream originalErr = System.err;
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         System.setErr(new PrintStream(captured));
         try {
-            Integer exitCode = new VideoRenderEngine(options, null).execute();
+            Integer exitCode = new VideoRenderEngine(options, null, VideoRenderEngineOptionValidationTest::noConfiguration).execute();
             assertThat(exitCode).isEqualTo(1);
         } finally {
             System.setErr(originalErr);
@@ -88,7 +98,7 @@ class VideoRenderEngineOptionValidationTest {
             ByteArrayOutputStream captured = new ByteArrayOutputStream();
             System.setErr(new PrintStream(captured));
             try {
-                new VideoRenderEngine(options, null).execute();
+                new VideoRenderEngine(options, null, VideoRenderEngineOptionValidationTest::configurationReached).execute();
             } catch (Exception expected) {
                 // getting past validation is what this asserts
             } finally {
@@ -117,7 +127,7 @@ class VideoRenderEngineOptionValidationTest {
             ByteArrayOutputStream captured = new ByteArrayOutputStream();
             System.setErr(new PrintStream(captured));
             try {
-                new VideoRenderEngine(options, null).execute();
+                new VideoRenderEngine(options, null, VideoRenderEngineOptionValidationTest::configurationReached).execute();
             } catch (Exception expected) {
                 // getting past validation is what this asserts
             } finally {
@@ -133,12 +143,12 @@ class VideoRenderEngineOptionValidationTest {
         options.startTick = 100L;
         options.endTick = 100L;
 
-        // Passes validation and fails later for want of a configuration, not because of the range.
+        // Passes validation and stops where the configuration is asked for, not because of the range.
         PrintStream originalErr = System.err;
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         System.setErr(new PrintStream(captured));
         try {
-            new VideoRenderEngine(options, null).execute();
+            new VideoRenderEngine(options, null, VideoRenderEngineOptionValidationTest::configurationReached).execute();
         } catch (Exception expected) {
             // reaching configuration loading is what this asserts
         } finally {

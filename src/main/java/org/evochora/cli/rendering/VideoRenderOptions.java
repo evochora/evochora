@@ -14,16 +14,6 @@ import picocli.CommandLine.Option;
 public class VideoRenderOptions {
 
     /**
-     * Configuration file to read instead of the one found by the standard discovery cascade.
-     * <p>
-     * When {@code null}, the cascade applies: the {@code config.file} system property, then
-     * {@code config/evochora.conf} below the working directory, then the same path below the
-     * installation directory, and finally the defaults bundled with the application.
-     */
-    @Option(names = {"-c", "--config"}, description = "Path to custom configuration file.")
-    public File configFile;
-
-    /**
      * Identifier of the simulation run whose recorded ticks are rendered.
      * <p>
      * When {@code null}, the storage is queried for all known run identifiers and the last one
