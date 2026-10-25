@@ -71,7 +71,7 @@ public class CleanupCommand implements Callable<Integer> {
 
     @Option(
         names = {"--force"},
-        description = "Execute deletion (default: dry-run preview only)"
+        description = "Execute deletion and compaction (default: dry-run preview only)"
     )
     private boolean force;
 
@@ -164,8 +164,14 @@ public class CleanupCommand implements Callable<Integer> {
                 out.println("\nRun with --force to execute deletion.");
             }
 
-            // Attempt database compaction only when explicitly requested
-            if (compact && doDatabase) {
+            // Attempt database compaction only when explicitly requested, and like deletion only with --force
+            if (compact && !doDatabase) {
+                out.println();
+                out.println("--compact skipped: the database is not among the targets.");
+            } else if (compact && !force) {
+                out.println();
+                out.println("Would compact the database. Run with --force to compact it.");
+            } else if (compact) {
                 out.println();
                 attemptCompaction(service, out, true);
             } else if (force && doDatabase && result.database() != null && result.database().deleted() > 0) {
@@ -188,6 +194,10 @@ public class CleanupCommand implements Callable<Integer> {
      */
     private Integer executeCompactOnly(CleanupService service, java.io.PrintWriter out, java.io.PrintWriter err) {
         out.println("\n=== Database Compaction ===");
+        if (!force) {
+            out.println("Would compact the database. Run with --force to compact it.");
+            return 0;
+        }
         CompactionResult result = service.compactDatabase();
 
         if (result.success()) {

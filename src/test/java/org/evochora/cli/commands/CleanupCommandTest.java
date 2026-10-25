@@ -59,6 +59,19 @@ public class CleanupCommandTest {
     }
 
     @Test
+    void compactWithoutForceOnlyPreviews() {
+        CommandLine cmdLine = CommandLineInterface.createCommandLine();
+
+        StringWriter out = new StringWriter();
+        cmdLine.setOut(new PrintWriter(out));
+
+        int exitCode = cmdLine.execute("cleanup", "--compact");
+
+        assertThat(exitCode).isEqualTo(0);
+        assertThat(out.toString()).contains("Would compact the database").doesNotContain("Compacting");
+    }
+
+    @Test
     void testMutuallyExclusivePatterns() {
         CommandLine cmdLine = CommandLineInterface.createCommandLine();
 
