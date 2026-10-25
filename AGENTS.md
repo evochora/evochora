@@ -275,7 +275,7 @@ runtime      →  (nothing)
 - **Graceful Shutdown**: Shutdown hook ensures all processes stop cleanly
 - **Service Registry**: Use ServiceRegistry for sharing services between processes
 - **Abstract Base**: Processes extend `AbstractProcess` for common dependency resolution
-- **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(Javalin, String basePath)`
+- **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(RoutesConfig, String basePath)`
 - **HTTP API**: Endpoints at `/visualizer/api/*`, `/analyzer/api/*`, `/pipeline/api/*` — the route nesting in the HTTP process's `routes` block puts `api` under the area, not the other way round
 
 ## CLI (`src/main/java/org/evochora/cli/`)
