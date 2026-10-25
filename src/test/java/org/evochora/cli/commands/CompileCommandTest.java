@@ -97,9 +97,40 @@ public class CompileCommandTest {
         StringWriter out = new StringWriter();
         cmdLine.setOut(new PrintWriter(out));
 
-        int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", "50x50:bounded");
+        int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", "50x50:bound");
 
         assertThat(exitCode).isEqualTo(0);
+    }
+
+    /**
+     * Without a topology the world is a torus, as without --env; the topology takes the words of the
+     * simulation's configuration and no other.
+     */
+    @Test
+    void theEnvTopologyDefaultsToTorusAndTakesOnlyTorusOrBound() throws Exception {
+        Path sourceFile = tempDir.resolve("topology.asm");
+        Files.writeString(sourceFile, """
+            .ORG 0|0
+            NOP
+            """);
+
+        assertThat(compiledAsToroidal(sourceFile, "50x50")).isTrue();
+        assertThat(compiledAsToroidal(sourceFile, "50x50:bound")).isFalse();
+
+        CommandLine cmdLine = CommandLineInterface.createCommandLine();
+        StringWriter err = new StringWriter();
+        cmdLine.setErr(new PrintWriter(err));
+        assertThat(cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", "50x50:toroidal")).isEqualTo(2);
+        assertThat(err.toString()).contains("torus or bound");
+    }
+
+    private static boolean compiledAsToroidal(Path sourceFile, String env) {
+        CommandLine cmdLine = CommandLineInterface.createCommandLine();
+        StringWriter out = new StringWriter();
+        cmdLine.setOut(new PrintWriter(out));
+        assertThat(cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", env)).isEqualTo(0);
+        return com.google.gson.JsonParser.parseString(out.toString()).getAsJsonObject()
+            .getAsJsonObject("envProps").get("isToroidal").getAsBoolean();
     }
 
     @Test

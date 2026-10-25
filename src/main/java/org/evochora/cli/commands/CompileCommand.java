@@ -81,7 +81,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment properties in format 'WIDTHxHEIGHT:topology' (e.g., '1000x1000:toroidal'). Default: 1000x1000:toroidal"
+        description = "Environment properties in format 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1000x1000:bound'). Default: 1000x1000:torus"
     )
     private String env;
 
@@ -131,7 +131,12 @@ public class CompileCommand implements Callable<Integer> {
         } catch (IllegalArgumentException e) {
             throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
         }
-        EnvironmentProperties envProps = parseEnvironmentProperties(env);
+        EnvironmentProperties envProps;
+        try {
+            envProps = parseEnvironmentProperties(env);
+        } catch (IllegalArgumentException e) {
+            throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
+        }
 
         Compiler compiler = new Compiler();
         try {
@@ -263,19 +268,31 @@ public class CompileCommand implements Callable<Integer> {
         return values;
     }
 
+    /**
+     * Reads --env: the world's shape, and its topology in the words of the simulation's
+     * configuration, {@code torus} (the default, as without --env) or {@code bound}.
+     *
+     * @throws IllegalArgumentException if a dimension is not a number or the topology is another word
+     */
     private EnvironmentProperties parseEnvironmentProperties(String env) {
         if (env == null || env.isEmpty()) {
             return new EnvironmentProperties(new int[]{1000, 1000}, true);
         }
 
-        String[] parts = env.split(":");
-        String[] dimensions = parts[0].split("x");
-        int[] shape = Arrays.stream(dimensions)
-                .mapToInt(Integer::parseInt)
-                .toArray();
+        String[] parts = env.split(":", -1);
+        int[] shape;
+        try {
+            shape = Arrays.stream(parts[0].split("x"))
+                    .mapToInt(Integer::parseInt)
+                    .toArray();
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("--env '" + env + "': the shape is not WIDTHxHEIGHT", e);
+        }
 
-        boolean toroidal = parts.length > 1 && "toroidal".equalsIgnoreCase(parts[1]);
-
-        return new EnvironmentProperties(shape, toroidal);
+        String topology = parts.length > 1 ? parts[1] : "torus";
+        if (parts.length > 2 || !("torus".equalsIgnoreCase(topology) || "bound".equalsIgnoreCase(topology))) {
+            throw new IllegalArgumentException("--env '" + env + "': the topology is torus or bound");
+        }
+        return new EnvironmentProperties(shape, "torus".equalsIgnoreCase(topology));
     }
 }
