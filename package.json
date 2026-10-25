@@ -1,7 +1,7 @@
 {
-  "name": "evochora-web-vendor",
+  "name": "evochora-web",
   "private": true,
-  "description": "The libraries and fonts the web frontend serves itself; build.gradle.kts copies them into the jar.",
+  "description": "The web frontend's packages: the libraries and fonts it serves itself, and the tools that bundle and test it.",
   "scripts": {
     "test": "vitest run"
   },
