@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * What the build recorded about itself: the git revision of the sources it was made from, and the
  * version it was built as.
@@ -28,6 +31,8 @@ public final class BuildInfo {
 
     /** Classpath location of the file the build writes. */
     static final String RESOURCE = "/evochora-build.properties";
+
+    private static final Logger LOG = LoggerFactory.getLogger(BuildInfo.class);
 
     private static final Properties RECORDED = load();
 
@@ -76,6 +81,7 @@ public final class BuildInfo {
                 properties.load(stream);
             }
         } catch (IOException e) {
+            LOG.warn("Cannot read {}, so runs are written without a build revision: {}", RESOURCE, e.getMessage());
             properties.clear();
         }
         return properties;
