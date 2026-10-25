@@ -14,13 +14,16 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - `src/main/java/` – Application code (compiler, runtime, datapipeline, CLI, node)
 - `src/main/proto/` – Protobuf definitions for data pipeline communication
 - `src/main/resources/` – Configuration files, compiler messages, reference.conf
+- `src/main/web/` – Web frontend (HTML, CSS, JavaScript); goes into the jar under `web/`
 - `src/test/java/` – Unit and integration tests
 - `src/test/resources/` – Test resources and configurations
+- `src/test/web/` – Web frontend tests (vitest), laid out like `src/main/web/`
 - `src/testFixtures/` – JUnit extensions and test utilities
 - `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, proposals)
 - `assembly/` – Assembly code examples and test files
 - `config/` – User-facing configuration (evochora.conf, local.conf)
 - `build.gradle.kts` – Gradle build configuration
+- `package.json`, `package-lock.json` – The web frontend's npm packages; Gradle installs them
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/` – Gradle wrapper
 - `gradle/pmd/ruleset.xml` – PMD rules for the static dead-code check
 
