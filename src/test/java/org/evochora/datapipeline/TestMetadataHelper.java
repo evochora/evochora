@@ -33,7 +33,7 @@ public final class TestMetadataHelper {
      * @return JSON string for resolvedConfigJson
      */
     public static String createResolvedConfigJson(int width, int height, boolean toroidal, int samplingInterval) {
-        String topology = toroidal ? "TORUS" : "BOUNDED";
+        String topology = toroidal ? "TORUS" : "BOUND";
         return String.format("""
             {
                 "environment": {
@@ -140,7 +140,7 @@ public final class TestMetadataHelper {
         }
 
         public String build() {
-            String topology = toroidal ? "TORUS" : "BOUNDED";
+            String topology = toroidal ? "TORUS" : "BOUND";
             return String.format("""
                 {
                     "environment": {

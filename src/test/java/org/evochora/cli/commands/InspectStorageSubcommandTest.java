@@ -68,7 +68,7 @@ public class InspectStorageSubcommandTest {
             {
                 "environment": {
                     "shape": [],
-                    "topology": "BOUNDED"
+                    "topology": "BOUND"
                 },
                 "samplingInterval": 1,
                 "accumulatedDeltaInterval": 100,

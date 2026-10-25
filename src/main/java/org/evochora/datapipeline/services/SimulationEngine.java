@@ -937,7 +937,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     protected void logStarted() {
         EnvironmentProperties envProps = simulation.getEnvironment().getProperties();
         String worldDims = String.join("×", Arrays.stream(envProps.getWorldShape()).mapToObj(String::valueOf).toArray(String[]::new));
-        String topology = envProps.isToroidal() ? "TORUS" : "BOUNDED";
+        String topology = envProps.isToroidal() ? "TORUS" : "BOUND";
         String pluginNames = tickPlugins.stream()
                 .map(p -> p.plugin().getClass().getSimpleName())
                 .collect(java.util.stream.Collectors.joining(", "));

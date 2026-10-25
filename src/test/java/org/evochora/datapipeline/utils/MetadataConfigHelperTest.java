@@ -32,7 +32,7 @@ class MetadataConfigHelperTest {
 
     @Test
     void environmentPropertiesReadsABoundedWorldOfThreeDimensions() {
-        SimulationMetadata metadata = metadataWith(configJson("[10, 10, 10]", "BOUNDED"));
+        SimulationMetadata metadata = metadataWith(configJson("[10, 10, 10]", "BOUND"));
 
         EnvironmentProperties props = MetadataConfigHelper.environmentProperties(metadata);
 
