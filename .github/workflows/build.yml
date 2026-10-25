@@ -148,7 +148,7 @@ jobs:
         uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
         if: always()
         with:
-          report_paths: '**/build/test-results/test/**/*.xml'
+          report_paths: '**/build/test-results/**/TEST-*.xml'
       - name: Upload HTML Test Reports
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

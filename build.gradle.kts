@@ -357,6 +357,26 @@ sourceSets.main {
     resources.srcDir(webVendor)
 }
 
+// The web frontend's tests, src/test/web, run with vitest against the files webVendor provides.
+val webTest = tasks.register<com.github.gradle.node.npm.task.NpmTask>("webTest") {
+    description = "Runs the web frontend's tests with vitest."
+    group = "verification"
+    dependsOn(tasks.named("npmInstall"))
+    val vendor = webVendor.map { it.destinationDir.resolve("web/shared/vendor") }
+    val report = layout.buildDirectory.file("test-results/webTest/TEST-webTest.xml")
+    args = report.map { listOf("test", "--", "--reporter=default", "--reporter=junit", "--outputFile.junit=" + it.asFile.absolutePath) }
+    environment = vendor.map { mapOf("WEB_VENDOR_DIR" to it.absolutePath) }
+    inputs.files(webVendor).withPropertyName("vendor")
+    inputs.dir("src/main/web").withPropertyName("web")
+    inputs.dir("src/test/web").withPropertyName("tests")
+    inputs.files("package-lock.json", "vitest.config.mjs").withPropertyName("setup")
+    outputs.file(report)
+}
+
+tasks.named("check") {
+    dependsOn(webTest)
+}
+
 tasks.named<ProcessResources>("processResources") {
     dependsOn(writeBuildInfo)
 }

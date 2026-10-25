@@ -34,6 +34,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew test               # All tests
 ./gradlew unit               # Fast unit tests only (@Tag("unit"))
 ./gradlew integration        # Integration tests only (@Tag("integration"))
+./gradlew webTest            # Web frontend tests (vitest, src/test/web)
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew distZip distTar    # Create distribution archives

@@ -2,19 +2,23 @@
   "name": "evochora-web-vendor",
   "private": true,
   "description": "The libraries and fonts the web frontend serves itself; build.gradle.kts copies them into the jar.",
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",
+    "@fontsource-variable/source-serif-4": "5.3.1",
     "@fontsource/doto": "5.3.0",
     "@fontsource/ibm-plex-sans": "5.3.0",
     "@fontsource/roboto": "5.3.0",
     "@fontsource/roboto-mono": "5.3.0",
-    "@fontsource-variable/source-serif-4": "5.3.1",
     "chart.js": "4.6.1",
     "pixi.js": "8.22.0",
     "protobufjs": "8.8.1",
     "redoc": "3.0.1"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "vitest": "5.0.5"
   }
 }
