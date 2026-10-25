@@ -85,7 +85,7 @@ public interface IBatchStorageRead extends IResource {
      *   <li>Never blocks - returns immediately</li>
      *   <li>Run timestamp can be determined from:
      *     <ul>
-     *       <li>Parsing runId format (YYYYMMDDHHmmssSS-UUID)</li>
+     *       <li>Parsing runId format (YYYYMMDD-HHmmssSS-UUID)</li>
      *       <li>Directory creation time (filesystem)</li>
      *       <li>Object metadata (S3/Azure)</li>
      *     </ul>
