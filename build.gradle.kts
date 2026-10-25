@@ -337,7 +337,6 @@ val webVendor = tasks.register<Sync>("webVendor") {
         mapOf(
             "doto" to listOf("900"),
             "ibm-plex-sans" to listOf("400", "500", "600"),
-            "roboto" to listOf("400", "700"),
             "roboto-mono" to listOf("400", "500"),
         ).forEach { (font, weights) ->
             from(frontendModules.dir("@fontsource/$font")) {
