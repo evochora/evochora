@@ -307,12 +307,14 @@ val bundleDuckDb = tasks.register<com.github.gradle.node.npm.task.NpxTask>("bund
 // The DuckDB extensions the analyzer loads, served from the node like the rest of the frontend.
 // An extension is built for one DuckDB core: the version is the core inside the DuckDB-WASM of
 // package.json and changes with it, else DuckDB fails to load the extension.
+val duckdbCore = "v1.4.3"
+val duckdbPlatform = "wasm_mvp"
 val duckdbExtensions = configurations.create("duckdbExtensions") {
     isTransitive = false
     isCanBeConsumed = false
 }
 dependencies {
-    duckdbExtensions("org.duckdb.extensions:parquet:v1.4.3:wasm_mvp@wasm")
+    duckdbExtensions("org.duckdb.extensions:parquet:$duckdbCore:$duckdbPlatform@wasm")
 }
 
 val webVendor = tasks.register<Sync>("webVendor") {
@@ -331,7 +333,7 @@ val webVendor = tasks.register<Sync>("webVendor") {
         // DuckDB asks its extension repository for <version>/<platform>/<name>.duckdb_extension.wasm
         from(duckdbExtensions) {
             rename { "parquet.duckdb_extension.wasm" }
-            into("duckdb/extensions/v1.4.3/wasm_mvp")
+            into("duckdb/extensions/$duckdbCore/$duckdbPlatform")
         }
         // The weights the pages use, each with its stylesheet and the woff2 files it names
         mapOf(
