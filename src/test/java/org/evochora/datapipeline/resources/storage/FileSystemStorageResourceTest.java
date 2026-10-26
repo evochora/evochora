@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystemLoopException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,6 +38,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -345,6 +348,32 @@ class FileSystemStorageResourceTest {
     void testFindMetadataPath_NullRunId() {
         assertThrows(IllegalArgumentException.class, () -> storage.findMetadataPath(null),
                 "findMetadataPath should throw IllegalArgumentException for null runId");
+    }
+
+    /**
+     * Reading follows symbolic links, as the operating system does, so the listing follows them
+     * too: a linked file and a file in a linked directory are found, and a link back into the walk
+     * fails it.
+     */
+    @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Creating a symbolic link needs a privilege there")
+    void testFindMetadataPath_FollowsSymbolicLinks() throws IOException {
+        StoragePath written = storage.writeMessage("source-run/raw/metadata.pb",
+                SimulationMetadata.newBuilder().setSimulationRunId("source-run").build());
+        Path sourceRaw = tempDir.resolve("source-run/raw");
+        Path metadataFile = tempDir.resolve(written.asString());
+
+        Path linkedFileRaw = Files.createDirectories(tempDir.resolve("linked-file-run/raw"));
+        Files.createSymbolicLink(linkedFileRaw.resolve(metadataFile.getFileName()), metadataFile);
+        assertTrue(storage.findMetadataPath("linked-file-run").isPresent(), "a linked file is found");
+
+        Files.createDirectories(tempDir.resolve("linked-dir-run"));
+        Files.createSymbolicLink(tempDir.resolve("linked-dir-run/raw"), sourceRaw);
+        assertTrue(storage.findMetadataPath("linked-dir-run").isPresent(), "a file in a linked directory is found");
+
+        Files.createSymbolicLink(sourceRaw.resolve("loop"), sourceRaw);
+        IOException failure = assertThrows(IOException.class, () -> storage.findMetadataPath("source-run"));
+        assertTrue(failure.getCause() instanceof FileSystemLoopException, "a link back into the walk fails it");
     }
 
     // ========================================================================
