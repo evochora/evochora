@@ -6,6 +6,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Topology;
 
 /**
  * Helper class to extract configuration values from SimulationMetadata.
@@ -49,7 +50,7 @@ public final class MetadataConfigHelper {
      */
     public static boolean isEnvironmentToroidal(SimulationMetadata metadata) {
         Config config = getResolvedConfig(metadata);
-        return "TORUS".equalsIgnoreCase(config.getString("environment.topology"));
+        return Topology.parse(config.getString("environment.topology")).isToroidal();
     }
 
     /**

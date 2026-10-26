@@ -44,6 +44,7 @@ import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.Topology;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
@@ -226,7 +227,7 @@ public class SimulationRestorer {
 
         // 4. Create Environment from config
         int[] shape = resolvedConfig.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
-        boolean toroidal = "TORUS".equalsIgnoreCase(resolvedConfig.getString("environment.topology"));
+        boolean toroidal = Topology.parse(resolvedConfig.getString("environment.topology")).isToroidal();
         EnvironmentProperties envProps = new EnvironmentProperties(shape, toroidal);
         Environment environment = new Environment(envProps, labelMatchingStrategy);
 

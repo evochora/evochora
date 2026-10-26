@@ -45,6 +45,7 @@ import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
+import org.evochora.runtime.model.Topology;
 
 import com.google.protobuf.util.JsonFormat;
 import com.typesafe.config.ConfigFactory;
@@ -214,7 +215,7 @@ public final class TraceConsumer extends AbstractService {
         }
         com.typesafe.config.Config resolved = ConfigFactory.parseString(meta.getResolvedConfigJson());
         int[] shape = resolved.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
-        boolean toroidal = "TORUS".equalsIgnoreCase(resolved.getString("environment.topology"));
+        boolean toroidal = Topology.parse(resolved.getString("environment.topology")).isToroidal();
         this.envProps = new EnvironmentProperties(shape, toroidal);
         this.cells = new MutableCellState(Math.toIntExact(envProps.getTotalCells()));
         this.occupied = new BitSet(Math.toIntExact(envProps.getTotalCells()));

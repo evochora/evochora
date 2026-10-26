@@ -64,6 +64,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.Topology;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 
@@ -802,11 +803,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
 
         String topology = options.getString("environment.topology");
-        if (!"TORUS".equalsIgnoreCase(topology) && !"BOUND".equalsIgnoreCase(topology)) {
+        boolean isToroidal;
+        try {
+            isToroidal = Topology.parse(topology).isToroidal();
+        } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
-                "Invalid environment.topology: \"" + topology + "\". Must be \"TORUS\" or \"BOUND\".");
+                "Invalid environment.topology: \"" + topology + "\". Must be \"TORUS\" or \"BOUND\".", e);
         }
-        boolean isToroidal = "TORUS".equalsIgnoreCase(topology);
         int[] shape = options.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
         for (int i = 0; i < shape.length; i++) {
             if (shape[i] < 1) {
@@ -937,7 +940,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     protected void logStarted() {
         EnvironmentProperties envProps = simulation.getEnvironment().getProperties();
         String worldDims = String.join("×", Arrays.stream(envProps.getWorldShape()).mapToObj(String::valueOf).toArray(String[]::new));
-        String topology = envProps.isToroidal() ? "TORUS" : "BOUND";
+        String topology = Topology.of(envProps.isToroidal()).name();
         String pluginNames = tickPlugins.stream()
                 .map(p -> p.plugin().getClass().getSimpleName())
                 .collect(java.util.stream.Collectors.joining(", "));

@@ -16,6 +16,7 @@ import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.internal.JsonProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Topology;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -282,7 +283,7 @@ public class CompileCommand implements Callable<Integer> {
         if (env == null || env.isEmpty()) {
             Config defaults = ConfigFactory.defaultReference().getConfig("pipeline.services.simulation-engine.options");
             int[] shape = defaults.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
-            return new EnvironmentProperties(shape, "TORUS".equalsIgnoreCase(defaults.getString("environment.topology")));
+            return new EnvironmentProperties(shape, Topology.parse(defaults.getString("environment.topology")).isToroidal());
         }
 
         String[] parts = env.split(":", -1);
@@ -298,10 +299,13 @@ public class CompileCommand implements Callable<Integer> {
         if (parts.length < 2) {
             throw new IllegalArgumentException("--env '" + env + "': the topology is missing, torus or bound");
         }
-        String topology = parts[1];
-        if (parts.length > 2 || !("torus".equalsIgnoreCase(topology) || "bound".equalsIgnoreCase(topology))) {
+        if (parts.length > 2) {
             throw new IllegalArgumentException("--env '" + env + "': the topology is torus or bound");
         }
-        return new EnvironmentProperties(shape, "torus".equalsIgnoreCase(topology));
+        try {
+            return new EnvironmentProperties(shape, Topology.parse(parts[1]).isToroidal());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("--env '" + env + "': the topology is torus or bound", e);
+        }
     }
 }
