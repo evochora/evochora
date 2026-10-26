@@ -372,6 +372,10 @@ val webTest = tasks.register<com.github.gradle.node.npm.task.NpmTask>("webTest")
     inputs.dir("src/test/web").withPropertyName("tests")
     inputs.files("package-lock.json", "vitest.config.mjs").withPropertyName("setup")
     outputs.file(report)
+    // Starting DuckDB-WASM takes most of the tests' time and all the processor it gets. PMD and
+    // JaCoCo run on in worker processes while the next task starts; beside them the tests wait for
+    // the processor and slow those tasks in turn, so they run once both are done.
+    mustRunAfter(tasks.withType<Pmd>(), tasks.withType<JacocoReport>())
 }
 
 tasks.named("check") {
