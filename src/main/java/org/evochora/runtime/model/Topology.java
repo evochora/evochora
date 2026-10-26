@@ -7,7 +7,9 @@ import java.util.Locale;
  * {@code TORUS} wraps around at every edge, {@code BOUND} ends there.
  * <p>
  * Every place that reads or writes the word goes through this type, so that a configuration, a
- * run's metadata and a command line accept the same words and no other.
+ * run's metadata and a command line accept the same words and no other. The visualizer receives
+ * the topology under its {@link #name()} from the server and decides from that name how to draw
+ * the environment.
  */
 public enum Topology {
 

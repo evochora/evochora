@@ -146,7 +146,11 @@ class SimulationControllerIntegrationTest {
     void getMetadata_returnsSimulationMetadata() throws Exception {
         // Given: Test run with metadata
         String runId = "test-run-" + UUID.randomUUID();
-        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false, 5);
+        // The configuration may write the topology in any case; the response names it canonically
+        SimulationMetadata bound = createMetadata(runId, new int[]{10, 10}, false, 5);
+        SimulationMetadata metadata = bound.toBuilder()
+            .setResolvedConfigJson(bound.getResolvedConfigJson().replace("\"BOUND\"", "\"bound\""))
+            .build();
 
         // Index metadata first
         indexMetadata(runId, metadata);
@@ -211,6 +215,7 @@ class SimulationControllerIntegrationTest {
             .body("environment.shape", hasSize(2))
             .body("environment.shape[0]", equalTo(10))  // int32 from Protobuf
             .body("environment.shape[1]", equalTo(10))  // int32 from Protobuf
+            .body("environment.topology", equalTo("BOUND"))
             .body("samplingInterval", equalTo(5))
             .header("Cache-Control", equalTo("public, max-age=31536000, must-revalidate"))
             .header("ETag", notNullValue());

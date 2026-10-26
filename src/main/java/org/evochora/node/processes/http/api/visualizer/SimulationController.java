@@ -17,6 +17,7 @@ import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
+import org.evochora.runtime.model.Topology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +89,7 @@ public class SimulationController extends VisualizerBaseController {
         path = "metadata",
         methods = {HttpMethod.GET},
         summary = "Get simulation metadata",
-        description = "Returns simulation metadata including world shape, energy strategies, and initial organism setup",
+        description = "Returns a run's metadata: its compiled programs and resolved configuration, with the environment and the sampling interval lifted out of it, and the names of the molecule types and opcodes",
         tags = {"visualizer / simulation"},
         queryParams = {
             @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
@@ -102,34 +103,20 @@ public class SimulationController extends VisualizerBaseController {
                     example = """
                         JSON:
                         {
-                          "simulationRunId": "2025100614302512-550e8400-e29b-41d4-a716-446655440000",
-                          
-                          "environment": {
-                            "dimensions": 2,
-                            "shape": [800, 600],
-                            "toroidal": [true, true]
-                          },
-                          "plugins": [
-                            {
-                              "pluginClass": "org.evochora.runtime.worldgen.GeyserCreator",
-                              "configJson": "{\\"geyserCount\\": 5, \\"energyPerTick\\": 10}"
-                            }
-                          ],
+                          "simulationRunId": "20251006-14302512-550e8400-e29b-41d4-a716-446655440000",
+                          "startTimeMs": "1759761025120",
+                          "initialSeed": "42",
                           "programs": [],
-                          "initialOrganisms": [
-                            {
-                              "organismId": 1,
-                              "programId": "main",
-                              "position": [375, 285],
-                              "initialEnergy": 10000
-                            }
-                          ],
-                          "userMetadata": {
-                            "experiment": "test-run",
-                            "version": "1.0"
-                          },
                           "resolvedConfigJson": "{}",
-                          "samplingInterval": 1
+                          "buildRevision": "e681924a0c3d5b9e7f1a2b4c6d8e0f1a3b5c7d9e",
+                          "environment": {
+                            "shape": [2048, 1152],
+                            "topology": "TORUS"
+                          },
+                          "samplingInterval": 1,
+                          "moleculeTypes": {"0": "CODE", "1048576": "DATA"},
+                          "moleculeTypeShift": 20,
+                          "opcodes": {"0": "NOP"}
                         }
                         """
                 )
@@ -196,66 +183,65 @@ public class SimulationController extends VisualizerBaseController {
      * <p>
      * This method enriches the protobuf-serialized metadata for client consumption:
      * <ul>
-     *   <li>Extracts environment, samplingInterval from resolvedConfigJson to top-level</li>
+     *   <li>Extracts environment, samplingInterval from resolvedConfigJson to top-level, the
+     *       environment's topology under its {@link Topology} name</li>
      *   <li>moleculeTypes: the molecule type constants of {@code Config} to their names. The keys
      *       carry the type bits at their position within a packed molecule and are therefore
      *       multiples of {@code 1 << Config.TYPE_SHIFT}, with CODE at 0. Cell responses report {@code moleculeType} on the same scale.</li>
      *   <li>moleculeTypeShift: {@code Config.TYPE_SHIFT}, the bit position of the type inside a
      *       packed molecule. A client that holds a raw type index shifts it by this amount to
      *       obtain the key of the {@code moleculeTypes} map.</li>
-     *   <li>opcodes: {0x00: "NOP", 0x10: "ADD", ...}</li>
+     *   <li>opcodes: the opcode IDs to the names of their instructions.</li>
      * </ul>
      *
      * @param metadataJson The original metadata JSON string.
      * @return JSON string with added type mappings and expanded config.
+     * @throws IllegalArgumentException if the environment names no topology {@link Topology} reads
      */
     private String addTypeMappings(final String metadataJson) {
-        try {
-            final ObjectMapper mapper = new ObjectMapper();
-            final ObjectNode root = (ObjectNode) mapper.readTree(metadataJson);
+        final ObjectMapper mapper = new ObjectMapper();
+        final ObjectNode root = (ObjectNode) mapper.readTree(metadataJson);
 
-            // Expand resolvedConfigJson into top-level fields for API backward compatibility
-            if (root.has("resolvedConfigJson")) {
-                final String configJson = root.get("resolvedConfigJson").asString();
-                if (configJson != null && !configJson.isEmpty()) {
-                    final ObjectNode configNode = (ObjectNode) mapper.readTree(configJson);
+        // Expand resolvedConfigJson into top-level fields for API backward compatibility
+        if (root.has("resolvedConfigJson")) {
+            final String configJson = root.get("resolvedConfigJson").asString();
+            if (configJson != null && !configJson.isEmpty()) {
+                final ObjectNode configNode = (ObjectNode) mapper.readTree(configJson);
 
-                    // Extract environment to top level
-                    if (configNode.has("environment")) {
-                        root.set("environment", configNode.get("environment"));
-                    }
+                // Extract environment to top level, its topology under the name Topology gives it,
+                // so that the client compares against one spelling only
+                if (configNode.has("environment")) {
+                    final ObjectNode environment = (ObjectNode) configNode.get("environment");
+                    environment.put("topology", Topology.parse(environment.get("topology").asString()).name());
+                    root.set("environment", environment);
+                }
 
-                    // Extract samplingInterval to top level
-                    if (configNode.has("samplingInterval")) {
-                        root.set("samplingInterval", configNode.get("samplingInterval"));
-                    }
+                // Extract samplingInterval to top level
+                if (configNode.has("samplingInterval")) {
+                    root.set("samplingInterval", configNode.get("samplingInterval"));
                 }
             }
-
-            // Ensure instruction set is initialized before getting opcodes
-            Instruction.init();
-
-            // Add molecule type mappings (id -> name)
-            final ObjectNode moleculeTypes = mapper.createObjectNode();
-            for (Map.Entry<Integer, String> entry : MoleculeTypeRegistry.getAllTypes().entrySet()) {
-                moleculeTypes.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            root.set("moleculeTypes", moleculeTypes);
-            root.put("moleculeTypeShift", org.evochora.runtime.Config.TYPE_SHIFT);
-
-            // Add opcode mappings (id -> name)
-            final ObjectNode opcodes = mapper.createObjectNode();
-            for (Map.Entry<Integer, String> entry : Instruction.getAllInstructions().entrySet()) {
-                opcodes.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            root.set("opcodes", opcodes);
-
-            return mapper.writeValueAsString(root);
-        } catch (Exception e) {
-            // The JSON was built by this class from its own data, so a failure here is a defect
-            LOGGER.error("Failed to add type mappings to metadata JSON", e);
-            return metadataJson;
         }
+
+        // Ensure instruction set is initialized before getting opcodes
+        Instruction.init();
+
+        // Add molecule type mappings (id -> name)
+        final ObjectNode moleculeTypes = mapper.createObjectNode();
+        for (Map.Entry<Integer, String> entry : MoleculeTypeRegistry.getAllTypes().entrySet()) {
+            moleculeTypes.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        root.set("moleculeTypes", moleculeTypes);
+        root.put("moleculeTypeShift", org.evochora.runtime.Config.TYPE_SHIFT);
+
+        // Add opcode mappings (id -> name)
+        final ObjectNode opcodes = mapper.createObjectNode();
+        for (Map.Entry<Integer, String> entry : Instruction.getAllInstructions().entrySet()) {
+            opcodes.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        root.set("opcodes", opcodes);
+
+        return mapper.writeValueAsString(root);
     }
 
 }
