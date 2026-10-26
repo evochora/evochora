@@ -5,7 +5,7 @@ description: Check a change to the web frontend (visualizer, analyzer) in real b
 
 # Checking a frontend change in the browser
 
-The web frontend has no automated tests. A change to it is checked by scripts that drive real
+A change to the web frontend is checked by scripts that drive real
 browsers — Chrome and Firefox both, since both must work — and then by the user, who tries it.
 The scripts answer what a value decides (did the view load once, is the line on the minimap, does
 a key do nothing in a text field); the user answers what can only be felt.
@@ -30,7 +30,7 @@ client the procedure below refers to.
   question.
 - To check new web files against a node that is already running and should stay untouched, a
   small local server can serve the working tree's `src/main/web` and pass every other
-  request (`/…/api/…`) on to the node.
+  request (`/…/api/…`, and `/shared/vendor/…`, which the build provides) on to the node.
 
 ## 1 · Browsers
 
