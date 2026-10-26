@@ -7,6 +7,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -461,6 +463,10 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     /**
      * The regular files under a directory, at any depth.
      * <p>
+     * The walk follows symbolic links, as reading a file does, so that every file a read can open
+     * is listed; a link that leads back into the walk fails it, and a link to nothing is skipped,
+     * as a read of it fails too.
+     * <p>
      * A writer stores a file under a temporary name and renames it once complete, so a file seen in
      * a directory can be gone by the time the walk reads its attributes. Such a file is skipped; any
      * other failure is thrown.
@@ -471,7 +477,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
      */
     private static List<Path> regularFilesUnder(Path dir) throws IOException {
         List<Path> files = new ArrayList<>();
-        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+        Files.walkFileTree(dir, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
                 if (attributes.isRegularFile()) {
