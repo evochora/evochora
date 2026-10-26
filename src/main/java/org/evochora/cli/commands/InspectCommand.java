@@ -16,6 +16,7 @@ import picocli.CommandLine.ParentCommand;
 @Command(
     name = "inspect",
     description = "Inspect simulation data and storage",
+    mixinStandardHelpOptions = true,
     subcommands = {
         InspectStorageSubcommand.class
     }

@@ -15,7 +15,7 @@
 /* global protobuf */
 
 // Import protobufjs in worker context
-importScripts('https://cdn.jsdelivr.net/npm/protobufjs@8.0.0/dist/protobuf.min.js');
+importScripts('../../../shared/vendor/protobufjs/protobuf.min.js');
 
 // Cached protobuf type
 let EnvironmentHttpResponse = null;
@@ -29,7 +29,8 @@ const activeAbortControllers = new Map();
 
 /**
  * Protobuf schema - must match server definition.
- * @see EnvironmentApi.js for full documentation on schema duplication.
+ * The messages are copied from src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto;
+ * a change there is made here as well.
  */
 const PROTO_SCHEMA = `
 syntax = "proto3";

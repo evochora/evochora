@@ -3,12 +3,11 @@ package org.evochora.architecture;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.junit.AnalyzeClasses;
+import com.tngtech.archunit.junit.ArchTag;
+import com.tngtech.archunit.junit.ArchTest;
 import java.util.Deque;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 
 /**
  * Enforces that the instruction set pushes onto an organism's stacks only through the organism.
@@ -19,28 +18,18 @@ import org.junit.jupiter.api.Test;
  * the stack past its limit; this rule makes such a push a failing build instead of a stack that
  * grows without bound at runtime.
  */
-@Tag("unit")
+@AnalyzeClasses(packages = "org.evochora", importOptions = {ImportOption.DoNotIncludeTests.class, ExcludeTestFixturesAndJmh.class})
+@ArchTag("integration")
 class StackPushRulesTest {
 
-    private static JavaClasses productionClasses;
-
-    @BeforeAll
-    static void importProductionClasses() {
-        productionClasses = new ClassFileImporter()
-                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-                .withImportOption(location -> !location.contains("test-fixtures"))
-                .withImportOption(location -> !location.contains("-jmh"))
-                .importPackages("org.evochora.runtime");
-    }
-
-    @Test
-    void instructionsPushOnlyThroughTheOrganism() {
+    @ArchTest
+    static void instructionsPushOnlyThroughTheOrganism(JavaClasses classes) {
         noClasses().that().resideInAnyPackage("org.evochora.runtime.isa..", "org.evochora.runtime.internal..")
                 .should().callMethod(Deque.class, "push", Object.class)
                 .orShould().callMethod(Deque.class, "addFirst", Object.class)
                 .orShould().callMethod(Deque.class, "addLast", Object.class)
                 .orShould().callMethod(Deque.class, "offerFirst", Object.class)
                 .orShould().callMethod(Deque.class, "offerLast", Object.class)
-                .check(productionClasses);
+                .check(classes);
     }
 }

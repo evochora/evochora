@@ -420,7 +420,7 @@ public final class Ancestry {
          */
         public LineSizes sizes() {
             final int[] ids = counts.keySet().toIntArray();
-            IntArrays.quickSort(ids, (a, b) -> {
+            IntArrays.quickSort(ids, (int a, int b) -> {
                 final int bySize = Integer.compare(counts.get(b), counts.get(a));
                 return bySize != 0 ? bySize : Integer.compare(a, b);
             });

@@ -19,6 +19,7 @@ import com.google.gson.Gson;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 import io.javalin.testtools.JavalinTest;
 
 /**
@@ -176,8 +177,7 @@ class AnalyticsControllerTickRangeTest {
         registry.register(IAnalyticsStorageRead.class, storage);
         AnalyticsController controller = new AnalyticsController(
                 registry, ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 1)));
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
         return app;
     }
 }

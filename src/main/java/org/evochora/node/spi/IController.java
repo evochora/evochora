@@ -1,20 +1,21 @@
 package org.evochora.node.spi;
 
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 
 /**
  * A marker interface for all API controllers. It ensures that every controller
- * provides a method to register its routes with the Javalin application.
+ * provides a method to register its routes while the Javalin application is configured.
  */
 public interface IController {
 
     /**
-     * Registers all HTTP routes for this controller with the given Javalin instance.
+     * Registers all HTTP routes for this controller while the Javalin application is configured,
+     * before the server starts.
      *
-     * @param app      The Javalin application instance to register routes with.
+     * @param routes   The routes of the Javalin application to register this controller's routes with.
      * @param basePath The base path under which the controller's routes should be nested.
      */
-    void registerRoutes(Javalin app, String basePath);
+    void registerRoutes(RoutesConfig routes, String basePath);
 
     /**
      * Releases what the controller holds beyond the lifetime of a request, such as threads or

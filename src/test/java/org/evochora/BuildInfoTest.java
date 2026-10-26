@@ -31,6 +31,15 @@ class BuildInfoTest {
     }
 
     @Test
+    void versionOf_ReadsTheRecordedVersionAndIsUnknownWithoutIt() {
+        Properties properties = new Properties();
+        properties.setProperty("version", " v0.4.0 ");
+
+        assertThat(BuildInfo.versionOf(properties)).isEqualTo("v0.4.0");
+        assertThat(BuildInfo.versionOf(new Properties())).isEqualTo(BuildInfo.UNKNOWN);
+    }
+
+    @Test
     void matches_UnknownRevisionNeverMatches() {
         assertThat(BuildInfo.matches(BuildInfo.UNKNOWN)).isFalse();
         assertThat(BuildInfo.matches("")).isFalse();

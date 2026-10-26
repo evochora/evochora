@@ -25,6 +25,23 @@ import {
 } from '../../shared/run/RunAvailability.js';
 
 /**
+ * Whether an environment of a topology is drawn across its seam. The server names the topology
+ * as org.evochora.runtime.model.Topology does; a new constant there gets its case here, and until
+ * then the run is refused rather than drawn as another one.
+ *
+ * @param {string} topology - The topology's name, e.g. 'TORUS'.
+ * @returns {boolean} True if the environment wraps around at its edges.
+ * @throws {Error} If the name is none the visualizer can draw.
+ */
+function wrapsAround(topology) {
+    switch (topology) {
+        case 'TORUS': return true;
+        case 'BOUND': return false;
+        default: throw new Error(`Unknown topology '${topology}'`);
+    }
+}
+
+/**
  * The main application controller. It initializes all components, manages the application state,
  * and orchestrates the data flow between the API clients and the UI views.
  *
@@ -753,7 +770,7 @@ export class AppController {
         this.tickPanelManager?.updateTooltips();
 
         // A toroidal world is shown across its seam; a bounded one as it always was
-        const isTorus = metadata?.environment?.topology?.toUpperCase() === 'TORUS';
+        const isTorus = wrapsAround(metadata?.environment?.topology);
         this.renderer.setTopology(isTorus);
         this.minimapView?.setTorus(isTorus);
 
@@ -771,8 +788,8 @@ export class AppController {
             for (const program of metadata.programs) {
                 if (program && program.programId && program.sources) {
                     if (envInfo) {
-                        // Topology is configured as a string ("TORUS"), not per dimension
-                        const isTorus = envInfo.topology?.toUpperCase() === 'TORUS';
+                        // The topology holds for every dimension alike
+                        const isTorus = wrapsAround(envInfo.topology);
                         const shape = envInfo.shape ? Array.from(envInfo.shape) : null;
                         program.envProps = {
                             worldShape: shape,

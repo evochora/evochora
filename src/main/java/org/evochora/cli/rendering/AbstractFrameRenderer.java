@@ -5,12 +5,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+import org.evochora.cli.CommandLineInterface;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import picocli.CommandLine.Mixin;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.Spec;
 
 /**
  * Abstract base class for video frame renderers.
@@ -42,6 +45,10 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
      */
     @Mixin
     protected VideoRenderOptions videoOptions;
+
+    /** The renderer's command; its root holds the configuration of the invocation. */
+    @Spec
+    private CommandSpec spec;
 
     /**
      * Environment properties, set by {@link #init(EnvironmentProperties)}.
@@ -290,6 +297,7 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
      */
     @Override
     public Integer call() throws Exception {
-        return new VideoRenderEngine(videoOptions, this).execute();
+        return new VideoRenderEngine(videoOptions, this,
+            () -> ((CommandLineInterface) spec.root().userObject()).getConfig()).execute();
     }
 }

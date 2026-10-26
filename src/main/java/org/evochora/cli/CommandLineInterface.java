@@ -36,7 +36,6 @@ import picocli.CommandLine.Option;
 @Command(
     name = "evochora",
     mixinStandardHelpOptions = true,
-    version = "Evochora 1.0",
     description = "Evochora - Simulation Platform for Digital Evolution Research",
     subcommands = {
         NodeCommand.class,
@@ -59,7 +58,7 @@ public class CommandLineInterface implements Callable<Integer> {
 
     @Option(
         names = {"-c", "--config"},
-        description = "Path to custom configuration file (default: config/evochora.conf)"
+        description = "Path to custom configuration file (default: config/evochora.conf in the working or the installation directory)"
     )
     private File configFile;
 
@@ -89,14 +88,22 @@ public class CommandLineInterface implements Callable<Integer> {
     /**
      * Creates a fully configured CommandLine instance.
      * <p>
-     * Use this method in tests to get the same configuration as the CLI entry point.
+     * Use this method in tests to get the same configuration as the CLI entry point. Every command
+     * answers {@code --version}, which its help options offer, with the version the build recorded.
      *
      * @return A configured CommandLine instance.
      */
     public static CommandLine createCommandLine() {
         final CommandLine commandLine = new CommandLine(new CommandLineInterface());
         commandLine.setCommandName("evochora");
+        commandLine.setCaseInsensitiveEnumValuesAllowed(true);
+        answerVersion(commandLine, new BuildVersionProvider());
         return commandLine;
+    }
+
+    private static void answerVersion(final CommandLine command, final CommandLine.IVersionProvider provider) {
+        command.getCommandSpec().versionProvider(provider);
+        command.getSubcommands().values().forEach(subcommand -> answerVersion(subcommand, provider));
     }
 
     private void initialize(final Config overrides) {
@@ -136,7 +143,7 @@ public class CommandLineInterface implements Callable<Integer> {
         }
         if (config.hasPath("logging.format")) {
             final String format = config.getString("logging.format");
-            System.setProperty("evochora.logging.format", "PLAIN".equalsIgnoreCase(format) ? "STDOUT_PLAIN" : "STDOUT");
+            System.setProperty("evochora.logging.format", "PLAIN".equalsIgnoreCase(format) ? "CONSOLE_PLAIN" : "CONSOLE");
             reconfigureLogback();
         }
         LoggingConfigurator.configure(config);

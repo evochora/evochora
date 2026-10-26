@@ -7,18 +7,23 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileVisitOption;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
@@ -235,32 +240,13 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
 
         List<String> results = new ArrayList<>();
 
-        try (Stream<Path> stream = Files.walk(searchDir.toPath())) {
-            // Use iterator to catch NoSuchFileException during iteration
-            java.util.Iterator<Path> iterator = stream.iterator();
-            List<Path> validPaths = new ArrayList<>();
-            
-            while (iterator.hasNext()) {
-                try {
-                    Path path = iterator.next();
-                    // Skip .tmp files, directories, and superseded folder
-                    String filename = path.getFileName().toString();
-                    String pathStr = path.toString().replace(File.separatorChar, '/');
-                    boolean isSuperseded = pathStr.contains("/superseded/");
-                    if (!filename.endsWith(".tmp") && !isSuperseded && Files.isRegularFile(path)) {
-                        validPaths.add(path);
-                    }
-                } catch (java.io.UncheckedIOException e) {
-                    // Unwrap UncheckedIOException to check underlying cause
-                    // Files.walk() wraps NoSuchFileException in UncheckedIOException when files are deleted during traversal
-                    if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
-                        log.debug("Ignoring file deleted during traversal");
-                        continue;
-                    }
-                    throw e;
-                }
-            }
-            
+        try {
+            // Skip .tmp files and the superseded folder
+            List<Path> validPaths = regularFilesUnder(searchDir.toPath()).stream()
+                    .filter(path -> !path.getFileName().toString().endsWith(".tmp"))
+                    .filter(path -> !path.toString().replace(File.separatorChar, '/').contains("/superseded/"))
+                    .toList();
+
             List<String> allFiles = validPaths.stream()
                     .map(p -> rootPath.relativize(p))
                     .map(Path::toString)
@@ -475,6 +461,43 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     /**
+     * The regular files under a directory, at any depth.
+     * <p>
+     * The walk follows symbolic links, as reading a file does, so that every file a read can open
+     * is listed; a link that leads back into the walk fails it, and a link to nothing is skipped,
+     * as a read of it fails too.
+     * <p>
+     * A writer stores a file under a temporary name and renames it once complete, so a file seen in
+     * a directory can be gone by the time the walk reads its attributes. Such a file is skipped; any
+     * other failure is thrown.
+     *
+     * @param dir the directory to walk
+     * @return the regular files under it, in no particular order
+     * @throws IOException if the walk fails for another reason than a file disappearing
+     */
+    private static List<Path> regularFilesUnder(Path dir) throws IOException {
+        List<Path> files = new ArrayList<>();
+        Files.walkFileTree(dir, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                if (attributes.isRegularFile()) {
+                    files.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException e) throws IOException {
+                if (e instanceof NoSuchFileException) {
+                    return FileVisitResult.CONTINUE;
+                }
+                throw e;
+            }
+        });
+        return files;
+    }
+
+    /**
      * Names the directory a listing has to walk to find every file whose path starts with a prefix.
      * <p>
      * A run holds one directory per metric and level, and a listing for one of them has no reason
@@ -517,9 +540,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         if (walkRoot == null) {
             return Collections.emptyList();
         }
-        try (Stream<Path> stream = Files.walk(walkRoot)) {
-            return stream
-                .filter(Files::isRegularFile)
+        return regularFilesUnder(walkRoot).stream()
                 .map(p -> rootPath.relativize(p))
                 .map(Path::toString)
                 .map(s -> s.replace(File.separatorChar, '/'))
@@ -527,7 +548,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 .filter(path -> !path.endsWith(".tmp")) // Exclude temp files
                 .sorted()
                 .collect(Collectors.toList());
-        }
     }
 
     @Override
@@ -548,9 +568,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
             return Collections.emptyList();
         }
 
-        try (Stream<Path> stream = Files.walk(walkRoot)) {
-            return stream
-                .filter(Files::isRegularFile)
+        return regularFilesUnder(walkRoot).stream()
                 .map(p -> rootPath.relativize(p))
                 .map(Path::toString)
                 .map(s -> s.replace(File.separatorChar, '/'))
@@ -569,7 +587,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 })
                 .sorted()
                 .collect(Collectors.toList());
-        }
     }
 
     @Override
@@ -590,24 +607,21 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         long maxTick = Long.MIN_VALUE;
         boolean found = false;
 
-        try (Stream<Path> stream = Files.walk(walkRoot)) {
-            List<String> paths = stream
-                .filter(Files::isRegularFile)
-                .map(p -> rootPath.relativize(p))
-                .map(Path::toString)
-                .map(s -> s.replace(File.separatorChar, '/'))
-                .filter(path -> path.startsWith(searchPrefix))
-                .filter(path -> !path.endsWith(".tmp"))
-                .toList();
+        List<String> paths = regularFilesUnder(walkRoot).stream()
+            .map(p -> rootPath.relativize(p))
+            .map(Path::toString)
+            .map(s -> s.replace(File.separatorChar, '/'))
+            .filter(path -> path.startsWith(searchPrefix))
+            .filter(path -> !path.endsWith(".tmp"))
+            .toList();
 
-            for (String path : paths) {
-                String filename = path.substring(path.lastIndexOf('/') + 1);
-                long[] range = parseAnalyticsParquetTickRange(filename);
-                if (range != null) {
-                    if (range[0] < minTick) minTick = range[0];
-                    if (range[1] > maxTick) maxTick = range[1];
-                    found = true;
-                }
+        for (String path : paths) {
+            String filename = path.substring(path.lastIndexOf('/') + 1);
+            long[] range = parseAnalyticsParquetTickRange(filename);
+            if (range != null) {
+                if (range[0] < minTick) minTick = range[0];
+                if (range[1] > maxTick) maxTick = range[1];
+                found = true;
             }
         }
 

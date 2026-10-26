@@ -1,14 +1,43 @@
 package org.evochora.cli.commands;
 
+import org.evochora.cli.CommandLineInterface;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+@Tag("unit")
 public class InspectStorageSubcommandTest {
+
+    @Test
+    public void theJsonFormatWritesTheTickInProtobufsJsonForm() {
+        TickData tick = TickData.newBuilder().setSimulationRunId("run").setTickNumber(42).build();
+
+        JsonObject json = JsonParser.parseString(InspectStorageSubcommand.tickAsJson(tick)).getAsJsonObject();
+
+        assertEquals(42, json.get("tickNumber").getAsLong());
+        assertEquals("run", json.get("simulationRunId").getAsString());
+    }
+
+    @Test
+    public void anUnknownFormatIsRejectedAsAnInvalidCommandLine() {
+        var commandLine = CommandLineInterface.createCommandLine();
+        commandLine.setErr(new PrintWriter(new StringWriter()));
+
+        int exitCode = commandLine.execute("inspect", "storage", "-r", "run", "-t", "1", "-f", "xml");
+
+        assertEquals(2, exitCode);
+    }
 
     @Test
     public void testCalculateTotalCells_ThrowsException_WhenEnvironmentMissing() throws Exception {
@@ -39,7 +68,7 @@ public class InspectStorageSubcommandTest {
             {
                 "environment": {
                     "shape": [],
-                    "topology": "BOUNDED"
+                    "topology": "BOUND"
                 },
                 "samplingInterval": 1,
                 "accumulatedDeltaInterval": 100,

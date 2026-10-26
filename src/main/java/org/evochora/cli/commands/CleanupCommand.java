@@ -24,7 +24,8 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "cleanup",
-    description = "Clean up simulation runs from storage, database, and topics"
+    description = "Clean up simulation runs from storage, database, and topics (all three unless --storage, --database or --topics is given)",
+    mixinStandardHelpOptions = true
 )
 public class CleanupCommand implements Callable<Integer> {
 
@@ -36,13 +37,13 @@ public class CleanupCommand implements Callable<Integer> {
     static class PatternOptions {
         @Option(
             names = {"--keep"},
-            description = "Glob pattern for runs to KEEP (delete all others)"
+            description = "Glob pattern for runs to KEEP (delete all others); this or --delete is required"
         )
         String keepPattern;
 
         @Option(
             names = {"--delete"},
-            description = "Glob pattern for runs to DELETE (keep all others)"
+            description = "Glob pattern for runs to DELETE (keep all others); this or --keep is required"
         )
         String deletePattern;
     }
@@ -70,13 +71,13 @@ public class CleanupCommand implements Callable<Integer> {
 
     @Option(
         names = {"--force"},
-        description = "Execute deletion (default: dry-run preview only)"
+        description = "Execute deletion and compaction (default: dry-run preview only)"
     )
     private boolean force;
 
     @Option(
         names = {"--compact"},
-        description = "Compact H2 database to reclaim disk space (only works when no other connections are active)"
+        description = "Compact H2 database to reclaim disk space (only works when no other connections are active); can be given alone"
     )
     private boolean compact;
 
@@ -163,14 +164,20 @@ public class CleanupCommand implements Callable<Integer> {
                 out.println("\nRun with --force to execute deletion.");
             }
 
-            // Attempt database compaction only when explicitly requested
-            if (compact && doDatabase) {
+            // Attempt database compaction only when explicitly requested, and like deletion only with --force
+            if (compact && !doDatabase) {
+                out.println();
+                out.println("--compact skipped: the database is not among the targets.");
+            } else if (compact && !force) {
+                out.println();
+                out.println("Would compact the database. Run with --force to compact it.");
+            } else if (compact) {
                 out.println();
                 attemptCompaction(service, out, true);
             } else if (force && doDatabase && result.database() != null && result.database().deleted() > 0) {
                 // Hint about compaction when deletions occurred
                 out.println();
-                out.println("Tip: Run 'cleanup --compact' to reclaim disk space.");
+                out.println("Tip: Run 'cleanup --compact --force' to reclaim disk space.");
             }
 
             return 0;
@@ -187,6 +194,10 @@ public class CleanupCommand implements Callable<Integer> {
      */
     private Integer executeCompactOnly(CleanupService service, java.io.PrintWriter out, java.io.PrintWriter err) {
         out.println("\n=== Database Compaction ===");
+        if (!force) {
+            out.println("Would compact the database. Run with --force to compact it.");
+            return 0;
+        }
         CompactionResult result = service.compactDatabase();
 
         if (result.success()) {
@@ -216,7 +227,7 @@ public class CleanupCommand implements Callable<Integer> {
                 out.println("Warning: " + result.message());
             } else {
                 out.println("Warning: " + result.message());
-                out.println("Run 'cleanup --compact' later to reclaim disk space.");
+                out.println("Run 'cleanup --compact --force' later to reclaim disk space.");
             }
         }
     }

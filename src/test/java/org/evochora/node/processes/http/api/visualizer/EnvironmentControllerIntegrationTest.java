@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import org.evochora.datapipeline.CellStateTestHelper;
@@ -64,6 +65,8 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
+import io.javalin.config.RoutesConfig;
 import io.restassured.response.Response;
 
 /**
@@ -207,10 +210,6 @@ class EnvironmentControllerIntegrationTest {
         assertThat(indexer.getMetrics().get("ticks_processed").longValue()).isEqualTo(1);
         assertThat(indexer.getMetrics().get("batches_processed").longValue()).isEqualTo(1);
 
-        // Now: Start HTTP server with EnvironmentController
-        app = startApp();
-        int port = app.port();
-
         // Register database provider in controller registry
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
@@ -226,7 +225,9 @@ class EnvironmentControllerIntegrationTest {
             }
             """);
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Now: Start HTTP server with EnvironmentController
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
 
         // Query data via HTTP API using RestAssured (now returns Protobuf binary)
         Response resp = given()
@@ -298,10 +299,6 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
         
-        // Setup HTTP server
-        app = startApp();
-        int port = app.port();
-        
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         
@@ -316,7 +313,9 @@ class EnvironmentControllerIntegrationTest {
             }
             """);
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Setup HTTP server
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
         
         // When: Make HTTP request
         Response resp = given()
@@ -362,11 +361,9 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
 
-        app = startApp();
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
-        new EnvironmentController(registry, ConfigFactory.empty())
-            .registerRoutes(app, "/visualizer/api/environment");
+        app = startApp(routes -> new EnvironmentController(registry, ConfigFactory.empty()).registerRoutes(routes, "/visualizer/api/environment"));
 
         // When: minimap without a value and with 900
         EnvironmentHttpResponse byDefault = requestMinimap(app.port(), runId, "minimap");
@@ -403,15 +400,18 @@ class EnvironmentControllerIntegrationTest {
     }
 
     /**
-     * Starts the server on a free port, with a request logger that notes every request the server
+     * Starts the server on a free port with the given routes, and with a request logger that notes every request the server
      * has finished, with its status, duration and thread, so that the log timeline of a failing
      * test shows when the server was done with each answer.
      */
-    private Javalin startApp() {
-        return Javalin.create(config -> config.requestLogger.http((ctx, ms) ->
-                LOGGER.info("Server finished {} {}{} with {} in {} ms on {}", ctx.method(), ctx.path(),
-                        ctx.queryString() == null ? "" : "?" + ctx.queryString(), ctx.statusCode(), ms,
-                        Thread.currentThread().getName())))
+    private Javalin startApp(final Consumer<RoutesConfig> routes) {
+        return JavalinFactory.create(config -> {
+                config.requestLogger.http((ctx, ms) ->
+                    LOGGER.info("Server finished {} {}{} with {} in {} ms on {}", ctx.method(), ctx.path(),
+                            ctx.queryString() == null ? "" : "?" + ctx.queryString(), ctx.statusCode(), ms,
+                            Thread.currentThread().getName()));
+                routes.accept(config.routes);
+            })
             .start(0);
     }
 
@@ -563,16 +563,14 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
         
-        // Setup HTTP server
-        app = startApp();
-        int port = app.port();
-        
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Setup HTTP server
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
         
         // When: Make HTTP request WITHOUT runId parameter (should fallback to latest)
         Response resp = given()
@@ -630,16 +628,14 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
         
-        // Setup HTTP server
-        app = startApp();
-        int port = app.port();
-        
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Setup HTTP server
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
         
         // When: Make HTTP request with invalid region (odd number of values)
         Response resp = given()
@@ -696,16 +692,14 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 10);
         
-        // Setup HTTP server
-        app = startApp();
-        int port = app.port();
-        
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Setup HTTP server
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
         
         // Get baseline connection count before HTTP requests
         Map<String, Number> baselineMetrics = testDatabase.getMetrics();
@@ -932,16 +926,14 @@ class EnvironmentControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 3);
 
-        // Setup HTTP server
-        app = startApp();
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Setup HTTP server
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
 
         // When: Request tick range
         io.restassured.response.Response resp = given()
@@ -969,16 +961,14 @@ class EnvironmentControllerIntegrationTest {
 
         indexMetadata(runId, metadata);
 
-        // Setup HTTP server
-        app = startApp();
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         Config controllerConfig = ConfigFactory.empty();
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        // Setup HTTP server
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
+        int port = app.port();
 
         // When: Request tick range (no ticks indexed)
         io.restassured.response.Response resp = given()
@@ -1126,13 +1116,12 @@ class EnvironmentControllerIntegrationTest {
 
     /** Starts an HTTP server carrying the environment controller and returns its port. */
     private int startControllerServer() {
-        app = startApp();
 
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        app = startApp(routes -> controller.registerRoutes(routes, "/visualizer/api/environment"));
 
         return app.port();
     }

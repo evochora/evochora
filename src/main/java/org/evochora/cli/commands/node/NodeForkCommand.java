@@ -26,7 +26,8 @@ import picocli.CommandLine.Spec;
  */
 @Command(
     name = "fork",
-    description = "Records a tick window of a run again as a new run"
+    description = "Records a tick window of a run again as a new run",
+    mixinStandardHelpOptions = true
 )
 public class NodeForkCommand implements Callable<Integer> {
 
@@ -62,13 +63,13 @@ public class NodeForkCommand implements Callable<Integer> {
     @Option(
         names = "--sampling",
         paramLabel = "<n>",
-        description = "Ticks between two recorded ticks, on top of the profile"
+        description = "Ticks between two recorded ticks, in place of the profile's"
     )
     private Integer samplingInterval;
 
     @Option(
         names = {"-s", "--storage"},
-        description = "Storage resource the newest run is looked up in (default: tick-storage)"
+        description = "Storage resource the run is read from (default: tick-storage)"
     )
     private String storageName = "tick-storage";
 

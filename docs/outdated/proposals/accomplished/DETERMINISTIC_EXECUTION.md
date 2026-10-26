@@ -67,7 +67,7 @@ Consequences that follow from the contract (constraints, not design choices):
   decision), not by declaring one path canonical implicitly.
 - R3 requires that all randomness state be reconstructible from the checkpoint. When this
   contract was written, a checkpoint-format change (coordinated with
-  [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md)) was expected;
+  [PERSISTED_FORMAT_VERSIONING](../declined_or_outdated/PERSISTED_FORMAT_VERSIONING.md)) was expected;
   the computed-randomness design below reconstructs every organism's stream from seed, tick and
   organism ID alone and restarts the draw index at every tick boundary, so the format stayed
   unchanged.
@@ -244,7 +244,7 @@ they influence speed only, which is their purpose.
 
 Unchanged. The root `rng_state` remains; no per-organism RNG state is added; the label-matching
 stream no longer exists. This proposal therefore does **not** depend on
-[PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md) and can land first.
+[PERSISTED_FORMAT_VERSIONING](../declined_or_outdated/PERSISTED_FORMAT_VERSIONING.md) and can land first.
 
 ### Verification
 

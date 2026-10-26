@@ -30,3 +30,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+`requirements.txt` names exact versions of the packages the notebooks use, so that an analysis runs
+with the same versions wherever it is repeated; what these packages bring along, pip resolves when
+it installs them. Colab comes with its own versions of these packages, and a notebook uses them. Only when
+`requests` or `pyarrow` is missing does its setup cell install all of requests, pandas, numpy,
+matplotlib, networkx and pyarrow at the versions of `requirements.txt`; the cell that uses DuckDB
+installs it at its pinned version only if it is missing.

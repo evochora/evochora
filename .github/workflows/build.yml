@@ -65,12 +65,21 @@ jobs:
           # The new-code coverage step needs the merge base, which a shallow clone does not
           # contain. The full history costs bandwidth, so only the run that computes it takes it.
           fetch-depth: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && '0' || '1' }}
-      - name: Set up JDK 21
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'temurin'
           cache: 'gradle'
+      # npm keeps the packages of the web frontend in the project's .gradle/npm-cache, which the
+      # Gradle cache above does not cover. Keyed on the lock file, npm ci downloads them again only
+      # when the lock file changes.
+      - name: Restore npm cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gradle/npm-cache
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       # PMD keys its incremental cache on file content, ruleset and classpath, so a cache from an
       # earlier commit is valid for every unchanged file. Without it every run analyses the whole
       # tree, and the test sources alone take PMD longer than compiling the project.
@@ -136,18 +145,18 @@ jobs:
           fi
 
       - name: Publish Test Report with Annotations
-        uses: mikepenz/action-junit-report@a9170d5795813c01ab4901ffb045b52bab4ab09d # v6.5.0
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
         if: always()
         with:
-          report_paths: '**/build/test-results/test/**/*.xml'
+          report_paths: '**/build/test-results/**/TEST-*.xml'
       - name: Upload HTML Test Reports
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: test-reports-${{ matrix.os }}
           path: '**/build/reports/tests/test/'
       - name: Upload Coverage Reports Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: coverage-${{ matrix.os }}
@@ -204,12 +213,22 @@ jobs:
           # For push/workflow_dispatch, use the triggering commit (github.sha).
           ref: ${{ steps.version.outputs.is_release == 'true' && steps.version.outputs.tag || github.sha }}
 
-      - name: Set up JDK 21 and Gradle Cache
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - name: Set up JDK 25 and Gradle Cache
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'temurin'
           cache: 'gradle'
+
+      # npm keeps the packages of the web frontend in the project's .gradle/npm-cache, which the
+      # Gradle cache above does not cover. Keyed on the lock file, npm ci downloads them again only
+      # when the lock file changes.
+      - name: Restore npm cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gradle/npm-cache
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
 
       - name: Build Distribution Archives with Gradle
         env:
@@ -217,26 +236,26 @@ jobs:
         run: ./gradlew distZip distTar --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
 
       - name: Upload Distribution Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: evochora-distribution
           path: build/distributions/
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./infrastructure/docker/evochora-node/Dockerfile
@@ -249,6 +268,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.tag }}
           build-args: |
             RELEASE_TAG=${{ steps.version.outputs.tag }}
+            GIT_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -1,0 +1,2 @@
+# npm installs the web frontend's packages here on every build; the image build runs npm ci itself
+node_modules

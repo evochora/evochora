@@ -1,10 +1,10 @@
 package org.evochora.node.processes.http.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.openapi.HttpMethod;
@@ -12,6 +12,7 @@ import io.javalin.openapi.OpenApi;
 import io.javalin.openapi.OpenApiContent;
 import io.javalin.openapi.OpenApiResponse;
 import java.util.Locale;
+import org.evochora.BuildInfo;
 import org.evochora.node.processes.http.AbstractController;
 import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
@@ -49,6 +50,9 @@ import java.util.Map;
  */
 public class OpenApiController extends AbstractController {
 
+    /** The title the API documentation carries. */
+    private static final String API_TITLE = "Evochora API";
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenApiController.class);
 
     /**
@@ -62,10 +66,10 @@ public class OpenApiController extends AbstractController {
     }
 
     @Override
-    public void registerRoutes(final Javalin app, final String basePath) {
+    public void registerRoutes(final RoutesConfig routes, final String basePath) {
         final String fullPath = (basePath + "/openapi.json").replaceAll("//", "/");
         LOGGER.debug("Registering OpenAPI endpoint at: {}", fullPath);
-        app.get(fullPath, this::getOpenApiSpec);
+        routes.get(fullPath, this::getOpenApiSpec);
     }
 
     @OpenApi(
@@ -93,6 +97,7 @@ public class OpenApiController extends AbstractController {
                 }
                 openApiJson = (ObjectNode) new ObjectMapper().readTree(openApiStream);
             }
+            describeTheBuild(openApiJson);
 
             // Get paths node
             final JsonNode pathsNode = openApiJson.get("paths");
@@ -199,6 +204,22 @@ public class OpenApiController extends AbstractController {
             ctx.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .result("Failed to generate OpenAPI specification: " + e.getMessage());
         }
+    }
+
+    /**
+     * Names the API and the build that serves it in the {@code info} section, which the generated
+     * file leaves empty: the title, the version the build was made as, and in the description the
+     * git revision of its sources.
+     *
+     * @param openApiJson The specification to complete.
+     */
+    private static void describeTheBuild(final ObjectNode openApiJson) {
+        final ObjectNode info = openApiJson.get("info") instanceof ObjectNode existing
+            ? existing
+            : openApiJson.putObject("info");
+        info.put("title", API_TITLE);
+        info.put("version", BuildInfo.version());
+        info.put("description", "Build revision " + BuildInfo.revision());
     }
 
     /**
@@ -337,7 +358,7 @@ public class OpenApiController extends AbstractController {
                 final String[] tags = annotation.tags();
                 if (tags != null && tags.length > 0) {
                     methodObject.remove("tags");
-                    final com.fasterxml.jackson.databind.node.ArrayNode tagsArray = methodObject.putArray("tags");
+                    final tools.jackson.databind.node.ArrayNode tagsArray = methodObject.putArray("tags");
                     for (final String tag : tags) {
                         tagsArray.add(tag);
                     }
@@ -477,8 +498,8 @@ public class OpenApiController extends AbstractController {
 
                         final ObjectNode contentTypeObject = (ObjectNode) contentTypeNode;
                         final JsonNode exampleNode = contentTypeObject.get("example");
-                        if (exampleNode != null && exampleNode.isTextual()) {
-                            final String exampleString = exampleNode.asText();
+                        if (exampleNode != null && exampleNode.isString()) {
+                            final String exampleString = exampleNode.asString();
                             
                             // Check if example should be converted to JSON object
                             // Prefix "JSON:" signals that the string should be parsed as JSON

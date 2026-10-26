@@ -1,14 +1,14 @@
 /**
  * DuckDB WASM Client
  * 
- * Handles DuckDB initialization using esm.sh CDN which auto-resolves dependencies.
+ * Loads DuckDB-WASM from the libraries the node serves itself: the module, bundled together with
+ * apache-arrow when the node is built, its WebAssembly build and that build's worker.
  * 
  * @module DuckDBClient
  */
 
-    // esm.sh automatically resolves all dependencies including apache-arrow
-    const DUCKDB_VERSION = '1.30.0';
-    const ESM_URL = `https://esm.sh/@duckdb/duckdb-wasm@${DUCKDB_VERSION}`;
+    // The DuckDB files the node serves, relative to this module
+    const VENDOR_URL = new URL('../../../shared/vendor/duckdb/', import.meta.url);
     
     // State
     let db = null;
@@ -68,24 +68,16 @@ export async function init() {
         initializing = true;
         
         try {
-            // Dynamic import from esm.sh (auto-resolves apache-arrow dependency)
-            duckdbModule = await import(ESM_URL);
-            
-            // Get pre-configured jsdelivr bundles (for WASM files)
-            const JSDELIVR_BUNDLES = duckdbModule.getJsDelivrBundles();
+            duckdbModule = await import(new URL('duckdb-browser.mjs', VENDOR_URL).href);
 
             // Use MVP bundle (no exception handling) for better Firefox compatibility
             // The EH bundle uses deprecated WASM exception handling that can crash Firefox
-            let bundle = await duckdbModule.selectBundle(JSDELIVR_BUNDLES);
-            if (JSDELIVR_BUNDLES.mvp) {
-                bundle = JSDELIVR_BUNDLES.mvp;
-            }
-            
-            // Create worker - need to fetch and create blob URL for CORS
-            const workerResponse = await fetch(bundle.mainWorker);
-            const workerBlob = await workerResponse.blob();
-            const workerUrl = URL.createObjectURL(workerBlob);
-            const worker = new Worker(workerUrl);
+            const bundle = {
+                mainModule: new URL('duckdb-mvp.wasm', VENDOR_URL).href,
+                mainWorker: new URL('duckdb-browser-mvp.worker.js', VENDOR_URL).href,
+                pthreadWorker: null
+            };
+            const worker = new Worker(bundle.mainWorker);
             
             // Initialize with console logger
             const logger = new duckdbModule.ConsoleLogger(duckdbModule.LogLevel.WARNING);
@@ -96,6 +88,9 @@ export async function init() {
             
             // Create connection
             conn = await db.connect();
+
+            // Extensions such as parquet are loaded from the node too, not from extensions.duckdb.org
+            await conn.query(`SET custom_extension_repository = '${new URL('extensions', VENDOR_URL).href}'`);
             
             initialized = true;
             return { db, conn };

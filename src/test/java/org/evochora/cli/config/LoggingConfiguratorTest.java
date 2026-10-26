@@ -53,7 +53,7 @@ class LoggingConfiguratorTest {
         // Then
         final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         final String formatProperty = context.getProperty("evochora.logging.format");
-        assertEquals("STDOUT_PLAIN", formatProperty, "PLAIN format should set STDOUT_PLAIN property");
+        assertEquals("CONSOLE_PLAIN", formatProperty, "PLAIN format should set CONSOLE_PLAIN property");
     }
 
     @Test
@@ -75,12 +75,12 @@ class LoggingConfiguratorTest {
         final ch.qos.logback.classic.Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
 
         // Verify that the correct appender is attached
-        final Appender<?> plainAppender = rootLogger.getAppender("STDOUT_PLAIN");
-        assertNotNull(plainAppender, "The STDOUT_PLAIN appender should be attached to the root logger.");
-        assertTrue(plainAppender.isStarted(), "The STDOUT_PLAIN appender should be started.");
+        final Appender<?> plainAppender = rootLogger.getAppender("CONSOLE_PLAIN");
+        assertNotNull(plainAppender, "The CONSOLE_PLAIN appender should be attached to the root logger.");
+        assertTrue(plainAppender.isStarted(), "The CONSOLE_PLAIN appender should be started.");
 
-        final Appender<?> jsonAppender = rootLogger.getAppender("STDOUT");
-        assertNull(jsonAppender, "The STDOUT (JSON) appender should NOT be attached when PLAIN is configured.");
+        final Appender<?> jsonAppender = rootLogger.getAppender("CONSOLE");
+        assertNull(jsonAppender, "The CONSOLE (JSON) appender should NOT be attached when PLAIN is configured.");
     }
 
     private void reconfigureLogbackForTest() {
@@ -115,7 +115,7 @@ class LoggingConfiguratorTest {
         // Then
         final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         final String formatProperty = context.getProperty("evochora.logging.format");
-        assertEquals("STDOUT", formatProperty, "JSON format should set STDOUT property");
+        assertEquals("CONSOLE", formatProperty, "JSON format should set CONSOLE property");
     }
 
     @Test
@@ -165,7 +165,7 @@ class LoggingConfiguratorTest {
             "Without a logging block no format is applied and Logback keeps its defaults");
 
         // Leave a valid appender name behind for tests that reconfigure Logback.
-        context.putProperty("evochora.logging.format", "STDOUT");
+        context.putProperty("evochora.logging.format", "CONSOLE");
     }
 
     @Test
@@ -188,7 +188,7 @@ class LoggingConfiguratorTest {
 
         // Then
         final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
-        assertEquals("STDOUT_PLAIN", context.getProperty("evochora.logging.format"),
+        assertEquals("CONSOLE_PLAIN", context.getProperty("evochora.logging.format"),
             "The second call is skipped, so the format of the first one survives");
     }
 

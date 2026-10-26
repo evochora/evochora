@@ -14,19 +14,22 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - `src/main/java/` – Application code (compiler, runtime, datapipeline, CLI, node)
 - `src/main/proto/` – Protobuf definitions for data pipeline communication
 - `src/main/resources/` – Configuration files, compiler messages, reference.conf
+- `src/main/web/` – Web frontend (HTML, CSS, JavaScript); goes into the jar under `web/`
 - `src/test/java/` – Unit and integration tests
 - `src/test/resources/` – Test resources and configurations
+- `src/test/web/` – Web frontend tests (vitest), laid out like `src/main/web/`
 - `src/testFixtures/` – JUnit extensions and test utilities
 - `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, proposals)
 - `assembly/` – Assembly code examples and test files
 - `config/` – User-facing configuration (evochora.conf, local.conf)
 - `build.gradle.kts` – Gradle build configuration
+- `package.json`, `package-lock.json` – The web frontend's npm packages; Gradle installs them
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/` – Gradle wrapper
 - `gradle/pmd/ruleset.xml` – PMD rules for the static dead-code check
 
 ## Build & Run (Java/Gradle)
 
-**Java 21 required.** Configure in IDE or use `JAVA_HOME`.
+**Java 25 required.** Configure in IDE or use `JAVA_HOME`.
 
 ```bash
 ./gradlew build              # Full build with tests
@@ -34,6 +37,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew test               # All tests
 ./gradlew unit               # Fast unit tests only (@Tag("unit"))
 ./gradlew integration        # Integration tests only (@Tag("integration"))
+./gradlew webTest            # Web frontend tests (vitest, src/test/web)
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew distZip distTar    # Create distribution archives
@@ -87,11 +91,9 @@ The base path is `/pipeline/api`, formed by the route nesting in the HTTP proces
 - `POST /pipeline/api/service/{serviceName}/resume` - Resume specific service
 
 ## Assembly Compile System
-The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
+The compiler is invoked through the CLI. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
 
-- Primary user-facing entry point: `bin/evochora compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
-- Developer entry point via JAR (after `./gradlew jar`):
-  `java -jar build/libs/evochora.jar compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
+- Primary user-facing entry point: `bin/evochora compile --source-root <root> --file=<path> [--env=<dimensions>:<torus|bound>]`
 
 Source roots define base directories (or HTTP URLs) from which module paths are resolved. Use `--source-root path:PREFIX` for named roots and `PREFIX:path` in directives to target them.
 
@@ -275,7 +277,7 @@ runtime      →  (nothing)
 - **Graceful Shutdown**: Shutdown hook ensures all processes stop cleanly
 - **Service Registry**: Use ServiceRegistry for sharing services between processes
 - **Abstract Base**: Processes extend `AbstractProcess` for common dependency resolution
-- **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(Javalin, String basePath)`
+- **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(RoutesConfig, String basePath)`
 - **HTTP API**: Endpoints at `/visualizer/api/*`, `/analyzer/api/*`, `/pipeline/api/*` — the route nesting in the HTTP process's `routes` block puts `api` under the area, not the other way round
 
 ## CLI (`src/main/java/org/evochora/cli/`)
@@ -301,14 +303,14 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - **Typesafe Config**: Application configuration with environment variable support (`Config` objects)
 - **SLF4J + Logback**: Structured logging (`LoggerFactory.getLogger()` instead of `System.out.println`)
 - **PicoCLI**: CLI framework with annotations (`@Command`, `@Option`, `@Parameters`)
-- **Javalin**: HTTP server for REST APIs (`Javalin.create().start()`)
+- **Javalin**: HTTP server for REST APIs; the node creates every instance through `JavalinFactory`
 - **Protobuf**: Data pipeline communication (binary serialization)
-- **JUnit 5**: Testing with tags (`@Tag("unit")` or `@Tag("integration")`)
+- **JUnit**: Testing with tags (`@Tag("unit")` or `@Tag("integration")`)
 
 ## Testing Guidelines
 
 **Framework & Tagging:**
-- Use JUnit 5 with `@Tag("unit")` or `@Tag("integration")`
+- Use JUnit with `@Tag("unit")` or `@Tag("integration")`
 - **Unit tests**: <0.2s runtime, no I/O (filesystem, network, database)
 - **Integration tests**: Everything else, but MUST still be fast (target: <1s per test)
 

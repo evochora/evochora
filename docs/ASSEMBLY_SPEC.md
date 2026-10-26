@@ -18,9 +18,9 @@ The environment is structured as a grid with configurable dimensions. Each point
 
 **Note on Dimensionality Limits**: Some instructions that use bitmasks for direction encoding (such as SPNP, SNT*, B2V, and V2B) are limited to worlds with **n ≤ Config.VALUE_BITS/2 dimensions** due to register size constraints. Each dimension requires 2 bits in the direction bitmask (one for +1, one for -1 direction), limiting the total to half the available value bits.
 
-### Toroidal Space
+### Topology
 
-The world is toroidal, meaning it wraps around at the edges. An organism moving past the right edge will reappear on the left, and one moving past the top will reappear on the bottom. This creates a continuous space without boundaries.
+The world is toroidal unless the simulation's configuration makes it bounded. A toroidal world wraps around at the edges: an organism moving past the right edge will reappear on the left, and one moving past the top will reappear on the bottom.
 
 ### Molecules
 

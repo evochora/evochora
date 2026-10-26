@@ -16,6 +16,7 @@
 #   BENCH_SSH       ssh target of the benchmark host   (default: ubuntu@evochora.org)
 #   BENCH_JMH_ARGS  JMH selector and parameters        (default: full tick sweep, P=4)
 #   BENCH_MAX_LOAD  1-min load above which to refuse   (default: 0.5)
+#   BENCH_IMAGE     JRE image the benchmark runs in     (default: the pinned Java 25 JRE)
 #   BENCH_PAUSE_TIMERS
 #                   host systemd timers paused for the duration of the run
 #                   (default: the host's periodic maintenance timers — cloud
@@ -30,7 +31,7 @@
 set -euo pipefail
 
 HOST="${BENCH_SSH:-ubuntu@evochora.org}"
-IMAGE="eclipse-temurin@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037"
+IMAGE="${BENCH_IMAGE:-eclipse-temurin:25-jre-resolute@sha256:41d9263c0d5b2a74d89af6e29e73b04298bc65e3cb705d03e9e2271ef49fef84}"
 MAX_LOAD="${BENCH_MAX_LOAD:-0.5}"
 JMH_ARGS="${BENCH_JMH_ARGS:-SimulationBenchmark.tick -p parallelism=4}"
 PAUSE_TIMERS="${BENCH_PAUSE_TIMERS-unified-monitoring-agent_config_downloader.timer fwupd-refresh.timer}"
@@ -78,7 +79,7 @@ scp -q -o BatchMode=yes "$jar" "$HOST:~/bench/$name.jar"
 uid_gid="$("${SSH[@]}" 'echo "$(id -u):$(id -g)"')"
 "${SSH[@]}" "docker run --rm -u $uid_gid -v \$HOME/bench:/bench -w /bench \
     --name bench-$name $IMAGE \
-    java -Xmx8g -jar $name.jar $JMH_ARGS -rf json -rff $name.json"
+    java -Xmx8g --enable-native-access=ALL-UNNAMED -jar $name.jar $JMH_ARGS -rf json -rff $name.json"
 
 scp -q -o BatchMode=yes "$HOST:~/bench/$name.json" "$out"
 echo "run-benchmark: result written to $out"

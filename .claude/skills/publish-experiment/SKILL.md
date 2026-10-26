@@ -27,8 +27,9 @@ at the end each cost a session.
 | `timelapse.mp4` | yes | one frame per block over the whole run, rendered from the complete raw data before sampling |
 | `experiment-<runId>.tar` | download | the package below |
 
-The Zenodo description holds three sentences: what the run is, the requirement (Java 21), the
-start command. No README — the notebook is the documentation.
+The Zenodo description holds three sentences: what the run is, the requirement (the Java version
+the packaged build was compiled for, which `languageVersion` in the `build.gradle.kts` of `src/`
+names), the start command. No README — the notebook is the documentation.
 
 `experiment-<runId>.tar` unpacks to one directory:
 
@@ -45,7 +46,8 @@ data/database/                    kept blocks only: index database and environme
 ```
 
 Start — the only supported way: from the unpacked directory,
-`app/bin/evochora -c config/archive.conf node run`, Java 21, then `http://localhost:8081`.
+`app/bin/evochora -c config/archive.conf node run` on the Java version the description names, then
+`http://localhost:8081`.
 `autoStart = false` matters: without it `node run` resumes and advances the run.
 No Docker image is part of a package.
 

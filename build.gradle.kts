@@ -1,6 +1,9 @@
 import com.google.protobuf.gradle.*
+import java.io.ByteArrayOutputStream
 import java.util.Properties
+import javax.inject.Inject
 import org.gradle.jvm.application.tasks.CreateStartScripts
+import org.gradle.process.ExecOperations
 
 // Show deprecation details for test sources to fix root causes
 tasks.withType<JavaCompile>().configureEach {
@@ -15,14 +18,15 @@ plugins {
     application
     jacoco
     `java-test-fixtures`
-    id("com.google.protobuf") version "0.9.6"
+    id("com.google.protobuf") version "0.10.0"
     id("me.champeau.jmh") version "0.7.3"
     id("pmd")
+    id("com.github.node-gradle.node") version "7.1.0"
 }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
@@ -36,79 +40,99 @@ if (version.toString().endsWith("-SNAPSHOT")) {
 
 repositories {
     mavenCentral()
+    // DuckDB's own extension repository, for the extensions the analyzer's DuckDB-WASM loads; see
+    // duckdbExtensions below
+    ivy {
+        url = uri("https://extensions.duckdb.org")
+        patternLayout { artifact("[revision]/[classifier]/[module].duckdb_extension.[ext]") }
+        metadataSources { artifact() }
+        content { includeGroup("org.duckdb.extensions") }
+    }
 }
 
+// Every dependency names an exact version, the newest stable one when it is updated. What a library
+// brings along stays at the version that library chose; it is raised over that choice only for a
+// stated reason, such as a security fix, which the comment at the pin names. After a version
+// changes, gradle/verification-metadata.xml takes the checksums of what the build now downloads:
+// ./gradlew --write-verification-metadata sha256 --refresh-dependencies check jmhJar installDist
 dependencies {
-    implementation("com.google.protobuf:protobuf-java:4.33.0")
-    implementation("com.google.protobuf:protobuf-java-util:4.33.0") // For JSON conversion
-    implementation("com.zaxxer:HikariCP:6.2.1") // High-performance JDBC connection pool
-    implementation("it.unimi.dsi:fastutil:8.5.12") // High-performance primitive collections
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    implementation("com.google.protobuf:protobuf-java:4.36.2")
+    implementation("com.google.protobuf:protobuf-java-util:4.36.2") // For JSON conversion
+    implementation("com.zaxxer:HikariCP:7.1.0") // High-performance JDBC connection pool
+    implementation("it.unimi.dsi:fastutil:8.5.19") // High-performance primitive collections
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
-    testImplementation("ch.qos.logback:logback-classic:1.5.26")
-    testImplementation("org.mockito:mockito-core:5.12.0")
-    testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
-    testImplementation("org.assertj:assertj-core:3.26.3")
-    testImplementation("org.awaitility:awaitility:4.2.1")
-    testImplementation("io.rest-assured:rest-assured:5.4.0") // For API integration testing
-    testImplementation("io.javalin:javalin-testtools:6.7.0")
-    testImplementation("com.tngtech.archunit:archunit:1.5.0") // Package dependency rules
+    testImplementation("org.mockito:mockito-core:5.24.0")
+    testImplementation("org.mockito:mockito-junit-jupiter:5.24.0")
+    testImplementation("org.assertj:assertj-core:3.27.7")
+    testImplementation("org.awaitility:awaitility:4.3.0")
+    testImplementation("io.rest-assured:rest-assured:6.3.0") // For API integration testing
+    testImplementation("io.javalin:javalin-testtools:7.2.3")
+    testImplementation("com.tngtech.archunit:archunit:1.5.1") // Package dependency rules
+    testImplementation("com.tngtech.archunit:archunit-junit6:1.5.1") // Runs the rule classes, sharing one import
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    implementation("org.slf4j:slf4j-api:2.0.17")
-    implementation("ch.qos.logback:logback-classic:1.5.26")
+    implementation("org.slf4j:slf4j-api:2.0.20")
+    implementation("ch.qos.logback:logback-classic:1.6.5")
     // REMOVED: sqlite-jdbc - not used, H2 is the primary database
-    implementation("com.h2database:h2:2.4.240")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.1")
-    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("com.h2database:h2:2.5.252")
+    implementation("tools.jackson.core:jackson-databind:3.2.4")
+    implementation("com.google.code.gson:gson:2.15.0")
     implementation("info.picocli:picocli:4.7.7")
     annotationProcessor("info.picocli:picocli-codegen:4.7.7")
-    implementation("io.javalin:javalin:6.7.0")
-    // Javalin OpenAPI Plugin for API documentation
-    implementation("io.javalin.community.openapi:javalin-openapi-plugin:6.7.0-1")
-    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
-    implementation("com.typesafe:config:1.4.3")
-    implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation("org.jline:jline:3.30.4")
-    runtimeOnly("org.jline:jline-terminal-jansi:3.30.4")
+    implementation("io.javalin:javalin:7.2.3")
+    // The OpenAPI annotations of the controllers; the annotation processor generates the specification from them
+    implementation("io.javalin.community.openapi:openapi-specification:7.2.3")
+    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:7.2.3")
+    implementation("com.typesafe:config:1.4.9")
+    implementation("net.logstash.logback:logstash-logback-encoder:9.0")
 
-    // Apache Commons Math for scientifically-validated RNG with state serialization
-    implementation("org.apache.commons:commons-math3:3.6.1")
+    // Apache Commons RNG for scientifically-validated RNG with state serialization
+    implementation("org.apache.commons:commons-rng-simple:1.7")
 
     // Zstd compression library with bundled native binaries for cross-platform support
-    implementation("com.github.luben:zstd-jni:1.5.5-11")
+    implementation("com.github.luben:zstd-jni:1.5.7-24")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
-
-    // Reflections library for dynamic subcommand registration (video renderers)
-    implementation("org.reflections:reflections:0.10.2")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
 
     // DuckDB JDBC driver for analytics
-    implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
+    implementation("org.duckdb:duckdb_jdbc:2.0.0.0")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
-    implementation("org.apache.artemis:artemis-jakarta-server:2.51.0")
-    implementation("org.apache.artemis:artemis-jakarta-client:2.51.0")
+    implementation("org.apache.artemis:artemis-jakarta-server:2.57.0")
+    implementation("org.apache.artemis:artemis-jakarta-client:2.57.0")
 
     // JMS session pooling for producer sends (eliminates TCP session creation overhead)
-    implementation("org.messaginghub:pooled-jms:3.2.2")
+    implementation("org.messaginghub:pooled-jms:3.2.5")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
-    testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
-    testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
-    testFixturesImplementation("com.google.protobuf:protobuf-java:4.33.0")
-    testFixturesImplementation("com.typesafe:config:1.4.3")
+    testFixturesImplementation(platform("org.junit:junit-bom:6.1.3"))
+    testFixturesImplementation("org.junit.jupiter:junit-jupiter-api")
+    testFixturesImplementation("ch.qos.logback:logback-classic:1.6.5")
+    testFixturesImplementation("com.google.protobuf:protobuf-java:4.36.2")
+    testFixturesImplementation("com.typesafe:config:1.4.9")
 
 }
 
+// zstd-jni and DuckDB load native libraries, which the JVM warns about and a future release blocks
+// unless native access is enabled. Everything runs from the classpath, so it is enabled for the
+// unnamed module as a whole. Every JVM that runs Evochora's code carries the flag: the start
+// scripts of the distribution, the test tasks and the benchmarks.
+val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
+
+// Netty 4.1, which ActiveMQ Artemis brings along, allocates memory through sun.misc.Unsafe, which
+// the JVM warns about and a future release denies. The permission is owed to that Netty alone:
+// NettyUnsafeRulesTest fails once Artemis brings another line, and then this flag is checked.
+// The flag exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
+val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
+
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
-    applicationDefaultJvmArgs = listOf("-Xmx8g")
+    applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
 // Fix for Windows "Input line is too long" error
@@ -135,26 +159,10 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
-// Fix empty info section in generated OpenAPI files
-tasks.named("compileJava") {
-    // ÄNDERUNG: Werte in der Konfigurationsphase erfassen
-    val apiVersion = project.version.toString()
-    val buildDir = layout.buildDirectory.get().asFile
-
-    doLast {
-        // ÄNDERUNG: Keine Verwendung von file() oder project.* hier drin
-        val openApiDir = buildDir.resolve("classes/java/main/openapi-plugin")
-        val openApiFile = openApiDir.resolve("openapi-default.json")
-        
-        if (openApiFile.exists()) {
-            val content = openApiFile.readText()
-            // Verwendung der zuvor erfassten Variable
-            val fixedContent = content
-                .replace("\"title\": \"\"", "\"title\": \"Evochora API\"")
-                .replace("\"version\": \"\"", "\"version\": \"$apiVersion\"")
-            openApiFile.writeText(fixedContent)
-        }
-    }
+// The web frontend is a source tree of its own, src/main/web, and goes into the jar under web/:
+// the node serves it from the classpath there, apart from the other resources.
+tasks.named<ProcessResources>("processResources") {
+    from("src/main/web") { into("web") }
 }
 
 // Copy generated OpenAPI files to resources directory
@@ -186,7 +194,9 @@ tasks.named("processResources") {
 // The revision of the sources a build was made from, put on its classpath as
 // evochora-build.properties and read there by org.evochora.BuildInfo. The engine writes that
 // revision into the metadata of every run, because a run is reproduced exactly only by the build
-// that wrote it; whoever reads a run compares the two and warns when they differ.
+// that wrote it; whoever reads a run compares the two and warns when they differ. Beside it the
+// file holds the version of the build - the release tag, or "latest" - which the API documentation
+// names.
 //
 // The value comes from the first of these that answers:
 //   1. the git checkout — the commit hash, with "-dirty" appended when a tracked file carries
@@ -197,54 +207,179 @@ tasks.named("processResources") {
 //
 // The value is resolved while the build is configured and registered as an input of the task, so
 // the file is rewritten when the revision changes and left alone when it does not.
-fun gitOutput(vararg command: String): String? = try {
-    val process = ProcessBuilder(*command)
-        .directory(rootProject.projectDir)
-        .redirectErrorStream(true)
-        .start()
-    val output = process.inputStream.bufferedReader().readText().trim()
-    if (process.waitFor() == 0) output else null
-} catch (e: Exception) {
-    null
-}
+// Gradle runs the git commands of a value source itself and tracks them, which it does not allow
+// for processes a build script starts on its own while it is configured.
+abstract class BuildRevisionSource : ValueSource<String, BuildRevisionSource.Parameters> {
+    interface Parameters : ValueSourceParameters {
+        val projectDir: DirectoryProperty
+    }
 
-val buildRevision: String = run {
-    // Absent in source archives and container builds; in a worktree it is a file, not a directory.
-    val head = if (rootProject.file(".git").exists()) gitOutput("git", "rev-parse", "HEAD") else null
-    if (!head.isNullOrBlank()) {
-        // Only tracked files count: an untracked file is not part of the sources a checkout yields.
-        // A status that cannot be taken leaves the tree's state unknown, not clean.
-        val status = gitOutput("git", "status", "--porcelain", "--untracked-files=no")
-        when {
-            status == null -> "unknown"
-            status.isBlank() -> head
-            else -> head + "-dirty"
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    override fun obtain(): String {
+        val projectDir = parameters.projectDir.get().asFile
+        // Absent in source archives and container builds; in a worktree it is a file, not a directory.
+        val head = if (projectDir.resolve(".git").exists()) gitOutput(projectDir, "rev-parse", "HEAD") else null
+        if (!head.isNullOrBlank()) {
+            // Only tracked files count: an untracked file is not part of the sources a checkout yields.
+            // A status that cannot be taken leaves the tree's state unknown, not clean.
+            val status = gitOutput(projectDir, "status", "--porcelain", "--untracked-files=no")
+            return when {
+                status == null -> "unknown"
+                status.isBlank() -> head
+                else -> head + "-dirty"
+            }
         }
-    } else {
-        val shipped = rootProject.file("GIT_REVISION")
+        val shipped = projectDir.resolve("GIT_REVISION")
         val recorded = if (shipped.isFile) shipped.readText().trim() else ""
-        recorded.ifBlank { "unknown" }
+        return recorded.ifBlank { "unknown" }
+    }
+
+    private fun gitOutput(projectDir: File, vararg arguments: String): String? = try {
+        val output = ByteArrayOutputStream()
+        val result = execOperations.exec {
+            workingDir = projectDir
+            commandLine("git", *arguments)
+            standardOutput = output
+            errorOutput = output
+            isIgnoreExitValue = true
+        }
+        if (result.exitValue == 0) output.toString().trim() else null
+    } catch (e: Exception) {
+        null
     }
 }
 
+val buildRevision: String = providers.of(BuildRevisionSource::class) {
+    parameters.projectDir.set(rootProject.layout.projectDirectory)
+}.get()
+
 val writeBuildInfo = tasks.register("writeBuildInfo") {
     group = "build"
-    description = "Records the revision of the sources on the classpath"
+    description = "Records the revision of the sources and the version of the build on the classpath"
 
     val revision = buildRevision
+    val buildVersion = project.version.toString()
     val propertiesFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
     inputs.property("revision", revision)
+    inputs.property("version", buildVersion)
     outputs.file(propertiesFile)
 
     doLast {
         val target = propertiesFile.get().asFile
         target.parentFile.mkdirs()
-        target.writeText("revision=$revision\n")
+        target.writeText("revision=$revision\nversion=$buildVersion\n")
     }
 }
 
 sourceSets.main {
     resources.srcDir(layout.buildDirectory.dir("generated/build-info"))
+}
+
+// The libraries and fonts of the web frontend are served by the node itself rather than fetched
+// from a CDN, so that the frontend works without internet access and no third party sees its use.
+// package.json names every package at an exact version, the newest stable one
+// when it is updated; what a package brings along stays at the version it chose, and
+// package-lock.json holds all of them with their checksums, which npm ci verifies. Gradle fetches
+// Node itself, so building needs nothing but Java. After a version in package.json changes:
+// ./gradlew npmInstall -PnpmInstallCommand=install, then the checksums as described above.
+node {
+    download = true
+    version = "24.22.1"
+    npmInstallCommand = providers.gradleProperty("npmInstallCommand").orElse("ci")
+}
+
+val frontendModules = layout.projectDirectory.dir("node_modules")
+
+// DuckDB-WASM imports apache-arrow, whose browser module in turn imports packages published only
+// as CommonJS; esbuild joins them into the one module the analyzer loads.
+val bundleDuckDb = tasks.register<com.github.gradle.node.npm.task.NpxTask>("bundleDuckDb") {
+    dependsOn(tasks.named("npmInstall"))
+    val out = layout.buildDirectory.file("generated/duckdb-bundle/duckdb-browser.mjs")
+    command = "esbuild"
+    args = listOf("@duckdb/duckdb-wasm", "--bundle", "--format=esm", "--minify",
+        "--outfile=" + out.get().asFile.absolutePath)
+    inputs.file("package-lock.json")
+    outputs.file(out)
+}
+
+// The DuckDB extensions the analyzer loads, served from the node like the rest of the frontend.
+// An extension is built for one DuckDB core: the version is the core inside the DuckDB-WASM of
+// package.json and changes with it, else DuckDB fails to load the extension.
+val duckdbCore = "v1.4.3"
+val duckdbPlatform = "wasm_mvp"
+val duckdbExtensions = configurations.create("duckdbExtensions") {
+    isTransitive = false
+    isCanBeConsumed = false
+}
+dependencies {
+    duckdbExtensions("org.duckdb.extensions:parquet:$duckdbCore:$duckdbPlatform@wasm")
+}
+
+val webVendor = tasks.register<Sync>("webVendor") {
+    dependsOn(tasks.named("npmInstall"))
+    into(layout.buildDirectory.dir("generated/web-vendor"))
+    into("web/shared/vendor") {
+        from(bundleDuckDb) { into("duckdb") }
+        from(frontendModules.dir("chart.js/dist")) { include("chart.umd.min.js"); into("chart.js") }
+        from(frontendModules.dir("pixi.js/dist")) { include("pixi.min.js"); into("pixi.js") }
+        from(frontendModules.dir("protobufjs/dist")) { include("protobuf.min.js"); into("protobufjs") }
+        from(frontendModules.dir("redoc/bundles")) { include("redoc.standalone.js"); into("redoc") }
+        from(frontendModules.dir("@duckdb/duckdb-wasm/dist")) {
+            include("duckdb-mvp.wasm", "duckdb-browser-mvp.worker.js")
+            into("duckdb")
+        }
+        // DuckDB asks its extension repository for <version>/<platform>/<name>.duckdb_extension.wasm
+        from(duckdbExtensions) {
+            rename { "parquet.duckdb_extension.wasm" }
+            into("duckdb/extensions/$duckdbCore/$duckdbPlatform")
+        }
+        // The weights the pages use, each with its stylesheet and the woff2 files it names
+        mapOf(
+            "doto" to listOf("900"),
+            "ibm-plex-sans" to listOf("400", "500", "600"),
+            "roboto-mono" to listOf("400", "500"),
+        ).forEach { (font, weights) ->
+            from(frontendModules.dir("@fontsource/$font")) {
+                include("LICENSE")
+                weights.forEach { include("$it.css", "files/*-$it-normal.woff2") }
+                into("fonts/$font")
+            }
+        }
+        from(frontendModules.dir("@fontsource-variable/source-serif-4")) {
+            include("LICENSE", "opsz.css", "opsz-italic.css", "files/*-opsz-normal.woff2", "files/*-opsz-italic.woff2")
+            into("fonts/source-serif-4")
+        }
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(webVendor)
+}
+
+// The web frontend's tests, src/test/web, run with vitest against the files webVendor provides.
+val webTest = tasks.register<com.github.gradle.node.npm.task.NpmTask>("webTest") {
+    description = "Runs the web frontend's tests with vitest."
+    group = "verification"
+    dependsOn(tasks.named("npmInstall"))
+    val vendor = webVendor.map { it.destinationDir.resolve("web/shared/vendor") }
+    val report = layout.buildDirectory.file("test-results/webTest/TEST-webTest.xml")
+    args = report.map { listOf("test", "--", "--reporter=default", "--reporter=junit", "--outputFile.junit=" + it.asFile.absolutePath) }
+    environment = vendor.map { mapOf("WEB_VENDOR_DIR" to it.absolutePath) }
+    inputs.files(webVendor).withPropertyName("vendor")
+    inputs.dir("src/main/web").withPropertyName("web")
+    inputs.dir("src/test/web").withPropertyName("tests")
+    inputs.files("package-lock.json", "vitest.config.mjs").withPropertyName("setup")
+    outputs.file(report)
+    // Starting DuckDB-WASM takes most of the tests' time and all the processor it gets. PMD and
+    // JaCoCo run on in worker processes while the next task starts; beside them the tests wait for
+    // the processor and slow those tasks in turn, so they run once both are done.
+    mustRunAfter(tasks.withType<Pmd>(), tasks.withType<JacocoReport>())
+}
+
+tasks.named("check") {
+    dependsOn(webTest)
 }
 
 tasks.named<ProcessResources>("processResources") {
@@ -322,6 +457,7 @@ tasks.test {
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
@@ -347,6 +483,7 @@ tasks.register<Test>("unit") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = false
@@ -366,6 +503,7 @@ tasks.register<Test>("integration") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     maxParallelForks = testForks
     jvmArgs("-Xshare:off")
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         // Only show output for failed tests (silent on success)
@@ -385,6 +523,10 @@ tasks.register<Test>("integration") {
 // compilation directly, not only through the test task's execution data, and a build that skips
 // the tests (-x test) still resolves its task graph.
 val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree
+
+jacoco {
+    toolVersion = "0.8.15"
+}
 
 tasks.jacocoTestReport {
     reports {
@@ -419,7 +561,7 @@ apply(from = "gradle/new-code-coverage.gradle.kts")
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:4.33.0"
+        artifact = "com.google.protobuf:protoc:4.36.2"
     }
 }
 
@@ -437,7 +579,8 @@ afterEvaluate {
 }
 
 jmh {
-    jvmArgs.set(listOf("-Xmx8g"))
+    jmhVersion = "1.37"
+    jvmArgs.set(listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess))
 }
 
 // Notebooks are committed without execution state (outputs, execution counts). This is done by a
@@ -504,7 +647,7 @@ tasks.named("build") {
 // Code that is written but never reached: the compiler accepts it and the tests pass over it, so
 // nothing else in this build would ever report it.
 pmd {
-    toolVersion = "7.26.0"
+    toolVersion = "7.28.0"
     threads = 4
     // On by default, stated here because the CI workflow restores and saves the resulting
     // build/tmp/pmd*/incremental.cache between runs; without it that step would cache nothing.
@@ -515,9 +658,15 @@ pmd {
     isIgnoreFailures = false
 }
 
+// PMD resolves the types of the JDK through the jrt-fs.jar on its auxiliary classpath. Given the
+// toolchain's, it checks against the JDK the code is compiled with, whatever JVM PMD runs on.
+val pmdJdkTypes = javaToolchains.launcherFor(java.toolchain)
+    .map { it.metadata.installationPath.file("lib/jrt-fs.jar") }
+
 tasks.withType<Pmd>().configureEach {
     // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
     exclude("**/org/evochora/datapipeline/api/contracts/**")
+    classpath = (classpath ?: files()) + files(pmdJdkTypes)
 }
 
 // Javadoc that no longer resolves — a link to a method that was renamed, markup that does not
@@ -543,7 +692,7 @@ tasks.withType<Javadoc>().configureEach {
 // back every absent comment, tag and description — so it is recognised by its text. A future JDK
 // could word it differently; the failure would be loud rather than silent, because the build would
 // start reporting warnings it used to pass.
-val javadocLint by tasks.registering {
+val javadocLint = tasks.register("javadocLint") {
     dependsOn(tasks.named("javadoc"))
     val optionsFile = layout.buildDirectory.file("tmp/javadoc/javadoc.options")
     val lintDir = layout.buildDirectory.dir("tmp/javadocLint")

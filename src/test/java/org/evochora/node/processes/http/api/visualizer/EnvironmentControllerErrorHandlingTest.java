@@ -22,6 +22,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 
 import java.nio.file.Path;
 
@@ -60,15 +61,12 @@ class EnvironmentControllerErrorHandlingTest {
         );
         database = new H2Database("test-db", dbConfig);
 
-        // Start embedded Javalin server
-        app = Javalin.create().start(0);
-        port = app.port();
-
-        // Register EnvironmentController
+        // Start embedded Javalin server with the EnvironmentController
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, database);
         EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
-        controller.registerRoutes(app, "/visualizer/api/environment");
+        app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/visualizer/api/environment")).start(0);
+        port = app.port();
     }
 
     @AfterEach

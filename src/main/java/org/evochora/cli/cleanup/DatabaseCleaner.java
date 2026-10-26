@@ -222,20 +222,6 @@ public class DatabaseCleaner {
     }
 
     /**
-     * Converts a normalized run ID to a database schema name.
-     * <p>
-     * 20260117-22042059-d59177fc-1eba-4ce8-85a6-36bd2032e3cb
-     * -> SIM_20260117_22042059_D59177FC_1EBA_4CE8_85A6_36BD2032E3CB
-     *
-     * @param runId the normalized run ID
-     * @return database schema name
-     */
-    @SuppressWarnings("unused")
-    private String runIdToSchemaName(String runId) {
-        return "SIM_" + runId.replace('-', '_').toUpperCase(Locale.ROOT);
-    }
-
-    /**
      * Attempts to compact the H2 database to reclaim disk space.
      * <p>
      * This will only succeed if there are no other active connections to the database.

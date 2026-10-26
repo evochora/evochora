@@ -73,3 +73,6 @@ __pycache__/
 
 # Personal Claude Code instructions of the maintainer
 CLAUDE.local.md
+
+# npm installs the web frontend's packages here
+/node_modules/

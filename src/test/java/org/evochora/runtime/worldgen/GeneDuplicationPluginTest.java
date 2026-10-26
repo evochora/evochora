@@ -658,7 +658,7 @@ class GeneDuplicationPluginTest {
         placeRisingBlock(child.getId(), 14, 2);
         placeTargetRow(child.getId(), 4, 6);
 
-        IRandomProvider rng = new SeededRandomProvider(42L);
+        IRandomProvider rng = new SeededRandomProvider(3L);
         GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
@@ -739,7 +739,7 @@ class GeneDuplicationPluginTest {
         placeFallingBlock(negId, 13, 2);
         placeTargetRow(negId, 4, 10);
 
-        IRandomProvider rng = new SeededRandomProvider(42L);
+        IRandomProvider rng = new SeededRandomProvider(2L);
         GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(negChild, environment);
 
@@ -778,7 +778,7 @@ class GeneDuplicationPluginTest {
         place(id, 18, 2, new Molecule(Config.TYPE_DATA, 7));
         placeTargetRow(id, 4, 8);
 
-        IRandomProvider rng = new SeededRandomProvider(1L);
+        IRandomProvider rng = new SeededRandomProvider(4L);
         GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
@@ -874,7 +874,7 @@ class GeneDuplicationPluginTest {
         placeOpenRisingBlock(child.getId(), 14, 2);
         placeTargetRow(child.getId(), 4, 6);
 
-        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(3L), 1.0, 4).onBirth(child, environment);
 
         assertOpenBlockAt(0, 4);
         assertClosingJumpAt(4, 4);
@@ -954,7 +954,7 @@ class GeneDuplicationPluginTest {
         placeOpenRisingBlock(child.getId(), 14, 2);
         placeTargetRow(child.getId(), 4, 4);
 
-        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(3L), 1.0, 4).onBirth(child, environment);
 
         for (int x = 0; x < 4; x++) {
             assertThat(environment.getMolecule(x, 4).isEmpty())
@@ -995,7 +995,7 @@ class GeneDuplicationPluginTest {
             place(id, x, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
         }
 
-        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(3L), 1.0, 4).onBirth(child, environment);
 
         assertOpenBlockAt(27, 4);
         assertThat(environment.getMolecule(31, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());

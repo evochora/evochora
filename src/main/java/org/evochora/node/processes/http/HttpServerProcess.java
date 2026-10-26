@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.eclipse.jetty.server.handler.gzip.GzipHandler;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
@@ -24,6 +23,11 @@ import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueType;
 
 import io.javalin.Javalin;
+import io.javalin.compression.CompressionStrategy;
+import io.javalin.compression.CompressionType;
+import io.javalin.compression.Gzip;
+import io.javalin.compression.Zstd;
+import io.javalin.config.RoutesConfig;
 
 /**
  * A manageable process that runs a Javalin HTTP server. It dynamically configures its routes
@@ -126,24 +130,14 @@ public class HttpServerProcess extends AbstractProcess {
         final String host = options.getString("network.host");
         final int port = options.getInt("network.port");
 
-        app = Javalin.create(config -> {
-            config.showJavalinBanner = false;
-            
-            // Enable gzip compression for all responses (especially JSON)
-            // Reduces response size by ~90% for JSON data
-            config.jetty.modifyServletContextHandler(handler -> {
-                GzipHandler gzipHandler = new GzipHandler();
-                gzipHandler.setMinGzipSize(1024); // Compress responses > 1KB
-                gzipHandler.addIncludedMimeTypes(
-                    "application/json",
-                    "text/html",
-                    "text/plain",
-                    "text/css",
-                    "application/javascript",
-                    "application/octet-stream"  // Protobuf responses
-                );
-                handler.insertHandler(gzipHandler);
-            });
+        app = JavalinFactory.create(config -> {
+            config.startup.showJavalinBanner = false;
+
+            // Compression runs on the machine that simulates. zstd costs a fraction of gzip's CPU
+            // for a slightly larger answer, so it is preferred; a client without zstd gets gzip.
+            final CompressionStrategy compression = new CompressionStrategy(null, new Gzip(), new Zstd());
+            compression.setPreferredCompressors(List.of(CompressionType.ZSTD, CompressionType.GZIP));
+            config.http.compressionStrategy = compression;
             
             config.requestLogger.http((ctx, ms) -> {
                 if (LOGGER.isDebugEnabled()) {
@@ -189,10 +183,9 @@ public class HttpServerProcess extends AbstractProcess {
                     }
                 }
             }
-        });
 
-        // Register controller routes after the app instance is created
-        registerControllers(app);
+            registerControllers(config.routes);
+        });
 
         app.start(host, port);
         if (servesRootPage()) {
@@ -293,7 +286,7 @@ public class HttpServerProcess extends AbstractProcess {
         }
     }
 
-    private void registerControllers(final Javalin app) {
+    private void registerControllers(final RoutesConfig routes) {
         // OpenAPI-specific: Collect controller basePaths for OpenAPI documentation (non-operational)
         // This is an exception to the plugin pattern, required for OpenAPI documentation generation.
         collectControllerBasePathsForOpenApi();
@@ -302,7 +295,7 @@ public class HttpServerProcess extends AbstractProcess {
         for (final RouteDefinition def : routeDefinitions) {
             if (def.type == RouteType.CONTROLLER) {
                 try {
-                    registerController(def, app);
+                    registerController(def, routes);
                 } catch (final Exception e) {
                     // Extract root cause message for clean error output (no stack trace)
                     Throwable cause = e;
@@ -316,7 +309,7 @@ public class HttpServerProcess extends AbstractProcess {
         }
     }
 
-    private void registerController(final RouteDefinition def, final Javalin app) throws Exception {
+    private void registerController(final RouteDefinition def, final RoutesConfig routes) throws Exception {
         final Config controllerConfig = ((ConfigObject) def.configValue).toConfig();
         final String className = controllerConfig.getString("className");
         Config controllerOptions = controllerConfig.hasPath("options")
@@ -340,7 +333,7 @@ public class HttpServerProcess extends AbstractProcess {
         final IController controller = (IController) constructor.newInstance(controllerRegistry, controllerOptions);
         controllers.add(controller);
 
-        controller.registerRoutes(app, def.basePath);
+        controller.registerRoutes(routes, def.basePath);
     }
 
     /**

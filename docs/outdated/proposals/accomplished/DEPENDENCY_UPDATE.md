@@ -1,6 +1,58 @@
 # Dependency Update
 
-**Status: TO BE REVIEWED — agreed procedure, decisions listed at the end.**
+**Status: ACCOMPLISHED (2026-10-25)** — see the outcome below; the sections after it are the
+proposal as it was written.
+
+## Outcome
+
+Every dependency moved to its newest stable version, major versions included, in one branch with
+one commit per dependency and the dependency graph compared after each.
+
+- **Toolchain:** Java 25 (the current long-term support release) and Gradle 9; the Docker images
+  build and run on Java 25 and Ubuntu 26.04.
+- **Majors:** JUnit 6, Javalin 7 with its OpenAPI annotation processor (routes are registered
+  while the server is configured), Jackson 3 in the node's own code, Logback 1.6 with the Logstash encoder 9,
+  HikariCP 7, REST Assured 6, DuckDB 2, the Protocol Buffers Gradle plugin 0.10.
+- **Commons Math → Commons RNG:** the discontinued library gave way to its successor; the same seed
+  now yields a different sequence, and a run stays reproducible with the build that wrote it.
+- **Pinning:** every dependency names an exact version; what a library brings along stays at the
+  version it chose unless a stated reason raises it. Docker base images are pinned by digest and
+  their packages by an Ubuntu archive snapshot; the notebooks' Python packages are pinned; GitHub Actions by commit, except the Claude review
+  action, which follows its moving tag on purpose. Every download of the build is verified against
+  `gradle/verification-metadata.xml`.
+- **Frontend served by the node:** the libraries, fonts and DuckDB's Parquet extension the web
+  frontend loaded from CDNs, Google Fonts and `extensions.duckdb.org` now come from the node
+  itself, so the frontend works without internet access and no third party sees its use. They are
+  npm packages at exact versions in `package.json`, with every version and
+  checksum held in its lock file; Gradle fetches Node itself, so building still needs nothing but
+  Java. DuckDB-WASM is bundled with apache-arrow by esbuild, the way DuckDB documents for local
+  builds. Optional content — the start page's badges and demo video, Redoc's logo — still comes
+  from the internet, and the pages work without it.
+- **Removed:** JLine and Reflections, which nothing used, and the Javalin OpenAPI plugin, of which
+  only the annotations were used: they now come from `openapi-specification`, and with the plugin
+  Jackson 2 left the classpath, so a Javalin created past `JavalinFactory` fails on its first JSON
+  response instead of writing it without the node's Jackson 3 annotations.
+
+Deviations from the procedure below:
+
+- **No Parquet fixture.** A run is read with the build that wrote it, so a new reader never has to
+  read an old file. What did need checking — Parquet written by the JDBC driver and read by
+  DuckDB-WASM in the analyzer, and by the notebooks — was checked in a smoke run in Chrome and
+  Firefox and by executing the data analysis guide.
+- **No broker restart against an old journal,** for the same reason: a run does not change its
+  build while it runs.
+- **Behaviour.** A real-run comparison on the benchmark host — the commons-rng commit on the merged
+  main, on Java 21, against the final state, on Java 25; two rounds of 10 M ticks in swapped order —
+  gave the same tick hash on every run: nothing but the random number generator changed the
+  simulation. The final state took 233–234 s against 255 s for the base, about 8 % less, with a
+  spread of at most one second on either side.
+
+Found on the way and fixed in the same branch: CLI commands without `--help`, the OpenAPI
+annotations of the analyzer's tick and run range, a test comparing label values as signed numbers,
+an empty editor-extension package, a deprecation note of javac 25, the API documentation's empty
+title, the notebook requirements that missed packages the notebooks install, and a data analysis
+guide that no longer ran. The overlapping exception handlers of the controllers are tracked as
+issue #218.
 
 > **Note (2026-08-23):** Scheduled after PERSISTED_FORMAT_VERSIONING, because the treatment of
 > own versus third-party formats decided there determines which safeguards an update needs. The
@@ -111,7 +163,7 @@ The distinction that matters is ownership, not age:
   compatibility is deliberately not maintained here, so a fixture test would fail on every intended
   change and be repaired by regenerating the fixture. It is the wrong instrument; the right one is a
   version stamp with fail-fast reads, specified in
-  [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md).
+  [PERSISTED_FORMAT_VERSIONING](../declined_or_outdated/PERSISTED_FORMAT_VERSIONING.md).
 - **Formats a third party owns and guarantees** — Parquet, Zstd frames, the protobuf wire format.
   Nothing in this codebase changes them. A failure there is therefore always a real finding: either
   the library broke its guarantee, or the update crossed an announced break. Never noise.

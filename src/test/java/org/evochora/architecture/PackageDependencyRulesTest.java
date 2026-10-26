@@ -5,11 +5,10 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
+import com.tngtech.archunit.junit.AnalyzeClasses;
+import com.tngtech.archunit.junit.ArchTag;
+import com.tngtech.archunit.junit.ArchTest;
 
 /**
  * Enforces which top-level packages may reference which other top-level packages.
@@ -35,38 +34,23 @@ import org.junit.jupiter.api.Test;
  * <p>
  * Rules are written in the direction of the graph — "whom may I use" — so that they read the same
  * way the graph above does.
+ * <p>
+ * The Protobuf messages generated from {@code src/main/proto} are checked like any other
+ * production code. What the generator emits is determined entirely by hand-written
+ * {@code .proto} files — target package, class names and referenced types alike — so a
+ * violation originating there is a violation of a {@code .proto} definition and is fixed at
+ * that source.
+ * <p>
+ * Test code is not checked because it legitimately reaches across package boundaries; a rule
+ * firing there constantly would end up being switched off. {@link ExcludeTestFixturesAndJmh}
+ * says why the test fixtures and the JMH sources need an option of their own.
  */
-@Tag("unit")
+@AnalyzeClasses(packages = "org.evochora", importOptions = {ImportOption.DoNotIncludeTests.class, ExcludeTestFixturesAndJmh.class})
+@ArchTag("integration")
 class PackageDependencyRulesTest {
 
     /** Package prefix of the Java sources belonging to this project. */
     private static final String ROOT = "org.evochora";
-
-    private static JavaClasses productionClasses;
-
-    /**
-     * Imports the compiled production classes once for all rules in this class.
-     * <p>
-     * The Protobuf messages generated from {@code src/main/proto} are included like any other
-     * production code. What the generator emits is determined entirely by hand-written
-     * {@code .proto} files — target package, class names and referenced types alike — so a
-     * violation originating there is a violation of a {@code .proto} definition and is fixed at
-     * that source.
-     * <p>
-     * Test code is excluded because it legitimately reaches across package boundaries; a rule
-     * firing there constantly would end up being switched off. That includes the test fixtures and
-     * the JMH sources: both live under {@code org.evochora} like production code, reach the
-     * classpath as jars rather than class directories, and are therefore not caught by ArchUnit's
-     * test filter. They are excluded by location instead.
-     */
-    @BeforeAll
-    static void importProductionClasses() {
-        productionClasses = new ClassFileImporter()
-                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-                .withImportOption(location -> !location.contains("test-fixtures"))
-                .withImportOption(location -> !location.contains("-jmh"))
-                .importPackages(ROOT);
-    }
 
     /**
      * {@code runtime} is the base of the graph and references no other top-level package.
@@ -74,15 +58,15 @@ class PackageDependencyRulesTest {
      * The simulation core carries nothing outward: every type it borrowed from another package
      * would be a type a reimplementation in another language has to carry along.
      */
-    @Test
-    void runtimeDependsOnNoOtherTopLevelPackage() {
+    @ArchTest
+    static void runtimeDependsOnNoOtherTopLevelPackage(JavaClasses classes) {
         noClasses().that().resideInAPackage(ROOT + ".runtime..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         ROOT + ".compiler..",
                         ROOT + ".datapipeline..",
                         ROOT + ".node..",
                         ROOT + ".cli..")
-                .check(productionClasses);
+                .check(classes);
     }
 
     /**
@@ -91,14 +75,14 @@ class PackageDependencyRulesTest {
      * The dependency on the runtime is intended: the instruction set is what the compiler targets.
      * Everything else is above the compiler in the graph.
      */
-    @Test
-    void compilerDependsOnRuntimeOnly() {
+    @ArchTest
+    static void compilerDependsOnRuntimeOnly(JavaClasses classes) {
         noClasses().that().resideInAPackage(ROOT + ".compiler..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         ROOT + ".datapipeline..",
                         ROOT + ".node..",
                         ROOT + ".cli..")
-                .check(productionClasses);
+                .check(classes);
     }
 
     /**
@@ -107,13 +91,13 @@ class PackageDependencyRulesTest {
      * It must not reference {@code node}: process wrappers belong to {@code node} and domain logic
      * to {@code datapipeline}, so the adapter between the two lives on node's side.
      */
-    @Test
-    void datapipelineDependsOnCompilerAndRuntimeOnly() {
+    @ArchTest
+    static void datapipelineDependsOnCompilerAndRuntimeOnly(JavaClasses classes) {
         noClasses().that().resideInAPackage(ROOT + ".datapipeline..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         ROOT + ".node..",
                         ROOT + ".cli..")
-                .check(productionClasses);
+                .check(classes);
     }
 
     /**
@@ -122,13 +106,13 @@ class PackageDependencyRulesTest {
      * Node owns process lifecycles, not what runs inside them, and it has no reason to know the
      * compiler.
      */
-    @Test
-    void nodeDependsOnDatapipelineAndRuntimeOnly() {
+    @ArchTest
+    static void nodeDependsOnDatapipelineAndRuntimeOnly(JavaClasses classes) {
         noClasses().that().resideInAPackage(ROOT + ".node..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         ROOT + ".compiler..",
                         ROOT + ".cli..")
-                .check(productionClasses);
+                .check(classes);
     }
 
     /**
@@ -139,8 +123,8 @@ class PackageDependencyRulesTest {
      * anywhere unnoticed — the graph would silently stop describing the system. This rule forces a
      * new package to be admitted to the graph before any code can live in it.
      */
-    @Test
-    void everyClassLivesInADeclaredTopLevelPackage() {
+    @ArchTest
+    static void everyClassLivesInADeclaredTopLevelPackage(JavaClasses classes) {
         classes().should().resideInAnyPackage(
                         ROOT,
                         ROOT + ".cli..",
@@ -148,7 +132,7 @@ class PackageDependencyRulesTest {
                         ROOT + ".datapipeline..",
                         ROOT + ".node..",
                         ROOT + ".runtime..")
-                .check(productionClasses);
+                .check(classes);
     }
 
     /**
@@ -158,10 +142,10 @@ class PackageDependencyRulesTest {
      * guards a different moment — an edit to this class that adds an edge and closes a cycle
      * without anyone noticing.
      */
-    @Test
-    void topLevelPackagesAreFreeOfCycles() {
+    @ArchTest
+    static void topLevelPackagesAreFreeOfCycles(JavaClasses classes) {
         slices().matching(ROOT + ".(*)..")
                 .should().beFreeOfCycles()
-                .check(productionClasses);
+                .check(classes);
     }
 }

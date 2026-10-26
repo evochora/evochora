@@ -94,7 +94,9 @@ the jar under a unique name, runs it in a throw-away container from a digest-pin
 fetches the JSON result, and removes everything it created from the host — also when the run
 fails. The ssh target comes from `BENCH_SSH`, the JMH selector and parameters from
 `BENCH_JMH_ARGS`; both sides of a comparison must use the same host, the same image digest, and
-the same parameters.
+the same parameters. The image differs between the sides only when the JDK itself is part of the
+change under comparison: `BENCH_IMAGE` sets it for one run of `run-benchmark.sh`, a file
+`config/<variant>/image` for one variant of `run-comparison.sh`, and the report names both.
 
 For a measurement that a decision rests on, use the decision profile:
 
@@ -140,7 +142,7 @@ Before measuring:
 5. **Never run two benchmarks at the same time**, not on the same machine, not in parallel
    worktrees, not from parallel agents. They compete for cores, caches, and memory bandwidth and
    invalidate each other.
-6. **Same JDK** for both sides of a comparison.
+6. **Same JDK** for both sides of a comparison, unless the JDK is the change being measured.
 
 Record clock cap, power profile, JDK version, and the machine in the report so that the
 comparison can be repeated.

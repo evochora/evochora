@@ -85,13 +85,13 @@ public final class LoggingConfigurator {
 
         if ("PLAIN".equalsIgnoreCase(format)) {
             // Set both context property and system property for maximum compatibility
-            context.putProperty("evochora.logging.format", "STDOUT_PLAIN");
-            System.setProperty("evochora.logging.format", "STDOUT_PLAIN");
+            context.putProperty("evochora.logging.format", "CONSOLE_PLAIN");
+            System.setProperty("evochora.logging.format", "CONSOLE_PLAIN");
             LOGGER.debug("Configured logging format: PLAIN");
         } else {
             // Set both context property and system property for maximum compatibility
-            context.putProperty("evochora.logging.format", "STDOUT");
-            System.setProperty("evochora.logging.format", "STDOUT");
+            context.putProperty("evochora.logging.format", "CONSOLE");
+            System.setProperty("evochora.logging.format", "CONSOLE");
             LOGGER.debug("Configured logging format: JSON");
         }
     }

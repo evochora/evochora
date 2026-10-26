@@ -140,6 +140,14 @@ class GeneInsertionPluginTest {
     }
 
     /**
+     * The value of the label or label reference at the given position, read as the bit pattern a
+     * label is matched by rather than as a signed number.
+     */
+    private int labelValueAt(int x, int y) {
+        return Molecule.extractTypedValue(environment.getMolecule(x, y).toInt());
+    }
+
+    /**
      * Places a molecule of the given type and value at the given position, owned by the child.
      */
     private void place(int x, int y, int type, int value) {
@@ -257,10 +265,10 @@ class GeneInsertionPluginTest {
         assertThat(environment.getMolecule(startX + 4, Y).type()).isEqualTo(Config.TYPE_CODE);
         assertThat(environment.getMolecule(startX + 4, Y).value()).isEqualTo(jmpiId());
         assertThat(environment.getMolecule(startX + 5, Y).type()).isEqualTo(Config.TYPE_LABELREF);
-        assertThat(environment.getMolecule(startX + 5, Y).value()).isEqualTo(renamed);
+        assertThat(labelValueAt(startX + 5, Y)).isEqualTo(renamed);
 
         assertThat(environment.getMolecule(labelX, Y).type()).isEqualTo(Config.TYPE_LABEL);
-        assertThat(environment.getMolecule(labelX, Y).value()).as("the block's label").isEqualTo(renamed);
+        assertThat(labelValueAt(labelX, Y)).as("the block's label").isEqualTo(renamed);
         return renamed;
     }
 
@@ -458,8 +466,8 @@ class GeneInsertionPluginTest {
         int renamed = (int) records.get(0).params()[1];
         assertThat(environment.getMolecule(5, Y).value()).isEqualTo(LABEL_HASH_A);
         assertThat(environment.getMolecule(7, Y).type()).isEqualTo(Config.TYPE_LABELREF);
-        assertThat(environment.getMolecule(7, Y).value()).as("the inserted call's target").isEqualTo(renamed);
-        assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
+        assertThat(labelValueAt(7, Y)).as("the inserted call's target").isEqualTo(renamed);
+        assertThat(labelValueAt(9, Y)).as("the closing jump's target").isEqualTo(renamed);
     }
 
     /**
@@ -484,8 +492,8 @@ class GeneInsertionPluginTest {
         assertThat(records).hasSize(1);
         int renamed = (int) records.get(0).params()[1];
         assertThat(environment.getMolecule(6, Y).value()).isEqualTo(jfer.intValue());
-        assertThat(environment.getMolecule(7, Y).value()).as("the inserted jump's target").isEqualTo(renamed);
-        assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
+        assertThat(labelValueAt(7, Y)).as("the inserted jump's target").isEqualTo(renamed);
+        assertThat(labelValueAt(9, Y)).as("the closing jump's target").isEqualTo(renamed);
     }
 
     @Test
@@ -654,8 +662,8 @@ class GeneInsertionPluginTest {
         assertThat(environment.getMolecule(10, Y).value()).isEqualTo(setiId());
         assertThat(environment.getMolecule(7, Y).value()).isEqualTo(jmpiId());
         assertThat(environment.getMolecule(6, Y).type()).isEqualTo(Config.TYPE_LABELREF);
-        assertThat(environment.getMolecule(6, Y).value()).isEqualTo(renamed);
-        assertThat(environment.getMolecule(20, Y).value()).isEqualTo(renamed);
+        assertThat(labelValueAt(6, Y)).isEqualTo(renamed);
+        assertThat(labelValueAt(20, Y)).isEqualTo(renamed);
     }
 
     // ---- Configuration tests ----

@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Evochora! We are building a found
 
 ## Quick Start (How to Build)
 
-You need **Java 21** and **Git**.
+You need **Java 25** and **Git**. The build fetches everything else itself, including the Node.js it uses for the web frontend's libraries; it is unpacked inside the project, not installed on your system.
 
 ```bash
 # Clone the repository

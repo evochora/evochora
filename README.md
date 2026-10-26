@@ -69,7 +69,7 @@ The platform is extensible at every layer: the compiler pipeline, the VM instruc
 
 ## Quick Start
 
-**Requirements:** Java 21 (JRE or JDK)
+**Requirements:** Java 25 (JRE or JDK)
 
 Download and unpack the latest distribution from the [GitHub Releases page](https://github.com/evochora/evochora/releases).
 

@@ -2,6 +2,8 @@ package org.evochora.cli.commands;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
@@ -14,6 +16,7 @@ import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.internal.JsonProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Topology;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -34,16 +37,19 @@ import java.util.concurrent.Callable;
  * A successful run returns exit code 0; a compilation or I/O failure prints its message to the
  * command's error stream and returns exit code 1.
  * <p>
+ * The command reads no configuration: the program and the environment it is laid out for are
+ * named on the command line, so a {@code --config} of the root command is a usage error.
+ * <p>
  * The options mean:
  * <ul>
  *   <li>{@code -f}/{@code --file} (required) — the source file to compile, either a path or the
  *       {@code PREFIX:path} form referring to a named source root.</li>
  *   <li>{@code -e}/{@code --env} — the environment the artifact is laid out for, written as the
- *       shape and an optional topology, for example {@code 1000x1000:toroidal}. The shape is a
- *       list of extents in cells, one per dimension, separated by {@code x}. The environment is
- *       toroidal only when the text after the colon is {@code toroidal}, ignoring case; any other
- *       topology, and a shape given without one, yield a non-toroidal environment. If the option
- *       is omitted entirely, a toroidal environment of 1000 by 1000 cells is assumed.</li>
+ *       shape and the topology, for example {@code 1024x1024:bound}. The shape is a list of
+ *       extents in cells, one per dimension, separated by {@code x}; the topology is
+ *       {@code torus} or {@code bound}, ignoring case, as in the simulation's configuration, and
+ *       cannot be left out. Without the option, the artifact is laid out for the simulation's
+ *       default environment, the one {@code reference.conf} declares.</li>
  *   <li>{@code --source-root} — any number of roots against which the source file and its imported
  *       modules are resolved, each written as a plain path or as {@code path:PREFIX} to give the
  *       root a name. A trailing segment counts as a prefix only if it starts with an uppercase
@@ -67,7 +73,8 @@ import java.util.concurrent.Callable;
  */
 @Command(
     name = "compile",
-    description = "Compiles an assembly source file to a ProgramArtifact JSON"
+    description = "Compiles an assembly source file to a ProgramArtifact JSON",
+    mixinStandardHelpOptions = true
 )
 public class CompileCommand implements Callable<Integer> {
 
@@ -80,7 +87,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment properties in format 'WIDTHxHEIGHT:topology' (e.g., '1000x1000:toroidal'). Default: 1000x1000:toroidal"
+        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the environment of reference.conf"
     )
     private String env;
 
@@ -110,6 +117,10 @@ public class CompileCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (spec.root().commandLine().getParseResult().hasMatchedOption("--config")) {
+            throw new CommandLine.ParameterException(spec.commandLine(),
+                    "compile reads no configuration; name the environment with --env");
+        }
         Instruction.init();
 
         Map<String, FlagSetting> defines;
@@ -130,7 +141,12 @@ public class CompileCommand implements Callable<Integer> {
         } catch (IllegalArgumentException e) {
             throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
         }
-        EnvironmentProperties envProps = parseEnvironmentProperties(env);
+        EnvironmentProperties envProps;
+        try {
+            envProps = parseEnvironmentProperties(env);
+        } catch (IllegalArgumentException e) {
+            throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
+        }
 
         Compiler compiler = new Compiler();
         try {
@@ -262,19 +278,41 @@ public class CompileCommand implements Callable<Integer> {
         return values;
     }
 
+    /**
+     * Reads --env: the environment's shape, and its topology in the words of the simulation's
+     * configuration, {@code torus} or {@code bound}. Without --env, the simulation's default
+     * environment from {@code reference.conf}.
+     *
+     * @throws IllegalArgumentException if a dimension is not a number, or the topology is missing
+     *                                  or another word
+     */
     private EnvironmentProperties parseEnvironmentProperties(String env) {
         if (env == null || env.isEmpty()) {
-            return new EnvironmentProperties(new int[]{1000, 1000}, true);
+            Config defaults = ConfigFactory.defaultReference().getConfig("pipeline.services.simulation-engine.options");
+            int[] shape = defaults.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
+            return new EnvironmentProperties(shape, Topology.parse(defaults.getString("environment.topology")).isToroidal());
         }
 
-        String[] parts = env.split(":");
-        String[] dimensions = parts[0].split("x");
-        int[] shape = Arrays.stream(dimensions)
-                .mapToInt(Integer::parseInt)
-                .toArray();
+        String[] parts = env.split(":", -1);
+        int[] shape;
+        try {
+            shape = Arrays.stream(parts[0].split("x"))
+                    .mapToInt(Integer::parseInt)
+                    .toArray();
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("--env '" + env + "': the shape is not WIDTHxHEIGHT", e);
+        }
 
-        boolean toroidal = parts.length > 1 && "toroidal".equalsIgnoreCase(parts[1]);
-
-        return new EnvironmentProperties(shape, toroidal);
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("--env '" + env + "': the topology is missing, torus or bound");
+        }
+        if (parts.length > 2) {
+            throw new IllegalArgumentException("--env '" + env + "': the topology is torus or bound");
+        }
+        try {
+            return new EnvironmentProperties(shape, Topology.parse(parts[1]).isToroidal());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("--env '" + env + "': the topology is torus or bound", e);
+        }
     }
 }

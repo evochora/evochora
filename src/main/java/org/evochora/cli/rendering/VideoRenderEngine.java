@@ -32,9 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
-import com.typesafe.config.ConfigException;
 
-import org.evochora.cli.config.ConfigLoader;
 
 /**
  * Video rendering engine that orchestrates the rendering pipeline.
@@ -47,6 +45,7 @@ public class VideoRenderEngine {
     private static final Logger LOGGER = LoggerFactory.getLogger(VideoRenderEngine.class);
 
     private final VideoRenderOptions options;
+    private final java.util.function.Supplier<Config> config;
     private final IVideoFrameRenderer frameRenderer;
 
     /** Interval at which the run recorded its ticks, read from the run's metadata. */
@@ -64,9 +63,10 @@ public class VideoRenderEngine {
             java.util.Set.of("mkv", "mp4", "avi", "mov", "webm");
 
     /**
-     * Creates an engine bound to one set of command line options and one frame renderer.
+     * Creates an engine bound to one set of command line options, one frame renderer and the
+     * configuration of the invocation.
      * <p>
-     * Both references are stored as given; no configuration, storage or ffmpeg process is
+     * The references are stored as given; no configuration, storage or ffmpeg process is
      * touched until {@link #execute()} is called.
      *
      * @param options       the video rendering options that control tick range, sampling,
@@ -74,10 +74,14 @@ public class VideoRenderEngine {
      * @param frameRenderer the renderer producing the pixel data of each frame; when more than
      *                      one thread is configured, the engine derives one instance per thread
      *                      from it.
+     * @param config        the configuration, asked for once the options have been validated; the
+     *                      command line's root command supplies it, from its {@code --config}.
      */
-    public VideoRenderEngine(VideoRenderOptions options, IVideoFrameRenderer frameRenderer) {
+    public VideoRenderEngine(VideoRenderOptions options, IVideoFrameRenderer frameRenderer,
+                             java.util.function.Supplier<Config> config) {
         this.options = options;
         this.frameRenderer = frameRenderer;
+        this.config = config;
     }
 
     /**
@@ -96,12 +100,8 @@ public class VideoRenderEngine {
         if (!optionsAreValid()) return 1;
         keepCoresFree();
 
-        // Load configuration
-        Config config = loadConfig();
-        if (config == null) return 1;
-
         // Initialize storage
-        IBatchStorageRead storage = initializeStorage(config);
+        IBatchStorageRead storage = initializeStorage(config.get());
         if (storage == null) return 1;
 
         // Resolve run ID
@@ -723,23 +723,6 @@ public class VideoRenderEngine {
         return "org.evochora.cli.rendering.overlay."
             + name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1).toLowerCase(Locale.ROOT)
             + "OverlayRenderer";
-    }
-
-    private Config loadConfig() {
-        try {
-            return ConfigLoader.resolve(options.configFile, (level, message) -> {
-                switch (level) {
-                    case INFO -> System.out.println(message);
-                    case WARN -> System.out.println("Warning: " + message);
-                }
-            });
-        } catch (IllegalArgumentException e) {
-            System.err.println(e.getMessage());
-            return null;
-        } catch (ConfigException e) {
-            System.err.println("Failed to load configuration: " + e.getMessage());
-            return null;
-        }
     }
 
     private IBatchStorageRead initializeStorage(Config config) {

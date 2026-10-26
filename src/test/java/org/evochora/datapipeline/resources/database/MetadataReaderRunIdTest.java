@@ -126,7 +126,7 @@ class MetadataReaderRunIdTest {
                     {
                         "environment": {
                             "shape": [10],
-                            "topology": "BOUNDED"
+                            "topology": "BOUND"
                         },
                         "samplingInterval": 1,
                         "accumulatedDeltaInterval": 100,

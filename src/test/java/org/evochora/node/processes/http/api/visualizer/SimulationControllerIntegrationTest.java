@@ -46,6 +46,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 
 /**
  * Integration test for SimulationController.
@@ -145,7 +146,11 @@ class SimulationControllerIntegrationTest {
     void getMetadata_returnsSimulationMetadata() throws Exception {
         // Given: Test run with metadata
         String runId = "test-run-" + UUID.randomUUID();
-        SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false, 5);
+        // The configuration may write the topology in any case; the response names it canonically
+        SimulationMetadata bound = createMetadata(runId, new int[]{10, 10}, false, 5);
+        SimulationMetadata metadata = bound.toBuilder()
+            .setResolvedConfigJson(bound.getResolvedConfigJson().replace("\"BOUND\"", "\"bound\""))
+            .build();
 
         // Index metadata first
         indexMetadata(runId, metadata);
@@ -178,10 +183,6 @@ class SimulationControllerIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
 
-        // Setup HTTP server
-        app = Javalin.create().start(0);
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
@@ -196,7 +197,9 @@ class SimulationControllerIntegrationTest {
             }
             """);
         SimulationController controller = new SimulationController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/simulation");
+        // Setup HTTP server
+        app = JavalinFactory.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        int port = app.port();
 
         // When: Request metadata
         io.restassured.response.Response resp = given()
@@ -212,6 +215,7 @@ class SimulationControllerIntegrationTest {
             .body("environment.shape", hasSize(2))
             .body("environment.shape[0]", equalTo(10))  // int32 from Protobuf
             .body("environment.shape[1]", equalTo(10))  // int32 from Protobuf
+            .body("environment.topology", equalTo("BOUND"))
             .body("samplingInterval", equalTo(5))
             .header("Cache-Control", equalTo("public, max-age=31536000, must-revalidate"))
             .header("ETag", notNullValue());
@@ -235,16 +239,14 @@ class SimulationControllerIntegrationTest {
         SimulationMetadata newMetadata = createMetadata(newRunId, new int[]{20, 20}, false, 10);
         indexMetadata(newRunId, newMetadata);
 
-        // Setup HTTP server
-        app = Javalin.create().start(0);
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         Config controllerConfig = ConfigFactory.empty();
         SimulationController controller = new SimulationController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/simulation");
+        // Setup HTTP server
+        app = JavalinFactory.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        int port = app.port();
 
         // When: Request metadata WITHOUT runId parameter (should fallback to latest)
         io.restassured.response.Response resp = given()
@@ -264,16 +266,14 @@ class SimulationControllerIntegrationTest {
     @Test
     void getMetadata_returns404OnNoRuns() {
         // Given: Empty database (no runs)
-        // Setup HTTP server
-        app = Javalin.create().start(0);
-        int port = app.port();
-
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
         Config controllerConfig = ConfigFactory.empty();
         SimulationController controller = new SimulationController(registry, controllerConfig);
-        controller.registerRoutes(app, "/visualizer/api/simulation");
+        // Setup HTTP server
+        app = JavalinFactory.create(javalin -> controller.registerRoutes(javalin.routes, "/visualizer/api/simulation")).start(0);
+        int port = app.port();
 
         // When: Request metadata without runId parameter
         io.restassured.response.Response resp = given()

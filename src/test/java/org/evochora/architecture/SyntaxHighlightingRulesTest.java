@@ -2,8 +2,8 @@ package org.evochora.architecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -55,13 +55,13 @@ class SyntaxHighlightingRulesTest {
 
         JsonNode grammar = new ObjectMapper().readTree(Files.readString(GRAMMAR));
         JsonNode match = grammar.path("repository").path("opcodes").path("match");
-        assertThat(match.isTextual())
+        assertThat(match.isString())
                 .as("grammar rule 'opcodes' in %s", GRAMMAR)
                 .isTrue();
 
-        opcodePattern = Pattern.compile(match.asText());
+        opcodePattern = Pattern.compile(match.asString());
 
-        Matcher alternation = Pattern.compile("\\(([A-Z0-9|]+)\\)").matcher(match.asText());
+        Matcher alternation = Pattern.compile("\\(([A-Z0-9|]+)\\)").matcher(match.asString());
         assertThat(alternation.find())
                 .as("list of instruction names in the 'opcodes' pattern")
                 .isTrue();

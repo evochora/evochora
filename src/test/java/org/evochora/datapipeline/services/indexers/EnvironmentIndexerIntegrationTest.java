@@ -440,7 +440,7 @@ class EnvironmentIndexerIntegrationTest {
             builder.shape(worldShape[0], worldShape[1]);
         } else if (worldShape.length == 3) {
             // For 3D, we need custom JSON since builder only supports 2D
-            String topology = isToroidal ? "TORUS" : "BOUNDED";
+            String topology = isToroidal ? "TORUS" : "BOUND";
             String customJson = String.format("""
                 {
                     "environment": {

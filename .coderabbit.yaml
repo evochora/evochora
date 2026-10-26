@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  pre_merge_checks:
+    docstrings:
+      # The project's rule on documentation (AGENTS.md, "Documentation Guidelines") asks JavaDoc of
+      # every non-private member of production code and leaves private members and most test
+      # methods free; javadocLint in the build enforces it. This check counts every function a
+      # change touches, private and test code included, and so measures a rule the project does not
+      # have.
+      mode: "off"

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.typesafe.config.ConfigFactory;
 import io.javalin.Javalin;
+import org.evochora.node.processes.http.JavalinFactory;
 import io.javalin.testtools.JavalinTest;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -54,8 +55,7 @@ class AnalyticsControllerTest {
             ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 1))
         );
 
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
 
         // 3. Test Request
         JavalinTest.test(app, (server, client) -> {
@@ -91,8 +91,7 @@ class AnalyticsControllerTest {
               { className = "A", options { metricId = "age_distribution", group = "Population", fullWidth = true } }
             ]
             """));
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
 
         JavalinTest.test(app, (server, client) -> {
             JsonArray metrics = JsonParser.parseString(client.get("/api/manifest?runId=run1").body().string())
@@ -141,8 +140,7 @@ class AnalyticsControllerTest {
               { className = "V", options { metricId = "variation_sources", group = "Evolution" } }
             ]
             """));
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
 
         JavalinTest.test(app, (server, client) -> {
             assertThat(client.get("/api/manifest?runId=run1").code()).isEqualTo(200);
@@ -169,8 +167,7 @@ class AnalyticsControllerTest {
               { className = "V", options { metricId = "variation_sources", group = "Evolution" } }
             ]
             """));
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
 
         JavalinTest.test(app, (server, client) -> {
             assertThat(client.get("/api/manifest?runId=run1").code()).isEqualTo(200);
@@ -193,8 +190,7 @@ class AnalyticsControllerTest {
             ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 60))
         );
 
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
 
         JavalinTest.test(app, (server, client) -> {
             // First call
@@ -224,8 +220,7 @@ class AnalyticsControllerTest {
             ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 60))
         );
 
-        Javalin app = Javalin.create();
-        controller.registerRoutes(app, "/api");
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
 
         JavalinTest.test(app, (server, client) -> {
             assertThat(client.get("/api/manifest?runId=run1").body().string()).contains("\"metrics\":[]");

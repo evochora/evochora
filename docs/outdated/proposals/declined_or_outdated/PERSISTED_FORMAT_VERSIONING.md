@@ -1,6 +1,8 @@
 # Versioning of Persisted Formats
 
-**Status: TO BE REVIEWED — verified gap, decisions listed at the end.**
+**Status: DECLINED (2026-10-25).** A run is read with the build that wrote it, and the engine writes
+that build's revision into the metadata of every run, so that whoever reads a run with another build
+is warned. Formats therefore stay free to change, and a version stamp per format is not needed.
 
 ## Problem
 
@@ -85,7 +87,7 @@ Two practice notes follow independently of the version stamp:
 - **Retired field numbers must be `reserved`** in the same commit that removes or renumbers a
   field. The stamp names the incompatibility; `reserved` prevents the silent-misread class if a
   check is ever bypassed, and makes renumbering visible in review.
-- [DETERMINISTIC_EXECUTION](../outdated/proposals/accomplished/DETERMINISTIC_EXECUTION.md) was expected to be the first bump; its
+- [DETERMINISTIC_EXECUTION](../accomplished/DETERMINISTIC_EXECUTION.md) was expected to be the first bump; its
   agreed design keeps the checkpoint format unchanged, so no bump is currently queued.
 
 ## Scope
@@ -155,7 +157,7 @@ the same commit that breaks the format. It only ever costs anything when someone
 new code — which is the case where it should.
 
 Fixtures remain the correct instrument for formats owned by a third party that does guarantee
-compatibility; see [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md).
+compatibility; see [DEPENDENCY_UPDATE](../accomplished/DEPENDENCY_UPDATE.md).
 
 ## Implementation
 

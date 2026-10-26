@@ -60,7 +60,7 @@ Concretely:
    state describes. On restart, the indexer calls `loadState` before feeding the first resumed
    tick.
 3. The stored state is a persisted artifact and therefore falls under
-   [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md): it carries the format version and
+   [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md): it carries the format version and
    is rejected fail-fast on mismatch (the safe reaction to a rejected state is the re-index of the
    remediation note above).
 

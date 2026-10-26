@@ -9,7 +9,7 @@ import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Unit tests for database reader interfaces and data classes (no database I/O).
