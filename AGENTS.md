@@ -91,11 +91,9 @@ The base path is `/pipeline/api`, formed by the route nesting in the HTTP proces
 - `POST /pipeline/api/service/{serviceName}/resume` - Resume specific service
 
 ## Assembly Compile System
-The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
+The compiler is invoked through the CLI. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
 
-- Primary user-facing entry point: `bin/evochora compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
-- Developer entry point via JAR (after `./gradlew jar`):
-  `java -jar build/libs/evochora.jar compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
+- Primary user-facing entry point: `bin/evochora compile --source-root <root> --file=<path> [--env=<dimensions>:<torus|bound>]`
 
 Source roots define base directories (or HTTP URLs) from which module paths are resolved. Use `--source-root path:PREFIX` for named roots and `PREFIX:path` in directives to target them.
 

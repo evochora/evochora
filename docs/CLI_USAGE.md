@@ -112,11 +112,11 @@ Starts the node without simulating: the HTTP server serves the runs already in t
 The `compile` command translates EvoASM source files into a JSON `ProgramArtifact` that contains machine code layout, labels, procedures, source mapping and more.
 
 ```bash
-# Basic compilation (uses default environment from config)
+# Basic compilation (for the simulation's default environment)
 bin/evochora compile --source-root assembly/examples --file=simple.evo
 
 # With custom environment
-bin/evochora compile --source-root assembly/examples --file=simple.evo --env=200x200:flat
+bin/evochora compile --source-root assembly/examples --file=simple.evo --env=256x256:bound
 
 # Multiple source roots with prefixes (format: path or path:PREFIX)
 bin/evochora compile --source-root ./predator:PRED --source-root ./prey:PREY --file=PRED:main.evo
@@ -161,15 +161,17 @@ The option may be repeated. Value names are case-insensitive. A value no `.REQUI
 
 Syntax:
 
-- `--env=<dimensions>[:<topology>]`
-- `dimensions`: world dimensions, e.g. `100x100`, `2000x2000`, `1000x1000x100`
-- `topology` (optional): `torus` (default) or `bound`, as in the simulation's configuration
+- `--env=<dimensions>:<topology>`
+- `dimensions`: environment dimensions, e.g. `128x128`, `2048x2048`, `1024x1024x128`
+- `topology`: `torus` or `bound`, as in the simulation's configuration; it cannot be left out
+
+Without `--env`, the program is laid out for the simulation's default environment, the one `reference.conf` declares.
 
 Examples:
 
-- `100x100` → 100x100 world, torus (default)
-- `2000x2000:bound` → 2000x2000 world, bounded
-- `1000x1000x100:torus` → 3D world, torus
+- `128x128:torus` → 128x128 environment, torus
+- `2048x2048:bound` → 2048x2048 environment, bounded
+- `1024x1024x128:torus` → 3D environment, torus
 
 ### JSON Output (ProgramArtifact)
 

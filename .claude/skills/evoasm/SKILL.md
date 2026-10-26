@@ -120,7 +120,7 @@ misleads.
 ## 3 · Compile
 
 ```
-build/install/evochora/bin/evochora compile --source-root <dir> --file <main>.evo --env <w>x<h>
+build/install/evochora/bin/evochora compile --source-root <dir> --file <main>.evo --env <w>x<h>:torus
 ```
 
 The installation tree must be current (`./gradlew installDist`, after the benchmark check the

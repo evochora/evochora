@@ -2,6 +2,8 @@ package org.evochora.cli.commands;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
@@ -39,11 +41,11 @@ import java.util.concurrent.Callable;
  *   <li>{@code -f}/{@code --file} (required) — the source file to compile, either a path or the
  *       {@code PREFIX:path} form referring to a named source root.</li>
  *   <li>{@code -e}/{@code --env} — the environment the artifact is laid out for, written as the
- *       shape and an optional topology, for example {@code 1000x1000:toroidal}. The shape is a
- *       list of extents in cells, one per dimension, separated by {@code x}. The environment is
- *       toroidal only when the text after the colon is {@code toroidal}, ignoring case; any other
- *       topology, and a shape given without one, yield a non-toroidal environment. If the option
- *       is omitted entirely, a toroidal environment of 1000 by 1000 cells is assumed.</li>
+ *       shape and the topology, for example {@code 1024x1024:bound}. The shape is a list of
+ *       extents in cells, one per dimension, separated by {@code x}; the topology is
+ *       {@code torus} or {@code bound}, ignoring case, as in the simulation's configuration, and
+ *       cannot be left out. Without the option, the artifact is laid out for the simulation's
+ *       default environment, the one {@code reference.conf} declares.</li>
  *   <li>{@code --source-root} — any number of roots against which the source file and its imported
  *       modules are resolved, each written as a plain path or as {@code path:PREFIX} to give the
  *       root a name. A trailing segment counts as a prefix only if it starts with an uppercase
@@ -81,7 +83,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment properties in format 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1000x1000:bound'). Default: 1000x1000:torus"
+        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the simulation's default environment"
     )
     private String env;
 
@@ -269,14 +271,18 @@ public class CompileCommand implements Callable<Integer> {
     }
 
     /**
-     * Reads --env: the world's shape, and its topology in the words of the simulation's
-     * configuration, {@code torus} (the default, as without --env) or {@code bound}.
+     * Reads --env: the environment's shape, and its topology in the words of the simulation's
+     * configuration, {@code torus} or {@code bound}. Without --env, the simulation's default
+     * environment from {@code reference.conf}.
      *
-     * @throws IllegalArgumentException if a dimension is not a number or the topology is another word
+     * @throws IllegalArgumentException if a dimension is not a number, or the topology is missing
+     *                                  or another word
      */
     private EnvironmentProperties parseEnvironmentProperties(String env) {
         if (env == null || env.isEmpty()) {
-            return new EnvironmentProperties(new int[]{1000, 1000}, true);
+            Config defaults = ConfigFactory.defaultReference().getConfig("pipeline.services.simulation-engine.options");
+            int[] shape = defaults.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
+            return new EnvironmentProperties(shape, "TORUS".equalsIgnoreCase(defaults.getString("environment.topology")));
         }
 
         String[] parts = env.split(":", -1);
@@ -289,7 +295,10 @@ public class CompileCommand implements Callable<Integer> {
             throw new IllegalArgumentException("--env '" + env + "': the shape is not WIDTHxHEIGHT", e);
         }
 
-        String topology = parts.length > 1 ? parts[1] : "torus";
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("--env '" + env + "': the topology is missing, torus or bound");
+        }
+        String topology = parts[1];
         if (parts.length > 2 || !("torus".equalsIgnoreCase(topology) || "bound".equalsIgnoreCase(topology))) {
             throw new IllegalArgumentException("--env '" + env + "': the topology is torus or bound");
         }

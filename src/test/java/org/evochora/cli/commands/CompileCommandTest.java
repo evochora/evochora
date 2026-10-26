@@ -24,6 +24,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Smoke tests for the compile command.
  * Tests basic functionality: parsing, compilation of simple programs.
+ * <p>
+ * Every call that reaches the compilation names its environment with {@code -e}: without it the
+ * command lays the program out for the default environment of {@code reference.conf}, and a test
+ * must not depend on the configuration.
  */
 @Tag("unit")
 public class CompileCommandTest {
@@ -76,7 +80,7 @@ public class CompileCommandTest {
         cmdLine.setOut(new PrintWriter(out));
         cmdLine.setErr(new PrintWriter(err));
 
-        int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString());
+        int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", "50x50:torus");
 
         assertThat(exitCode)
             .describedAs("Exit code should be 0. stderr: %s, stdout: %s", err.toString(), out.toString())
@@ -103,25 +107,27 @@ public class CompileCommandTest {
     }
 
     /**
-     * Without a topology the world is a torus, as without --env; the topology takes the words of the
-     * simulation's configuration and no other.
+     * The topology cannot be left out, and it takes the words of the simulation's configuration
+     * and no other.
      */
     @Test
-    void theEnvTopologyDefaultsToTorusAndTakesOnlyTorusOrBound() throws Exception {
+    void theEnvTopologyIsRequiredAndTakesOnlyTorusOrBound() throws Exception {
         Path sourceFile = tempDir.resolve("topology.asm");
         Files.writeString(sourceFile, """
             .ORG 0|0
             NOP
             """);
 
-        assertThat(compiledAsToroidal(sourceFile, "50x50")).isTrue();
+        assertThat(compiledAsToroidal(sourceFile, "50x50:torus")).isTrue();
         assertThat(compiledAsToroidal(sourceFile, "50x50:bound")).isFalse();
 
-        CommandLine cmdLine = CommandLineInterface.createCommandLine();
-        StringWriter err = new StringWriter();
-        cmdLine.setErr(new PrintWriter(err));
-        assertThat(cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", "50x50:toroidal")).isEqualTo(2);
-        assertThat(err.toString()).contains("torus or bound");
+        for (String env : List.of("50x50", "50x50:toroidal")) {
+            CommandLine cmdLine = CommandLineInterface.createCommandLine();
+            StringWriter err = new StringWriter();
+            cmdLine.setErr(new PrintWriter(err));
+            assertThat(cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", env)).describedAs(env).isEqualTo(2);
+            assertThat(err.toString()).describedAs(env).contains("torus or bound");
+        }
     }
 
     private static boolean compiledAsToroidal(Path sourceFile, String env) {
@@ -140,7 +146,7 @@ public class CompileCommandTest {
         StringWriter err = new StringWriter();
         cmdLine.setErr(new PrintWriter(err));
 
-        int exitCode = cmdLine.execute("compile", "-f", "/nonexistent/file.asm");
+        int exitCode = cmdLine.execute("compile", "-f", "/nonexistent/file.asm", "-e", "50x50:torus");
 
         assertThat(exitCode).isNotEqualTo(0);
     }
@@ -209,7 +215,7 @@ public class CompileCommandTest {
             StringWriter err = new StringWriter();
             cmdLine.setErr(new PrintWriter(err));
 
-            int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "--define", form);
+            int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "-e", "50x50:torus", "--define", form);
 
             assertThat(exitCode).describedAs(form).isEqualTo(2);
             assertThat(err.toString()).contains("not a number");
@@ -383,7 +389,7 @@ public class CompileCommandTest {
         StringWriter err = new StringWriter();
         cmdLine.setOut(new PrintWriter(out));
         cmdLine.setErr(new PrintWriter(err));
-        List<String> args = new ArrayList<>(List.of("compile", "-f", file));
+        List<String> args = new ArrayList<>(List.of("compile", "-f", file, "-e", "50x50:torus"));
         args.addAll(List.of(extraArgs));
 
         int exitCode = cmdLine.execute(args.toArray(String[]::new));
