@@ -37,6 +37,9 @@ import java.util.concurrent.Callable;
  * A successful run returns exit code 0; a compilation or I/O failure prints its message to the
  * command's error stream and returns exit code 1.
  * <p>
+ * The command reads no configuration: the program and the environment it is laid out for are
+ * named on the command line, so a {@code --config} of the root command is a usage error.
+ * <p>
  * The options mean:
  * <ul>
  *   <li>{@code -f}/{@code --file} (required) — the source file to compile, either a path or the
@@ -84,7 +87,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the simulation's default environment"
+        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the environment of reference.conf"
     )
     private String env;
 
@@ -114,6 +117,10 @@ public class CompileCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (spec.root().commandLine().getParseResult().hasMatchedOption("--config")) {
+            throw new CommandLine.ParameterException(spec.commandLine(),
+                    "compile reads no configuration; name the environment with --env");
+        }
         Instruction.init();
 
         Map<String, FlagSetting> defines;

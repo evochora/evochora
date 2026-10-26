@@ -151,6 +151,22 @@ public class CompileCommandTest {
         assertThat(exitCode).isNotEqualTo(0);
     }
 
+    /**
+     * The command reads no configuration, so a configuration named for it would be ignored
+     * without notice; it is rejected instead.
+     */
+    @Test
+    void aConfigurationNamedForCompileIsAUsageError() {
+        CommandLine cmdLine = CommandLineInterface.createCommandLine();
+        StringWriter err = new StringWriter();
+        cmdLine.setErr(new PrintWriter(err));
+
+        int exitCode = cmdLine.execute("--config", "experiment.conf", "compile", "-f", "main.evo", "-e", "50x50:torus");
+
+        assertThat(exitCode).isEqualTo(2);
+        assertThat(err.toString()).contains("--env");
+    }
+
     @Test
     void testMissingRequiredFileOption() {
         CommandLine cmdLine = CommandLineInterface.createCommandLine();

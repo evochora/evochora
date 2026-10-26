@@ -165,7 +165,7 @@ Syntax:
 - `dimensions`: environment dimensions, e.g. `128x128`, `2048x2048`, `1024x1024x128`
 - `topology`: `torus` or `bound`, as in the simulation's configuration; it cannot be left out
 
-Without `--env`, the program is laid out for the simulation's default environment, the one `reference.conf` declares.
+Without `--env`, the program is laid out for the simulation's default environment, the one `reference.conf` declares. `compile` reads no configuration: a `--config` before it is rejected.
 
 Examples:
 
