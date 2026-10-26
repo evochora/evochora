@@ -143,7 +143,7 @@ public class CommandLineInterface implements Callable<Integer> {
         }
         if (config.hasPath("logging.format")) {
             final String format = config.getString("logging.format");
-            System.setProperty("evochora.logging.format", "PLAIN".equalsIgnoreCase(format) ? "STDOUT_PLAIN" : "STDOUT");
+            System.setProperty("evochora.logging.format", "PLAIN".equalsIgnoreCase(format) ? "CONSOLE_PLAIN" : "CONSOLE");
             reconfigureLogback();
         }
         LoggingConfigurator.configure(config);
