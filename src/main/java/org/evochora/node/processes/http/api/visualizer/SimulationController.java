@@ -125,7 +125,7 @@ public class SimulationController extends VisualizerBaseController {
             @OpenApiResponse(status = "400", description = "Bad request (invalid parameters)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "404", description = "Not found (run ID or metadata not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
-            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+            @OpenApiResponse(status = "500", description = "Internal server error (database error, or metadata the server cannot read)", content = @OpenApiContent(from = ErrorResponseDto.class))
         }
     )
     void getMetadata(final Context ctx) throws SQLException {

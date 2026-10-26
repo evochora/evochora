@@ -26,8 +26,8 @@ import {
 
 /**
  * Whether an environment of a topology is drawn across its seam. The server names the topology
- * as the simulation's Topology type does; a new topology gets its case here, and until then the
- * run is refused rather than drawn as another one.
+ * as org.evochora.runtime.model.Topology does; a new constant there gets its case here, and until
+ * then the run is refused rather than drawn as another one.
  *
  * @param {string} topology - The topology's name, e.g. 'TORUS'.
  * @returns {boolean} True if the environment wraps around at its edges.

@@ -9,7 +9,8 @@ import java.util.Locale;
  * Every place that reads or writes the word goes through this type, so that a configuration, a
  * run's metadata and a command line accept the same words and no other. The visualizer receives
  * the topology under its {@link #name()} from the server and decides from that name how to draw
- * the environment.
+ * the environment, in {@code wrapsAround} of {@code src/main/web/visualizer/js/AppController.js}:
+ * a new constant needs its case there.
  */
 public enum Topology {
 
