@@ -28,6 +28,8 @@ import io.javalin.compression.CompressionType;
 import io.javalin.compression.Gzip;
 import io.javalin.compression.Zstd;
 import io.javalin.config.RoutesConfig;
+import io.javalin.http.HandlerType;
+import io.javalin.http.HttpStatus;
 
 /**
  * A manageable process that runs a Javalin HTTP server. It dynamically configures its routes
@@ -178,6 +180,9 @@ public class HttpServerProcess extends AbstractProcess {
                             staticFiles.directory = classpathDir;
                             staticFiles.location = io.javalin.http.staticfiles.Location.CLASSPATH;
                         });
+                        if (!"/".equals(def.basePath)) {
+                            redirectEntryToDirectory(config.routes, def.basePath);
+                        }
                     } catch (final Exception e) {
                         LOGGER.error("Failed to configure static route at path '{}'", def.basePath, e);
                     }
@@ -284,6 +289,32 @@ public class HttpServerProcess extends AbstractProcess {
                 }
             }
         }
+    }
+
+    /**
+     * Redirects the entry path of a static route to the same path with a trailing slash.
+     * <p>
+     * A page served at {@code /x} loads its files through relative paths, which a browser
+     * resolves against {@code /} instead of {@code /x/}; only under {@code /x/} do they reach the
+     * page's files. A request for exactly {@code /x} is therefore answered with a redirect to
+     * {@code /x/} that keeps the query string.
+     * <p>
+     * The redirect is a before-handler that compares the path exactly, not a GET route: the
+     * router ignores trailing slashes, so a GET route on {@code /x} would also take
+     * {@code /x/} and hide the page. Only GET and HEAD are redirected, the only methods static
+     * files answer; any other method keeps the answer it gets without the redirect.
+     *
+     * @param routes   the routes of the server being configured
+     * @param basePath the URL path of the static route, without a trailing slash
+     */
+    private static void redirectEntryToDirectory(final RoutesConfig routes, final String basePath) {
+        routes.before(basePath, ctx -> {
+            final boolean readsFile = ctx.method() == HandlerType.GET || ctx.method() == HandlerType.HEAD;
+            if (readsFile && basePath.equals(ctx.path())) {
+                final String query = ctx.queryString();
+                ctx.redirect(basePath + "/" + (query == null ? "" : "?" + query), HttpStatus.FOUND);
+            }
+        });
     }
 
     private void registerControllers(final RoutesConfig routes) {
