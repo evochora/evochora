@@ -94,7 +94,7 @@ class HttpServerProcessStaticEntryRedirectTest {
         final HttpResponse<String> response = send("GET", "/app/");
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).isEqualTo("ENTRY PAGE\n");
+        assertThat(response.body()).isEqualToNormalizingNewlines("ENTRY PAGE\n");
     }
 
     @Test
@@ -102,7 +102,7 @@ class HttpServerProcessStaticEntryRedirectTest {
         final HttpResponse<String> response = send("GET", "/app/app.js");
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).isEqualTo("APP FILE\n");
+        assertThat(response.body()).isEqualToNormalizingNewlines("APP FILE\n");
     }
 
     @Test
