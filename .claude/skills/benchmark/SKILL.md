@@ -21,6 +21,20 @@ Both run on the benchmark host (`BENCH_SSH`, default `ubuntu@evochora.org`) in t
 containers from a digest-pinned JRE image. Never on a developer machine while anything else runs,
 never two measurements at once, never from a working tree with uncommitted changes.
 
+The host has dedicated fixed-clock cores, no steal time and no swap, which is what
+`docs/BENCHMARKING.md` demands of a developer machine. `run-benchmark.sh` refuses a host that
+shows load or CPU steal, pauses its periodic maintenance timers during a run
+(`BENCH_PAUSE_TIMERS`), and removes everything it uploaded afterwards, also when a run fails;
+`run-comparison.sh` skips a variant while the host's load is too high. Both sides of a comparison use the
+same host, the same image digest and the same parameters; the image differs only when the JDK
+itself is the change — `BENCH_IMAGE` sets it for one run of `run-benchmark.sh`, a file
+`config/<variant>/image` for one variant of `run-comparison.sh`, and the report names both. A
+single iteration that collapses in an otherwise flat fork means a co-tenant interfered: measure
+that combination again instead of accepting the widened error. The host's cores are ARM
+(Neoverse-N1): relative results of algorithmic changes carry over to other machines, but a change
+whose effect depends on the microarchitecture — memory layout, false sharing, thread scheduling —
+is confirmed on the target machine under the conditions of `docs/BENCHMARKING.md`.
+
 ## 0 · Before measuring
 
 1. Name both sides as commits: base and candidate. Merge `origin/main` into the candidate first,
