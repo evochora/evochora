@@ -82,7 +82,7 @@ The requirements above catch known mistakes. Beyond them, judge whether the chan
 - **Duplication**: Does the change rebuild something that already exists — a utility, a resource, a conversion, a parser? Search the code base before concluding either way.
 - **Placement**: Does the code sit in the layer and package that owns the concern, or does it reach across — a service doing a resource's work, the frontend deriving what the controller should deliver, the core learning one plugin's or one feature's special case?
 - **Future cost**: Does the change fix a decision that makes a likely next step harder — a second implementation of an interface, a new molecule type, a new compiler feature, a larger world?
-- **Recorded decision**: A change with scope implements a decision. Is that decision stated in `docs/proposals/` or in the pull request description? Does the change contradict a proposal there, a rejected one or one parked under `docs/proposals/ideas/` included?
+- **Recorded decision**: A change with scope implements a decision. Is that decision stated in `docs/proposals/` or in the pull request description?
 - **Half a feature**: Does the change build a reduced form of something whose clean form is not yet understood?
 
 A design finding is reported only with two things: the concrete alternative, and the case in which the chosen design does worse than it — a call site, an extension, a failure mode. Preference without such a case is not a finding. When the alternative would cost more than it saves, say so and let it go.

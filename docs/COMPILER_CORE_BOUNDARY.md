@@ -138,8 +138,7 @@ A feature cannot, without a core change:
 - put data of its own into `ProgramArtifact`, whose fields are fixed (issue #153);
 - introduce a symbol kind, because `Symbol.Type` is closed.
 
-What the core fixes by decision is listed in AGENTS.md under "Fixed Kinds"; the open
-alternative for the IR is recorded under `docs/proposals/ideas/OPEN_COMPILER_BACKEND.md`.
+What the core fixes by decision is listed in AGENTS.md under "Fixed Kinds".
 
 ## Candidates for decoupling
 

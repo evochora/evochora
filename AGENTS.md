@@ -163,12 +163,12 @@ projects that last make their decisions; everything built has to be carried for 
   it does; checks that came back clean are not listed. A concern found later restarts the
   comparison; it does not get patched in.
 - **A clean way or no way.** When no option can be implemented cleanly within the existing
-  architecture, the idea is dropped or parked under `docs/proposals/ideas/`, not built in a
+  architecture, the idea is dropped or parked as an idea (see `docs/proposals/README.md`), not built in a
   reduced form. Half of a feature is worse than none, because it fixes the design before the
   design is understood. A flaw does not become clean by moving to another layer, and a flaw
   the proposer names is the objection, not a footnote.
 - **Decisions are recorded, not implied.** A decision with scope becomes a proposal
-  (`docs/proposals/`), and a rejected one is kept with its reason; a small decision made along
+  (see `docs/proposals/README.md`); a small decision made along
   the way is stated in the commit message. Code never carries a decision that nothing recorded.
 - **The path never shortens; the depth scales.** A typo fix and a runtime change walk the same
   path, but the comparison for the typo fix is one sentence. What is never skipped is naming
@@ -479,8 +479,11 @@ throw new InterruptedException();
 - Thread safety if method-specific
 - For interface methods: which capability/interface it belongs to
 
+**References to proposals:**
+- No document outside `docs/proposals/`, no skill and no comment refers to a proposal: a proposal moves with its status, and a reference to it goes stale
+
 **Flagship documents:**
-- `README.md` and `docs/SCIENTIFIC_OVERVIEW.md` are the project's public face. Edits derive from the document's structure and purpose, never from "a place where it fits"; exact wording is proposed before editing and approved hunk by hunk; links point to durable targets only, never to proposals; index entries are timeless; claims stay scientifically restrained
+- `README.md` and `docs/SCIENTIFIC_OVERVIEW.md` are the project's public face. Edits derive from the document's structure and purpose, never from "a place where it fits"; exact wording is proposed before editing and approved hunk by hunk; links point to durable targets only; index entries are timeless; claims stay scientifically restrained
 
 **User documentation (`docs/*.md` beyond the flagship documents, comments in `config/*.conf`):**
 - Before changing a document, read it whole. A change stands at one place in the document, and at that place the reader knows only what the document has said before it: a sentence relies on no fact the document states later. The change takes the form, the depth and the wording of the document around it, so that nobody can tell it was written separately. Check by reading the changed passage as a reader who has read the document up to there and nothing else

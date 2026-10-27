@@ -450,8 +450,7 @@ GROUP BY 1 ORDER BY 2 DESC
 
 The run points, the instruction set decides: a rule for an operator is derived from what the
 machine does with the written form, for any program. This is observation — place, neighbours and
-the lineage's past all take part; the controlled counterpart, one mutation at a time under
-identical conditions, is the assay described in `docs/proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md`.
+the lineage's past all take part.
 
 ## Interpretation discipline
 
