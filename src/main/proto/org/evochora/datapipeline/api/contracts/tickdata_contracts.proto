@@ -531,7 +531,7 @@ message OrganismStateList {
 }
 
 // ============================================================================
-// Delta Compression (DELTA_COMPRESSION.md proposal)
+// Delta Compression
 // ============================================================================
 
 // Type of delta in a TickDataChunk.
