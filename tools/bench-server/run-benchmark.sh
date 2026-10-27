@@ -27,7 +27,7 @@
 # are removed from the host afterwards — also when the run fails or is aborted.
 # Paused timers are restarted by the same exit handler.
 # Only relative comparisons between runs on this host are meaningful; see
-# docs/BENCHMARKING.md.
+# docs/dev/BENCHMARKING.md.
 set -euo pipefail
 
 HOST="${BENCH_SSH:-ubuntu@evochora.org}"

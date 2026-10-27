@@ -425,7 +425,7 @@ Evochora includes two web-based frontends for interacting with simulation data:
 
 ### Further Reading
 
-For more details, see the [Assembly Specification](docs/ASSEMBLY_SPEC.md), [Compiler IR Specification](docs/COMPILER_IR_SPEC.md), [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md), and [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md).
+For more details, see the [Assembly Specification](docs/ASSEMBLY_SPEC.md), [Compiler IR Specification](docs/dev/COMPILER_IR_SPEC.md), [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md), and [Architecture Decisions](docs/dev/ARCHITECTURE_DECISIONS.md).
 
 <br>
 
@@ -478,7 +478,7 @@ For the current roadmap, see the [GitHub Project Board](https://github.com/orgs/
 - Key documentation:
     - [CLI Usage Guide](docs/CLI_USAGE.md)
     - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM)
-    - [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)
+    - [Architecture Decisions](docs/dev/ARCHITECTURE_DECISIONS.md)
 
 <br>
 

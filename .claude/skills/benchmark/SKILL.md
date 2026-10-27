@@ -8,7 +8,7 @@ description: Measure the performance effect of a code change in Evochora — JMH
 Two instruments exist. They answer different questions, and neither is run by habit: pick the
 one that can show what this change does, and run both only where each adds something the other
 cannot. Conditions, validity criteria and how to interpret a difference are in
-`docs/BENCHMARKING.md`; read it first and do not restate it here — this skill is the procedure.
+`docs/dev/BENCHMARKING.md`; read it first and do not restate it here — this skill is the procedure.
 
 | | JMH tick benchmark | Real-run comparison |
 |---|---|---|
@@ -22,7 +22,7 @@ containers from a digest-pinned JRE image. Never on a developer machine while an
 never two measurements at once, never from a working tree with uncommitted changes.
 
 The host has dedicated fixed-clock cores, no steal time and no swap, which is what
-`docs/BENCHMARKING.md` demands of a developer machine. `run-benchmark.sh` refuses a host that
+`docs/dev/BENCHMARKING.md` demands of a developer machine. `run-benchmark.sh` refuses a host that
 shows load or CPU steal, pauses its periodic maintenance timers during a run
 (`BENCH_PAUSE_TIMERS`), and removes everything it uploaded afterwards, also when a run fails;
 `run-comparison.sh` skips a variant while the host's load is too high. Both sides of a comparison use the
@@ -33,7 +33,7 @@ single iteration that collapses in an otherwise flat fork means a co-tenant inte
 that combination again instead of accepting the widened error. The host's cores are ARM
 (Neoverse-N1): relative results of algorithmic changes carry over to other machines, but a change
 whose effect depends on the microarchitecture — memory layout, false sharing, thread scheduling —
-is confirmed on the target machine under the conditions of `docs/BENCHMARKING.md`.
+is confirmed on the target machine under the conditions of `docs/dev/BENCHMARKING.md`.
 
 ## 0 · Before measuring
 
@@ -72,7 +72,7 @@ a drop in a single combination is the environment.
 jump); the default `0` is deterministic and does not exercise the organism's random source.
 
 A change to the label index or the label search is measured with `LabelMatchingBenchmark` as
-well (`docs/BENCHMARKING.md`, Label lookup): the programs of the tick benchmark own one to three
+well (`docs/dev/BENCHMARKING.md`, Label lookup): the programs of the tick benchmark own one to three
 labels, so the tick benchmark is nearly blind to it. Run `LabelMatchingBenchmark.findTarget`
 for the lookups and `LabelMatchingBenchmark.birthAndDeath -p scenario=OWN` for the write path,
 with the same decision profile.
@@ -153,14 +153,14 @@ a dead organism's last instruction record is observation, not behaviour.
 - Real run slower although JMH is neutral or faster: the change costs something JMH is blind to
   (allocation, cache locality across ticks, thread hand-over).
 - Keep the measured tables with the pull request or the note that decided; absolute numbers are
-  not a project-wide reference (`docs/BENCHMARKING.md`, Reporting).
+  not a project-wide reference (`docs/dev/BENCHMARKING.md`, Reporting).
 
 ## Pitfalls
 
 - The host is shared: another session's comparison in `~/bench/cmp/` is destroyed by starting a
   second one. Check `uptime` and `progress.txt` before touching the directory.
 - A JMH run on a laptop without a clock cap reports throttling as a regression.
-  Never conclude from a developer machine without the conditions in `docs/BENCHMARKING.md`.
+  Never conclude from a developer machine without the conditions in `docs/dev/BENCHMARKING.md`.
 - A micro-optimization that looks obviously cheaper can measure slower on the host's cores. It
   needs the measurement, not the intuition.
 - A synthetic scenario can mislead the profile: it can spend its time in a path that production

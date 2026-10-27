@@ -43,7 +43,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew installDist        # Distribution for development under build/install/evochora, run on JAVA_HOME
 ./gradlew installLocalPlatformDist  # This machine's platform distribution, with its Java runtime, under build/install
 ./gradlew platformDistributions     # Every published platform archive, under build/distributions
-./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
+./gradlew jmhJar             # Build the JMH benchmark jar (see docs/dev/BENCHMARKING.md)
 ./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```
 
@@ -369,7 +369,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 **Benchmarks:**
 - JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references
-- Procedure, required environment conditions, and validity criteria: [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
+- Procedure, required environment conditions, and validity criteria: [docs/dev/BENCHMARKING.md](docs/dev/BENCHMARKING.md)
 
 ## Logging Guidelines
 

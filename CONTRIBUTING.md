@@ -74,7 +74,7 @@ Further CLI documentation and fully worked examples:
 
 We maintain strict architectural standards to keep the simulation deterministic and performant.
 
-If you are wondering why the project uses a custom Assembly language or a distributed microservice architecture instead of a simple Python script, please read **[Architecture & Design Decisions](docs/ARCHITECTURE_DECISIONS.md)** first.
+If you are wondering why the project uses a custom Assembly language or a distributed microservice architecture instead of a simple Python script, please read **[Architecture & Design Decisions](docs/dev/ARCHITECTURE_DECISIONS.md)** first.
 
 Before writing code, please read **[AGENTS.md](AGENTS.md)**. It contains:
 * The architecture rules (Hexagonal Architecture).
