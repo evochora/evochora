@@ -135,37 +135,60 @@ deletions. I also redesigned the primordial organism from scratch: more redundan
 more spacing between functional regions, multiple safety fallbacks. It was no longer
 elegant. It was robust.
 
+## The Analysis Wall
+
+By early 2026 it worked. The simulation ran stably for hundreds of millions of ticks.
+Hundreds of thousands of organisms were born, replicated, mutated, and died. The
+population sustained itself — and it wasn't static. I could see dynamics: sometimes the
+population crashed to a few hundred individuals, then recovered. I spotted organisms
+producing strangely shaped copies of themselves — triangular replication patterns, for
+instance — though none of these variants survived long enough to establish themselves.
+
+And that was exactly the problem. The tools I had were already quite capable — I could
+step through individual organisms tick by tick, watch population metrics over time, see
+genome diversity shift. But finding the *interesting* events in hundreds of millions of
+ticks of simulation data was searching for a needle in a haystack. I saw hints of
+dynamics, but I couldn't rigorously answer the most basic evolutionary question: is
+anything actually evolving, or is it just churning?
+
+So the next wall wasn't more physics or more instructions. It was the ability to
+*understand* what the simulation was producing — the tools evolutionary biologists have
+used for decades to make sense of their data.
+
 ## Where Things Stand
 
-It works. The simulation runs stably for hundreds of millions of ticks. Hundreds of
-thousands of organisms are born, replicate, mutate, and die. The population sustains
-itself — and it's not static. I can see dynamics: sometimes the population crashes to
-a few hundred individuals, then recovers. I've spotted organisms producing strangely
-shaped copies of themselves — triangular replication patterns, for instance — though I
-haven't yet observed any of these variants surviving long enough to establish
-themselves.
+Those tools exist now. Every genome is recorded with the genome it arose from, every
+mutation with the cells it changed, and a notebook draws phylogenetic trees and Muller
+plots from any run. With them, the needle turned up — twice.
 
-And that's exactly the problem. The tools I have are already quite capable — I can
-step through individual organisms tick by tick, watch population metrics over time,
-see genome diversity shift. But finding the *interesting* events in hundreds of
-millions of ticks of simulation data is still searching for a needle in a haystack.
-I see hints of dynamics, but I can't yet rigorously answer the most basic evolutionary
-question: is anything actually evolving, or is it just churning?
+In one run of two billion ticks, two variants of the same switch in the organisms' main
+loop arose on their own: one closed the energy-triggered route into reproduction for
+good, the other held it open for good. The one that reproduces more often lost. The
+winner pays a small error penalty on every pass through its loop and took over the
+population anyway — and none of it shows in any aggregate curve. It exists only at the
+level of the genomes.
 
-That's the next frontier — not more physics, not more instructions, but the ability
-to *understand* what the simulation is producing. Phylogenetic trees, mutation spectra,
-diversity metrics, fitness landscapes. The tools that evolutionary biologists have
-used for decades to make sense of their data. I need to build them for Evochora.
+In another run, a population spent 166 million ticks dying on the entropy clock in a
+world full of energy it never harvested. Then a single `NOT`, inserted into the padding of
+the main loop, made the jump into reproduction unconditional. It swept through the
+population in about ninety generations, the population grew eightfold and finally ate
+the energy it had been sitting next to. The same switch, forced open this time — opposite
+winners at one place in the genome, in two differently configured worlds.
 
-But even beyond better tooling, the architecture opens doors I find hard to stop
-thinking about. What if organisms could run multiple VMs in parallel — dedicated
-threads for different routines — and the coordination overhead became the evolutionary
-pressure toward something like multicellularity? What if instead of a single energy
-molecule, there were reaction chains — A + B → C + Energy + Entropy — and food webs
-emerged from digital chemistry? What if the environment itself changed over time,
-with shifting resource regions and occasional catastrophes forcing adaptation? These
-are not plans. They are questions I'd love to explore — and I hope others will too.
-For a more rigorous treatment of these research directions, see the
+Both findings are published as citable experiment records, with their data, on Zenodo
+(see [Published Experiments](PUBLISHED_EXPERIMENTS.md)). They are small steps: selection
+at work, measured, nothing more. But they answer the question I couldn't answer a few
+months earlier. Something is evolving.
+
+And the architecture still opens doors I find hard to stop thinking about. What if
+organisms could run multiple VMs in parallel — dedicated threads for different
+routines — and the coordination overhead became the evolutionary pressure toward
+something like multicellularity? What if instead of a single energy molecule, there
+were reaction chains — A + B → C + Energy + Entropy — and food webs emerged from digital
+chemistry? What if the environment itself changed over time, with shifting resource
+regions and occasional catastrophes forcing adaptation? These are not plans. They are
+questions I'd love to explore — and I hope others will too. For a more rigorous
+treatment of these research directions, see the
 [Scientific Overview](SCIENTIFIC_OVERVIEW.md).
 
 ## What I Learned
