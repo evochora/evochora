@@ -69,6 +69,7 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Flag** a new field on a phase context, the symbol table or the artifact, a new branch over a node or item kind, and a new string literal or `instanceof` in the core
 - **Hold** a hunk that touches a coupling listed in `docs/dev/COMPILER_CORE_BOUNDARY.md` to shrinking it; a coupling not listed there is new, and a change to that list is a design decision
 - **Verify** that a change to anything `docs/dev/COMPILER_CORE_BOUNDARY.md` describes — a coupling that shrinks or goes, a lexer symbol a feature registers, a feature renamed or merged, the phases of the core — updates that document in the same pull request
+- **Verify** that a change to the IR — a type or field under `compiler/model/ir`, an IR item kind a feature adds, a directive a feature or the core emits and its arguments, a rewrite rule — updates `docs/dev/COMPILER_IR_SPEC.md` in the same pull request, so that the document stays correct and complete
 
 ### 9. Self-Contained Machine Code
 - **Check** that no runtime path reads the program artifact: what an instruction does must follow from the cells it occupies and the organism's own state
