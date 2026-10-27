@@ -67,7 +67,7 @@ is this:
 - **The core carries no feature's name**: not in a field, not in an enum member, not in a
   method on a phase context, not in a string.
 
-Where this stands today is recorded in `docs/COMPILER_CORE_BOUNDARY.md`; the candidates listed
+Where this stands today is recorded in `.agents/compiler-core-boundary.md`; the candidates listed
 there are the distance left. The order in which the distance closes follows the need: the
 artifact and the token map first (#153), because every feature with debug data touches them, the
 backend when a feature needs an item kind, the symbol kinds and the module system when a feature
