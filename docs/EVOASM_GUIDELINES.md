@@ -76,7 +76,7 @@ enter. You can ask after a step or a write whether it happened, and decide what 
   PEEK %TMP %DIR                          # otherwise take what is in the way, and pay for it
 ```
 
-Test as close to the action as you can; the world may change in between. Write with `PPK` what
+Test as close to the action as you can; the world may change in between. Write with `PPK*` what
 has to stand there whatever was in the way, with `POKE` what must destroy nothing.
 
 ### Decide about what is in the way
