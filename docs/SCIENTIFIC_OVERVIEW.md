@@ -1,12 +1,12 @@
-# Evochora: Making the Physics of Digital Evolution an Experimental Variable
+# Evochora: A Simulation Platform for Digital Evolution Research
 
 ## Abstract
 
-A persistent challenge in digital evolution research is that the physical laws governing a simulation — how energy works, how mutation operates, how organisms interact with space — are typically fixed by the designer. Organisms evolve within these rules, but the rules themselves cannot be varied experimentally. This makes it difficult to disentangle which evolutionary dynamics are consequences of the physics and which are genuine emergent properties of evolution itself.
+Evochora is an open-source simulation platform for digital evolution research in which a program is a body in space. Its world is an n-dimensional grid of typed molecules, such as code, data, energy and structure, and its organisms are made of the same: self-replicating programs laid out in the world, sensing and changing it only through their own local pointers. Nothing shields a body but ownership and the cost of touching what is foreign; a neighbor can consume it molecule by molecule. Each organism lives under a configurable thermodynamic economy of energy and entropy and dies when it runs out of the one or accumulates too much of the other. No fitness function rewards it from outside: whatever spreads, spreads because it copies itself under the physics of the world.
 
-Evochora is an open-source platform designed to make the physics of a digital world a first-class experimental variable. Its plugin architecture allows researchers to swap out thermodynamic models, mutation operators, and resource distribution strategies without modifying the core simulation. Organisms exist as spatially distributed code in a configurable n-dimensional grid, navigating it through local pointers — there are no global views, no external rewards, and no predefined fitness functions. Genomes are inherently resilient to structural mutations through fuzzy label matching, preserving neutral space for evolutionary exploration. A deterministic, decoupled data pipeline persists complete simulation state and exports metrics as Parquet files for analysis with standard scientific tools.
+That physics is itself open to experiment: energy sources, thermodynamic rules, structural mutation operators and the fate of the dead are plugins. Organisms are written in EvoASM, a structured assembly language for spatial code with modules, procedures and macros, and can build on a library of reusable behaviors. Every run is deterministic. A web visualizer steps through it to the source line an organism is executing, with the mutations of its lineage marked in the world; pluggable analytics export its data as Parquet for analysis in Python or R. The first findings, published as citable experiment records, show selection fixing the same reproduction switch in opposite directions: closed under rich energy input, forced open under scarce.
 
-This document describes the scientific motivation behind these design choices, the observation and analysis tools available for working with simulation data, and the research directions the platform is built to support — from replicator ecology and evolvability to digital eukaryogenesis, multicellularity, and reaction-based chemistry.
+This document describes the platform's physics, the tools for observing and analyzing a run, the first results, the research directions it is built to support, its reproducibility, performance and architecture, and its limitations.
 
 **Live visualization:** [http://evochora.org/](http://evochora.org/)
 
@@ -22,20 +22,22 @@ This document describes the scientific motivation behind these design choices, t
 3. [From Simulation to Science](#3-from-simulation-to-science)
     - [3.1 Visualization](#31-visualization)
     - [3.2 Data Export and Analysis with Standard Tools](#32-data-export-and-analysis-with-standard-tools)
-4. [Scientific Avenues: From Theory to Experiment](#4-scientific-avenues-from-theory-to-experiment)
-    - [4.1 Replicator Ecology](#41-replicator-ecology)
-    - [4.2 Environmental Heterogeneity and Dynamic Worlds](#42-environmental-heterogeneity-and-dynamic-worlds)
-    - [4.3 Evolvability and Mutation Regimes](#43-evolvability-and-mutation-regimes)
-    - [4.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#44-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
-    - [4.5 From Internal Coordination to Multicellularity](#45-from-internal-coordination-to-multicellularity)
-    - [4.6 Digital Chemistry and Reaction Networks](#46-digital-chemistry-and-reaction-networks)
-5. [Scalability and Reproducibility](#5-scalability-and-reproducibility)
-    - [5.1 Performance and Scalability Architecture](#51-performance-and-scalability-architecture)
-    - [5.2 Data Pipeline and Reproducibility](#52-data-pipeline-and-reproducibility)
-6. [Conclusion](#6-conclusion)
-7. [Getting Involved](#7-getting-involved)
-8. [Acknowledgements](#8-acknowledgements)
-9. [References](#9-references)
+4. [First Results](#4-first-results)
+5. [Scientific Avenues: From Theory to Experiment](#5-scientific-avenues-from-theory-to-experiment)
+    - [5.1 Replicator Ecology](#51-replicator-ecology)
+    - [5.2 Environmental Heterogeneity and Dynamic Worlds](#52-environmental-heterogeneity-and-dynamic-worlds)
+    - [5.3 Evolvability and Mutation Regimes](#53-evolvability-and-mutation-regimes)
+    - [5.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#54-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
+    - [5.5 From Internal Coordination to Multicellularity](#55-from-internal-coordination-to-multicellularity)
+    - [5.6 Digital Chemistry and Reaction Networks](#56-digital-chemistry-and-reaction-networks)
+6. [Scalability and Reproducibility](#6-scalability-and-reproducibility)
+    - [6.1 Performance and Scalability Architecture](#61-performance-and-scalability-architecture)
+    - [6.2 Data Pipeline and Reproducibility](#62-data-pipeline-and-reproducibility)
+7. [Limitations](#7-limitations)
+8. [Conclusion](#8-conclusion)
+9. [Getting Involved](#9-getting-involved)
+10. [Acknowledgements](#10-acknowledgements)
+11. [References](#11-references)
 
 ## 1. Introduction
 
@@ -170,7 +172,7 @@ The current primordial is a defensive replicator that aborts copying when it enc
 
 ## 3. From Simulation to Science
 
-Running a simulation is only the first step. The scientific value of a digital evolution platform depends on the ability to observe, record, and analyze what happens inside it. Evochora addresses this through a modular, scalable data pipeline that persists complete simulation state and feeds both a visual inspection tool and a standardized data export for offline analysis (see Section 5 for the pipeline architecture).
+Running a simulation is only the first step. The scientific value of a digital evolution platform depends on the ability to observe, record, and analyze what happens inside it. Evochora addresses this through a modular, scalable data pipeline that persists complete simulation state and feeds both a visual inspection tool and a standardized data export for offline analysis (see Section 6 for the pipeline architecture).
 
 ### 3.1 Visualization
 
@@ -184,15 +186,19 @@ Built-in analytics plugins cover fundamental metrics: population dynamics, birth
 
 This means that analysis is not limited to Evochora's built-in tools. Researchers can load simulation data directly into **Python, R, Jupyter notebooks, or DuckDB** and apply their own analytical methods — phylogenetic reconstruction, diversity indices, survival analysis, genome comparison, or any other technique from their methodological toolkit. A [ready-to-use Jupyter notebook](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb) demonstrates this workflow with phylogenetic trees, Muller plots, and cross-metric analysis using pandas, networkx, and DuckDB. The simulation produces the data; the researcher chooses how to analyze it.
 
-Phylogenies, Muller plots and genome comparison all rest on one question: what counts as a genome. Organisms in Evochora have no genome in the biological sense: there is no separation of genotype and phenotype, the body is the program, and what a child inherits is whatever its parent copied. The platform does not define a genome; it records what an organism is born with. For analysis, a genome is therefore an operational definition — the cells a newborn owns, normalised for its label namespace, minus molecules a run declares to be the organism's own work rather than its inheritance: by default its STATE cells and the STRUCTURE shell the primordial builds around every child. The definition is a parameter of the run and is recorded with it, so that a change in any inherited cell, damage included, counts as a change of genome. A separation of genotype and phenotype — a region of data that steers the behaviour, read by logic the mutation operators do not touch — is something an organism could implement itself; whether it evolves or is designed is an experimental question, not a rule of the world.
+Phylogenies, Muller plots and genome comparison all rest on one question: what counts as a genome. Organisms in Evochora have no genome in the biological sense: there is no separation of genotype and phenotype, the body is the program, and what a child inherits is whatever its parent copied. The platform does not define a genome; it records what an organism is born with. For analysis, a genome is therefore an operational definition — the cells a newborn owns, normalized for its label namespace, minus molecules a run declares to be the organism's own work rather than its inheritance: by default its STATE cells and the STRUCTURE shell the primordial builds around every child. The definition is a parameter of the run and is recorded with it, so that a change in any inherited cell, damage included, counts as a change of genome. A separation of genotype and phenotype — a region of data that steers the behavior, read by logic the mutation operators do not touch — is something an organism could implement itself; whether it evolves or is designed is an experimental question, not a rule of the world.
 
 This design deliberately avoids building a monolithic analysis suite. The space of possible analyses is vast — from phylogenetic tree reconstruction and Muller plots to fitness landscape visualization and complexity metrics like Assembly Theory [(Sharma et al., 2023)](#ref-sharma-2023). Rather than implementing each of these within the platform, Evochora provides the data in a format that lets the research community bring its own expertise.
 
-## 4. Scientific Avenues: From Theory to Experiment
+## 4. First Results
+
+<!-- To be written: the findings published as experiment records, what they show and how they were found; room for what runs revealed about the physics itself. -->
+
+## 5. Scientific Avenues: From Theory to Experiment
 
 The stability mechanisms described in Section 2 — thermodynamic coupling, fuzzy addressing, and defensive replication — have produced viable populations sustaining themselves over billions of ticks. Whether a simulation produces genuine evolutionary dynamics or merely random variation has to be established case by case; for Evochora, a first documented instance exists — a completed selective sweep of a heritable variant, published as the platform's first experiment record [(Evochora Project, 2026)](#ref-evochora-2026). Frameworks for classifying long-term evolutionary behavior [(Bedau et al., 2000)](#ref-bedau-2000) provide a broader lens for this question; the research directions below provide others. Some are already experimentally accessible with the current implementation; others require additional development. Each represents a testable hypothesis enabled by the platform's architecture.
 
-### 4.1 Replicator Ecology
+### 5.1 Replicator Ecology
 
 In biological ecosystems, the balance between cooperative and competitive strategies is shaped by environmental constraints — resource density, spatial structure, and the cost of conflict [(Maynard Smith & Price, 1973)](#ref-maynard-smith-price-1973). In spatially structured populations, even simple local interactions can shift this balance toward cooperation [(Nowak & May, 1992)](#ref-nowak-may-1992). Digital evolution platforms offer the unique opportunity to vary these constraints systematically and observe which replicator ecologies emerge.
 
@@ -200,7 +206,7 @@ Evochora's current primordial organism is a single defensive strategy: it aborts
 
 Beyond replication strategy, behavioral enrichment of the primordial organism opens a second experimental axis. Routines such as shell repair, energy stockpiling, or territorial patrolling are unlikely to evolve spontaneously at current timescales, but they can be hand-coded into primordial variants. Comparing populations seeded with behaviorally enriched primordials against the baseline reveals which routines confer selective advantage — and whether evolution preserves, modifies, or discards them over time.
 
-### 4.2 Environmental Heterogeneity and Dynamic Worlds
+### 5.2 Environmental Heterogeneity and Dynamic Worlds
 
 In biological evolution, environmental heterogeneity is a primary driver of diversification. Geographic barriers create isolated populations that diverge independently [(Mayr, 1963)](#ref-mayr-1963), resource gradients produce niche specialization, and catastrophic events reset ecological landscapes, opening opportunities for adaptive radiation [(Schluter, 2000)](#ref-schluter-2000).
 
@@ -208,7 +214,7 @@ Evochora's current environment is largely homogeneous — energy is distributed 
 
 The scientific question is direct: does environmental structure alone drive diversification in digital organisms, as it does in biological evolution? Can geographic isolation produce divergent lineages from a single ancestor? Do populations recover differently after catastrophic events depending on their mutation regime or replication strategy? These experiments require no changes to the core runtime — only configuration of the existing plugin architecture for resource distribution and STRUCTURE placement.
 
-### 4.3 Evolvability and Mutation Regimes
+### 5.3 Evolvability and Mutation Regimes
 
 Mutation is the ultimate source of evolutionary innovation, yet its implementation in most artificial life platforms remains surprisingly simplistic — typically a single, globally applied mechanism such as random bit-flips at a fixed rate [(Ray, 1991)](#ref-ray-1991). This ignores both the concept of evolvability — the capacity of a system for adaptive evolution, which itself evolves [(Wagner, 2005)](#ref-wagner-2005) — and the role of non-adaptive forces such as drift and mutation pressure in shaping genome architecture [(Lynch, 2007)](#ref-lynch-2007). By hard-coding a specific mutation model, simulations inadvertently fix the topology of the fitness landscape, potentially blocking routes to higher complexity.
 
@@ -227,7 +233,7 @@ The experimental program is straightforward: by systematically varying these par
 
 Additional mutation mechanisms not yet implemented but architecturally straightforward could further expand this space: environment-driven mutation ("cosmic radiation") that decouples variation from reproduction, copy-error mutation tied to the POKE instruction rather than birth, or somatic mutation affecting an organism's runtime state (registers, stacks) without altering its heritable genome.
 
-### 4.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis
+### 5.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis
 
 A central puzzle in evolutionary biology is why life on Earth remained microscopic and relatively simple for billions of years before the sudden explosion of complex eukaryotic life. The leading hypothesis, the **"Energetics of Genome Complexity"** [(Lane & Martin, 2010)](#ref-lane-martin-2010), posits that prokaryotes are fundamentally constrained by their bioenergetics: a single cell cannot expand its genome size (and thus complexity) significantly because its energy generation is limited by its surface area. The transition to complexity (Eukaryogenesis) was only possible through endosymbiosis—the internalization of energy-producing bacteria (mitochondria)—which broke this barrier by internalizing the surface area for energy production.
 
@@ -235,7 +241,7 @@ Evochora is uniquely architected to test if a similar **"Processing Power Constr
 
 The basic mechanism already exists: Evochora's `FORK` instruction can spawn a secondary, fully independent VM context — complete with its own registers, stacks, and data pointers — within the same organism body. However, without coordination, two execution contexts on shared code are merely co-located competitors, not cooperating subsystems. The real scientific challenge is the evolution of coordination: how do two threads within the same body synchronize their actions? One approach, already possible with the current instruction set, is indirect signaling via molecules placed in the shared environment. A more structured approach — direct messaging channels between co-located execution contexts — would require extending the runtime. Whether coordination emerges through existing mechanisms or requires new instructions is itself an open question. The hypothesis is that this internal parallelization, once coordinated, is not just a performance optimization but a necessary prerequisite for the evolution of higher-order complexity.
 
-### 4.5 From Internal Coordination to Multicellularity
+### 5.5 From Internal Coordination to Multicellularity
 
 The coordination challenge described in the previous section has implications beyond individual organisms. If internal parallelism requires signaling between co-located execution contexts, the same mechanisms could be externalized for communication between neighboring organisms. This leads to a hypothesis about the **Major Transition to Multicellularity** [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995): the signaling machinery evolved for *internal* coordination acts as a **pre-adaptation (exaptation)** for *external* cooperation.
 
@@ -249,7 +255,7 @@ With the current instruction set, inter-organism signaling is already possible i
 
 Acknowledging that the spontaneous evolution of such complex architectures could take prohibitively long (mirroring the "Boring Billion" stasis in Earth's history), researchers can seed experiments with engineered multi-threaded primordials that already possess internal coordination, testing directly whether pre-existing signaling channels accelerate the transition to multicellularity.
 
-### 4.6 Digital Chemistry and Reaction Networks
+### 5.6 Digital Chemistry and Reaction Networks
 
 Evochora's current thermodynamic model — with its two-axis energy/entropy economy — already provides meaningful selection pressure. But the resource landscape remains simple: organisms harvest a single type of energy molecule. Biological ecosystems, by contrast, are driven by complex chemical reaction networks where the waste products of one metabolic pathway become resources for another, giving rise to trophic webs and circular economies.
 
@@ -259,7 +265,9 @@ This approach offers an intriguing parallel to Avida's task-based fitness reward
 
 Such a system naturally leads to **niche construction** [(Odling-Smee et al., 2003)](#ref-odling-smee-2003). Reactions produce byproducts that accumulate in the environment, altering it over time. A "waste" product might become the substrate for a new mutant that evolves the machinery to consume it — closing the loop and creating a new ecological niche. This echoes the dynamics observed in **Chromaria** [(Soros & Stanley, 2014)](#ref-soros-2014), where the physical remains of organisms reshape the evolutionary landscape for subsequent generations. The death handler plugin already demonstrates this principle in miniature: it can be configured to convert dead organisms into energy molecules or other substrates, creating a basic nutrient cycle. A full reaction system would extend this into a rich chemical ecology where food webs and metabolic specialization can emerge.
 
-## 5. Scalability and Reproducibility
+## 6. Scalability and Reproducibility
+
+<!-- To be restructured into two parts with subsections: first what matters for experiments (determinism, resume, sampling and fork, world size, technical limits, benchmarks), then the architecture. -->
 
 The grand scientific ambitions of Evochora are predicated on the ability to run large-scale experiments that are both computationally feasible and scientifically rigorous. Unlike many prototype simulations, Evochora is built on a mature software engineering foundation designed for long-term stability and distributed execution. This section outlines the computational framework, addressing its performance architecture, data handling capabilities, and the provisions for reproducible analysis.
 For a detailed technical breakdown of the engineering choices behind this performance (e.g., why standard GPU kernels were avoided), see the **[Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md)** document.
@@ -316,7 +324,7 @@ The following diagram illustrates the high-level data flow architecture:
 └────────────┘  └────────────┘
 ```
 
-### 5.1 Performance and Scalability Architecture
+### 6.1 Performance and Scalability Architecture
 
 The core simulation is optimized for throughput. The raw, in-memory simulation engine achieves hundreds of thousands of instructions per second on standard consumer hardware. However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, sustainable throughput is constrained by I/O and varies significantly with environment size, population density, and plugin configuration. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster.
 
@@ -325,11 +333,11 @@ The primary computational load (CPU) scales linearly with the number of active o
 The simulation tick has snapshot semantics — every organism acts against the world as it was at the start of the tick — and is executed in two waves:
 
 1.  **Plan and local execution**: All organisms determine their next instruction and, if it only changes their own state (arithmetic, jumps, reads), execute it immediately. This wave runs on a configurable number of worker threads over disjoint subsets of the population.
-2.  **Resolve and write**: Environment-modifying instructions pass a conflict resolver that mediates competing claims on the same Molecule, then execute sequentially in organism order. The winner of a contested cell is chosen by a priority computed per tick from seed and organism identity, so no organism is favoured by its age or ID and every contender is expected to win a contested cell equally often over time; a loser pays the cost of a failed instruction and retries.
+2.  **Resolve and write**: Environment-modifying instructions pass a conflict resolver that mediates competing claims on the same Molecule, then execute sequentially in organism order. The winner of a contested cell is chosen by a priority computed per tick from seed and organism identity, so no organism is favored by its age or ID and every contender is expected to win a contested cell equally often over time; a loser pays the cost of a failed instruction and retries.
 
 The thread count is an execution resource, not part of the simulated physics: a run produces the same trajectory whether it uses one thread or many, and whether it was paused and resumed. For massive-scale experiments, a long-term vision involves partitioning the world into spatial regions managed by separate, distributed compute nodes. While this introduces synchronization challenges at the boundaries, the principle of locality inherent to organism behavior is expected to minimize inter-node communication, following the principles of **Indefinite Scalability** demonstrated by the **Moveable Feast Machine** [(Ackley, 2013)](#ref-ackley-2013), making this a viable path for future scaling.
 
-### 5.2 Data Pipeline and Reproducibility
+### 6.2 Data Pipeline and Reproducibility
 
 Large-scale simulations generate substantial data volumes, varying widely with environment size, snapshot frequency, and delta compression settings. The Evochora data pipeline is a decoupled, asynchronous system built on a foundation of abstract **Resources** to handle this throughput. The flow is designed for scalability: the `SimulationEngine` writes `TickData` messages to a queue. Multiple `PersistenceService` instances can act as competing consumers on this queue, writing data in batches to a durable storage resource. Downstream, various `IndexerService` types consume this stored data—again as competing consumer groups to build specialized indexes that are written to a database. This data powers the web-based visualizer. A key architectural principle is that all services are written against abstract resource interfaces (e.g., for queues and storage), allowing the underlying implementation to be seamlessly swapped from a high-performance in-process setup to a cloud-native, distributed one (e.g., message buses and object storage) without changing any service code. The indexing process is computationally intensive but parallelizable, and configurable sampling intervals allow researchers to trade temporal resolution for storage efficiency when running long simulations.
 
@@ -337,7 +345,11 @@ Scientific rigor is ensured through **full determinism**. Randomness consumed by
 
 Resume from any persisted state and delta compression for reducing data volume without sacrificing replayability are both fully implemented, enabling the use of cost-effective spot instances for very long-running experiments.
 
-## 6. Conclusion
+## 7. Limitations
+
+<!-- To be written: the current scientific limitations of the platform, each checked against the code. -->
+
+## 8. Conclusion
 
 Evochora is an open-source digital evolution platform designed to make the physics of a simulated world a first-class experimental variable. Its architecture — spatially distributed code in a configurable n-dimensional grid, a two-axis thermodynamic economy, fuzzy label matching for mutation-resilient genomes, and a modular plugin system for mutation, resource distribution, and death mechanics — provides researchers with a flexible testbed for a range of evolutionary experiments.
 
@@ -345,7 +357,7 @@ The platform has demonstrated its viability through long-running simulations sus
 
 The research directions outlined in this document — from replicator ecology and environmental heterogeneity to digital eukaryogenesis, multicellularity, and reaction-based chemistry — represent a broad program of testable hypotheses. Some are immediately accessible with the current implementation; others require extensions that the architecture is designed to support. Researchers, students, and engineers are invited to use this platform, challenge its assumptions, and contribute to its development. The source code, documentation, and community channels are available at [https://github.com/evochora/evochora](https://github.com/evochora/evochora).
 
-## 7. Getting Involved
+## 9. Getting Involved
 
 Evochora is open source under the MIT License. Contributions of all kinds are welcome — from running experiments and reporting results to extending the plugin ecosystem or improving the data pipeline (see the [Contribution Guide](https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md) for details). Anyone interested in using the platform, whether for research, exploration, or development, is encouraged to reach out — questions are answered promptly.
 
@@ -355,11 +367,11 @@ Evochora is open source under the MIT License. Contributions of all kinds are we
 - **Questions and discussion:** [GitHub Discussions](https://github.com/evochora/evochora/discussions)
 - **Community chat:** [Discord Server](https://discord.gg/t9yEJc4MKX)
 
-## 8. Acknowledgements
+## 10. Acknowledgements
 
 _Full disclosure: AI tools were used to assist in the writing and editing of this document. The scientific content — the design decisions, hypotheses, and experimental directions — is the author's original work._
 
-## 9. References
+## 11. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
 - <a id="ref-bedau-2000"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (2000). A classification of long-term evolutionary dynamics. In *Artificial Life VII* (pp. 228-237). MIT Press.
