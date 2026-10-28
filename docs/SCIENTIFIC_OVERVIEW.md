@@ -2,13 +2,17 @@
 
 ## Abstract
 
-Evochora is an open-source simulation platform for digital evolution research in which a program is a body in space. Its world is an n-dimensional grid of typed molecules, such as code, data, energy and structure, and its organisms are made of the same: self-replicating programs laid out in the world, sensing and changing it only through their own local pointers. Nothing shields a body but ownership and the cost of touching what is foreign; a neighbor can consume it molecule by molecule. Each organism lives under a configurable thermodynamic economy of energy and entropy and dies when it runs out of the one or accumulates too much of the other. No fitness function rewards it from outside: whatever spreads, spreads because it copies itself under the physics of the world.
+Evochora is an open-source platform for digital evolution research in which a program is a body. Its world is a space made of typed matter, and its organisms' logic and behavior are made of the same: they find their energy there, build and place their offspring there, reshape their surroundings, and a neighbor can dismantle them molecule by molecule. Survival is thermodynamic: every instruction costs energy and produces entropy, harvesting replenishes the one, and only what the organism writes into the world carries the other away; it dies when either fails. No fitness function rewards it from outside. The platform is built to study what only a body of matter has: material, shape, territory, metabolism, and what of these a parent passes on.
 
-That physics is itself open to experiment: energy sources, thermodynamic rules, structural mutation operators and the fate of the dead are plugins. Organisms are written in EvoASM, a structured assembly language for spatial code with modules, procedures and macros, and can build on a library of reusable behaviors. Every run is deterministic. A web visualizer steps through it to the source line an organism is executing, with the mutations of its lineage marked in the world; pluggable analytics export its data as Parquet for analysis in Python or R. The first findings, published as citable experiment records, show selection fixing the same reproduction switch in opposite directions: closed under rich energy input, forced open under scarce.
+Researchers can build a world, its dimensionality, its landscape, how and when energy enters it, its thermodynamics and its structure-aware mutation plugins, which work on whole blocks of code, write its organisms in EvoASM, Evochora's spatial assembly language, from scratch or from reusable behavior modules, and seed it with one ancestor or with several that compete.
 
-This document describes the platform's physics, the tools for observing and analyzing a run, the first results, the research directions it is built to support, its reproducibility, performance and architecture, and its limitations.
+Every run is deterministic, runs at millions of instructions per second on a workstation, has reached billions of ticks, and can be resumed or re-recorded in any detail; a web visualizer follows any organism instruction by instruction and marks where its lineage mutated; run data open in standard analysis tools.
 
-**Live visualization:** [http://evochora.org/](http://evochora.org/)
+Of the runs made so far, two are published as citable experiment records, each tracing a selective sweep to the single instruction that caused it; researchers are invited to run their own experiments or to join them.
+
+This document describes the platform's physics, the tools for observing and analyzing a run, the first results, the research directions it is built for, its architecture, and its limitations.
+
+**Live demo:** [https://evochora.org/](https://evochora.org/)
 
 ## Table of Contents
 
@@ -41,11 +45,13 @@ This document describes the platform's physics, the tools for observing and anal
 
 ## 1. Introduction
 
-Digital evolution platforms allow researchers to study evolutionary dynamics in controlled, reproducible environments. Since Tom Ray's Tierra [(Ray, 1991)](#ref-ray-1991), the field has produced a range of systems with fundamentally different approaches: Avida introduced task-based fitness rewards to drive the evolution of complex logic functions [(Ofria & Wilke, 2004)](#ref-ofria-2004); Lenia explored continuous dynamics and self-organizing morphology [(Chan, 2019)](#ref-chan-2019); systems like Karl Sims' virtual creatures demonstrated that complex body plans could emerge from evolutionary optimization [(Sims, 1994)](#ref-sims-1994).
+Programs have been organisms since Tierra, where self-replicating machine code bred parasites without any designed fitness function [(Ray, 1991)](#ref-ray-1991); Avida [(Ofria & Wilke, 2004)](#ref-ofria-2004) and Aevol [(Batut et al., 2013)](#ref-batut-2013) turned such organisms into instruments of controlled experiment. These systems share a fate: after an early burst of invention, evolution settles into a state in which little new happens, and the measures of evolutionary activity that are unbounded in the fossil record were bounded in every artificial system Bedau and colleagues examined [(Bedau et al., 2000)](#ref-bedau-2000). What is missing is debated. The candidates named most often are that an organism is not made of the same stuff as its world, that it copies itself out of nothing, that energy is CPU time rather than a thing, that write protection keeps organisms apart, and that nothing in the physics decays [(Taylor, 2015)](#ref-taylor-2015).
 
-A common constraint across these platforms, however, is that their physical laws — how organisms acquire resources, how mutation works, how space is structured — are fixed at design time. Researchers can vary parameters within these rules, but cannot systematically compare *different sets of rules*. This limits the ability to ask a class of questions that is central to evolutionary theory: how do the physical constraints of a world shape the evolutionary dynamics within it?
+Evochora is a platform in which a program is a body in space. The world is an n-dimensional grid of typed molecules, code, data, energy and structure, and an organism is a region of it that it owns, reached only through pointers into the cells around it. Energy lies in the world and has to be found; structure can be built into a shell; a neighbor can eat a body molecule by molecule. Instructions cost energy, most produce entropy, and only writing molecules into the world dissipates it, so there are two ways to die: with an empty energy store, or with an entropy debt that nothing was built to pay. Replication takes space that must be free, energy that must be given to the child, and time that grows with the size of the body. Several of the missing ingredients named above are properties of this physics; others are not: a new molecule is still made from energy rather than gathered, the virtual machine is fixed, and every run starts from an ancestor written by hand.
 
-Evochora is designed to address this gap. It provides a configurable, extensible simulation environment where the physics themselves are experimental variables. This document describes the platform's architecture and the scientific questions it enables. For the personal history of the project, see the [Origin Story](ORIGIN_STORY.md).
+What the platform offers is not an answer but a set of questions that could not be asked before. Does a second way to die keep a population from degenerating into harvesters, or does it only change what degenerates? Do the changes still visible after billions of ticks carry information, or are they drift? Does a body change its size when energy arrives through its surface rather than independently of its size? Do organisms that foul their surroundings gain by it, and does that make an ecology? Does anything evolve to repair itself once it can be damaged? None of these has been settled. The two findings published so far concern a single reproduction switch that selection fixed in opposite directions under rich and under scarce energy; they show that the system produces findings, not what it will find. The breadth of what can be asked is the claim: the rules of the world are plugins, the ancestors are written in a language, and every run can be repeated exactly.
+
+The platform is meant for researchers in artificial life and evolutionary biology who want to run such experiments, and for programmers who want to write the organisms they start from. The quickest way to see it is the live visualizer at [evochora.org](https://evochora.org/); the executed analysis notebooks of the published records show the data behind each finding; a run with the default configuration starts from the command line as the [README](../README.md) describes. The chapters that follow describe the physics, the tools for observing a run, the first results, the research directions the platform is built for, how it reproduces, scales and is built, and what it cannot do yet. How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
 
 ### Comparison of Landmark Digital Evolution Platforms
 
@@ -176,7 +182,7 @@ Running a simulation is only the first step. The scientific value of a digital e
 
 ### 3.1 Visualization
 
-The primary observation tool is a web-based visualizer, a live demo of which is available at [http://evochora.org/](http://evochora.org/). It allows researchers to step through a simulation tick-by-tick, visualizing the state of the world and inspecting the internal state (registers, stacks, energy, entropy) of every organism. For primordial organisms created with the provided compiler, the visualizer provides source-level inspection capabilities, linking the executing machine code back to the original, human-readable assembly language. While the simulation runtime is fully n-dimensional, the current visualizer is limited to 2D worlds. Additionally, the platform can render simulation runs as videos, providing a powerful tool for observing long-term dynamics.
+The primary observation tool is a web-based visualizer, a live demo of which is available at [https://evochora.org/](https://evochora.org/). It allows researchers to step through a simulation tick-by-tick, visualizing the state of the world and inspecting the internal state (registers, stacks, energy, entropy) of every organism. For primordial organisms created with the provided compiler, the visualizer provides source-level inspection capabilities, linking the executing machine code back to the original, human-readable assembly language. While the simulation runtime is fully n-dimensional, the current visualizer is limited to 2D worlds. Additionally, the platform can render simulation runs as videos, providing a powerful tool for observing long-term dynamics.
 
 ### 3.2 Data Export and Analysis with Standard Tools
 
@@ -363,7 +369,7 @@ Evochora is open source under the MIT License. Contributions of all kinds are we
 
 - **Source code and documentation:** [GitHub Repository](https://github.com/evochora/evochora)
 - **Published experiment records:** [Published Experiments](PUBLISHED_EXPERIMENTS.md)
-- **Live demo and simulation video:** [http://evochora.org/](http://evochora.org/)
+- **Live demo and simulation video:** [https://evochora.org/](https://evochora.org/)
 - **Questions and discussion:** [GitHub Discussions](https://github.com/evochora/evochora/discussions)
 - **Community chat:** [Discord Server](https://discord.gg/t9yEJc4MKX)
 
@@ -374,7 +380,10 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 ## 11. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
+- <a id="ref-aguera-2024"></a>Agüera y Arcas, B., Alakuijala, J., Evans, J., Laurie, B., Mordvintsev, A., Niklasson, E., Randazzo, E., & Versari, L. (2024). Computational Life: How Well-formed, Self-replicating Programs Emerge from Simple Interaction. *arXiv preprint* arXiv:2406.19108.
+- <a id="ref-batut-2013"></a>Batut, B., Parsons, D. P., Fischer, S., Beslon, G., & Knibbe, C. (2013). In silico experimental evolution: a tool to test evolutionary scenarios. *BMC Bioinformatics*, 14(Suppl 15), S11. [https://doi.org/10.1186/1471-2105-14-S15-S11](https://doi.org/10.1186/1471-2105-14-S15-S11)
 - <a id="ref-bedau-2000"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (2000). A classification of long-term evolutionary dynamics. In *Artificial Life VII* (pp. 228-237). MIT Press.
+- <a id="ref-bohm-2017"></a>Bohm, C., G., N. C., & Hintze, A. (2017). MABE (Modular Agent Based Evolver): A framework for digital evolution research. In *Proceedings of the 14th European Conference on Artificial Life ECAL 2017* (pp. 76-83). MIT Press. [https://doi.org/10.7551/ecal_a_016](https://doi.org/10.7551/ecal_a_016)
 - <a id="ref-bonabeau-1999"></a>Bonabeau, E., Dorigo, M., & Theraulaz, G. (1999). *Swarm Intelligence: From Natural to Artificial Systems*. Oxford University Press.
 - <a id="ref-chan-2019"></a>Chan, B. W.-C. (2019). Lenia: Biology of Artificial Life. *Complex Systems*, 28(3), 251-286.
 - <a id="ref-dittrich-2001"></a>Dittrich, P., Ziegler, J., & Banzhaf, W. (2001). Artificial chemistries—a review. *Artificial Life*, 7(3), 225-275.
@@ -394,7 +403,7 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 - <a id="ref-schluter-2000"></a>Schluter, D. (2000). *The Ecology of Adaptive Radiation*. Oxford University Press.
 - <a id="ref-schrodinger-1944"></a>Schrödinger, E. (1944). *What is Life? The Physical Aspect of the Living Cell*. Cambridge University Press.
 - <a id="ref-sharma-2023"></a>Sharma, A., Czégel, D., Lachmann, M., Kempes, C. P., Walker, S. I., & Cronin, L. (2023). Assembly theory explains and quantifies selection and evolution. *Nature*, 622(7982), 321–328.
-- <a id="ref-sims-1994"></a>Sims, K. (1994). Evolving virtual creatures. In *Proceedings of the 21st annual conference on Computer graphics and interactive techniques* (pp. 15-22).
 - <a id="ref-soros-2014"></a>Soros, L. B., & Stanley, K. O. (2014). Identifying necessary conditions for open-ended evolution through the artificial life world of Chromaria. In *Artificial Life 14* (pp. 793-800). MIT Press.
+- <a id="ref-taylor-2015"></a>Taylor, T. (2015). Requirements for open-ended evolution in natural and artificial systems. arXiv:1507.07403. [https://arxiv.org/abs/1507.07403](https://arxiv.org/abs/1507.07403)
 - <a id="ref-wagner-2005"></a>Wagner, A. (2005). *Robustness and Evolvability in Living Systems*. Princeton University Press.
 - <a id="ref-moreno-2022"></a>Moreno, F., & Ofria, C. (2022). Exploring the Fraternal Transitions to Multicellularity in Digital Evolution. *Artificial Life*, 28(1), 1-24.
