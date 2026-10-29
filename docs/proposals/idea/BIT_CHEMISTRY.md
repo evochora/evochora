@@ -133,9 +133,9 @@ Consequences for the design:
 
 - **Partner selection cannot arise de novo.** A scan, a comparison and a conditional jump are
   four to five instructions in the right order. The chemistry can reward partial competence, but
-  reward is not reach. Every desirable behaviour must be at most one edit from the primordial, or
-  the primordial must carry it as a tunable parameter.
-- **The primordial carries the structure, selection tunes the parameters.** Partner test, residue
+  reward is not reach. Every desirable behaviour must be at most one edit from the ancestor, or
+  the ancestor must carry it as a tunable parameter.
+- **The ancestor carries the structure, selection tunes the parameters.** Partner test, residue
   handling and transport are built into a metabolism module with thresholds that start permissive
   or off. `GTI %MATCH DATA:0` accepts any partner; a scale-proportional `DATA` mutation makes it
   selective. That is one step, and it is smooth.
@@ -149,9 +149,9 @@ Consequences for the design:
   variation operators, not of the chemistry, and belongs to
   [DUMB_VARIATION_PACKAGE](DUMB_VARIATION_PACKAGE.md).
 
-## Primordial and experiment
+## Ancestor and experiment
 
-The energy module of the primordial is replaced by a metabolism module in its dumbest form:
+The energy module of the ancestor is replaced by a metabolism module in its dumbest form:
 scan for substrates (`SNTI` works unchanged), react the first two found, shove the residue aside.
 Calibration must make this viable: the expected yield of random pairs has to exceed the cost of
 the instructions. The module then carries, switched off by their thresholds, the partner test and

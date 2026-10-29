@@ -11,7 +11,7 @@ runtime source is the truth when the specification leaves a question open.
 
 - `docs/ASSEMBLY_SPEC.md`: the language and every instruction.
 - `src/main/java/org/evochora/runtime/isa/instructions/`: what an instruction really does.
-- `assembly/primordial/default/` and the behaviors in `assembly/lib/`: the self-replicator, the
+- `assembly/ancestors/default/` and the behaviors in `assembly/lib/`: the self-replicator, the
   worked example for every idiom below.
 - `assembly/examples/duplicate-shell/`: a small procedure with a driver, written with this
   workflow; `tools/trace/README.md` shows the queries that verified it.
@@ -27,7 +27,7 @@ Read the task twice and turn it into statements you can check in a trace: which 
 at the end, what a result register says, which invariant holds at a label. Those statements are
 the acceptance test; write them down before the first line of code.
 
-Then read the relevant parts of the specification, and look at how the primordial does the same
+Then read the relevant parts of the specification, and look at how the ancestor does the same
 kind of thing: pointer bookkeeping, marker handling, defensive writing, state persistence. Its
 idioms are the house style, not because they are rules but because they are known to work under
 the simulation's constraints.
@@ -69,7 +69,7 @@ session an iteration.
   does. The block adds no instruction, and no case or label in it may be called `END`.
 - Inside an imported file `.ORG` is relative to the import position. Code runs along the
   direction vector until a jump, so long procedures are laid out in rows, each `.ORG` on its own
-  line and each row ending in a jump, as the primordial does. The world's width is the hard bound.
+  line and each row ending in a jump, as the ancestor does. The world's width is the hard bound.
 - A row that continues the one before it is written `.ORG 0|@+2`: the marked component counts from
   the cell placed last, so inserting or moving a section carries the sections after it along, and
   after an `.IMPORT` the code continues below the module without its size being known. A row that
@@ -105,11 +105,11 @@ misleads.
 - Energy is the budget: check it before something expensive starts, and prefer probabilistic
   gates (`PGTI`) over hard thresholds where a decision should be a dial.
 - Code meant to evolve needs room: the mutation plugins write into empty cells between an
-  organism's own cells, and a duplication needs a run of them. The primordial's `NOP` padding is
+  organism's own cells, and a duplication needs a run of them. The ancestor's `NOP` padding is
   that room, its redundant jumps and multiple returns keep a lineage alive when a mutation lands
   on one of them. A tool procedure or an experiment driver that no plugin will ever touch does
   not need any of it.
-- Comments end the line and say what the instruction is for, aligned as in the primordial. A
+- Comments end the line and say what the instruction is for, aligned as in the ancestor. A
   header comment on a procedure names its parameters, what it assumes about the world, and what
   it leaves behind on abandonment.
 - Write a decision or a loop as a control block, in the patterns of `docs/EVOASM_GUIDELINES.md`

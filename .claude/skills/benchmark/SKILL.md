@@ -12,7 +12,7 @@ cannot. Conditions, validity criteria and how to interpret a difference are in
 
 | | JMH tick benchmark | Real-run comparison |
 |---|---|---|
-| Measures | `Simulation.tick()` throughput on synthetic programs, no deaths, nothing persisted | wall time of a real node: primordial, thermodynamics, mutation, births and deaths, sampling |
+| Measures | `Simulation.tick()` throughput on synthetic programs, no deaths, nothing persisted | wall time of a real node: ancestor, thermodynamics, mutation, births and deaths, sampling |
 | Answers | did the instruction path get faster | does production get faster, and does behaviour stay identical |
 | Cost | per side: forks × (warm-up + measurement iterations) × iteration time × parameter combinations | grows with `pauseTicks` and the population, plus the script's quiet-wait per variant; the first run gives the estimate for the following ones |
 | Blind to | population dynamics, allocation on the sampling path, pipeline threads | nothing in the engine — but noisier per run; the spread of one variant between its rounds is the yardstick |

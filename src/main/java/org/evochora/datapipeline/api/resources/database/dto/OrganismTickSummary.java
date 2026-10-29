@@ -24,7 +24,7 @@ public final class OrganismTickSummary {
     public final int[][] dataPointers;
     /** The index of the currently active data pointer (0 or 1). */
     public final int activeDpIndex;
-    /** The parent organism ID, or {@code null} if this is a primordial organism. */
+    /** The parent organism ID, or {@code null} if this is an ancestor. */
     public final Integer parentId;
     /** The tick at which the organism was born. */
     public final long birthTick;

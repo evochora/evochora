@@ -37,7 +37,7 @@ the thermodynamic rules.
 another build says so. Check the commit out into its own worktree and build it there
 (`./gradlew installDist`); a node, a fork and a trace of the run all start from that installation.
 
-**The program.** The primordial programs of that commit (`assembly/primordial/`) name what the
+**The program.** The ancestor programs of that commit (`assembly/ancestors/`) name what the
 cells of a body mean: labels, registers, thresholds, the decisions between harvesting and
 reproducing, what each phase of reproduction does. The `programId` of an organism names its
 compiled artifact, and the artifact names its source files. Reading a mutation, a failure or a

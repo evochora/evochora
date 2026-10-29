@@ -923,7 +923,7 @@ tasks.test {
     maxParallelForks = testForks
     // The assembly programs are compiled by a test, so a change to one has to invalidate the
     // task. Gradle decides that per task, not per test class: touching a program reruns the
-    // suite, which is the price for the examples and the primordial staying compilable.
+    // suite, which is the price for the examples and the ancestor staying compilable.
     inputs.dir("assembly").withPropertyName("assemblyPrograms")
     // The editor extension's grammar is checked against the instruction set by a test. It lives
     // outside the source sets, so without this the suite stays up to date when the grammar

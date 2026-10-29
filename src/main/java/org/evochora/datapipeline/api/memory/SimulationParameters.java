@@ -228,7 +228,7 @@ public record SimulationParameters(
 
     /**
      * Default upper bound on the cells one organism owns, for pricing the buffers the environment
-     * keeps per visited organism. An assumption, not a limit of the simulation: the primordial
+     * keeps per visited organism. An assumption, not a limit of the simulation: the ancestor
      * organism's field is 110 × 85 cells, of which it owns at most all, and until the fork of a
      * replication the copy belongs to it as well, so twice that, rounded up.
      */

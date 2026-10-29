@@ -48,7 +48,7 @@ the replication core stays discrete.
 1. **Selection pressure** (the hardest question): evolution only uses the layer if it is cheaper
    or more robust than hard `GTI` chains. The cost model must make graded regulation pay off,
    otherwise this is a dead feature.
-2. **Chicken-and-egg**: the primordial must use the layer meaningfully from the start (at least
+2. **Chicken-and-egg**: the ancestor must use the layer meaningfully from the start (at least
    one decision via SENS instead of a hard comparison), otherwise selection has nothing to act on.
 3. **Hotpath**: decay is O(number of signals) per organism per tick — uncritical with a cap, but
    must be demonstrated. Runtime state also touches serialization (`RestoreBuilder`), protobuf,
@@ -65,7 +65,7 @@ the replication core stays discrete.
 3. How does the layer couple back into control flow — SENS writes a register that existing
    conditionals consume, or dedicated graded-branch instructions?
 4. Decay rate: global constant, per-signal (evolvable, e.g. value-encoded), or configurable policy?
-5. What in the primordial becomes the first SENS-based decision (harvest-vs-reproduce timing is
+5. What in the ancestor becomes the first SENS-based decision (harvest-vs-reproduce timing is
    the obvious candidate), and how is the selection-pressure hurdle (1) validated experimentally?
 6. Interaction with FORK: does the child inherit the parent's concentrations, start empty, or
    receive a configurable fraction?

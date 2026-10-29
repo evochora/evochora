@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Compiles the assembly programs kept in this repository.
  * <p>
  * The examples are documentation that has to work: the reference names them by file and gives the
- * command line that translates them, so a reader is entitled to expect that it does. The primordial
+ * command line that translates them, so a reader is entitled to expect that it does. The ancestor
  * organisms are what the simulation actually runs. Both reach further than the unit tests around the
  * module system, which build their modules in a temporary directory — these resolve paths through a
  * source root and nest modules several levels deep, which is where module resolution is easiest to
@@ -45,11 +45,11 @@ class AssemblyProgramsCompileTest {
             "assembly/examples,                  complex.evo,           ''",
             "assembly/examples/modules,          main.evo,              ''",
             "assembly/examples/duplicate-shell,  main.evo,              ''",
-            "assembly/primordial,                classic/main.evo,      ''",
-            "assembly/primordial,                shell-first/main.evo,  ''",
-            "assembly/primordial,                default/main.evo,      ''",
-            "assembly/primordial,                default/main.evo,      AGGRESSIVE",
-            "assembly/primordial,                default/main.evo,      HOARDING=false",
+            "assembly/ancestors,                 classic/main.evo,      ''",
+            "assembly/ancestors,                 shell-first/main.evo,  ''",
+            "assembly/ancestors,                 default/main.evo,      ''",
+            "assembly/ancestors,                 default/main.evo,      AGGRESSIVE",
+            "assembly/ancestors,                 default/main.evo,      HOARDING=false",
     })
     @Tag("integration")
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName, String flag) throws Exception {

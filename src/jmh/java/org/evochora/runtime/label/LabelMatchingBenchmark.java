@@ -44,7 +44,7 @@ public class LabelMatchingBenchmark {
     private static final int WORLD_WIDTH = 2048;
     private static final int WORLD_HEIGHT = 1152;
 
-    /** Label values every organism owns: the label count of a primordial genome. */
+    /** Label values every organism owns: the label count of an ancestor genome. */
     private static final int VALUES = 74;
 
     /** Width and height of the block an organism's labels fill, and of the plot the organism stands on. */

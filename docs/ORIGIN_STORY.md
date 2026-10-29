@@ -52,7 +52,7 @@ more like wishful thinking.
 
 So I compromised. A little. Instead of a UTM, I designed a small custom instruction
 set. Just the basics — move, copy, compare, jump. That was manageable enough to
-actually write a primordial organism. But "manageable" is relative when you're writing
+actually write an ancestor. But "manageable" is relative when you're writing
 machine code by hand. I needed an assembler. So I wrote one.
 
 Then Python started to hurt. The simulation was slow, the assembler was getting
@@ -72,7 +72,7 @@ time. It turned out to be one of the best decisions I made.
 
 The early versions had a JavaFX frontend bolted directly onto the simulation loop.
 Every tick, the UI would repaint. It worked — barely — for a handful of test organisms
-running simple assembly snippets. There was no primordial organism yet, just handwritten
+running simple assembly snippets. There was no ancestor yet, just handwritten
 test code to validate the VM. But even at that small scale, rendering and data
 processing were stealing all the CPU cycles.
 
@@ -97,7 +97,7 @@ Somewhere between data pipeline version one and version three — I honestly don
 remember the exact sequence anymore — I finally had enough infrastructure to attempt
 what this whole project was supposed to be about: a self-replicating organism.
 
-The first primordial was a mess. It could copy itself, barely, but its offspring
+The first ancestor was a mess. It could copy itself, barely, but its offspring
 immediately started corrupting each other. Organisms would blindly write over their
 neighbors' code during replication, turning functioning programs into random noise.
 The neighbors, being copies of the same blind replicator, did the same thing back.
@@ -131,7 +131,7 @@ past it breaks. I found the solution in SignalGP's tag-based referencing and lat
 discovered that even Tierra had used template patterns for the same reason, and Avida
 as well. Evochora's implementation resolves jump targets through label matching based
 on Hamming distance — the genome becomes inherently resilient to insertions and
-deletions. I also redesigned the primordial organism from scratch: more redundancy,
+deletions. I also redesigned the ancestor from scratch: more redundancy,
 more spacing between functional regions, multiple safety fallbacks. It was no longer
 elegant. It was robust.
 

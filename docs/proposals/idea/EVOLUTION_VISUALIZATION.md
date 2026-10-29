@@ -40,7 +40,7 @@ Each proposal also notes whether it can be built with **existing data** or requi
 
 **What it shows:**
 A branching tree diagram of ancestor-descendant relationships. The root is a
-primordial organism (or the set of all primordials); each branch point represents
+ancestor (or the set of all ancestors); each branch point represents
 a reproduction event. This is the standard visualization tool in evolutionary
 biology for understanding descent with modification.
 
@@ -122,7 +122,7 @@ this from raw organism data on the fly may be expensive for large simulations.
 
 **What it shows:**
 A horizontal timeline tracing the complete ancestry of a selected organism, from
-its primordial ancestor on the left to the organism itself on the right. Each
+its ancestor on the left to the organism itself on the right. Each
 node on the timeline represents one ancestor. Transitions between nodes are
 color-coded by whether a mutation occurred and what type:
 
@@ -137,7 +137,7 @@ A cumulative mutation counter runs below the timeline, showing how many total
 mutations have been accumulated at each point in the lineage.
 
 **What a researcher learns:**
-- Total mutational load of an organism (how many mutations since primordial).
+- Total mutational load of an organism (how many mutations since the ancestor).
 - Mutation tempo: Were mutations evenly distributed or clustered in bursts?
   Clustering suggests **punctuated equilibrium** — periods of stasis interrupted
   by rapid change.
@@ -218,7 +218,7 @@ mutations. Option (a) is more straightforward but storage-intensive.
 
 **What it shows:**
 An overlay on the environment grid where each organism's cell is colored by how
-many mutations have accumulated in its lineage since its primordial ancestor.
+many mutations have accumulated in its lineage since its ancestor.
 Cool colors (blue) = few mutations, warm colors (red) = many mutations.
 
 **What a researcher learns:**
@@ -312,7 +312,7 @@ through evolutionary time.
   networks enable exploration without fitness cost.)
 - How "rugged" is the landscape? Many disconnected peaks = hard to optimize.
   Smooth gradients = easy to hill-climb.
-- Which mutational paths led from primordial genomes to current fitness peaks?
+- Which mutational paths led from ancestor genomes to current fitness peaks?
 
 **Visual design ideas:**
 - Force-directed graph layout with physics simulation.
@@ -340,7 +340,7 @@ counts per genome per tick would need to be computed.
 **Classification:** Visualizer / Population
 
 **What it shows:**
-A radial tree diagram (sunburst chart) where the primordial ancestor(s) sit at
+A radial tree diagram (sunburst chart) where the ancestor(s) sit at
 the center, and each concentric ring represents one generation outward. Each
 sector's angular width is proportional to the number of living descendants at the
 current tick. Color follows the descent colouring of the visualizer.

@@ -28,7 +28,7 @@ Evochora is configured via HOCON configuration files. The experiment template [`
 
 ## Writing Your Own Organisms
 
-Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The default primordial organism in `assembly/primordial/default/main.evo`, with the behaviors it takes from `assembly/lib`, is a good starting point.
+Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The default ancestor in `assembly/ancestors/default/main.evo`, with the behaviors it takes from `assembly/lib`, is a good starting point.
 
 **Quick Start:**
 1. Edit or create a `.evo` file in `assembly/`
@@ -59,7 +59,7 @@ Further CLI documentation and fully worked examples:
 
 1. **Code Contributions**: Fix bugs, add features, or improve the VM performance.
 2. **Scientific Discussion**: Propose new "laws of physics" for the simulation in our Discussions.
-3. **Primordial Design**: Create efficient ancestors in Assembly (`.evo` files).
+3. **Ancestor Design**: Create efficient ancestors in Assembly (`.evo` files).
 
 
 ## Where to start?

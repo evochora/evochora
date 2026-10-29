@@ -94,8 +94,8 @@ molecule, gets through. The cell tests tell own, foreign, unowned and passable a
   POKE %VALUE %DIR                        # now the cell is free
 ```
 
-One program can decide differently at different steps: the default primordial organism,
-`assembly/primordial/default`, clears its own body of anything that is not its own, but abandons
+One program can decide differently at different steps: the default ancestor,
+`assembly/ancestors/default`, clears its own body of anything that is not its own, but abandons
 a copy at the first foreign cell in the way of the child's shell.
 
 ### The marker register and what a child inherits
@@ -208,7 +208,7 @@ program did what it should.
 
 ## Write it so it can be read
 
-The default primordial organism, `assembly/primordial/default` with the behaviors it takes from
+The default ancestor, `assembly/ancestors/default` with the behaviors it takes from
 `assembly/lib`, is the reference: a header per file and per procedure that says what it does,
 what it assumes and what it leaves behind; register aliases named for their role in each phase;
 sections introduced by a comment that names their purpose; and a comment at the end of every

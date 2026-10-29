@@ -16,7 +16,7 @@ import java.util.List;
  * The genome hash uniquely identifies an organism's genetic material independent of
  * its absolute position in the environment. It includes every molecule the organism owns that the
  * run's {@link GenomeRule} does not leave out — by default an organism's own working memory and the
- * structural shell the primordial program builds around itself.
+ * structural shell the ancestor builds around itself.
  * <p>
  * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
  * the value of the LABEL molecule at the smallest relative position (the "anchor label"), or of
