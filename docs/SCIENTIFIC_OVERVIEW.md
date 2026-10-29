@@ -385,10 +385,7 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 ## 11. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
-- <a id="ref-aguera-2024"></a>Agüera y Arcas, B., Alakuijala, J., Evans, J., Laurie, B., Mordvintsev, A., Niklasson, E., Randazzo, E., & Versari, L. (2024). Computational Life: How Well-formed, Self-replicating Programs Emerge from Simple Interaction. *arXiv preprint* arXiv:2406.19108.
-- <a id="ref-batut-2013"></a>Batut, B., Parsons, D. P., Fischer, S., Beslon, G., & Knibbe, C. (2013). In silico experimental evolution: a tool to test evolutionary scenarios. *BMC Bioinformatics*, 14(Suppl 15), S11. [https://doi.org/10.1186/1471-2105-14-S15-S11](https://doi.org/10.1186/1471-2105-14-S15-S11)
 - <a id="ref-bedau-2000"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (2000). A classification of long-term evolutionary dynamics. In *Artificial Life VII* (pp. 228-237). MIT Press.
-- <a id="ref-bohm-2017"></a>Bohm, C., G., N. C., & Hintze, A. (2017). MABE (Modular Agent Based Evolver): A framework for digital evolution research. In *Proceedings of the 14th European Conference on Artificial Life ECAL 2017* (pp. 76-83). MIT Press. [https://doi.org/10.7551/ecal_a_016](https://doi.org/10.7551/ecal_a_016)
 - <a id="ref-bonabeau-1999"></a>Bonabeau, E., Dorigo, M., & Theraulaz, G. (1999). *Swarm Intelligence: From Natural to Artificial Systems*. Oxford University Press.
 - <a id="ref-chan-2019"></a>Chan, B. W.-C. (2019). Lenia: Biology of Artificial Life. *Complex Systems*, 28(3), 251-286.
 - <a id="ref-dittrich-2001"></a>Dittrich, P., Ziegler, J., & Banzhaf, W. (2001). Artificial chemistries—a review. *Artificial Life*, 7(3), 225-275.
