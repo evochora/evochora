@@ -17,6 +17,7 @@ This document describes the platform's physics, the tools for observing and anal
 ## Table of Contents
 
 1. [Introduction](#1-introduction)
+    - [1.1 Evochora among related systems](#11-evochora-among-related-systems)
 2. [The Digital Physics of Evochora](#2-the-digital-physics-of-evochora)
     - [2.1 The N-Dimensional World and Typed Molecules](#21-the-n-dimensional-world-and-typed-molecules)
     - [2.2 The Virtual Machine and Spatial Code Execution](#22-the-virtual-machine-and-spatial-code-execution)
@@ -57,19 +58,19 @@ What exists today is a platform on which populations sustain themselves over bil
 
 The platform consists of a runtime that executes the world, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the world, the tools for observing and analyzing a run, the first results, the research directions, the architecture and the limitations. A running world can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
 
-### Comparison of Landmark Digital Evolution Platforms
+### 1.1 Evochora among related systems
 
-The following table contextualizes Evochora within the history of major A-Life systems, highlighting the different scientific questions and design trade-offs each system explores.
+The table reads along the lines of the introduction: what an organism is and what its world holds, what resources it lives on, how offspring arise and what they inherit, where selection and variation come from, and how organisms reach one another. Lenia and Flow-Lenia are included for the case the introduction mentions only in passing: creatures that are bodies in a medium but not programs.
 
-| Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | Evochora |
-| :--- | :--- | :--- | :--- | :--- |
-| **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | Spatial code execution in n-Dimensional grid |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (Thermodynamics, Resource Distribution) |
-| **Organism Body** | Disembodied (Code string only) | Disembodied (CPU + Memory buffer) | Morphological patterns (solitons) | IP + DPs navigating spatial grid |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs); Planned: Signaling |
-| **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Metabolic & spatial constraints |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Sequential; Planned: Intra-organism parallelism (multiple execution threads) |
-| **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | User-defined evolution experiments |
+| System | Organism and world | Resources | Offspring | Selection | Variation | Interaction |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Tierra** [(Ray, 1991)](#ref-ray-1991) | Code in a shared memory that holds only code | CPU time, memory space | Parent copies into allocated memory | Reaper; faster copying wins | Bit flips, copy errors | Others' code readable and executable, write-protected |
+| **Avida** [(Ofria & Wilke, 2004)](#ref-ofria-2004) | Program on its own CPU, one per grid cell | CPU cycles by merit; resources as numbers | Parent copies, system places the child | Replacement; rewarded tasks | Copy errors, indels | Little; messaging, predation, host-parasite coevolution in extensions |
+| **Squirm3** [(Hutton, 2002)](#ref-hutton-2002) | Chain of atoms in a grid of atoms | Atoms, conserved | Template replication from free atoms | Competition for free atoms | Interactions between replicators | Shared atoms |
+| **Stringmol** [(Hickinbotham et al., 2016)](#ref-hickinbotham-2016) | String of opcodes, genome and enzyme at once, in a well-mixed container | None; strings decay | One string copies another when bound | Decay, binding | Copy errors | Binding |
+| **Lenia** [(Chan, 2019)](#ref-chan-2019) | Pattern in a continuous field | None | Not built in | None; the user selects | Parameters set by the experimenter | Collision, fusion |
+| **Flow-Lenia** [(Plantec et al., 2023)](#ref-plantec-2023) | Pattern of conserved mass; rule parameters travel with the mass | Mass, conserved | Not built in; patterns divide and merge | Species displace one another over mass | Parameters mix on contact; mutations added by the experimenter | Flows of mass between patterns |
+| **Evochora** | Owned cells of molecules in a grid of the same molecules | Energy molecules from sources; space | Parent assembles and places; marked cells inherited | Death by energy or entropy; space | Structure-aware mutation plugins; imperfect copies | Through the world: consume, replace, execute others' code |
 
 ## 2. The Digital Physics of Evochora
 
@@ -405,6 +406,7 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 - <a id="ref-nowak-may-1992"></a>Nowak, M. A., & May, R. M. (1992). Evolutionary games and spatial chaos. *Nature*, 359(6398), 826-829.
 - <a id="ref-odling-smee-2003"></a>Odling-Smee, F. J., Laland, K. N., & Feldman, M. W. (2003). *Niche Construction: The Neglected Process in Evolution*. Princeton University Press.
 - <a id="ref-ofria-2004"></a>Ofria, C., & Wilke, C. O. (2004). Avida: A software platform for research in digital evolution. *Artificial Life*, 10(2), 191-229.
+- <a id="ref-plantec-2023"></a>Plantec, E., Hamon, G., Etcheverry, M., Oudeyer, P.-Y., Moulin-Frier, C., & Chan, B. W.-C. (2023). Flow-Lenia: Towards open-ended evolution in cellular automata through mass conservation and parameter localization. In *Proceedings of the Artificial Life Conference 2023*. MIT Press. Preprint: [https://arxiv.org/abs/2212.07906](https://arxiv.org/abs/2212.07906)
 - <a id="ref-ray-1991"></a>Ray, T. S. (1991). An approach to the synthesis of life. In *Artificial Life II* (pp. 371-408). Addison-Wesley.
 - <a id="ref-schluter-2000"></a>Schluter, D. (2000). *The Ecology of Adaptive Radiation*. Oxford University Press.
 - <a id="ref-schrodinger-1944"></a>Schrödinger, E. (1944). *What is Life? The Physical Aspect of the Living Cell*. Cambridge University Press.
