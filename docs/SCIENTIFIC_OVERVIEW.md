@@ -116,17 +116,20 @@ The world of Evochora is a grid of cells, each holding one molecule. An organism
 
 ### 2.1 The World and Its Molecules
 
-The foundation of Evochora is a world defined by an n-dimensional grid of fundamental units called **Molecules**. The number of dimensions (n) is fully configurable, allowing for experimentation in spatial environments from 2D planes to higher-dimensional spaces. The world's topology is also configurable and can be set to be either bounded or toroidal. Each Molecule is represented by a 32-bit integer, with a configurable number of bits allocated to its type and its value. This extensible type system forms the basis of the world's physics. The five primary types are:
+The world of Evochora is an n-dimensional grid. A run configures how many dimensions it has, how large it is in each, and whether its edges wrap around as a torus or bound the world. Every cell of the grid holds one molecule. A molecule has a type and a value: the type says what the molecule is to an organism, the value what it carries. There are eight types:
 
-- **CODE**: A Molecule whose value represents a virtual machine instruction. A value of 0 corresponds to the NOP (No Operation) instruction and represents empty space.
-- **DATA**: A Molecule whose value serves as a numerical argument for CODE instructions.
-- **STATE**: A DATA value an organism has written for its own use — working memory rather than code, so that a value an organism keeps changing can be told from the code it carries. It behaves like DATA in arithmetic and comparisons; Section 2.3 says how a write becomes STATE.
-- **ENERGY**: A resource Molecule whose value represents a quantity of energy an organism can absorb.
-- **STRUCTURE**: A Molecule that acts as a physical obstacle, costing energy to interact with.
+- **CODE**: an instruction of the virtual machine. The value 0 is the NOP instruction and stands for an empty cell.
+- **DATA**: a number, used as an argument of instructions.
+- **STATE**: a DATA value an organism has written for its own use. It is working memory, not code, so that a value an organism keeps changing can be told from the code it carries. In arithmetic and comparisons it behaves like DATA; Section 2.3 says how a write becomes STATE.
+- **ENERGY**: a quantity of energy an organism can take up.
+- **STRUCTURE**: an obstacle. Pointers do not pass it, and removing it costs energy.
+- **LABEL**: a mark in the code that jumps aim at. Section 2.2 says how a jump finds it.
+- **LABELREF**: the argument of a jump, naming the label it aims at.
+- **REGISTER**: the argument of an instruction, naming a register of the virtual machine.
 
-Additional molecule types (LABEL, LABELREF, REGISTER) serve the compiler and virtual machine internally — for example, enabling fuzzy jump resolution and bank-aware mutation strategies — but are not an integral part of the world's physics.
+All eight are read, written and consumed alike; the last three differ from the first five only in what they mean to a program.
 
-This core system is designed for expansion. The ability to introduce new Molecule types opens up significant research avenues, such as evolving a complex "chemistry" where Molecules must be combined to create higher-order resources, or a concept of "waste" that could be recycled by other organisms.
+A molecule has one more property, the marker. It belongs to ownership and is introduced with it in Section 2.3.
 
 ### 2.2 The Virtual Machine
 
