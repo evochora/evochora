@@ -62,15 +62,15 @@ The platform consists of a runtime that executes the world, the EvoASM language 
 
 The table reads along the lines of the introduction: what an organism is and what its world holds, what resources it lives on, how offspring arise and what they inherit, where selection and variation come from, and how organisms reach one another. Lenia and Flow-Lenia are included for the case the introduction mentions only in passing: creatures that are bodies in a medium but not programs.
 
-| System | Organism and world | Resources | Offspring | Selection | Variation | Interaction |
+| System | The organism | Resources | Offspring | Selection | Variation | Interaction |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Tierra** [(Ray, 1991)](#ref-ray-1991) | Code in a shared memory that holds only code | CPU time, memory space | Parent copies into allocated memory | Reaper; faster copying wins | Bit flips, copy errors | Others' code readable and executable, write-protected |
-| **Avida** [(Ofria & Wilke, 2004)](#ref-ofria-2004) | Program on its own CPU, one per grid cell | CPU cycles by merit; resources as numbers | Parent copies, system places the child | Replacement; rewarded tasks | Copy errors, indels | Little; messaging, predation, host-parasite coevolution in extensions |
-| **Squirm3** [(Hutton, 2002)](#ref-hutton-2002) | Chain of atoms in a grid of atoms | Atoms, conserved | Template replication from free atoms | Competition for free atoms | Interactions between replicators | Shared atoms |
-| **Stringmol** [(Hickinbotham et al., 2016)](#ref-hickinbotham-2016) | String of opcodes, genome and enzyme at once, in a well-mixed container or one per grid cell [(Hickinbotham et al., 2021)](#ref-hickinbotham-2021) | Energy to execute opcodes in the original model; strings decay | One string copies another when bound | Decay, binding | Copy errors | Binding |
-| **Lenia** [(Chan, 2019)](#ref-chan-2019) | Pattern in a continuous field | None | Not built in | None; the user selects | Parameters set by the experimenter | Collision, fusion |
+| **Tierra** [(Ray, 1991)](#ref-ray-1991) | Executes programs in a shared memory | CPU time, memory space | Parent copies into allocated memory | Reaper; faster copying wins | Bit flips, copy errors | Others' code readable and executable, write-protected |
+| **Avida** [(Ofria & Wilke, 2004)](#ref-ofria-2004) | Executes a program per cell | CPU cycles by merit; resources as numbers | Parent copies, system places the child | Replacement; rewarded tasks | Copy errors, indels | Little; messaging, predation, host-parasite coevolution in extensions |
+| **Squirm3** [(Hutton, 2002)](#ref-hutton-2002) | Bonds atoms into chains | Atoms, conserved | Template replication from free atoms | Competition for free atoms | Interactions between replicators | Shared atoms |
+| **Stringmol** [(Hickinbotham et al., 2016)](#ref-hickinbotham-2016) | Reacts strings in a container or on a grid [(Hickinbotham et al., 2021)](#ref-hickinbotham-2021) | Energy to execute opcodes in the original model; strings decay | One string copies another when bound | Decay, binding | Copy errors | Binding |
+| **Lenia** [(Chan, 2019)](#ref-chan-2019) | Forms patterns in a continuous field | None | Not built in | None; the user selects | Parameters set by the experimenter | Collision, fusion |
 | **Flow-Lenia** [(Plantec et al., 2023)](#ref-plantec-2023) | Pattern of conserved mass; rule parameters travel with the mass | Mass, conserved | Not built in; patterns divide and merge | Species displace one another over mass | Parameters mix on contact; mutations added by the experimenter | Flows of mass between patterns |
-| **Evochora** | Owned cells of molecules in a grid of the same molecules | Energy molecules from sources; space | Parent assembles and places; marked cells inherited | Death by energy or entropy; space | Structure-aware mutation plugins; imperfect copies | Through the world: consume, replace, execute others' code |
+| **Evochora** | Executes a spatial body as a program | Energy molecules from sources; space | Parent assembles and places; marked cells inherited | Death by energy or entropy; space | Structure-aware mutation plugins; imperfect copies | Through the world: consume, replace, execute others' code |
 
 ## 2. The Digital Physics of Evochora
 
