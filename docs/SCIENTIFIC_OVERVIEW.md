@@ -55,7 +55,7 @@ The later part has not been reproduced yet: after an initial burst of innovation
 
 Evochora's organisms are programs, they consist of the same material as their environment, and they have extent in space. The material itself does not react; it is what programs read, write and consume. The body is defined by ownership. The environment is a grid, and each of its cells holds one molecule of a few kinds: code, which organisms execute; data, which they read and write; structure, which cannot be passed but only removed at a cost; and energy, which they collect and can store. An organism is the set of cells it owns, and in the environment there is nothing else of it. This body it has to assemble itself. An offspring is not a copy that the system places somewhere, but a structure the parent writes into free cells with its own pointers, at whatever place it can reach. That individuals make such decisions themselves is one of the conditions Soros and Stanley propose for open-endedness [(Soros & Stanley, 2014)](#ref-soros-2014). The child inherits those of these cells the parent has marked for it, together with the energy the parent hands over. Every molecule written costs energy, and what one organism has built, a neighbor can take apart again. The three conditions named above are thus met in the physics: the body is made of the environment's material, energy is a molecule the organism has to find and collect, and since instructions produce entropy that only writing into the environment sheds, an organism has to keep working on the world to stay alive; the idea behind this rule is Schrödinger's [(Schrödinger, 1944)](#ref-schrodinger-1944). Form, size, place and inheritance are decided by the program rather than by the system, and so they are exposed to selection.
 
-These conditions were not designed in one piece. They entered one after another, each when a run showed that something was missing: entropy, for instance, after the first populations had copied over one another into an error catastrophe [(Eigen, 1971)](#ref-eigen-1971). Energy sources, thermodynamic policies, mutation operators and death handlers are plugins, components that can be exchanged or added without touching the rest. The question of what an environment has to provide can thereby be asked one condition at a time.
+These conditions were not designed in one piece. They entered one after another, each when a run showed that something was missing: entropy, for instance, after the first populations had copied over one another into an error catastrophe [(Eigen, 1971)](#ref-eigen-1971). [Energy sources, thermodynamic policies, mutation operators and death handlers](#24-plugin-interfaces) are plugins, components that can be exchanged or added without touching the rest. The question of what an environment has to provide can thereby be asked one condition at a time.
 
 What exists today is a platform on which populations sustain themselves over billions of ticks, and two published runs in which the change of a single instruction swept to fixation and could be traced to its mechanism. The rise of complexity has not been shown in Evochora yet; the platform is built to look for it one condition at a time.
 
@@ -77,7 +77,7 @@ The table reads along the lines of the introduction: what an organism is and wha
 
 ## 2. The Digital Physics of Evochora
 
-In Evochora, the environment is a grid of cells, each holding one molecule. An organism is a virtual machine with an instruction pointer that executes those molecules as code and data pointers that read and write them. Its actions cost energy, which it has to gather, and produce entropy, which it has to shed. The body of an organism is the cells it owns. Energy sources, thermodynamic policies, mutation operators and death handlers are configured for each run and define the physics of the environment. This chapter describes these parts in turn, and the ancestor every run begins from.
+In Evochora, the environment is a grid of cells, each holding one molecule. An organism is a virtual machine with an instruction pointer that executes those molecules as code and data pointers that read and write them. Its actions cost energy, which it has to gather, and produce entropy, which it has to shed. The body of an organism is the cells it owns. [Energy sources, thermodynamic policies, mutation operators and death handlers](#24-plugin-interfaces) are configured for each run and define the physics of the environment. This chapter describes these parts in turn, and the ancestor every run begins from.
 
 ### 2.1 The Environment and Its Molecules
 
@@ -136,17 +136,19 @@ In Evochora's default configuration, taking up an ENERGY molecule credits its va
 
 ### 2.4 Plugin Interfaces
 
-A core design philosophy of Evochora is that the fundamental rules of the world should be modular and themselves subject to scientific investigation. This is implemented via a **plugin architecture** that covers four aspects of the simulation:
+The rules of the world are modular, so that they can themselves be the subject of an experiment. For each of the following aspects there is a plugin interface, with standard plugins that come with Evochora; a different behavior can be implemented in Java.
 
-**Resource distribution** — How does energy enter the world? Built-in models include continuous probabilistic spawning (analogous to solar radiation), periodic eruptions at fixed locations (geysers), and one-time seeding. Researchers can replace or combine these to create entirely different resource landscapes.
+**Resource distribution** — How does energy enter the world? Built-in models include continuous probabilistic spawning (analogous to solar radiation), periodic eruptions at fixed locations (geysers), one-time seeding, and vaults of energy behind walls of STRUCTURE that are refilled. Researchers can replace or combine these to create other resource landscapes.
 
-**Mutation** — What happens to an organism's genome during reproduction? Four built-in mutation operators cover gene insertion, substitution, deletion, and duplication. Each operates at the structural level — respecting molecule types and instruction syntax — rather than performing blind bit-flips. Label values pass unchanged from parent to child, so relatives share their addresses; an optional namespace flip at birth lets lineages drift apart in them. Researchers can configure, combine, or replace these operators to study how different mutation regimes affect evolvability.
+**Thermodynamic costs** — What does an action cost? Thermodynamic policies set the energy and entropy of each instruction, and for reading and writing they can depend on the molecule and on who owns the cell ([Section 2.3](#23-ownership-and-thermodynamics)). Researchers can change them for a run or write their own.
 
-**Death and recycling** — What happens when an organism dies? The default behavior converts dead organisms into energy molecules, creating a nutrient cycle. Alternative rules could leave corpses as inert structure or produce different molecule types.
+**Mutation** — What happens to an organism's genome during reproduction? Four built-in mutation operators cover gene insertion, substitution, deletion, and duplication. Each operates at the structural level — respecting molecule types and instruction syntax — rather than performing blind bit-flips. Researchers can configure, combine, or replace these operators to study how different mutation regimes affect evolvability.
 
-**Instruction interception** — An extension point for modifying instructions before execution, enabling future research into environmental effects on organism behavior (e.g., simulating localized "radiation" that corrupts instructions in specific regions).
+**Death and recycling** — What happens when an organism dies? The standard plugin replaces a dead organism's molecules with one configured molecule. By default that is the empty cell, so the body disappears; configured as ENERGY, the dead become food for others.
 
-All plugins operate on deterministic, seeded randomness, ensuring full reproducibility. Researchers can swap, combine, or replace any of these without modifying the core simulation.
+**Label matching** — How does a jump find its label? The standard strategy matches by Hamming distance, own labels first ([Section 2.2](#22-the-virtual-machine)), and passes label values unchanged from parent to child, so that relatives share their addresses; an optional namespace flip at birth lets lineages drift apart in them.
+
+**Instruction interception** — An interface for changing instructions before they execute, for example to let a region of the environment corrupt them like radiation. No standard plugin uses it yet.
 
 ### 2.5 The Ancestor
 
