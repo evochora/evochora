@@ -100,39 +100,22 @@ A molecule has one more property, the marker. It belongs to ownership and is int
 
 Each organism runs on a virtual machine of its own. The machine executes the code that lies in the grid and acts on the grid through pointers; it sees nothing of the world beyond the cells its pointers stand on. See the [Assembly Specification](ASSEMBLY_SPEC.md) for all details of the machine, its instruction set and the language.
 
-### Fig. 1: Conceptual Architecture of an Evochora Organism
+### Fig. 1: An organism's virtual machine and its world
 ```
-         +---------------------------------------------------------------+
-         |                 Evochora "World" (n-D Grid)                   |
-         |                                                               |
-         |   [ ENERGY ]      [ STRUCTURE ]      [ CODE ]      [ DATA ]   |
-         +-------^-----------------^----------------^-------------^------+
-                 |                 |                |             |
-    Interaction: |                 |                |             |
-             (HARVEST)          (BLOCK)         (EXECUTE)      (READ)
-                 |                 |                |             |
-                 |                 |                |             |
-         +-------|-----------------|----------------|-------------|------+
-         |       |    ORGANISM     |                |             |      |
-         |       |                 |                |             |      |
-         |   +---v-----------------v----+      +----v-------------v----+ |
-         |   |    Data Pointers (DPs)   |      |   Inst. Pointer (IP)  | |
-         |   | [DP 0] [DP 1] ... [DP n] |<-----|                       | |
-         |   +--------------------------+      +-----------------------+ |
-         |                 ^                                  ^          |
-         |         (Move/Read/Write)                      (Control)      |
-         |                 |                                  |          |
-         |   +-------------v----------------------------------v------+   |
-         |   |                  Virtual Machine                      |   |
-         |   |                                                       |   |
-         |   |  Registers: [DRs] [LRs] [PDRs] [PLRs]                 |   |
-         |   |             [FDRs] [FLRs] [SDRs] [SLRs]               |   |
-         |   |                                                       |   |
-         |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
-         |   |                                                       |   |
-         |   |  Metabolism: [Thermodynamics (ER/SR)] --(Cost)--> 0   |   |
-         |   +-------------------------------------------------------+   |
-         +---------------------------------------------------------------+
+   +-------------------------------------------------------------+
+   |                  World: n-dimensional grid                  |
+   |       [CODE] [DATA] [STATE] [ENERGY] [STRUCTURE] [...]      |
+   +--------------^----------------------------^-----------------+
+                  |                            |
+            execute code             read, write, consume
+                  |                            |
+   +--------------|------- Virtual machine ----|-----------------+
+   |     +--------v--------+        +----------v----------+      |
+   |     | Instruction     |        | Data pointers       |      |
+   |     | pointer         | ------>| DP0 ... DPn         |      |
+   |     +-----------------+        +---------------------+      |
+   |         registers, stacks, energy (ER), entropy (SR)        |
+   +-------------------------------------------------------------+
 ```
 
 The **instruction pointer** executes an instruction with its arguments and goes on to the next. The next instruction lies in the direction of the **direction vector**, which the program can set, so a program is a line of cells through the grid. The **data pointers** are where the organism touches the world: every molecule it reads, writes or consumes lies at a data pointer or one step from it. A data pointer moves one cell at a time; it cannot jump freely, only to positions the organism has stored before.
