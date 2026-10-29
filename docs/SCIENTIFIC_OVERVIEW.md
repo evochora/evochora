@@ -79,6 +79,27 @@ The table reads along the lines of the introduction: what an organism is and wha
 
 The world of Evochora is a grid of cells, each holding one molecule. An organism is a virtual machine with an instruction pointer that executes those molecules as code and data pointers that read and write them. Its actions cost energy, which it has to gather, and produce entropy, which it has to shed. The body of an organism is the cells it owns. Energy sources, thermodynamic policies, mutation operators and death handlers are configured for each run and define the physics of the world. This chapter describes these parts in turn, and the ancestor every run begins from.
 
+### 2.1 The World and Its Molecules
+
+The world of Evochora is an n-dimensional grid. A run configures how many dimensions it has, how large it is in each, and whether its edges wrap around as a torus or bound the world. Every cell of the grid holds one molecule. A molecule has a type and a value: the type says what the molecule is to an organism, the value what it carries. There are eight types:
+
+- **CODE**: an instruction of the virtual machine. The value 0 is the NOP instruction and stands for an empty cell.
+- **DATA**: a number, used as an argument of instructions.
+- **STATE**: a DATA value an organism has written for its own use. It is working memory, not code, so that a value an organism keeps changing can be told from the code it carries. In arithmetic and comparisons it behaves like DATA; Section 2.3 says how a write becomes STATE.
+- **ENERGY**: a quantity of energy an organism can take up.
+- **STRUCTURE**: an obstacle. Pointers do not pass it, and removing it costs energy.
+- **LABEL**: a mark in the code that jumps aim at. Section 2.2 says how a jump finds it.
+- **LABELREF**: the argument of a jump, naming the label it aims at.
+- **REGISTER**: the argument of an instruction, naming a register of the virtual machine.
+
+All eight are read, written and consumed alike; the last three differ from the first five only in what they mean to a program.
+
+A molecule has one more property, the marker. It belongs to ownership and is introduced with it in Section 2.3.
+
+### 2.2 The Virtual Machine
+
+Each organism runs on a virtual machine of its own. The machine executes the code that lies in the grid and acts on the grid through pointers; it sees nothing of the world beyond the cells its pointers stand on. See the [Assembly Specification](ASSEMBLY_SPEC.md) for all details of the machine, its instruction set and the language.
+
 ### Fig. 1: Conceptual Architecture of an Evochora Organism
 ```
          +---------------------------------------------------------------+
@@ -114,50 +135,11 @@ The world of Evochora is a grid of cells, each holding one molecule. An organism
          +---------------------------------------------------------------+
 ```
 
-### 2.1 The World and Its Molecules
+The **instruction pointer** executes an instruction with its arguments and goes on to the next. The next instruction lies in the direction of the **direction vector**, which the program can set, so a program is a line of cells through the grid. The **data pointers** are where the organism touches the world: every molecule it reads, writes or consumes lies at a data pointer or one step from it. A data pointer moves one cell at a time; it cannot jump freely, only to positions the organism has stored before.
 
-The world of Evochora is an n-dimensional grid. A run configures how many dimensions it has, how large it is in each, and whether its edges wrap around as a torus or bound the world. Every cell of the grid holds one molecule. A molecule has a type and a value: the type says what the molecule is to an organism, the value what it carries. There are eight types:
+The machine has registers for numbers, vectors and positions, in several banks so that procedures can keep values of their own, and three stacks, for data, for calls and for positions; see [Registers](ASSEMBLY_SPEC.md#registers) and [Stacks](ASSEMBLY_SPEC.md#stacks) in the specification.
 
-- **CODE**: an instruction of the virtual machine. The value 0 is the NOP instruction and stands for an empty cell.
-- **DATA**: a number, used as an argument of instructions.
-- **STATE**: a DATA value an organism has written for its own use. It is working memory, not code, so that a value an organism keeps changing can be told from the code it carries. In arithmetic and comparisons it behaves like DATA; Section 2.3 says how a write becomes STATE.
-- **ENERGY**: a quantity of energy an organism can take up.
-- **STRUCTURE**: an obstacle. Pointers do not pass it, and removing it costs energy.
-- **LABEL**: a mark in the code that jumps aim at. Section 2.2 says how a jump finds it.
-- **LABELREF**: the argument of a jump, naming the label it aims at.
-- **REGISTER**: the argument of an instruction, naming a register of the virtual machine.
-
-All eight are read, written and consumed alike; the last three differ from the first five only in what they mean to a program.
-
-A molecule has one more property, the marker. It belongs to ownership and is introduced with it in Section 2.3.
-
-### 2.2 The Virtual Machine
-
-Organisms in Evochora are spatially distributed code, not abstract computational entities. Each organism is governed by a spatial Virtual Machine (VM) that endows it with a rich internal state and a unique model for interacting with the world. A complete specification of the virtual machine, its instruction set, and the assembly language is provided in the [Assembly Specification](https://github.com/evochora/evochora/blob/main/docs/ASSEMBLY_SPEC.md).
-
-The VM separates an organism's "processor" from its "actuators":
-
-- The **Instruction Pointer (IP)** executes the CODE Molecule at its current position. It moves "forward" according to a local Direction Vector (DV), which the organism can modify at runtime, allowing for complex, n-dimensional code layouts.
-- **Data Pointers (DPs)** are the organism's "limbs" used for all direct world interactions, like reading (PEEK) and writing (POKE) Molecules.
-
-To support complex behaviors, the VM provides a rich set of internal components, whose counts and sizes are configurable:
-
-**Registers**: 8 register banks organized by scope (Global, Proc-Local, Formal, Static) and type (Data, Location). Data registers (`*DR`) hold any value; Location registers (`*LR`) hold only vectors and have dedicated instructions for moving the Data Pointer to stored positions with ownership enforcement.
-- **Global**: **DRs** and **LRs** — persist across procedure calls
-- **Proc-Local**: **PDRs** and **PLRs** — automatically saved/restored on CALL/RET
-- **Formal**: **FDRs** and **FLRs** — used for procedure parameter passing (REF/VAL/LREF/LVAL)
-- **Static**: **SDRs** and **SLRs** — persistent per-procedure state, enabling procedures to function as stateful "organs" with internal memory
-
-**Stacks**: Three distinct stacks manage program flow and memory:
-- **Data Stack (DS)** for general computation
-- **Call Stack (CS)** for procedure calls
-- **Location Stack (LS)** dedicated to storing coordinates
-
-This architecture provides evolution with a powerful but low-level toolkit. Higher-order behaviors are not predefined; they must emerge from the combination of these fundamental capabilities. A key innovation enabled by this design is the organism's navigation model. While basic DP movement is local and step-wise (SEEK), an organism can store its current DP coordinates in its LRs or push them onto the LS. These stored locations can then be jumped to directly. This design elegantly solves a key challenge: it allows for efficient, non-linear movement patterns and complex spatial routines without breaking the fundamental principle of locality, as organisms can only jump to places they have physically visited before.
-
-These design choices enforce a strong principle of **locality and physical immobility**. An organism has no internal knowledge of its absolute coordinates, only its local surroundings. Furthermore, Evochora deliberately omits a high-level instruction for moving an organism's entire physical footprint (CODE, DATA and STRUCTURE Molecules). This omission is a conscious design choice that focuses the evolutionary dynamics on spatially fixed organisms and their local interactions — a constraint that may prove particularly relevant for investigating the origins of aggregation and cooperation. The instruction set is extensible, so researchers who need mobile organisms for a specific research question can add a movement instruction without modifying the core runtime. But the default constraint of immobility is expected to create more interesting evolutionary pressure, which is why it is not included out of the box.
-
-Unlike classical von Neumann architectures, jump instructions in Evochora do not target exact memory addresses. Instead, they resolve targets through **fuzzy label matching** based on Hamming distance. The organism's code contains label molecules that act as named anchors; a jump instruction searches for a matching label within a configurable tolerance — among the organism's own labels first, and among the labels of other organisms only when none of its own matches, and then only within a configurable reach. This means that mutations which insert, delete, or shift code do not break control flow — as long as the label pattern is approximately preserved, the jump still resolves. This makes genomes inherently resilient to structural mutations, preserving a large neutral space in the fitness landscape where genetic drift can occur without immediate lethality. When gene duplication produces multiple identical labels, target selection is stochastic rather than deterministic: closer labels are more likely to be selected, but distant copies still have a nonzero probability. This allows duplicated code regions to diverge independently — one copy can accumulate mutations while the other remains conserved, a mechanism analogous to subfunctionalization in biological gene duplication. Fuzzy addressing is a prerequisite for meaningful evolution in a system where code *is* the genome.
+Jumps do not target addresses. A jump names a **label**, and the machine searches the grid for a LABEL molecule with that value. The search tolerates small differences, so a label whose value has mutated is still found; and it can reach into the code of other organisms, so one organism can execute another's code. How tolerant the search is and how far it reaches is set for each run; see [Fuzzy label matching](ASSEMBLY_SPEC.md#fuzzy-label-matching) in the specification.
 
 ### 2.3 Thermodynamics and Ownership
 
