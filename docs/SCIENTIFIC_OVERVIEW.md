@@ -77,7 +77,7 @@ The table reads along the lines of the introduction: what an organism is and wha
 
 ## 2. The Digital Physics of Evochora
 
-The Evochora platform is designed to serve as a flexible testbed for digital evolution research. Its design is guided by the principles of modularity, extensible physics, and spatially distributed code execution. This section details the core, currently implemented components of the system.
+The world of Evochora is a grid of cells, each holding one molecule. An organism is a virtual machine with an instruction pointer that executes those molecules as code and data pointers that read and write them. Its actions cost energy, which it has to gather, and produce entropy, which it has to shed. The body of an organism is the cells it owns. Energy sources, thermodynamic policies, mutation operators and death handlers are configured for each run and define the physics of the world. This chapter describes these parts in turn, and the ancestor every run begins from.
 
 ### Fig. 1: Conceptual Architecture of an Evochora Organism
 ```
