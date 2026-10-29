@@ -19,25 +19,28 @@ This document describes the platform's physics, the tools for observing and anal
 1. [Introduction](#1-introduction)
     - [1.1 Evochora among related systems](#11-evochora-among-related-systems)
 2. [The Digital Physics of Evochora](#2-the-digital-physics-of-evochora)
-    - [2.1 The N-Dimensional World and Typed Molecules](#21-the-n-dimensional-world-and-typed-molecules)
-    - [2.2 The Virtual Machine and Spatial Code Execution](#22-the-virtual-machine-and-spatial-code-execution)
-    - [2.3 Metabolism, Survival, and Ownership](#23-metabolism-survival-and-ownership)
-    - [2.4 Extensible by Design: The Plugin Architecture](#24-extensible-by-design-the-plugin-architecture)
-    - [2.5 The Primordial Organism: A Case Study in Viability](#25-the-primordial-organism-a-case-study-in-viability)
-3. [From Simulation to Science](#3-from-simulation-to-science)
-    - [3.1 Visualization](#31-visualization)
-    - [3.2 Data Export and Analysis with Standard Tools](#32-data-export-and-analysis-with-standard-tools)
+    - [2.1 The World and Its Molecules](#21-the-world-and-its-molecules)
+    - [2.2 The Virtual Machine](#22-the-virtual-machine)
+    - [2.3 Thermodynamics and Ownership](#23-thermodynamics-and-ownership)
+    - [2.4 Plugin Interfaces](#24-plugin-interfaces)
+    - [2.5 The Ancestor](#25-the-ancestor)
+3. [Running Experiments](#3-running-experiments)
+    - [3.1 Setting Up a Run](#31-setting-up-a-run)
+    - [3.2 Observing a Run](#32-observing-a-run)
+    - [3.3 Analyzing a Run](#33-analyzing-a-run)
+    - [3.4 Resuming and Re-recording a Run](#34-resuming-and-re-recording-a-run)
 4. [First Results](#4-first-results)
-5. [Scientific Avenues: From Theory to Experiment](#5-scientific-avenues-from-theory-to-experiment)
+5. [Research Directions](#5-research-directions)
     - [5.1 Replicator Ecology](#51-replicator-ecology)
     - [5.2 Environmental Heterogeneity and Dynamic Worlds](#52-environmental-heterogeneity-and-dynamic-worlds)
     - [5.3 Evolvability and Mutation Regimes](#53-evolvability-and-mutation-regimes)
     - [5.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#54-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
     - [5.5 From Internal Coordination to Multicellularity](#55-from-internal-coordination-to-multicellularity)
     - [5.6 Digital Chemistry and Reaction Networks](#56-digital-chemistry-and-reaction-networks)
-6. [Scalability and Reproducibility](#6-scalability-and-reproducibility)
-    - [6.1 Performance and Scalability Architecture](#61-performance-and-scalability-architecture)
-    - [6.2 Data Pipeline and Reproducibility](#62-data-pipeline-and-reproducibility)
+6. [Architecture, Reproducibility and Scale](#6-architecture-reproducibility-and-scale)
+    - [6.1 Architecture](#61-architecture)
+    - [6.2 Reproducibility](#62-reproducibility)
+    - [6.3 Performance and Scale](#63-performance-and-scale)
 7. [Limitations](#7-limitations)
 8. [Conclusion](#8-conclusion)
 9. [Getting Involved](#9-getting-involved)
@@ -111,7 +114,7 @@ The Evochora platform is designed to serve as a flexible testbed for digital evo
          +---------------------------------------------------------------+
 ```
 
-### 2.1 The N-Dimensional World and Typed Molecules
+### 2.1 The World and Its Molecules
 
 The foundation of Evochora is a world defined by an n-dimensional grid of fundamental units called **Molecules**. The number of dimensions (n) is fully configurable, allowing for experimentation in spatial environments from 2D planes to higher-dimensional spaces. The world's topology is also configurable and can be set to be either bounded or toroidal. Each Molecule is represented by a 32-bit integer, with a configurable number of bits allocated to its type and its value. This extensible type system forms the basis of the world's physics. The five primary types are:
 
@@ -125,7 +128,7 @@ Additional molecule types (LABEL, LABELREF, REGISTER) serve the compiler and vir
 
 This core system is designed for expansion. The ability to introduce new Molecule types opens up significant research avenues, such as evolving a complex "chemistry" where Molecules must be combined to create higher-order resources, or a concept of "waste" that could be recycled by other organisms.
 
-### 2.2 The Virtual Machine and Spatial Code Execution
+### 2.2 The Virtual Machine
 
 Organisms in Evochora are spatially distributed code, not abstract computational entities. Each organism is governed by a spatial Virtual Machine (VM) that endows it with a rich internal state and a unique model for interacting with the world. A complete specification of the virtual machine, its instruction set, and the assembly language is provided in the [Assembly Specification](https://github.com/evochora/evochora/blob/main/docs/ASSEMBLY_SPEC.md).
 
@@ -153,13 +156,13 @@ These design choices enforce a strong principle of **locality and physical immob
 
 Unlike classical von Neumann architectures, jump instructions in Evochora do not target exact memory addresses. Instead, they resolve targets through **fuzzy label matching** based on Hamming distance. The organism's code contains label molecules that act as named anchors; a jump instruction searches for a matching label within a configurable tolerance — among the organism's own labels first, and among the labels of other organisms only when none of its own matches, and then only within a configurable reach. This means that mutations which insert, delete, or shift code do not break control flow — as long as the label pattern is approximately preserved, the jump still resolves. This makes genomes inherently resilient to structural mutations, preserving a large neutral space in the fitness landscape where genetic drift can occur without immediate lethality. When gene duplication produces multiple identical labels, target selection is stochastic rather than deterministic: closer labels are more likely to be selected, but distant copies still have a nonzero probability. This allows duplicated code regions to diverge independently — one copy can accumulate mutations while the other remains conserved, a mechanism analogous to subfunctionalization in biological gene duplication. Fuzzy addressing is a prerequisite for meaningful evolution in a system where code *is* the genome.
 
-### 2.3 Metabolism, Survival, and Ownership
+### 2.3 Thermodynamics and Ownership
 
 Survival in Evochora is governed by a configurable thermodynamic economy with two independent axes: **energy** and **entropy**. Every instruction can be assigned energy costs and entropy production, both fully configurable — including zero. For environment interactions (PEEK, POKE), costs can additionally depend on the type and value of the molecule being read or written. In the default configuration, reading an ENERGY molecule via PEEK adds its value to the organism's internal Energy Register (ER), while writing molecules via POKE reduces the organism's entropy register (SR). Writing STATE, the organism's own working memory, does not, so that only writing genome dissipates entropy. Writing ENERGY does not either, because an organism can take it back unchanged. An organism dies when its energy is depleted (ER reaches zero) or its entropy exceeds its threshold (SR exceeds maximum). This two-axis model reflects a foundational idea in theoretical biology: that living systems maintain themselves by exporting entropy to their environment [(Schrödinger, 1944)](#ref-schrodinger-1944), formalized more recently as thermodynamic agents where computation and thermodynamic work are fundamentally coupled [(Gebhardt et al., 2019)](#ref-gebhardt-2019). This creates a configurable selection pressure whose shape — harsh, permissive, or anywhere in between — is itself an experimental variable.
 
 This dynamic is further enriched by a **molecule ownership model**. DPs can only move through empty space or molecules owned by the organism itself. This makes self-replication a non-trivial challenge, as an organism must not only copy its code but also manage the space it occupies. Ownership transfer from parent to child is handled through a **Marker Register (MR)**: during replication, the parent marks molecules via POKE, and upon reproduction (FORK) all marked molecules are transferred to the child. This gives organisms explicit control over which parts of their spatial footprint they bequeath to their offspring. The marker also decides what a written DATA value becomes: written with marker zero it is stored as STATE, the organism's working memory; written with any other marker it stays DATA. Molecules of every other type keep their type whatever the marker, so an organism that rewrites its own code changes what it hands on. A reproduction transfers STATE cells like any other marked cell, with the values they hold at that moment. Reproduction with a marker of zero fails.
 
-### 2.4 Extensible by Design: The Plugin Architecture
+### 2.4 Plugin Interfaces
 
 A core design philosophy of Evochora is that the fundamental rules of the world should be modular and themselves subject to scientific investigation. This is implemented via a **plugin architecture** that covers four aspects of the simulation:
 
@@ -173,7 +176,7 @@ A core design philosophy of Evochora is that the fundamental rules of the world 
 
 All plugins operate on deterministic, seeded randomness, ensuring full reproducibility. Researchers can swap, combine, or replace any of these without modifying the core simulation.
 
-### 2.5 The Primordial Organism: A Case Study in Viability
+### 2.5 The Ancestor
 
 The successful implementation of a viable, self-replicating primordial organism serves as a practical demonstration of the architecture's capabilities. The primordial solves the intertwined challenges of metabolism, replication, and spatial management: it uses a STRUCTURE shell as a physical boundary and termination signal for its copying algorithm, gathers energy to maintain a net-positive metabolic loop, and manages ownership of its spatial footprint via the marker register.
 
@@ -181,15 +184,19 @@ A key insight from early development was the role of entropy in population stabi
 
 The current primordial is a defensive replicator that aborts copying when it encounters foreign code rather than overwriting it. In long-running simulations spanning billions of ticks, it sustains stable populations with millions of organisms born across the simulation's lifetime. With mutation plugins enabled, the population exhibits dynamic behavior — periodic crashes and recoveries, genome diversification, and heritable structural variants, one of which rose to fixation in a completed selective sweep (see Section 4).
 
-## 3. From Simulation to Science
+## 3. Running Experiments
 
 Running a simulation is only the first step. The scientific value of a digital evolution platform depends on the ability to observe, record, and analyze what happens inside it. Evochora addresses this through a modular, scalable data pipeline that persists complete simulation state and feeds both a visual inspection tool and a standardized data export for offline analysis (see Section 6 for the pipeline architecture).
 
-### 3.1 Visualization
+### 3.1 Setting Up a Run
+
+<!-- To be written: world shape and topology, ancestors and their positions, the choice of plugins and their options, seed and determinism; with references to the README and CLI usage for starting a run and to the reference configuration for every setting. -->
+
+### 3.2 Observing a Run
 
 The primary observation tool is a web-based visualizer, a live demo of which is available at [https://evochora.org/](https://evochora.org/). It allows researchers to step through a simulation tick-by-tick, visualizing the state of the world and inspecting the internal state (registers, stacks, energy, entropy) of every organism. For primordial organisms created with the provided compiler, the visualizer provides source-level inspection capabilities, linking the executing machine code back to the original, human-readable assembly language. While the simulation runtime is fully n-dimensional, the current visualizer is limited to 2D worlds. Additionally, the platform can render simulation runs as videos, providing a powerful tool for observing long-term dynamics.
 
-### 3.2 Data Export and Analysis with Standard Tools
+### 3.3 Analyzing a Run
 
 Alongside the visualizer, the data pipeline feeds an analytics indexer that orchestrates a set of configurable **analytics plugins**, each exporting its metrics as **Parquet files** — the standard columnar format used throughout data science — compressed with ZSTD and organized hierarchically by tick range.
 
@@ -201,11 +208,15 @@ Phylogenies, Muller plots and genome comparison all rest on one question: what c
 
 This design deliberately avoids building a monolithic analysis suite. The space of possible analyses is vast — from phylogenetic tree reconstruction and Muller plots to fitness landscape visualization and complexity metrics like Assembly Theory [(Sharma et al., 2023)](#ref-sharma-2023). Rather than implementing each of these within the platform, Evochora provides the data in a format that lets the research community bring its own expertise.
 
+### 3.4 Resuming and Re-recording a Run
+
+<!-- To be written: node resume and node fork, what each does and when it is used. -->
+
 ## 4. First Results
 
 <!-- To be written: the findings published as experiment records, what they show and how they were found; room for what runs revealed about the physics itself. -->
 
-## 5. Scientific Avenues: From Theory to Experiment
+## 5. Research Directions
 
 The stability mechanisms described in Section 2 — thermodynamic coupling, fuzzy addressing, and defensive replication — have produced viable populations sustaining themselves over billions of ticks. Whether a simulation produces genuine evolutionary dynamics or merely random variation has to be established case by case; for Evochora, a first documented instance exists — a completed selective sweep of a heritable variant, published as the platform's first experiment record [(Evochora Project, 2026)](#ref-evochora-2026). Frameworks for classifying long-term evolutionary behavior [(Bedau et al., 2000)](#ref-bedau-2000) provide a broader lens for this question; the research directions below provide others. Some are already experimentally accessible with the current implementation; others require additional development. Each represents a testable hypothesis enabled by the platform's architecture.
 
@@ -276,7 +287,7 @@ This approach offers an intriguing parallel to Avida's task-based fitness reward
 
 Such a system naturally leads to **niche construction** [(Odling-Smee et al., 2003)](#ref-odling-smee-2003). Reactions produce byproducts that accumulate in the environment, altering it over time. A "waste" product might become the substrate for a new mutant that evolves the machinery to consume it — closing the loop and creating a new ecological niche. This echoes the dynamics observed in **Chromaria** [(Soros & Stanley, 2014)](#ref-soros-2014), where the physical remains of organisms reshape the evolutionary landscape for subsequent generations. The death handler plugin already demonstrates this principle in miniature: it can be configured to convert dead organisms into energy molecules or other substrates, creating a basic nutrient cycle. A full reaction system would extend this into a rich chemical ecology where food webs and metabolic specialization can emerge.
 
-## 6. Scalability and Reproducibility
+## 6. Architecture, Reproducibility and Scale
 
 <!-- To be restructured into two parts with subsections: first what matters for experiments (determinism, resume, sampling and fork, world size, technical limits, benchmarks), then the architecture. -->
 
@@ -335,7 +346,7 @@ The following diagram illustrates the high-level data flow architecture:
 └────────────┘  └────────────┘
 ```
 
-### 6.1 Performance and Scalability Architecture
+### 6.1 Architecture
 
 The core simulation is optimized for throughput. The raw, in-memory simulation engine achieves hundreds of thousands of instructions per second on standard consumer hardware. However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, sustainable throughput is constrained by I/O and varies significantly with environment size, population density, and plugin configuration. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster.
 
@@ -348,13 +359,17 @@ The simulation tick has snapshot semantics — every organism acts against the w
 
 The thread count is an execution resource, not part of the simulated physics: a run produces the same trajectory whether it uses one thread or many, and whether it was paused and resumed. For massive-scale experiments, a long-term vision involves partitioning the world into spatial regions managed by separate, distributed compute nodes. While this introduces synchronization challenges at the boundaries, the principle of locality inherent to organism behavior is expected to minimize inter-node communication, following the principles of **Indefinite Scalability** demonstrated by the **Moveable Feast Machine** [(Ackley, 2013)](#ref-ackley-2013), making this a viable path for future scaling.
 
-### 6.2 Data Pipeline and Reproducibility
+### 6.2 Reproducibility
 
 Large-scale simulations generate substantial data volumes, varying widely with environment size, snapshot frequency, and delta compression settings. The Evochora data pipeline is a decoupled, asynchronous system built on a foundation of abstract **Resources** to handle this throughput. The flow is designed for scalability: the `SimulationEngine` writes `TickData` messages to a queue. Multiple `PersistenceService` instances can act as competing consumers on this queue, writing data in batches to a durable storage resource. Downstream, various `IndexerService` types consume this stored data—again as competing consumer groups to build specialized indexes that are written to a database. This data powers the web-based visualizer. A key architectural principle is that all services are written against abstract resource interfaces (e.g., for queues and storage), allowing the underlying implementation to be seamlessly swapped from a high-performance in-process setup to a cloud-native, distributed one (e.g., message buses and object storage) without changing any service code. The indexing process is computationally intensive but parallelizable, and configurable sampling intervals allow researchers to trade temporal resolution for storage efficiency when running long simulations.
 
 Scientific rigor is ensured through **full determinism**. Randomness consumed by the sequential parts of a tick comes from one seeded, checkpointed generator; randomness consumed while organisms execute concurrently is computed from seed, tick, organism identity and the position of the draw within the tick rather than drawn from shared state, so it depends neither on thread scheduling nor on anything that would have to be persisted. Together with the computed conflict priority this guarantees that an experiment reproduces the identical simulation state and trajectory from seed and configuration, on any number of cores and across pauses (persisted records additionally carry wall-clock capture times, which are metadata, not state).
 
 Resume from any persisted state and delta compression for reducing data volume without sacrificing replayability are both fully implemented, enabling the use of cost-effective spot instances for very long-running experiments.
+
+### 6.3 Performance and Scale
+
+<!-- To be written: the cost model per organism, the benchmark figures with their conditions, world size as a question of memory, population as the measure. -->
 
 ## 7. Limitations
 
