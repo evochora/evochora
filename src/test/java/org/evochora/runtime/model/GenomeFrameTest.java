@@ -351,4 +351,85 @@ class GenomeFrameTest {
         assertThat(slotAt(6)).isEqualTo(Slot.INSTRUCTION);
         assertThat(slotAt(7)).isEqualTo(Slot.REGISTER);
     }
+
+    /** The coordinates of a cell in the row the tests use. */
+    private static int[] at(int x) {
+        return new int[]{x, ROW};
+    }
+
+    /** Along the direction vector the extent of a line is counted from its smallest coordinate. */
+    @Test
+    void theExtentIsCountedAlongTheDirectionVector() {
+        data(3, 1);
+        data(10, 1);
+
+        build(3, FORWARD);
+
+        assertThat(frame.cellsBefore(at(3))).isZero();
+        assertThat(frame.cellsFrom(at(3))).isEqualTo(8);
+        assertThat(frame.cellsBefore(at(6))).isEqualTo(3);
+        assertThat(frame.cellsFrom(at(6))).isEqualTo(5);
+        assertThat(frame.cellsFrom(at(10))).isEqualTo(1);
+    }
+
+    /** Against a backward direction vector the extent is counted from its largest coordinate. */
+    @Test
+    void theExtentIsCountedFromTheOtherEndForABackwardDirectionVector() {
+        data(3, 1);
+        data(10, 1);
+
+        build(10, BACKWARD);
+
+        assertThat(frame.cellsBefore(at(10))).isZero();
+        assertThat(frame.cellsFrom(at(10))).isEqualTo(8);
+        assertThat(frame.cellsBefore(at(6))).isEqualTo(4);
+        assertThat(frame.cellsFrom(at(6))).isEqualTo(4);
+    }
+
+    /** A line across the world edge of a toroidal world is counted across the edge. */
+    @Test
+    void theExtentOfALineAcrossTheWorldEdgeIsCountedAcrossIt() {
+        env = new Environment(new int[]{32, 32}, true);
+        placeBodyAcrossTheEdge();
+
+        build(30, FORWARD);
+
+        assertThat(frame.cellsBefore(at(30))).isZero();
+        assertThat(frame.cellsFrom(at(30))).isEqualTo(6);
+        assertThat(frame.cellsBefore(at(1))).isEqualTo(3);
+        assertThat(frame.cellsFrom(at(1))).isEqualTo(3);
+    }
+
+    /** A cell outside the extent, on its line or on a line the organism does not occupy, has none. */
+    @Test
+    void aCellOutsideTheExtentHasNone() {
+        data(3, 1);
+        data(10, 1);
+
+        build(3, FORWARD);
+
+        assertThat(frame.cellsBefore(at(11))).isEqualTo(-1);
+        assertThat(frame.cellsFrom(at(2))).isEqualTo(-1);
+        assertThat(frame.cellsFrom(new int[]{5, ROW + 1})).isEqualTo(-1);
+    }
+
+    /** A frame that was never built knows no extent and no initial position. */
+    @Test
+    void anUnbuiltFrameKnowsNoExtent() {
+        assertThat(frame.cellsBefore(at(3))).isEqualTo(-1);
+        assertThat(frame.cellsFrom(at(3))).isEqualTo(-1);
+        assertThat(frame.isInitialPosition(flat(3))).isFalse();
+    }
+
+    /** The frame names the cell it was built with as the initial position, and no other. */
+    @Test
+    void theInitialPositionIsTheCellTheFrameWasBuiltWith() {
+        data(3, 1);
+        data(10, 1);
+
+        build(5, FORWARD);
+
+        assertThat(frame.isInitialPosition(flat(5))).isTrue();
+        assertThat(frame.isInitialPosition(flat(3))).isFalse();
+    }
 }

@@ -279,6 +279,46 @@ class GenomeFlowTest {
         assertThat(behindJump).isFalse();
     }
 
+    /**
+     * The organism's initial position on an empty cell before the cell, with no code between:
+     * execution starts there and runs on into the cell.
+     */
+    @Test
+    void cellBehindTheInitialPositionIsReached() {
+        place(2, new Molecule(Config.TYPE_STRUCTURE, 100));
+        label(12, LABEL_VALUE);
+        ordinaryInstruction(13);
+        build(5, FORWARD);
+
+        assertThat(reached(12, 2)).isTrue();
+    }
+
+    /** The cell the organism started at is reached, whatever stands before it. */
+    @Test
+    void theInitialPositionItselfIsReached() {
+        place(2, new Molecule(Config.TYPE_STRUCTURE, 100));
+        label(12, LABEL_VALUE);
+        ordinaryInstruction(13);
+        build(12, FORWARD);
+
+        assertThat(reached(12, 2)).isTrue();
+    }
+
+    /**
+     * The initial position before an unconditional jump: execution starting there leaves through
+     * the jump and does not run into the cell behind it.
+     */
+    @Test
+    void anInitialPositionBeforeAJumpDoesNotReachTheCellBehindIt() {
+        place(2, new Molecule(Config.TYPE_STRUCTURE, 100));
+        withLabelOperand(6, "JMPI", LABEL_VALUE);
+        label(12, LABEL_VALUE);
+        ordinaryInstruction(13);
+        build(4, FORWARD);
+
+        assertThat(reached(12, 2)).isFalse();
+    }
+
     // ---- isJumpTarget ----
 
     /**

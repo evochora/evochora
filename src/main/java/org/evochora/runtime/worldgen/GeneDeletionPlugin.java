@@ -6,6 +6,8 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeFlow;
+import org.evochora.runtime.model.GenomeFrame;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
@@ -20,17 +22,39 @@ import java.util.Random;
  * Gene deletion birth handler that removes code blocks from newborn organisms.
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
- * probability, selects a LABEL molecule and deletes everything in the organism's DV direction
- * until hitting the next LABEL (block boundary), STRUCTURE (shell boundary), or a foreign molecule.
+ * probability, selects a LABEL molecule and deletes the block it opens, along the organism's
+ * direction vector. What it must not do is leave a cliff behind: an instruction pointer that runs
+ * into the emptied cells, into the middle of an instruction or out of the genome.
+ * <p>
+ * <strong>Where a block begins.</strong> Only at a label that is an entry point in the machine's
+ * reading frame ({@link GenomeFrame}); a LABEL molecule standing in another instruction's operand
+ * list is that instruction's argument. And only where execution does not run into the label on
+ * its own ({@link GenomeFlow#reachedByFallThrough}): the label stands at the beginning of the
+ * newborn's extent on its line or behind an instruction that never falls through and that no
+ * conditional can skip. Code before a label it runs into would run into the emptied cells after
+ * the deletion. The newborn's initial position counts like such code: a label it runs into, and a
+ * block it lies in, are not deleted. What enters the block is then only a jump to its label, and
+ * that jump finds the label the body carries a second time.
+ * <p>
+ * <strong>Where a block ends.</strong> Before the next LABEL molecule, whatever its role and its
+ * owner, because a jump can land there; otherwise at the end of the newborn's extent on the line.
+ * Cells at the end of that stretch that are part of no instruction in the reading frame — padding,
+ * a shell, data behind the code — are left standing, whatever their type, so that the deletion
+ * takes the code of the block and not what surrounds it. Within the stretch it clears every cell
+ * the newborn owns; a cell another organism owns or no one owns is left standing and passed over,
+ * because it is not part of the newborn's genome.
  * <p>
  * <strong>Which labels are candidates:</strong> only those whose value the newborn's body holds at
- * least {@code minLabelCount} times among its LABEL cells. At the default of 2 the deletion removes
- * only a block the body carries twice, so what it takes away stands elsewhere and the deletion is
- * neutral by construction — the counterpart of duplication, which leaves a second block under the
- * same label value. A label insertion leaves none: the label it writes takes over the value of a
- * block's label, and that label is renamed, so both values occur once and neither is drawn from.
- * A label occurring fewer times is not drawn from at all; {@code minLabelCount = 1} makes every
- * label a candidate again.
+ * least {@code minLabelCount} times among its LABEL cells that are entry points. At the default of
+ * 2 the deletion removes only a block of which the body carries a second one under the same label
+ * value, so that the references to the removed label find that one — the counterpart of
+ * duplication, which leaves a second block under the same label value. The two need not be equal:
+ * point mutations and insertions let duplicates diverge, and which of them survives is left to
+ * selection. A label that names a place for the data pointer is a candidate like any other; the
+ * references to it then find the second place. A label insertion leaves no value twice: the label
+ * it writes takes over the value of a block's label, and that label is renamed, so both values
+ * occur once and neither is drawn from. A label occurring fewer times is not drawn from at all;
+ * {@code minLabelCount = 1} makes every label a candidate again.
  * <p>
  * Among the candidates a label is drawn with weight = count^exponent, count being how often its
  * value occurs and the exponent configurable. With exponent=2.0 (default) this yields quadratic
@@ -41,12 +65,20 @@ import java.util.Random;
  * genome bloat from duplication. This plugin provides the matching variation: the redundant blocks
  * duplication leaves behind are the ones that can be taken away again.
  * <p>
+ * <strong>Performance:</strong> The reading frame is built once for every newborn the deletion
+ * rate selects that carries a label, before the candidates are known, because which labels are
+ * candidates is read from it. Each candidate costs a walk back to the code before its label and a
+ * walk along its block. Beyond the frame's own allocations, a deletion allocates the visitor of the
+ * owned-cell visit, the copies of the newborn's direction vector and initial position and, when it
+ * is applied, the {@link MutationRecord}.
+ * <p>
  * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared
  * cell, in the order they are cleared; the old value is the removed molecule, the new value the
- * empty cell. Its one parameter is how often the chosen label's hash occurs in the genome, the
- * weight that made the deletion choose this label and the one thing the child no longer shows,
- * because the label is gone. A run that finds no candidate label deletes nothing and records nothing.
+ * empty cell. Its one parameter is how often the chosen label's hash occurs among the entry points
+ * of the genome, the weight that made the deletion choose this label and the one thing the child
+ * no longer shows, because the label is gone. A run that finds no candidate label deletes nothing
+ * and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -73,6 +105,18 @@ public class GeneDeletionPlugin implements IBirthHandler {
 
     /** Collects the record of a deletion; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
+
+    /** The reading frame of the newborn, rebuilt for every deletion. */
+    private final GenomeFrame frame = new GenomeFrame();
+
+    /** Answers whether execution runs into a label on its own, on top of the frame. */
+    private final GenomeFlow flow = new GenomeFlow();
+
+    /** Coordinates of the label a candidate check or the deletion starts at. */
+    private int[] labelCoord;
+
+    /** Coordinates of the cell a walk along a block stands on. */
+    private int[] walkCoord;
 
     /**
      * Creates a gene deletion plugin from configuration.
@@ -109,11 +153,11 @@ public class GeneDeletionPlugin implements IBirthHandler {
     /**
      * Performs gene deletion for a single newborn organism.
      * <p>
-     * Collects all LABEL molecules owned by the child, keeps those whose value occurs at least
-     * {@code minLabelCount} times as candidates, selects one of them using weighted reservoir
-     * sampling (weight = hashCount^countExponent), then walks in DV direction deleting all
-     * molecules until hitting the next LABEL, STRUCTURE, or a foreign molecule. A deletion that is
-     * applied is recorded on the child.
+     * Collects the LABEL molecules owned by the child that are entry points of its reading frame,
+     * keeps as candidates those whose value occurs at least {@code minLabelCount} times among them
+     * and whose block can be removed without leaving a cliff, selects one of them using weighted
+     * reservoir sampling (weight = hashCount^countExponent), and clears the child's cells of its
+     * block. A deletion that is applied is recorded on the child.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -125,57 +169,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
             return;
         }
 
-        // --- Phase 1: Collect all labels and count hash frequencies ---
-        labelFlatIndices.clear();
-        labelHashes.clear();
-        hashCounts.clear();
-
-        // The visit runs in flat-index order: the choice below must not depend on write history
-        env.visitCellsOwnedBy(childId, cell -> {
-            int moleculeInt = cell.moleculeInt();
-            if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
-                int hash = moleculeInt & Config.VALUE_MASK;
-                labelFlatIndices.add(env.properties.toFlatIndex(cell.coordinate()));
-                labelHashes.add(hash);
-                hashCounts.addTo(hash, 1);
-            }
-        });
-
-        if (labelFlatIndices.isEmpty()) {
-            LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
-            return;
-        }
-
-        // --- Phase 2: Weighted reservoir sampling over the candidates ---
-        // A label whose value the body holds fewer than minLabelCount times is passed over, so
-        // that a deletion takes away only what the body still carries elsewhere.
-        double totalWeight = 0.0;
-        int selectedIdx = -1;
-
-        for (int i = 0; i < labelFlatIndices.size(); i++) {
-            int count = hashCounts.get(labelHashes.getInt(i));
-            if (count < minLabelCount) {
-                continue;
-            }
-            double weight = Math.pow(count, countExponent);
-            totalWeight += weight;
-            if (random.nextDouble() * totalWeight < weight) {
-                selectedIdx = i;
-            }
-        }
-
-        if (selectedIdx < 0) {
-            LOG.debug("tick={} Organism {} selected for deletion but has no label occurring at least {} times",
-                    child.getBirthTick(), childId, minLabelCount);
-            return;
-        }
-
-        // --- Phase 3: Walk & Delete ---
-        int selectedFlatIndex = labelFlatIndices.getInt(selectedIdx);
-        int[] pos = env.properties.flatIndexToCoordinates(selectedFlatIndex);
         int[] dv = child.getDv();
-
-        // Find DV dimension for safety limit
         int dvDim = -1;
         for (int i = 0; i < dv.length; i++) {
             if (dv[i] != 0) {
@@ -187,43 +181,96 @@ public class GeneDeletionPlugin implements IBirthHandler {
             LOG.debug("tick={} Organism {} gene deletion: degenerate DV", child.getBirthTick(), childId);
             return;
         }
+        int dvStep = dv[dvDim] > 0 ? 1 : -1;
+        int dims = env.properties.getDimensions();
+        if (labelCoord == null || labelCoord.length != dims) {
+            labelCoord = new int[dims];
+            walkCoord = new int[dims];
+        }
 
-        int maxSteps = env.getShape()[dvDim];
+        // --- Phase 1: Collect the labels that are entry points and count hash frequencies ---
+        labelFlatIndices.clear();
+        labelHashes.clear();
+        hashCounts.clear();
+
+        // The visit runs in flat-index order: the choice below must not depend on write history
+        env.visitCellsOwnedBy(childId, cell -> {
+            int moleculeInt = cell.moleculeInt();
+            if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
+                labelFlatIndices.add(env.properties.toFlatIndex(cell.coordinate()));
+                labelHashes.add(moleculeInt & Config.VALUE_MASK);
+            }
+        });
+
+        if (labelFlatIndices.isEmpty()) {
+            LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
+            return;
+        }
+
+        frame.build(env, childId, child.getInitialPosition(), dv);
+        keepEntryPoints();
+
+        if (labelFlatIndices.isEmpty()) {
+            LOG.debug("tick={} Organism {} selected for deletion but has no label that is an entry point",
+                    child.getBirthTick(), childId);
+            return;
+        }
+
+        // --- Phase 2: Weighted reservoir sampling over the candidates ---
+        // A label whose value the body holds fewer than minLabelCount times is passed over, so
+        // that a deletion takes away only what the body still carries elsewhere, and so is a
+        // label whose block cannot be removed without a cliff.
+        double totalWeight = 0.0;
+        int selectedIdx = -1;
+        int selectedLength = 0;
+
+        for (int i = 0; i < labelFlatIndices.size(); i++) {
+            int count = hashCounts.get(labelHashes.getInt(i));
+            if (count < minLabelCount) {
+                continue;
+            }
+            int length = removableBlockLength(env, labelFlatIndices.getInt(i), dvDim, dvStep);
+            if (length == 0) {
+                continue;
+            }
+            double weight = Math.pow(count, countExponent);
+            totalWeight += weight;
+            if (random.nextDouble() * totalWeight < weight) {
+                selectedIdx = i;
+                selectedLength = length;
+            }
+        }
+
+        if (selectedIdx < 0) {
+            LOG.debug("tick={} Organism {} selected for deletion but has no label occurring at least {} times "
+                    + "whose block can be removed", child.getBirthTick(), childId, minLabelCount);
+            return;
+        }
+
+        // --- Phase 3: Delete the block ---
+        int selectedFlatIndex = labelFlatIndices.getInt(selectedIdx);
 
         // How often the chosen hash occurs is what made this label the one deleted, and it is
         // unreadable in the child afterwards, because the label is gone
         recordBuilder.start(getClass().getName(), MUTATION_KIND, dv)
                 .param(hashCounts.get(labelHashes.getInt(selectedIdx)));
 
-        // Delete the label itself
-        recordBuilder.cell(selectedFlatIndex, env.getMoleculeIntAt(pos), 0);
-        env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, pos);
-        int deletedCount = 1;
-
-        // Walk in DV direction
-        for (int step = 0; step < maxSteps; step++) {
-            pos = env.properties.getNextPosition(pos, dv);
-
-            int owner = env.getOwnerId(pos);
-            if (owner != 0 && owner != childId) {
-                break; // foreign molecule
+        env.properties.flatIndexToCoordinates(selectedFlatIndex, walkCoord);
+        int axisSize = env.properties.getDimensionSize(dvDim);
+        int deletedCount = 0;
+        for (int k = 0; k < selectedLength; k++) {
+            if (k > 0) {
+                walkCoord[dvDim] = step(walkCoord[dvDim], dvStep, axisSize);
             }
-
-            Molecule mol = env.getMolecule(pos);
-            int type = mol.type();
-
-            if (type == Config.TYPE_LABEL) {
-                break; // next block boundary
+            int moleculeInt = env.getMoleculeIntAt(walkCoord);
+            // An empty cell holds nothing to remove, and a cell the child does not own is not
+            // part of its genome
+            if (moleculeInt == 0 || env.getOwnerId(walkCoord) != childId) {
+                continue;
             }
-            if (type == Config.TYPE_STRUCTURE) {
-                break; // shell boundary
-            }
-
-            if (!mol.isEmpty()) {
-                recordBuilder.cell(env.properties.toFlatIndex(pos), mol.toInt(), 0);
-                env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, pos);
-                deletedCount++;
-            }
+            recordBuilder.cell(env.properties.toFlatIndex(walkCoord), moleculeInt, 0);
+            env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, walkCoord);
+            deletedCount++;
         }
 
         child.recordBirthMutation(recordBuilder.build());
@@ -233,6 +280,89 @@ public class GeneDeletionPlugin implements IBirthHandler {
             LOG.debug("tick={} Organism {} gene deletion: removed {} molecules from label hash {} at {}",
                     child.getBirthTick(), childId, deletedCount, labelHashes.getInt(selectedIdx), Arrays.toString(labelPos));
         }
+    }
+
+    /**
+     * Keeps of the collected labels those the frame reads as entry points, in their order, and
+     * counts how often each value occurs among them.
+     */
+    private void keepEntryPoints() {
+        int kept = 0;
+        for (int i = 0; i < labelFlatIndices.size(); i++) {
+            int flatIndex = labelFlatIndices.getInt(i);
+            if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE) {
+                continue;
+            }
+            int hash = labelHashes.getInt(i);
+            labelFlatIndices.set(kept, flatIndex);
+            labelHashes.set(kept, hash);
+            hashCounts.addTo(hash, 1);
+            kept++;
+        }
+        labelFlatIndices.size(kept);
+        labelHashes.size(kept);
+    }
+
+    /**
+     * Determines how many cells, from a label along the direction vector, a deletion of its block
+     * spans, or that the block cannot be removed without leaving a cliff.
+     * <p>
+     * The block cannot be removed if execution runs into the label without a jump to it — the
+     * newborn's initial position included — or if the initial position lies within the block.
+     * Otherwise it spans the label and every cell up to the next LABEL molecule or the end of the
+     * newborn's extent on the line, without the cells at its end that are part of no instruction.
+     *
+     * @param env The simulation environment.
+     * @param labelFlatIndex The flat index of a label the frame reads as an entry point.
+     * @param dvDim The dimension the direction vector points along.
+     * @param dvStep The step along that dimension, {@code +1} or {@code -1}.
+     * @return The number of cells the deletion spans, at least one for the label itself, or
+     *         {@code 0} if the block cannot be removed.
+     */
+    private int removableBlockLength(Environment env, int labelFlatIndex, int dvDim, int dvStep) {
+        env.properties.flatIndexToCoordinates(labelFlatIndex, labelCoord);
+        if (flow.reachedByFallThrough(env, frame, labelCoord, dvDim, dvStep, frame.cellsBefore(labelCoord))) {
+            return 0;
+        }
+
+        int axisSize = env.properties.getDimensionSize(dvDim);
+        int extent = frame.cellsFrom(labelCoord);
+        System.arraycopy(labelCoord, 0, walkCoord, 0, labelCoord.length);
+        int length = 1;
+        int initialPositionOffset = -1;
+        for (int walked = 1; walked < extent; walked++) {
+            walkCoord[dvDim] = step(walkCoord[dvDim], dvStep, axisSize);
+            if ((env.getMoleculeIntAt(walkCoord) & Config.TYPE_MASK) == Config.TYPE_LABEL) {
+                break;
+            }
+            int flatIndex = env.properties.toFlatIndex(walkCoord);
+            if (frame.isInitialPosition(flatIndex)) {
+                initialPositionOffset = walked;
+            }
+            if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE) {
+                length = walked + 1;
+            }
+        }
+        return initialPositionOffset >= 0 && initialPositionOffset < length ? 0 : length;
+    }
+
+    /**
+     * Steps one cell along an axis, around the world edge.
+     *
+     * @param pos The current coordinate.
+     * @param delta The step, {@code +1} or {@code -1}.
+     * @param axisSize The size of the axis.
+     * @return The next coordinate.
+     */
+    private static int step(int pos, int delta, int axisSize) {
+        int next = pos + delta;
+        if (next >= axisSize) {
+            return next - axisSize;
+        }
+        if (next < 0) {
+            return next + axisSize;
+        }
+        return next;
     }
 
     /** {@inheritDoc} */

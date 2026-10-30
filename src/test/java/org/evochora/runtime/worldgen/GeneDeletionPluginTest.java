@@ -3,12 +3,14 @@ package org.evochora.runtime.worldgen;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,7 +30,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class GeneDeletionPluginTest {
 
     private Environment environment;
+    private Simulation simulation;
     private Organism child;
+
+    /** An organism other than the newborn under test. */
+    private static final int FOREIGN_ID = 99;
 
     private static final int LABEL_HASH_A = 11111;
     private static final int LABEL_HASH_B = 22222;
@@ -41,6 +47,11 @@ class GeneDeletionPluginTest {
 
     /** The minimum that lets every label of the body be a candidate. */
     private static final int EVERY_LABEL = 1;
+
+    @BeforeAll
+    static void initInstructionSet() {
+        Instruction.init();
+    }
 
     @BeforeEach
     void setUp() {
@@ -68,7 +79,7 @@ class GeneDeletionPluginTest {
                 "error-penalty-cost", 10
         ));
 
-        Simulation simulation = new Simulation(environment, policyManager, organismConfig, 1);
+        simulation = new Simulation(environment, policyManager, organismConfig, 1);
 
         Organism parent = Organism.create(simulation, new int[]{0, 0}, 10000);
         simulation.addOrganism(parent);
@@ -91,10 +102,50 @@ class GeneDeletionPluginTest {
     }
 
     /**
-     * Places a CODE molecule (non-NOP) at the given position, owned by the child.
+     * Places {@code DUP}, an instruction of one cell after which execution continues, owned by the
+     * child.
      */
     private void placeCode(int x, int y) {
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{x, y});
+        placeOpcode(x, y, "DUP");
+    }
+
+    /** Places the opcode cell of the named instruction, owned by the child. */
+    private void placeOpcode(int x, int y, String name) {
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName(name)),
+                child.getId(), new int[]{x, y});
+    }
+
+    /** Places {@code JMPI} with its label reference, two cells, owned by the child. */
+    private void placeJump(int x, int y, int hash) {
+        placeOpcode(x, y, "JMPI");
+        environment.setMolecule(new Molecule(Config.TYPE_LABELREF, hash), child.getId(), new int[]{x + 1, y});
+    }
+
+    /** Places {@code IFI %DR0 DATA:0}, a conditional of three cells, owned by the child. */
+    private void placeConditional(int x, int y) {
+        placeOpcode(x, y, "IFI");
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 0), child.getId(), new int[]{x + 1, y});
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 0), child.getId(), new int[]{x + 2, y});
+    }
+
+    /**
+     * Replaces the newborn under test by one that started at the given position, so that its
+     * instruction pointer enters its code there.
+     */
+    private void newbornStartingAt(int x, int y) {
+        child = Organism.restore(3, 9)
+                .parentId(child.getParentId())
+                .ip(new int[]{x, y})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{x, y})
+                .energy(5000)
+                .build(simulation);
+        simulation.addOrganism(child);
+    }
+
+    /** Whether the cell at the given position is empty. */
+    private boolean isEmpty(int x, int y) {
+        return environment.getMolecule(x, y).isEmpty();
     }
 
     /**
@@ -120,43 +171,28 @@ class GeneDeletionPluginTest {
 
     @Test
     void deletesFromLabelToNextLabel() {
-        // Layout: [LABEL_A @ x=2] [CODE @ x=3] [CODE @ x=4] [DATA @ x=5] [LABEL_B @ x=8]
-        // NOP gaps at x=6,7 (unowned)
+        // Label B stands behind A's code, which runs on into it, so only A's block is a candidate;
+        // it ends before B, and the DATA cell between its instructions goes with it
         placeLabel(2, 5, LABEL_HASH_A);
         placeCode(3, 5);
         placeCode(4, 5);
         placeData(5, 5);
+        placeCode(6, 5);
         placeLabel(8, 5, LABEL_HASH_B);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = deletion(rng, 1.0, 0.0, EVERY_LABEL); // exponent=0 → uniform
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 0.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
-        // One of the labels was selected and its block deleted
-        boolean labelADeleted = environment.getMolecule(2, 5).isEmpty();
-        boolean labelBDeleted = environment.getMolecule(8, 5).isEmpty();
-
-        // Exactly one label block should be deleted
-        assertThat(labelADeleted || labelBDeleted).isTrue();
-
-        if (labelADeleted) {
-            // Label A and code between A and B should be deleted
-            assertThat(environment.getMolecule(2, 5).isEmpty()).isTrue();
-            assertThat(environment.getMolecule(3, 5).isEmpty()).isTrue();
-            assertThat(environment.getMolecule(4, 5).isEmpty()).isTrue();
-            assertThat(environment.getMolecule(5, 5).isEmpty()).isTrue();
-            // Label B should still exist
-            assertThat(environment.getMolecule(8, 5).type()).isEqualTo(Config.TYPE_LABEL);
-        } else {
-            // Label B deleted, label A should still exist
-            assertThat(environment.getMolecule(2, 5).type()).isEqualTo(Config.TYPE_LABEL);
-            assertThat(environment.getMolecule(8, 5).isEmpty()).isTrue();
+        for (int x = 2; x <= 6; x++) {
+            assertThat(isEmpty(x, 5)).as("Cell (%d,5) should be cleared", x).isTrue();
         }
+        assertThat(environment.getMolecule(8, 5).type()).isEqualTo(Config.TYPE_LABEL);
     }
 
     @Test
-    void deletesFromLabelToStructure() {
-        // Layout: [LABEL @ x=2] [CODE @ x=3] [CODE @ x=4] ... [STRUCTURE @ x=10]
+    void aShellBehindTheBlockIsLeftStanding() {
+        // Layout: [LABEL @ x=2] [CODE @ x=3..5] ... [STRUCTURE @ x=10], the end of the extent
         placeLabel(2, 5, LABEL_HASH_A);
         placeCode(3, 5);
         placeCode(4, 5);
@@ -167,32 +203,28 @@ class GeneDeletionPluginTest {
         GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
-        // Label and all code should be deleted
-        assertThat(environment.getMolecule(2, 5).isEmpty()).isTrue();
-        assertThat(environment.getMolecule(3, 5).isEmpty()).isTrue();
-        assertThat(environment.getMolecule(4, 5).isEmpty()).isTrue();
-        assertThat(environment.getMolecule(5, 5).isEmpty()).isTrue();
-        // Structure should remain
+        for (int x = 2; x <= 5; x++) {
+            assertThat(isEmpty(x, 5)).as("Cell (%d,5) should be cleared", x).isTrue();
+        }
         assertThat(environment.getMolecule(10, 5).type()).isEqualTo(Config.TYPE_STRUCTURE);
     }
 
     @Test
-    void stopsAtForeignMolecule() {
-        // Place label and code owned by child, then a foreign molecule
+    void passesOverAForeignMolecule() {
         placeLabel(2, 5, LABEL_HASH_A);
         placeCode(3, 5);
-        // Foreign molecule at x=5 (owned by organism 99)
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), 99, new int[]{5, 5});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), FOREIGN_ID, new int[]{5, 5});
+        placeCode(6, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
-        // Label and code should be deleted
-        assertThat(environment.getMolecule(2, 5).isEmpty()).isTrue();
-        assertThat(environment.getMolecule(3, 5).isEmpty()).isTrue();
-        // Foreign molecule should be untouched
-        assertThat(environment.getOwnerId(5, 5)).isEqualTo(99);
+        assertThat(isEmpty(2, 5)).isTrue();
+        assertThat(isEmpty(3, 5)).isTrue();
+        assertThat(isEmpty(6, 5)).as("the child's code behind the foreign cell is part of the block").isTrue();
+        assertThat(environment.getOwnerId(5, 5)).isEqualTo(FOREIGN_ID);
+        assertThat(environment.getMolecule(5, 5).value()).isEqualTo(42);
     }
 
     @Test
@@ -284,8 +316,8 @@ class GeneDeletionPluginTest {
     void deletedCellsAreUnowned() {
         placeLabel(2, 5, LABEL_HASH_A);
         placeCode(3, 5);
-        placeCode(4, 5);
-        placeData(5, 5);
+        placeData(4, 5);
+        placeCode(5, 5);
         placeStructure(8, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
@@ -337,6 +369,203 @@ class GeneDeletionPluginTest {
         assertThat(environment.getMolecule(4, 5).isEmpty()).isTrue();
     }
 
+    // ---- Block boundaries: no cliff, nothing outside the genome ----
+
+    @Test
+    void aBlockEndsBehindItsJumpAndLeavesADataWallStanding() {
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        placeJump(4, 5, LABEL_HASH_B);
+        placeData(9, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        for (int x = 2; x <= 5; x++) {
+            assertThat(isEmpty(x, 5)).as("Cell (%d,5) should be cleared", x).isTrue();
+        }
+        assertThat(environment.getMolecule(9, 5).type()).isEqualTo(Config.TYPE_DATA);
+    }
+
+    @Test
+    void aBlockEndsBehindItsReturnAndLeavesAStructureWallStanding() {
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        placeOpcode(4, 5, "RET");
+        placeStructure(9, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        for (int x = 2; x <= 4; x++) {
+            assertThat(isEmpty(x, 5)).as("Cell (%d,5) should be cleared", x).isTrue();
+        }
+        assertThat(environment.getMolecule(9, 5).type()).isEqualTo(Config.TYPE_STRUCTURE);
+    }
+
+    @Test
+    void aLabelExecutionRunsIntoIsNoCandidate() {
+        // Line 5: code entered at a label of its own runs on into the pair's label; line 7: the
+        // pair's label opens its line
+        placeLabel(1, 5, UNIQUE_HASH_1);
+        placeCode(2, 5);
+        placeLabel(3, 5, PAIR_HASH);
+        placeCode(4, 5);
+        placeLabel(0, 7, PAIR_HASH);
+        placeCode(1, 7);
+
+        for (int seed = 0; seed < 20; seed++) {
+            placeLabel(0, 7, PAIR_HASH);
+            placeCode(1, 7);
+            IRandomProvider rng = new SeededRandomProvider(seed);
+            deletion(rng, 1.0, 2.0, 2).delete(child, environment);
+
+            assertThat(environment.getMolecule(3, 5).type())
+                    .as("seed %d: the label code runs into stays", seed).isEqualTo(Config.TYPE_LABEL);
+            assertThat(isEmpty(0, 7)).as("seed %d: the other label is the one deleted", seed).isTrue();
+        }
+    }
+
+    @Test
+    void aLabelBehindAJumpIsACandidate() {
+        boolean labelBehindTheJumpTaken = false;
+        for (int seed = 0; seed < 20 && !labelBehindTheJumpTaken; seed++) {
+            placeLabel(2, 5, LABEL_HASH_A);
+            placeJump(3, 5, LABEL_HASH_B);
+            placeLabel(6, 5, LABEL_HASH_B);
+            placeCode(7, 5);
+
+            IRandomProvider rng = new SeededRandomProvider(seed);
+            deletion(rng, 1.0, 0.0, EVERY_LABEL).delete(child, environment);
+
+            labelBehindTheJumpTaken = isEmpty(6, 5);
+        }
+
+        assertThat(labelBehindTheJumpTaken).isTrue();
+    }
+
+    @Test
+    void aConditionalBeforeTheJumpKeepsTheLabelBehindItOut() {
+        for (int seed = 0; seed < 20; seed++) {
+            placeLabel(2, 5, LABEL_HASH_A);
+            placeConditional(3, 5);
+            placeJump(6, 5, LABEL_HASH_A);
+            placeLabel(9, 5, LABEL_HASH_B);
+            placeCode(10, 5);
+
+            IRandomProvider rng = new SeededRandomProvider(seed);
+            deletion(rng, 1.0, 0.0, EVERY_LABEL).delete(child, environment);
+
+            assertThat(environment.getMolecule(9, 5).type())
+                    .as("seed %d: the conditional can skip the jump into the label", seed)
+                    .isEqualTo(Config.TYPE_LABEL);
+        }
+    }
+
+    @Test
+    void aLabelTheInitialPositionRunsIntoIsNoCandidate() {
+        newbornStartingAt(2, 5);
+        placeStructure(1, 5);
+        placeLabel(4, 5, LABEL_HASH_A);
+        placeCode(5, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(environment.getMolecule(4, 5).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void aBlockTheNewbornStartsInIsNoCandidate() {
+        newbornStartingAt(5, 5);
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        placeCode(4, 5);
+        placeCode(6, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(environment.getMolecule(2, 5).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void aLabelInAnOperandSlotIsNeitherCandidateNorCounted() {
+        // Line 5: the pair's value stands as the jump's operand; line 7: as a label opening its line
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeOpcode(3, 5, "JMPI");
+        placeLabel(4, 5, PAIR_HASH);
+        placeLabel(0, 7, PAIR_HASH);
+        placeCode(1, 7);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, 2).delete(child, environment);
+
+        assertThat(environment.getMolecule(4, 5).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(environment.getMolecule(0, 7).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void unownedAndForeignCellsInTheBlockAreLeftStanding() {
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 500), 0, new int[]{4, 5});
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 7), FOREIGN_ID, new int[]{5, 5});
+        placeCode(6, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(isEmpty(2, 5)).isTrue();
+        assertThat(isEmpty(3, 5)).isTrue();
+        assertThat(isEmpty(6, 5)).isTrue();
+        assertThat(environment.getMolecule(4, 5).type()).isEqualTo(Config.TYPE_ENERGY);
+        assertThat(environment.getOwnerId(4, 5)).isEqualTo(0);
+        assertThat(environment.getMolecule(5, 5).type()).isEqualTo(Config.TYPE_DATA);
+        assertThat(environment.getOwnerId(5, 5)).isEqualTo(FOREIGN_ID);
+    }
+
+    @Test
+    void unownedEnergyBeyondTheBodyIsNeverTouched() {
+        // A block without a closing jump, a wall of DATA, and free energy behind the wall
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        placeData(6, 5);
+        for (int x = 7; x < 20; x++) {
+            environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 5000), 0, new int[]{x, 5});
+        }
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(isEmpty(2, 5)).isTrue();
+        assertThat(isEmpty(3, 5)).isTrue();
+        assertThat(environment.getMolecule(6, 5).type()).isEqualTo(Config.TYPE_DATA);
+        for (int x = 7; x < 20; x++) {
+            assertThat(environment.getMolecule(x, 5).type())
+                    .as("Cell (%d,5) should keep its energy", x).isEqualTo(Config.TYPE_ENERGY);
+        }
+    }
+
+    @Test
+    void aForeignLabelEndsTheBlock() {
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, LABEL_HASH_B), FOREIGN_ID, new int[]{4, 5});
+        placeCode(5, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(isEmpty(2, 5)).isTrue();
+        assertThat(isEmpty(3, 5)).isTrue();
+        assertThat(environment.getMolecule(4, 5).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(environment.getMolecule(5, 5).type()).isEqualTo(Config.TYPE_CODE);
+    }
+
     // ---- Mutation record tests ----
 
     /** The flat index the environment persists the cell at the given coordinate by. */
@@ -346,16 +575,16 @@ class GeneDeletionPluginTest {
 
     @Test
     void anAppliedDeletionIsRecordedWithTheLabelAndEveryClearedCell() {
-        // The only label at x=2, its gene up to the STRUCTURE at x=10
+        // The only label at x=2, its gene up to the last instruction before the STRUCTURE at x=10
         placeLabel(2, 5, LABEL_HASH_A);
         placeCode(3, 5);
-        placeCode(4, 5);
-        placeData(5, 5);
+        placeData(4, 5);
+        placeCode(5, 5);
         placeStructure(10, 5);
 
         int labelInt = environment.getMolecule(2, 5).toInt();
         int codeInt = environment.getMolecule(3, 5).toInt();
-        int dataInt = environment.getMolecule(5, 5).toInt();
+        int dataInt = environment.getMolecule(4, 5).toInt();
 
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
@@ -368,7 +597,7 @@ class GeneDeletionPluginTest {
         assertThat(record.kind()).isEqualTo("deletion");
         assertThat(record.cells()).containsExactly(
                 flatIndex(2, 5), flatIndex(3, 5), flatIndex(4, 5), flatIndex(5, 5));
-        assertThat(record.oldValues()).containsExactly(labelInt, codeInt, codeInt, dataInt);
+        assertThat(record.oldValues()).containsExactly(labelInt, codeInt, dataInt, codeInt);
         assertThat(record.newValues()).containsExactly(0, 0, 0, 0);
         assertThat(record.params())
                 .as("the chosen label's hash occurs once in the genome")

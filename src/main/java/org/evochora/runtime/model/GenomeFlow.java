@@ -59,10 +59,13 @@ public final class GenomeFlow {
     /**
      * Tells whether execution that runs on from one instruction to the next reaches a cell.
      * <p>
-     * The walk goes from the cell against the direction vector, over transparent cells, to whatever
-     * execution would have to come from:
+     * The cell the organism started at is reached: its instruction pointer enters the code there
+     * without a jump. Otherwise the walk goes from the cell against the direction vector, over
+     * transparent cells, to whatever execution would have to come from:
      * <ul>
      *   <li>a label: a jump lands there and runs on into the cell — reached;</li>
+     *   <li>the organism's initial position on a cell that opens no instruction: execution starts
+     *       there and runs on into the cell — reached;</li>
      *   <li>an instruction after which execution continues with the next cell — reached;</li>
      *   <li>an instruction that {@linkplain Instruction#neverFallsThrough(int) never falls
      *       through}: reached only if the instruction before it is a conditional, which skips it
@@ -90,16 +93,23 @@ public final class GenomeFlow {
         int axisSize = props.getDimensionSize(dvDim);
         copyToBuffer(cell);
 
+        if (frame.isInitialPosition(props.toFlatIndex(coord))) {
+            return true;
+        }
         boolean behindFlowEnd = false;
         int pos = cell[dvDim];
         for (int i = 0; i < cellsBefore; i++) {
             pos = step(pos, -dvStep, axisSize);
             coord[dvDim] = pos;
+            int flatIndex = props.toFlatIndex(coord);
             int moleculeInt = env.getMoleculeIntAt(coord);
             if (moleculeInt == 0) {
+                if (!behindFlowEnd && frame.isInitialPosition(flatIndex)) {
+                    return true;
+                }
                 continue;
             }
-            Slot slot = frame.slot(props.toFlatIndex(coord));
+            Slot slot = frame.slot(flatIndex);
             if (slot == Slot.AMBIGUOUS) {
                 return true;
             }
@@ -113,6 +123,9 @@ public final class GenomeFlow {
                 }
                 behindFlowEnd = true;
                 continue;
+            }
+            if (!behindFlowEnd && frame.isInitialPosition(flatIndex)) {
+                return true;
             }
             if (slot == Slot.NONE && !behindFlowEnd
                     && (moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {

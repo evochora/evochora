@@ -159,7 +159,7 @@ public final class GenomeFrame {
     private int[] dvCoordCollector;
 
     /** The dimension the direction vector points along. */
-    private int dvDim;
+    private int dvDim = -1;
 
     /** The step the walk takes along that dimension, {@code +1} or {@code -1}. */
     private int step;
@@ -169,6 +169,9 @@ public final class GenomeFrame {
 
     /** The size of the world along the dimension the walk runs along. */
     private int axisSize;
+
+    /** Flat index of the position the organism started at. */
+    private int initialFlatIndex = -1;
 
     /**
      * The stretch of one line the organism occupies, and where a walk along that line ends.
@@ -238,6 +241,7 @@ public final class GenomeFrame {
         poolIndex = 0;
 
         EnvironmentProperties props = env.getProperties();
+        initialFlatIndex = props.toFlatIndex(initialPosition);
         dims = props.getDimensions();
         dvDim = -1;
         for (int i = 0; i < dims; i++) {
@@ -265,7 +269,52 @@ public final class GenomeFrame {
         for (int i = 0; i < labelStarts.size(); i++) {
             walk(env, labelStarts.getInt(i), nopOpcodeId);
         }
-        walk(env, props.toFlatIndex(initialPosition), nopOpcodeId);
+        walk(env, initialFlatIndex, nopOpcodeId);
+    }
+
+    /**
+     * Tells whether a cell is the position the organism started at, where its instruction pointer
+     * enters the code without a jump.
+     *
+     * @param flatIndex The cell's flat index, as {@link EnvironmentProperties#toFlatIndex(int[])}
+     *                  computes it.
+     * @return {@code true} if the frame was built with this cell as the initial position.
+     */
+    public boolean isInitialPosition(int flatIndex) {
+        return flatIndex == initialFlatIndex;
+    }
+
+    /**
+     * Counts the cells of the organism's extent on a cell's line that lie before the cell, against
+     * the direction vector.
+     *
+     * @param cell The coordinates of the cell; not modified.
+     * @return The number of cells before it, or {@code -1} if the cell lies outside the extent.
+     */
+    public int cellsBefore(int[] cell) {
+        ScanLine line = lineHolding(cell);
+        if (line == null) {
+            return -1;
+        }
+        int offsetInArc = forwardDistance(line.arcStart, cell[dvDim]);
+        return step > 0 ? offsetInArc : arcLength(line) - 1 - offsetInArc;
+    }
+
+    /**
+     * Counts the cells of the organism's extent on a cell's line from the cell to the end the
+     * direction vector points to, the cell included.
+     *
+     * @param cell The coordinates of the cell; not modified.
+     * @return The number of cells from it to the end of the extent, or {@code -1} if the cell lies
+     *         outside the extent.
+     */
+    public int cellsFrom(int[] cell) {
+        ScanLine line = lineHolding(cell);
+        if (line == null) {
+            return -1;
+        }
+        int offsetInArc = forwardDistance(line.arcStart, cell[dvDim]);
+        return step > 0 ? arcLength(line) - offsetInArc : offsetInArc + 1;
     }
 
     /**
@@ -378,6 +427,36 @@ public final class GenomeFrame {
     }
 
     /**
+     * Finds the line whose extent holds a cell.
+     *
+     * @param cell The coordinates of the cell; not modified.
+     * @return The cell's line, or {@code null} if the frame is empty or the cell lies outside the
+     *         extent of its line.
+     */
+    private ScanLine lineHolding(int[] cell) {
+        if (dvDim == -1 || cell.length != dims) {
+            return null;
+        }
+        ScanLine line = scanLines.get(perpKey(cell));
+        if (line == null || forwardDistance(line.arcStart, cell[dvDim]) >= arcLength(line)) {
+            return null;
+        }
+        return line;
+    }
+
+    /**
+     * Counts the cells of a line's arc.
+     *
+     * @param line The line.
+     * @return The number of cells from the first to the last coordinate of its arc.
+     */
+    private int arcLength(ScanLine line) {
+        return (line.arcEnd >= line.arcStart)
+                ? line.arcEnd - line.arcStart + 1
+                : axisSize - line.arcStart + line.arcEnd + 1;
+    }
+
+    /**
      * Reads the code from one frame start to the end of the organism's extent on that line.
      *
      * @param env The environment holding the cells.
@@ -393,9 +472,7 @@ public final class GenomeFrame {
             return;
         }
 
-        int arcLength = (line.arcEnd >= line.arcStart)
-                ? line.arcEnd - line.arcStart + 1
-                : axisSize - line.arcStart + line.arcEnd + 1;
+        int arcLength = arcLength(line);
         int offsetInArc = forwardDistance(line.arcStart, walkCoord[dvDim]);
         if (offsetInArc >= arcLength) {
             return;
