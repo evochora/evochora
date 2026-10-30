@@ -932,15 +932,22 @@ public class H2Database extends AbstractDatabaseResource
      * The exception is logged with its stack trace because this is a system fault: HikariCP
      * chains the underlying failure that prevented connection creation, and that chain is the
      * only place where the actual cause appears.
+     * <p>
+     * A caller interrupted while it waits for a connection is being stopped, and the pool is
+     * sound: HikariCP restores the interrupt flag and reports the interruption as the cause of
+     * the exception, which is passed on without being recorded as an error.
      *
      * @param context Description of the operation requesting the connection, for error details.
      * @return A pooled connection that the caller must close.
-     * @throws SQLException if no connection can be acquired.
+     * @throws SQLException if no connection can be acquired, or the caller was interrupted.
      */
     private Connection acquireConnection(String context) throws SQLException {
         try {
             return dataSource.getConnection();
         } catch (SQLException e) {
+            if (e.getCause() instanceof InterruptedException) {
+                throw e;
+            }
             log.error("H2 database '{}' cannot acquire a connection for {}: {}",
                 getResourceName(), context, e.getMessage(), e);
             recordError("CONNECTION_ACQUIRE_FAILED", "Cannot acquire a database connection",

@@ -12,12 +12,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -131,6 +135,30 @@ class H2DatabaseTest {
         );
         
         assertTrue(exception.getMessage().contains("this_var_does_not_exist_9999"));
+    }
+
+    // ===== Tests for Connection Acquisition =====
+
+    @Test
+    void anInterruptedWaitForAConnectionIsNoDatabaseError() throws Exception {
+        // A pool of one connection, which a reader holds, so that the next request has to wait
+        String dbUrl = "jdbc:h2:mem:test-interrupt-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1;MODE=PostgreSQL";
+        String runId = "run-" + UUID.randomUUID();
+        try (Connection setup = DriverManager.getConnection(dbUrl, "sa", "")) {
+            H2SchemaUtil.setupRunSchema(setup, runId, (connection, schemaName) -> { });
+        }
+        H2Database pool = new H2Database("interrupt-db",
+                ConfigFactory.parseString("jdbcUrl = \"" + dbUrl + "\"\nmaxPoolSize = 1"));
+        try (IDatabaseReader holder = pool.createReader(runId)) {
+            // The waiting caller is being stopped, as a service is when its node shuts down
+            Thread.currentThread().interrupt();
+            assertThrows(SQLException.class, pool::findLatestRunId);
+
+            assertTrue(Thread.interrupted(), "the interrupt flag must survive the failed acquisition");
+            assertTrue(pool.getErrors().isEmpty(), "an interrupted wait is no error of the database");
+        } finally {
+            pool.close();
+        }
     }
 
     // ===== Tests for Metrics =====
