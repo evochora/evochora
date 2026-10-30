@@ -1,5 +1,7 @@
 package org.evochora.compiler.internal;
 
+import java.util.Locale;
+
 /**
  * A source position in the JSON form of an artifact, {@link JsonProgramArtifact}. As the key of a
  * map it is written as the string {@link #toString()} produces, which makes it usable as a JSON
@@ -38,13 +40,14 @@ public record JsonSourceInfo(String fileName, int lineNumber, int columnNumber, 
      * for the empty placement. An alias chain holds no {@code @}, so the first one ends it.
      * The expansion is not part of the key: the token map, which this key serves, describes a
      * position's text, and the debugger's annotations at runtime look a token up by its position
-     * alone.
+     * alone. The numbers are written in the root locale, so that the key is the same whatever
+     * locale the JVM runs in.
      */
     @Override
     public String toString() {
         String file = fileName != null ? fileName : "<unknown>";
         String placed = placement == null || placement.isEmpty() ? file : placement + "@" + file;
-        return String.format("%s:%d:%d", placed, lineNumber, columnNumber);
+        return String.format(Locale.ROOT, "%s:%d:%d", placed, lineNumber, columnNumber);
     }
 
 }
