@@ -1,8 +1,12 @@
-package org.evochora.runtime.model;
+package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.GenomeFrame.Slot;
+import org.evochora.runtime.worldgen.GenomeFrame.Slot;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
 
 import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
@@ -11,6 +15,12 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 /**
  * What the instruction set says about how execution moves through one organism's genome, read on
  * top of a {@link GenomeFrame}.
+ * <p>
+ * <strong>One direction.</strong> Everything this class answers holds for the one direction vector
+ * it is built with. An organism that turns reads its cells along other scan lines, and none of
+ * the answers describes that. The mutation operators build it for a newborn with the direction
+ * vector it is born with and accept this limit; nothing outside them may rely on it, which is why
+ * the class is not visible outside this package.
  * <p>
  * The frame knows what every cell is; it does not know control flow. An operator that writes code
  * into a genome needs three answers the frame alone cannot give:
@@ -33,8 +43,8 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * no-operation of one cell and moves on. Every walk here passes such cells the same way, and an
  * operand cell as well, which leads back to its opcode. A registered opcode the frame gives no
  * role is passed too: every walk of the frame runs from a frame start — a label or the initial
- * position — to the end of its line, so such a cell stands before the first frame start of its
- * line, where the machine never reads, and no cell with a role can stand before it.
+ * position — to the end of its scan line, so such a cell stands before the first frame start of its
+ * scan line, where the machine never reads, and no cell with a role can stand before it.
  * <p>
  * <strong>What it cannot see.</strong> A jump whose target is computed at run time carries no label
  * reference in the genome, so {@link #isJumpTarget} does not know of it.
@@ -45,7 +55,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * <strong>Thread safety.</strong> Not thread-safe: an instance holds the buffers of the call that is
  * running, so every user keeps its own.
  */
-public final class GenomeFlow {
+final class GenomeFlow {
 
     /** The values of the label references {@link #collectReferences} found. */
     private final IntArrayList referenceValues = new IntArrayList();
@@ -73,7 +83,7 @@ public final class GenomeFlow {
      *       the next instruction and no other; a conditional further back acts on what stands
      *       between. A label between the two does not end the search for it: the machine's skip
      *       passes every cell that is no instruction ({@link Organism#skipNopCells});</li>
-     *   <li>the beginning of the organism's extent on the line: nothing comes from there — not
+     *   <li>the beginning of the organism's extent on the scan line: nothing comes from there — not
      *       reached.</li>
      * </ul>
      * A cell two walks of the frame read differently has no single role; it counts as reached.
@@ -85,10 +95,10 @@ public final class GenomeFlow {
      */
     public boolean reachedByFallThrough(Environment env, GenomeFrame frame, int[] cell) {
         EnvironmentProperties props = env.getProperties();
-        GenomeLines lines = frame.lines();
-        int dvDim = lines.dvDim();
-        int dvStep = lines.step();
-        int cellsBefore = Math.max(0, lines.cellsBefore(cell));
+        GenomeScanLines scanLines = frame.scanLines();
+        int dvDim = scanLines.dvDim();
+        int dvStep = scanLines.step();
+        int cellsBefore = Math.max(0, scanLines.cellsBefore(cell));
         copyToBuffer(cell);
 
         if (frame.isInitialPosition(props.toFlatIndex(coord))) {
@@ -147,8 +157,8 @@ public final class GenomeFlow {
         referenceValues.clear();
         referenceIsControlFlow.clear();
         EnvironmentProperties props = env.getProperties();
-        GenomeLines lines = frame.lines();
-        env.visitCellsOwnedBy(lines.organismId(), cell -> {
+        GenomeScanLines scanLines = frame.scanLines();
+        env.visitCellsOwnedBy(scanLines.organismId(), cell -> {
             int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) != Config.TYPE_LABELREF) {
                 return;
@@ -227,9 +237,9 @@ public final class GenomeFlow {
      */
     public boolean endsOpen(Environment env, GenomeFrame frame, int[] firstCell, int length) {
         EnvironmentProperties props = env.getProperties();
-        GenomeLines lines = frame.lines();
-        int dvDim = lines.dvDim();
-        int dvStep = lines.step();
+        GenomeScanLines scanLines = frame.scanLines();
+        int dvDim = scanLines.dvDim();
+        int dvStep = scanLines.step();
         copyToBuffer(firstCell);
 
         int lastOpcodeId = -1;
@@ -268,9 +278,9 @@ public final class GenomeFlow {
      */
     private boolean isControlFlowOperand(Environment env, GenomeFrame frame, EnvironmentProperties props,
                                          int[] referenceCell) {
-        GenomeLines lines = frame.lines();
-        int dvDim = lines.dvDim();
-        int axisSize = lines.axisSize();
+        GenomeScanLines scanLines = frame.scanLines();
+        int dvDim = scanLines.dvDim();
+        int axisSize = scanLines.axisSize();
         copyToBuffer(referenceCell);
         if (frame.slot(props.toFlatIndex(coord)) != Slot.LABEL) {
             return false;
@@ -278,7 +288,7 @@ public final class GenomeFlow {
         int pos = referenceCell[dvDim];
         // The walk ends at the first cell that is no operand, so it is as short as an operand list.
         for (int i = 0; i < axisSize; i++) {
-            pos = props.stepAlongAxis(pos, dvDim, -lines.step());
+            pos = props.stepAlongAxis(pos, dvDim, -scanLines.step());
             coord[dvDim] = pos;
             Slot slot = frame.slot(props.toFlatIndex(coord));
             if (slot == Slot.INSTRUCTION) {

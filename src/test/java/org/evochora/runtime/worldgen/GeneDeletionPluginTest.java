@@ -405,8 +405,8 @@ class GeneDeletionPluginTest {
 
     @Test
     void aLabelExecutionRunsIntoIsNoCandidate() {
-        // Line 5: code entered at a label of its own runs on into the pair's label; line 7: the
-        // pair's label opens its line
+        // Scan line 5: code entered at a label of its own runs on into the pair's label; scan line
+        // 7: the pair's label opens its scan line
         placeLabel(1, 5, UNIQUE_HASH_1);
         placeCode(2, 5);
         placeLabel(3, 5, PAIR_HASH);
@@ -478,7 +478,7 @@ class GeneDeletionPluginTest {
 
     @Test
     void aLabelTheInitialPositionRunsIntoFromOutsideTheBodyIsNoCandidate() {
-        // The newborn starts on an unowned empty cell before its first owned cell on the line
+        // The newborn starts on an unowned empty cell before its first owned cell on the scan line
         newbornStartingAt(2, 5);
         placeLabel(4, 5, LABEL_HASH_A);
         placeCode(5, 5);
@@ -507,7 +507,8 @@ class GeneDeletionPluginTest {
 
     @Test
     void aLabelInAnOperandSlotIsNeitherCandidateNorCounted() {
-        // Line 5: the pair's value stands as the jump's operand; line 7: as a label opening its line
+        // Scan line 5: the pair's value stands as the jump's operand; scan line 7: as a label
+        // opening its scan line
         placeLabel(2, 5, LABEL_HASH_A);
         placeOpcode(3, 5, "JMPI");
         placeLabel(4, 5, PAIR_HASH);

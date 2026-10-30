@@ -214,12 +214,15 @@ class EnvironmentPropertiesTest {
     }
 
     @Test
-    void aStepAlongAnAxisWrapsAtBothEndsWithoutAllocating() {
+    void aStepAlongAnAxisWrapsAtBothEndsInEitherTopology() {
         EnvironmentProperties torus = new EnvironmentProperties(new int[]{32, 16}, true);
+        EnvironmentProperties bounded = new EnvironmentProperties(new int[]{32, 16}, false);
 
         assertEquals(0, torus.stepAlongAxis(31, 0, 1));
         assertEquals(31, torus.stepAlongAxis(0, 0, -1));
         assertEquals(6, torus.stepAlongAxis(5, 0, 1));
         assertEquals(0, torus.stepAlongAxis(15, 1, 1), "the step follows the size of its own axis");
+        assertEquals(0, bounded.stepAlongAxis(31, 0, 1), "a bounded world is wrapped as well");
+        assertEquals(15, bounded.stepAlongAxis(0, 1, -1), "a bounded world is wrapped as well");
     }
 }

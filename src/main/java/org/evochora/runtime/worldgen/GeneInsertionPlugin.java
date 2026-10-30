@@ -6,9 +6,6 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.GenomeFlow;
-import org.evochora.runtime.model.GenomeFrame;
-import org.evochora.runtime.model.GenomeLines;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
@@ -69,20 +66,20 @@ import java.util.Random;
  * A newborn without such a label, without such a bit or without such a region receives nothing.
  * An instruction's own LABEL operand receives A', so that it never refers to the new label.
  * <p>
- * <strong>NOP Area Search:</strong> Walks the extent of every line of the newborn's genome (see
- * {@link GenomeLines}) checking for empty cells ({@code moleculeInt == 0}). This correctly handles
- * the fact that empty cells have no owner and thus never appear among the owned cells. A
- * qualifying run is selected uniformly at random via reservoir sampling across all lines.
+ * <strong>NOP Area Search:</strong> Walks the extent of every scan line of the newborn's genome
+ * (see {@link GenomeScanLines}) checking for empty cells ({@code moleculeInt == 0}). This correctly
+ * handles the fact that empty cells have no owner and thus never appear among the owned cells. A
+ * qualifying run is selected uniformly at random via reservoir sampling across all scanLines.
  * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are grouped
- * into lines by {@link GenomeLines}, whose tables survive a birth, and reusable coordinate
+ * into scan lines by {@link GenomeScanLines}, whose tables survive a birth, and reusable coordinate
  * buffers, in-place DV advancement, and reservoir sampling (instead of list collection) minimize
- * GC pressure. The only per-call allocations are one {@code getShape()} defensive copy, the copies
- * of the newborn's direction vector and initial position, the visitors of the lines' owned-cell
- * visits, 1-4 {@link Molecule} records for the chain and, when a chain is placed, the
- * {@link MutationRecord} handed to the newborn. A label entry adds what one {@link GenomeFrame}
- * build costs, the visitor lambda that collects the references, the three further
- * {@link Molecule} records of the label and the jump, and the record of the renamed label.
+ * GC pressure. The only per-call allocations are the copies of the newborn's direction vector and
+ * initial position, the visitors of the scan lines' owned-cell visits, one {@link Molecule} record
+ * per cell of the chain and, when a chain is placed, the {@link MutationRecord} handed to the
+ * newborn. A label entry adds what one {@link GenomeFrame} build costs, the visitor lambda that
+ * collects the references, the further {@link Molecule} records of the label and the jump, and the
+ * record of the renamed label.
  * <p>
  * <strong>What it records:</strong> a placed chain reports itself on the newborn as a
  * {@link MutationRecord} naming the cells of the chain in placement order, with the empty cell as
@@ -135,8 +132,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private int[] coordBuffer;
     private int[] walkPos;
 
-    /** The lines of the newborn's genome, rebuilt for every insertion. */
-    private final GenomeLines lines = new GenomeLines();
+    /** The scan lines of the newborn's genome, rebuilt for every insertion. */
+    private final GenomeScanLines scanLines = new GenomeScanLines();
 
     // --- Reservoir sampling state (reset per mutate() call) ---
     private int reservoirLabelHash;
@@ -457,17 +454,16 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
     /**
      * Performs gene insertion for a single newborn organism.
-     * <p>
-     * Builds the newborn's lines, samples a label hash, selects a mutation entry, generates the
-     * molecule chain, finds a suitable NOP area by walking the lines, and places the chain. A
-     * chain that is placed is recorded on the child.
+     * <p> Builds the newborn's scan lines, samples a label hash, selects a mutation entry,
+     * generates the molecule chain, finds a suitable NOP area by walking the scan lines, and places
+     * the chain. A chain that is placed is recorded on the child.
      * <p>
      * <strong>Draw order.</strong> The label reservoir runs first, over the newborn's LABEL cells
      * in flat-index order; then the entry is drawn by weight. An instruction entry then draws its
      * opcode and its operands. A label entry first draws the label it copies, by a reservoir over
      * the newborn's jump targets in flat-index order, then the bit the renamed value differs in,
      * and then the opcode and operands of the inserted instruction. The NOP run is drawn
-     * last, by a reservoir over the runs in the order the lines are walked; a label entry
+     * last, by a reservoir over the runs in the order the scan lines are walked; a label entry
      * offers that reservoir only the runs execution does not run on into.
      *
      * @param child The newborn organism.
@@ -481,15 +477,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
 
         int[] dv = child.getDv();
-        lines.build(env, childId, dv, child.getInitialPosition());
-        int dvDim = lines.dvDim();
+        scanLines.build(env, childId, dv, child.getInitialPosition());
+        int dvDim = scanLines.dvDim();
         if (dvDim == -1) {
             LOG.debug("tick={} Organism {} gene insertion: degenerate DV", child.getBirthTick(), childId);
             return;
         }
 
-        int[] shape = env.getShape();
-        int dims = shape.length;
+        int dims = env.properties.getDimensions();
         ensureBuffers(dims);
         sampleLabelHash(env);
 
@@ -515,13 +510,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         int dvStep = dv[dvDim];
         boolean isLabelEntry = entry instanceof LabelEntry;
-        if (!selectNopRun(env, dvDim, dvStep, chainBuffer.size(), shape[dvDim], isLabelEntry)) {
+        if (!selectNopRun(env, dvDim, dvStep, chainBuffer.size(), isLabelEntry)) {
             LOG.debug("tick={} Organism {} gene insertion: no NOP area of length {} found", child.getBirthTick(), childId, chainBuffer.size());
             return;
         }
 
         if (dvStep < 0) {
-            selectedNopDvStart = (selectedNopDvStart + chainBuffer.size() - 1) % shape[dvDim];
+            selectedNopDvStart = (selectedNopDvStart + chainBuffer.size() - 1) % scanLines.axisSize();
         }
         if (isLabelEntry) {
             recordBuilder.start(getClass().getName(), LABEL_KIND, dv)
@@ -537,7 +532,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
         child.recordBirthMutation(recordBuilder.build());
         if (LOG.isDebugEnabled()) {
-            env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(selectedNopLine), coordBuffer);
+            env.properties.flatIndexToCoordinates(scanLines.sampleFlatIndex(selectedNopLine), coordBuffer);
             coordBuffer[dvDim] = selectedNopDvStart;
             LOG.debug("tick={} Organism {} gene insertion: placed {} molecules at {}",
                     child.getBirthTick(), childId, chainBuffer.size(), Arrays.toString(coordBuffer));
@@ -654,7 +649,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int childId = child.getId();
         ILabelMatchingStrategy matching = env.getLabelIndex().getStrategy();
 
-        frame.build(env, lines);
+        frame.build(env, scanLines);
         flow.collectReferences(env, frame);
 
         if (!selectLabelToCopy(env, matching)) {
@@ -683,13 +678,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
     /**
      * Draws the label a label entry copies, uniformly among the newborn's jump targets.
-     * <p>
-     * One reservoir pass over the newborn's LABEL cells, which the lines list in flat-index order,
-     * so that the draw does not depend on the order in which the genome's cells were written. A
-     * candidate is a LABEL molecule that opens a block — one the reading frame reads as no operand
-     * — and whose value is a jump target and nothing else ({@link GenomeFlow#isJumpTarget}). The
-     * pass also collects the value of every LABEL molecule the newborn owns into
-     * {@link #ownLabelValues}. Uses {@link #walkPos}.
+     * <p> One reservoir pass over the newborn's LABEL cells, which the scan lines list in
+     * flat-index order, so that the draw does not depend on the order in which the genome's cells
+     * were written. A candidate is a LABEL molecule that opens a block — one the reading frame
+     * reads as no operand — and whose value is a jump target and nothing else ({@link
+     * GenomeFlow#isJumpTarget}). The pass also collects the value of every LABEL molecule the
+     * newborn owns into {@link #ownLabelValues}. Uses {@link #walkPos}.
      *
      * @param env The simulation environment.
      * @param matching The run's label matching strategy, which tells whether a reference addresses a label.
@@ -699,8 +693,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private boolean selectLabelToCopy(Environment env, ILabelMatchingStrategy matching) {
         ownLabelValues.clear();
         jumpTargetCount = 0;
-        for (int i = 0; i < lines.labelCount(); i++) {
-            int flatIndex = lines.labelFlatIndex(i);
+        for (int i = 0; i < scanLines.labelCount(); i++) {
+            int flatIndex = scanLines.labelFlatIndex(i);
             env.properties.flatIndexToCoordinates(flatIndex, walkPos);
             int value = env.getMoleculeIntAt(walkPos) & Config.VALUE_MASK;
             ownLabelValues.add(value);
@@ -800,28 +794,27 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * Reservoir-samples the value of one of the newborn's LABEL cells into
      * {@link #reservoirLabelHash}, {@code -1} if it has none.
      * <p>
-     * The lines list the labels in flat-index order, so that the choice does not depend on the
+     * The scan lines list the labels in flat-index order, so that the choice does not depend on the
      * order in which the genome's cells were written.
      *
      * @param env The simulation environment.
      */
     private void sampleLabelHash(Environment env) {
         reservoirLabelHash = -1;
-        for (int i = 0; i < lines.labelCount(); i++) {
+        for (int i = 0; i < scanLines.labelCount(); i++) {
             if (random.nextInt(i + 1) == 0) {
-                env.properties.flatIndexToCoordinates(lines.labelFlatIndex(i), coordBuffer);
+                env.properties.flatIndexToCoordinates(scanLines.labelFlatIndex(i), coordBuffer);
                 reservoirLabelHash = env.getMoleculeIntAt(coordBuffer) & Config.VALUE_MASK;
             }
         }
     }
 
     /**
-     * Selects a NOP run of at least {@code minLength} via reservoir sampling across all lines.
-     * <p>
-     * Walks each line along its extent ({@link GenomeLines#arcStart} to {@link GenomeLines#arcEnd}),
-     * checking for empty cells ({@code moleculeInt == 0}). Each qualifying run is a candidate; one
-     * is selected uniformly at random. The result is stored in {@link #selectedNopLine} and
-     * {@link #selectedNopDvStart}.
+     * Selects a NOP run of at least {@code minLength} via reservoir sampling across all scanLines.
+     * <p> Walks each scan line along its extent ({@link GenomeScanLines#arcStart} to {@link
+     * GenomeScanLines#arcEnd}), checking for empty cells ({@code moleculeInt == 0}). Each
+     * qualifying run is a candidate; one is selected uniformly at random. The result is stored in
+     * {@link #selectedNopLine} and {@link #selectedNopDvStart}.
      * <p>
      * The walk correctly handles toroidal wrapping by advancing from the arc's start in the
      * positive direction, wrapping at the world boundary if the arc crosses it.
@@ -830,23 +823,22 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param dvDim The DV dimension index.
      * @param dvStep The DV step value ({@code dv[dvDim]}).
      * @param minLength Minimum required contiguous empty cells.
-     * @param shapeDvDim The environment size along the DV dimension.
      * @param awayFromExecution Whether only a run execution does not run on into qualifies; needs
      *                          {@link #frame} built for the newborn.
      * @return {@code true} if a qualifying run was found.
      */
-    private boolean selectNopRun(Environment env, int dvDim, int dvStep, int minLength, int shapeDvDim,
+    private boolean selectNopRun(Environment env, int dvDim, int dvStep, int minLength,
                                  boolean awayFromExecution) {
         nopCandidateCount = 0;
 
-        for (int line = 0; line < lines.lineCount(); line++) {
-            env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(line), coordBuffer);
+        for (int line = 0; line < scanLines.scanLineCount(); line++) {
+            env.properties.flatIndexToCoordinates(scanLines.sampleFlatIndex(line), coordBuffer);
 
-            int arcLength = lines.arcLength(line);
+            int arcLength = scanLines.arcLength(line);
 
             int nopRunStart = -1;
             int nopRunLength = 0;
-            int dvPos = lines.arcStart(line);
+            int dvPos = scanLines.arcStart(line);
 
             for (int step = 0; step < arcLength; step++) {
                 coordBuffer[dvDim] = dvPos;
@@ -859,7 +851,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
                     nopRunLength++;
                 } else {
                     if (nopRunLength >= minLength) {
-                        offerNopRun(env, line, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim, awayFromExecution);
+                        offerNopRun(env, line, nopRunStart, nopRunLength, dvDim, dvStep, awayFromExecution);
                     }
                     nopRunLength = 0;
                     nopRunStart = -1;
@@ -869,7 +861,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
             }
             // Trailing run
             if (nopRunLength >= minLength) {
-                offerNopRun(env, line, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim, awayFromExecution);
+                offerNopRun(env, line, nopRunStart, nopRunLength, dvDim, dvStep, awayFromExecution);
             }
         }
 
@@ -878,24 +870,23 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
     /**
      * Offers one NOP run to the reservoir of {@link #selectNopRun}.
-     * <p>
-     * Where only a run away from execution qualifies, a run the organism started in is passed
-     * over, because its instruction pointer would start inside what is written there; otherwise
-     * the run is asked about at the cell execution would enter it by, and the empty cells of the
-     * run itself change nothing about the answer. Uses
-     * {@link #walkPos}; {@link #coordBuffer} holds the line's coordinates and is left as it is.
+     * <p> Where only a run away from execution qualifies, a run the organism started in is passed
+     * over, because its instruction pointer would start inside what is written there; otherwise the
+     * run is asked about at the cell execution would enter it by, and the empty cells of the run
+     * itself change nothing about the answer. Uses {@link #walkPos}; {@link #coordBuffer} holds the
+     * scan line's coordinates and is left as it is.
      *
      * @param env The simulation environment.
-     * @param line The number of the line the run lies on.
+     * @param line The number of the scan line the run lies on.
      * @param runStart The run's smallest DV coordinate, in the direction of rising coordinates.
      * @param runLength The number of cells of the run.
      * @param dvDim The DV dimension index.
      * @param dvStep The DV step value ({@code dv[dvDim]}).
-     * @param shapeDvDim The environment size along the DV dimension.
      * @param awayFromExecution Whether a run execution runs on into is passed over.
      */
     private void offerNopRun(Environment env, int line, int runStart, int runLength,
-                             int dvDim, int dvStep, int shapeDvDim, boolean awayFromExecution) {
+                             int dvDim, int dvStep, boolean awayFromExecution) {
+        int shapeDvDim = scanLines.axisSize();
         if (awayFromExecution) {
             System.arraycopy(coordBuffer, 0, walkPos, 0, walkPos.length);
             for (int i = 0; i < runLength; i++) {
@@ -932,7 +923,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param dvStep The DV step value ({@code dv[dvDim]}).
      */
     private void placeChain(Environment env, int childId, int dvDim, int dvStep) {
-        env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(selectedNopLine), walkPos);
+        env.properties.flatIndexToCoordinates(scanLines.sampleFlatIndex(selectedNopLine), walkPos);
         walkPos[dvDim] = selectedNopDvStart;
 
         for (Molecule mol : chainBuffer) {

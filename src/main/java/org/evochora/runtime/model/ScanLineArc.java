@@ -3,14 +3,14 @@ package org.evochora.runtime.model;
 import org.evochora.runtime.Config;
 
 /**
- * The extent an organism occupies on one line of the world.
- * <p>
- * A line is the set of cells that share every coordinate but one; the cells of an organism's body
- * on it are given by their coordinates along that one axis and need not be contiguous. A cell
- * belongs to that body when the organism owns it and it carries no marker: a marked cell is one
- * the organism has set aside for a child it is building, and that body is not its own. The arc is the
- * stretch of the line the organism spans: it runs from the smallest to the largest owned
- * coordinate and contains whatever lies between them, gaps and foreign cells included.
+ * The extent an organism occupies on one scan line of the world.
+ * <p> A scan line is the set of cells that share every coordinate but one; the cells of an
+ * organism's body on it are given by their coordinates along that one axis and need not be
+ * contiguous. A cell belongs to that body when the organism owns it and it carries no marker: a
+ * marked cell is one the organism has set aside for a child it is building, and that body is not
+ * its own. The arc is the stretch of the scan line the organism spans: it runs from the smallest to
+ * the largest owned coordinate and contains whatever lies between them, gaps and foreign cells
+ * included.
  * <p>
  * On a toroidal axis the plain stretch from the smallest to the largest coordinate can be the
  * wrong one. A short body sitting across the world edge has cells near coordinate 0 and cells near
@@ -28,15 +28,14 @@ import org.evochora.runtime.Config;
  * axis does not reach it). A shorter span cannot reach around the edge, and its arc is simply the
  * smallest to the largest coordinate. On a bounded axis nothing wraps at all and the arc is always
  * the smallest to the largest coordinate.
- * <p>
- * The rule can be applied in two ways, and both allocate nothing. {@link #resolve} computes the
+ * <p> The rule can be applied in two ways, and both allocate nothing. {@link #resolve} computes the
  * two ends of an arc from coordinates the caller has collected, and is a function of those
  * coordinates, the axis size and the topology alone: they are read out of a range of an array the
  * caller owns and the two ends are written into a {@link Result} the caller owns, so a caller that
  * keeps both around pays no allocation per call. {@link #isWithinArc} answers the narrower question
- * whether one position lies in the arc, and reads the owners along the line out of the world itself,
- * stopping as soon as the answer is certain. The two must agree on every line, which is what
- * {@code ScanLineArcTest} checks.
+ * whether one position lies in the arc, and reads the owners along the scan line out of the world
+ * itself, stopping as soon as the answer is certain. The two must agree on every scan line, which
+ * is what {@code ScanLineArcTest} checks.
  */
 public final class ScanLineArc {
 
@@ -59,16 +58,16 @@ public final class ScanLineArc {
     }
 
     /**
-     * Reports whether the arc on a line has to be determined from the individual coordinates.
+     * Reports whether the arc on a scan line has to be determined from the individual coordinates.
      * <p>
      * It has to whenever the span from the smallest to the largest coordinate exceeds half the
      * axis on a toroidal world, because only such a span can reach around the world edge. Where
      * this reports {@code false} the arc is the smallest to the largest coordinate, and a caller
      * that already knows those two need not collect the coordinates in between.
      *
-     * @param minCoordinate The smallest coordinate owned on the line.
-     * @param maxCoordinate The largest coordinate owned on the line.
-     * @param axisSize The size of the world along the line's axis.
+     * @param minCoordinate The smallest coordinate owned on the scan line.
+     * @param maxCoordinate The largest coordinate owned on the scan line.
+     * @param axisSize The size of the world along the scan line's axis.
      * @param toroidal Whether the world wraps around at the ends of that axis.
      * @return {@code true} if the largest-gap rule decides the arc, {@code false} if the arc is
      *         {@code minCoordinate} to {@code maxCoordinate}.
@@ -78,7 +77,7 @@ public final class ScanLineArc {
     }
 
     /**
-     * Determines the arc an organism occupies on one line.
+     * Determines the arc an organism occupies on one scan line.
      * <p>
      * The coordinates are read from {@code sortedCoordinates[from]} to
      * {@code sortedCoordinates[from + count - 1]} and must be sorted ascending; duplicates are
@@ -97,10 +96,11 @@ public final class ScanLineArc {
      *       across the edge to 0 — reported as start 5, end 0.</li>
      * </ul>
      *
-     * @param sortedCoordinates Array holding the owned coordinates along the line, sorted ascending.
+     * @param sortedCoordinates Array holding the owned coordinates along the scan line, sorted
+     *                          ascending.
      * @param from Index of the first coordinate to read.
      * @param count Number of coordinates to read; at least one.
-     * @param axisSize The size of the world along the line's axis.
+     * @param axisSize The size of the world along the scan line's axis.
      * @param toroidal Whether the world wraps around at the ends of that axis.
      * @param out Receives the two ends of the arc.
      */
@@ -135,22 +135,21 @@ public final class ScanLineArc {
     }
 
     /**
-     * Reports whether a position lies in the arc an organism occupies on the line through it.
-     * <p>
-     * The line runs along {@code axis} through {@code position}: it holds the cells that share
-     * every other coordinate with it. The arc on that line is the one the class documentation
-     * defines, so a position on a cell of the organism's body always lies in it, a position between
-     * two of them lies in it as well, and a line without such a cell has no arc to lie in. Cells
-     * the organism owns but has marked do not count: they are the body of a child being built.
-     * <p>
-     * Rather than collecting the owned coordinates, this walks the line outwards from the position
-     * and stops as soon as the answer is certain. It first looks for the organism's cells on either
-     * side, which bound the stretch of free cells the position sits in, and then examines the rest
-     * of the line only as far as it takes to find out whether a wider stretch exists somewhere
-     * else: a stretch wider than half the axis is the widest there can be, one that has already
-     * grown wider than the position's own settles the question wherever it ends, and one that no
-     * remaining piece of the line could still exceed is the widest as well. A position on an owned
-     * cell is answered without reading a second cell.
+     * Reports whether a position lies in the arc an organism occupies on the scan line through it.
+     * <p> The scan line runs along {@code axis} through {@code position}: it holds the cells that
+     * share every other coordinate with it. The arc on that scan line is the one the class
+     * documentation defines, so a position on a cell of the organism's body always lies in it, a
+     * position between two of them lies in it as well, and a scan line without such a cell has no
+     * arc to lie in. Cells the organism owns but has marked do not count: they are the body of a
+     * child being built.
+     * <p> Rather than collecting the owned coordinates, this walks the scan line outwards from the
+     * position and stops as soon as the answer is certain. It first looks for the organism's cells
+     * on either side, which bound the stretch of free cells the position sits in, and then examines
+     * the rest of the scan line only as far as it takes to find out whether a wider stretch exists
+     * somewhere else: a stretch wider than half the axis is the widest there can be, one that has
+     * already grown wider than the position's own settles the question wherever it ends, and one
+     * that no remaining piece of the scan line could still exceed is the widest as well. A position
+     * on an owned cell is answered without reading a second cell.
      * <p>
      * Allocation-free and free of state, and it only reads, so it may be called from the parallel
      * wave. A position outside a bounded world names no cell and lies in no arc, which is answered
@@ -159,9 +158,9 @@ public final class ScanLineArc {
      *
      * @param environment The world the owners are read from.
      * @param position The position to test, one component per dimension.
-     * @param axis The dimension the line runs along.
+     * @param axis The dimension the scan line runs along.
      * @param ownerId The organism whose body forms the arc.
-     * @return {@code true} if the position lies in that organism's arc on the line.
+     * @return {@code true} if the position lies in that organism's arc on the scan line.
      * @throws IllegalArgumentException if the position does not have one component per dimension.
      */
     public static boolean isWithinArc(Environment environment, int[] position, int axis, int ownerId) {
@@ -186,9 +185,9 @@ public final class ScanLineArc {
                     && ownedCellFound(environment, index, axis, true, ownerId);
         }
 
-        // The free cells around the position form one stretch, bounded by the nearest owned cell
-        // on either side. Its width is the distance between those two cells, and the search for
-        // them stops once that width must exceed half the axis: all stretches of a line add up to
+        // The free cells around the position form one stretch, bounded by the nearest owned cell on
+        // either side. Its width is the distance between those two cells, and the search for them
+        // stops once that width must exceed half the axis: all stretches of a scan line add up to
         // the axis, so one wider than half of it is the widest, and the position is outside.
         int forward = 0;
         int forwardIndex = index;
@@ -251,11 +250,11 @@ public final class ScanLineArc {
     }
 
     /**
-     * Walks a line in one direction until a cell of the organism is reached or the world ends.
+     * Walks a scan line in one direction until a cell of the organism is reached or the world ends.
      *
      * @param environment The world the owners are read from.
      * @param fromIndex The layout index of the cell to start from, which is not examined.
-     * @param axis The dimension the line runs along.
+     * @param axis The dimension the scan line runs along.
      * @param forward Whether to walk towards higher coordinates.
      * @param ownerId The organism to look for.
      * @return {@code true} if a cell of that organism lies in that direction.
@@ -275,19 +274,18 @@ public final class ScanLineArc {
     }
 
     /**
-     * Reports whether a toroidal line holds a stretch of free cells that takes the outside from the
-     * one the tested position sits in.
-     * <p>
-     * The walk starts at the owned cell that ends the position's own stretch and follows the line
-     * away from it until it reaches the cell that begins that stretch again, measuring every other
-     * stretch on the way. It ends early where the outcome is settled: a stretch that has grown
-     * wider than the position's own decides against it, whether or not its end has been reached,
-     * and a remaining piece of line too short to hold a wider one decides for it.
+     * Reports whether a toroidal scan line holds a stretch of free cells that takes the outside
+     * from the one the tested position sits in.
+     * <p> The walk starts at the owned cell that ends the position's own stretch and follows the
+     * scan line away from it until it reaches the cell that begins that stretch again, measuring
+     * every other stretch on the way. It ends early where the outcome is settled: a stretch that
+     * has grown wider than the position's own decides against it, whether or not its end has been
+     * reached, and a remaining piece of scan line too short to hold a wider one decides for it.
      *
      * @param environment The world the owners are read from.
      * @param fromIndex The layout index of the owned cell the position's stretch ends at.
      * @param fromCoordinate The coordinate of that cell along the axis.
-     * @param axis The dimension the line runs along.
+     * @param axis The dimension the scan line runs along.
      * @param ownerId The organism whose cells bound the stretches.
      * @param axisSize The size of the world along that axis.
      * @param ownStretch The width of the stretch the position sits in.

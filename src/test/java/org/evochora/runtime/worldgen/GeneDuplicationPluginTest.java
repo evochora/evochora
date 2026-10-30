@@ -406,7 +406,8 @@ class GeneDuplicationPluginTest {
 
     @Test
     void aShellCellAtTheEndOfTheLineIsNotCarriedIntoTheBody() {
-        // A gene at y=2 whose line ends in the organism's shell, and one empty row as the target
+        // A gene at y=2 whose scan line ends in the organism's shell, and one empty row as the
+        // target
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), child.getId(), new int[]{10, 2});
         environment.setMolecule(new Molecule(Config.TYPE_CODE, ADDR_OPCODE), child.getId(), new int[]{11, 2});
         environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 0), child.getId(), new int[]{12, 2});
@@ -1073,5 +1074,26 @@ class GeneDuplicationPluginTest {
             }
         }
         assertThat(written).as("copies that went to the other run").isPositive();
+    }
+
+    @Test
+    void emptyCellsUpToAnInitialPositionBehindTheSourceDoNotCutTheCopy() {
+        // y=2: the source block, and behind it, along the direction vector, empty cells up to the
+        // newborn's initial position. y=6: a run that holds the block exactly.
+        child = Organism.restore(3, 9)
+                .parentId(child.getParentId())
+                .ip(new int[]{20, 2})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{20, 2})
+                .energy(5000)
+                .build(simulation);
+        simulation.addOrganism(child);
+        int id = child.getId();
+        placeRisingBlock(id, 10, 2);
+        placeTargetRow(id, 6, 4);
+
+        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+
+        assertBlockAt(0, 6);
     }
 }

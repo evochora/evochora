@@ -1,8 +1,11 @@
-package org.evochora.runtime.model;
+package org.evochora.runtime.worldgen;
 
 import java.util.List;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 
@@ -17,7 +20,14 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
  * neighbours say whether it is an opcode or an argument. Only a forward parse from a point at
  * which the instruction pointer can stand knows the reading frame, and that is what this class
  * performs: it starts where the machine can enter the code — at a label the organism owns and at
- * the organism's initial position — and reads forward exactly as the machine reads.
+ * the organism's initial position — and reads forward exactly as the machine reads while the
+ * organism keeps its direction vector.
+ * <p>
+ * <strong>One direction.</strong> Everything the frame answers holds for the one direction vector
+ * it is built with. An organism that turns reads its cells along other scan lines, and none of
+ * the answers describes that. The mutation operators build it for a newborn with the direction
+ * vector it is born with and accept this limit; nothing outside them may rely on it, which is why
+ * the class is not visible outside this package.
  * <p>
  * <strong>What a walk does.</strong> From each of those starts it follows the organism's direction
  * vector, one cell at a time:
@@ -32,12 +42,12 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
  *       reads for it;</li>
  *   <li>cells owned by another organism are walked over like any other, because the machine does
  *       not stop at them either.</li>
- * </ul>
- * A walk ends where the organism's extent on its line ends, as {@link GenomeLines} resolves it:
- * the arc over the coordinates the organism owns on the line, which crosses the world edge only
- * where the world is toroidal. An instruction whose operands would reach past the end of the arc
- * is cut there: the cells beyond are not part of this genome. The frame is built on top of those
- * lines, which the caller builds first and can use for its own purposes as well.
+ * </ul> A walk ends where the organism's extent on its scan line ends, as {@link GenomeScanLines}
+ * resolves it: the arc over the coordinates the organism owns on the scan line and its initial
+ * position where that lies on the scan line, which crosses the world edge only where the world is
+ * toroidal. An instruction whose operands would reach past the end of the arc is cut there: the
+ * cells beyond are not part of this genome. The frame is built on top of those scan lines, which
+ * the caller builds first and can use for its own purposes as well.
  * <p>
  * <strong>Two walks over one cell.</strong> Two starts can lead through the same cell in different
  * reading frames — a label placed inside another instruction's operand list is read as an operand
@@ -62,7 +72,7 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
  *   <li>which cells belong to no instruction — labels, no-operation cells and cells no walk
  *       reaches — so that an operator can leave them alone or seek them out: the deletion finds
  *       the labels that open a block among them and leaves them standing at a block's end, and the
- *       duplication writes such a cell into a copy as an empty one;</li>
+ *       duplication writes such a cell into a copy as an empty one, a label excepted;</li>
  *   <li>the component index of a vector cell, so that an operator can act on a vector as a whole
  *       — rotate or mirror it — rather than on one of its cells;</li>
  *   <li>where an instruction begins and ends, so that an operator copies or removes whole
@@ -89,7 +99,7 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
  * <strong>Thread safety.</strong> Not thread-safe: a frame holds the buffers of the build that is
  * running, so every user keeps its own.
  */
-public final class GenomeFrame {
+final class GenomeFrame {
 
     /**
      * The role one cell carries in the reading frame.
@@ -132,8 +142,8 @@ public final class GenomeFrame {
     /** Packed role per flat index; a cell that is absent has been reached by no walk. */
     private final Int2IntOpenHashMap roles = new Int2IntOpenHashMap();
 
-    /** The lines of the genome the frame was last built on. */
-    private GenomeLines lines;
+    /** The scan lines of the genome the frame was last built on. */
+    private GenomeScanLines scanLines;
 
     /** Coordinates of the cell a walk is looking at. */
     private int[] walkCoord;
@@ -161,45 +171,44 @@ public final class GenomeFrame {
      * Reads one organism's genome as the machine reads it and records what every cell is.
      * <p>
      * Everything a previous build recorded is dropped first, so the result describes the grid as
-     * it stands now. Lines without a direction, or without a line at all, leave the frame empty.
-     *
-     * The walks start at every label the lines list and at the initial position they were built
-     * with, a frame start like every label.
+     * it stands now. Scan lines without a direction or without any scan line leave the frame empty.
+     * <p> The walks start at every label the scan lines list and at the initial position they were
+     * built with, a frame start like every label.
      *
      * @param env The environment holding the cells.
-     * @param lines The organism's lines, built for the grid as it stands; kept by the frame until
-     *              its next build and not to be rebuilt before the frame is done with.
+     * @param scanLines The organism's scan lines, built for the grid as it stands; kept by the
+     *              frame until its next build and not to be rebuilt before the frame is done with.
      */
-    public void build(Environment env, GenomeLines lines) {
+    public void build(Environment env, GenomeScanLines scanLines) {
         roles.clear();
-        this.lines = lines;
+        this.scanLines = scanLines;
         initialFlatIndex = -1;
-        dvDim = lines.dvDim();
-        if (dvDim == -1 || lines.lineCount() == 0) {
+        dvDim = scanLines.dvDim();
+        if (dvDim == -1 || scanLines.scanLineCount() == 0) {
             return;
         }
         EnvironmentProperties props = env.getProperties();
-        initialFlatIndex = lines.initialFlatIndex();
-        step = lines.step();
+        initialFlatIndex = scanLines.initialFlatIndex();
+        step = scanLines.step();
         dims = props.getDimensions();
         if (walkCoord == null || walkCoord.length != dims) {
             walkCoord = new int[dims];
         }
 
         int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
-        for (int i = 0; i < lines.labelCount(); i++) {
-            walk(env, lines.labelFlatIndex(i), nopOpcodeId);
+        for (int i = 0; i < scanLines.labelCount(); i++) {
+            walk(env, scanLines.labelFlatIndex(i), nopOpcodeId);
         }
         walk(env, initialFlatIndex, nopOpcodeId);
     }
 
     /**
-     * Reports the lines the frame was last built on.
+     * Reports the scan lines the frame was last built on.
      *
-     * @return The lines, or {@code null} if the frame was never built.
+     * @return The scan lines, or {@code null} if the frame was never built.
      */
-    public GenomeLines lines() {
-        return lines;
+    public GenomeScanLines scanLines() {
+        return scanLines;
     }
 
     /**
@@ -245,7 +254,7 @@ public final class GenomeFrame {
     }
 
     /**
-     * Reads the code from one frame start to the end of the organism's extent on that line.
+     * Reads the code from one frame start to the end of the organism's extent on that scan line.
      *
      * @param env The environment holding the cells.
      * @param startFlatIndex The flat index of the cell the walk starts at.
@@ -257,7 +266,7 @@ public final class GenomeFrame {
         props.flatIndexToCoordinates(startFlatIndex, walkCoord);
 
         // The cells still ahead of the walk: from its start to the end of the arc it moves towards.
-        int remaining = lines.cellsFrom(walkCoord);
+        int remaining = scanLines.cellsFrom(walkCoord);
         if (remaining <= 0) {
             return;
         }

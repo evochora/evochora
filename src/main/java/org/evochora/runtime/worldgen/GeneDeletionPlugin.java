@@ -6,9 +6,6 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.GenomeFlow;
-import org.evochora.runtime.model.GenomeFrame;
-import org.evochora.runtime.model.GenomeLines;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
@@ -31,19 +28,19 @@ import java.util.Random;
  * reading frame ({@link GenomeFrame}); a LABEL molecule standing in another instruction's operand
  * list is that instruction's argument. And only where execution does not run into the label on
  * its own ({@link GenomeFlow#reachedByFallThrough}): the label stands at the beginning of the
- * newborn's extent on its line or behind an instruction that never falls through and that no
+ * newborn's extent on its scan line or behind an instruction that never falls through and that no
  * conditional can skip. Code before a label it runs into would run into the emptied cells after
  * the deletion. The newborn's initial position counts like such code: a label it runs into, and a
  * block it lies in, are not deleted. What enters the block is then only a jump to its label, and
  * that jump finds the label the body carries a second time.
  * <p>
  * <strong>Where a block ends.</strong> Before the next LABEL molecule, whatever its role and its
- * owner, because a jump can land there; otherwise at the end of the newborn's extent on the line.
- * Cells at the end of that stretch that are part of no instruction in the reading frame — padding,
- * a shell, data behind the code — are left standing, whatever their type, so that the deletion
- * takes the code of the block and not what surrounds it. Within the stretch it clears every cell
- * the newborn owns; a cell another organism owns or no one owns is left standing and passed over,
- * because it is not part of the newborn's genome.
+ * owner, because a jump can land there; otherwise at the end of the newborn's extent on the scan
+ * line. Cells at the end of that stretch that are part of no instruction in the reading frame —
+ * padding, a shell, data behind the code — are left standing, whatever their type, so that the
+ * deletion takes the code of the block and not what surrounds it. Within the stretch it clears
+ * every cell the newborn owns; a cell another organism owns or no one owns is left standing and
+ * passed over, because it is not part of the newborn's genome.
  * <p>
  * <strong>Which labels are candidates:</strong> only those whose value the newborn's body holds at
  * least {@code minLabelCount} times among its LABEL cells that are entry points. With a minimum of
@@ -55,7 +52,7 @@ import java.util.Random;
  * references to it then find the second place. A label insertion leaves no value twice: the label
  * it writes takes over the value of a block's label, and that label is renamed, so both values
  * occur once and neither is drawn from. A label occurring fewer times is not drawn from at all;
- * {@code minLabelCount = 1} makes every label a candidate again.
+ * {@code minLabelCount = 1} makes every label a candidate, unique blocks included.
  * <p>
  * Among the candidates a label is drawn with weight = count^exponent, count being how often its
  * value occurs and the exponent configurable. An exponent of two yields quadratic scaling —
@@ -66,13 +63,14 @@ import java.util.Random;
  * genome bloat from duplication. This plugin provides the matching variation: the redundant blocks
  * duplication leaves behind are the ones that can be taken away again.
  * <p>
- * <strong>Performance:</strong> The lines of the genome ({@link GenomeLines}) are built for every
- * newborn the deletion rate selects, and the reading frame on top of them for every such newborn
- * that carries a label, before the candidates are known, because which labels are candidates is
- * read from it. Each candidate costs a walk back to the code before its label and a walk along its
- * block. Beyond what building the lines and the frame allocates, a deletion allocates the copies
- * of the newborn's direction vector and initial position and, when it is applied, the
- * {@link MutationRecord}; the debug output allocates nothing while debug logging is off.
+ * <strong>Performance:</strong> The scan lines of the genome ({@link GenomeScanLines}) are built
+ * for every newborn the deletion rate selects, and the reading frame on top of them for every such
+ * newborn that carries a label, before the candidates are known, because which labels are
+ * candidates is read from it. Each candidate costs a walk back to the code before its label and a
+ * walk along its block. Beyond what building the scan lines and the frame allocates, a deletion
+ * allocates the copies of the newborn's direction vector and initial position and, when it is
+ * applied, the {@link MutationRecord}; the debug output allocates nothing while debug logging is
+ * off.
  * <p>
  * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared
@@ -114,8 +112,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
     /** The reading frame of the newborn, rebuilt for every deletion. */
     private final GenomeFrame frame = new GenomeFrame();
 
-    /** The lines of the newborn's genome, rebuilt for every deletion. */
-    private final GenomeLines lines = new GenomeLines();
+    /** The scan lines of the newborn's genome, rebuilt for every deletion. */
+    private final GenomeScanLines scanLines = new GenomeScanLines();
 
     /** Answers whether execution runs into a label on its own, on top of the frame. */
     private final GenomeFlow flow = new GenomeFlow();
@@ -180,8 +178,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         int[] dv = child.getDv();
-        lines.build(env, childId, dv, child.getInitialPosition());
-        int dvDim = lines.dvDim();
+        scanLines.build(env, childId, dv, child.getInitialPosition());
+        int dvDim = scanLines.dvDim();
         if (dvDim == -1) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("tick={} Organism {} gene deletion: degenerate DV", child.getBirthTick(), childId);
@@ -195,16 +193,16 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         // --- Phase 1: Collect the labels that are entry points and count hash frequencies ---
-        // The lines list the labels in flat-index order: the choice below must not depend on
+        // The scan lines list the labels in flat-index order: the choice below must not depend on
         // write history
-        if (lines.labelCount() == 0) {
+        if (scanLines.labelCount() == 0) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
             }
             return;
         }
 
-        frame.build(env, lines);
+        frame.build(env, scanLines);
         collectEntryPoints(env);
 
         if (labelFlatIndices.isEmpty()) {
@@ -260,7 +258,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         int deletedCount = 0;
         for (int k = 0; k < selectedLength; k++) {
             if (k > 0) {
-                walkCoord[dvDim] = env.properties.stepAlongAxis(walkCoord[dvDim], dvDim, lines.step());
+                walkCoord[dvDim] = env.properties.stepAlongAxis(walkCoord[dvDim], dvDim, scanLines.step());
             }
             int moleculeInt = env.getMoleculeIntAt(walkCoord);
             // An empty cell holds nothing to remove, and a cell the child does not own is not
@@ -292,8 +290,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
         labelFlatIndices.clear();
         labelHashes.clear();
         hashCounts.clear();
-        for (int i = 0; i < lines.labelCount(); i++) {
-            int flatIndex = lines.labelFlatIndex(i);
+        for (int i = 0; i < scanLines.labelCount(); i++) {
+            int flatIndex = scanLines.labelFlatIndex(i);
             if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE) {
                 continue;
             }
@@ -308,15 +306,15 @@ public class GeneDeletionPlugin implements IBirthHandler {
     /**
      * Determines how many cells, from a label along the direction vector, a deletion of its block
      * spans, or that the block cannot be removed without leaving a cliff.
-     * <p>
-     * The block cannot be removed if execution runs into the label without a jump to it — the
+     * <p> The block cannot be removed if execution runs into the label without a jump to it — the
      * newborn's initial position included — or if the initial position lies within the block.
      * Otherwise it spans the label and every cell up to the next LABEL molecule or the end of the
-     * newborn's extent on the line, without the cells at its end that are part of no instruction.
+     * newborn's extent on the scan line, without the cells at its end that are part of no
+     * instruction.
      *
      * @param env The simulation environment.
      * @param labelFlatIndex The flat index of a label the frame reads as an entry point, one of the
-     *                       newborn's own labels, which lies within the extent of its line.
+     *                       newborn's own labels, which lies within the extent of its scan line.
      * @return The number of cells the deletion spans, at least one for the label itself, or
      *         {@code 0} if the block cannot be removed.
      */
@@ -326,13 +324,13 @@ public class GeneDeletionPlugin implements IBirthHandler {
             return 0;
         }
 
-        int dvDim = lines.dvDim();
-        int extent = lines.cellsFrom(labelCoord);
+        int dvDim = scanLines.dvDim();
+        int extent = scanLines.cellsFrom(labelCoord);
         System.arraycopy(labelCoord, 0, walkCoord, 0, labelCoord.length);
         int length = 1;
         int initialPositionOffset = -1;
         for (int walked = 1; walked < extent; walked++) {
-            walkCoord[dvDim] = env.properties.stepAlongAxis(walkCoord[dvDim], dvDim, lines.step());
+            walkCoord[dvDim] = env.properties.stepAlongAxis(walkCoord[dvDim], dvDim, scanLines.step());
             if ((env.getMoleculeIntAt(walkCoord) & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 break;
             }

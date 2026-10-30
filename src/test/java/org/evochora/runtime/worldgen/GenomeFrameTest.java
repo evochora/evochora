@@ -1,10 +1,12 @@
-package org.evochora.runtime.model;
+package org.evochora.runtime.worldgen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.GenomeFrame.Slot;
+import org.evochora.runtime.worldgen.GenomeFrame.Slot;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -26,7 +28,7 @@ class GenomeFrameTest {
     private static final int[] BACKWARD = new int[]{-1, 0};
 
     private Environment env;
-    private GenomeLines lines;
+    private GenomeScanLines scanLines;
     private GenomeFrame frame;
 
     @BeforeAll
@@ -37,7 +39,7 @@ class GenomeFrameTest {
     @BeforeEach
     void setUp() {
         env = new Environment(new int[]{32, 32}, false);
-        lines = new GenomeLines();
+        scanLines = new GenomeScanLines();
         frame = new GenomeFrame();
     }
 
@@ -78,8 +80,8 @@ class GenomeFrameTest {
 
     /** Builds the frame for the organism under test, entering at the given position. */
     private void build(int initialX, int[] dv) {
-        lines.build(env, ORGANISM_ID, dv, new int[]{initialX, ROW});
-        frame.build(env, lines);
+        scanLines.build(env, ORGANISM_ID, dv, new int[]{initialX, ROW});
+        frame.build(env, scanLines);
     }
 
     /** An opcode value no instruction is registered under. */
@@ -212,7 +214,7 @@ class GenomeFrameTest {
         opcode(3, "SETI");
         register(4, 0);
         data(5, 42);
-        // A second line the organism owns, with no label on it and no entry at its cells
+        // A second scan line the organism owns, with no label on it and no entry at its cells
         env.setMolecule(new Molecule(Config.TYPE_DATA, 7), ORGANISM_ID, new int[]{3, ROW + 2});
         env.setMolecule(new Molecule(Config.TYPE_REGISTER, 0), ORGANISM_ID, new int[]{4, ROW + 2});
         // A cell of another organism, beyond this one's extent
@@ -225,7 +227,7 @@ class GenomeFrameTest {
         assertThat(slotAt(20)).isEqualTo(Slot.NONE);
     }
 
-    /** A cell another organism owns is walked over like any other cell of the line. */
+    /** A cell another organism owns is walked over like any other cell of the scan line. */
     @Test
     void foreignCellInsideTheLineIsWalked() {
         place(2, new Molecule(Config.TYPE_LABEL, 1234));
@@ -261,8 +263,8 @@ class GenomeFrameTest {
     }
 
     /**
-     * In a toroidal world a body across the world edge is one line, and an instruction that runs
-     * across the edge is read across it; what reaches beyond the end of the line is cut.
+     * In a toroidal world a body across the world edge is one scan line, and an instruction that
+     * runs across the edge is read across it; what reaches beyond the end of the scan line is cut.
      */
     @Test
     void walkFollowsTheArcAcrossTheWorldEdge() {
@@ -278,11 +280,11 @@ class GenomeFrameTest {
         assertThat(slotAt(2)).isEqualTo(Slot.INSTRUCTION);
         assertThat(slotAt(3)).isEqualTo(Slot.VECTOR);
         assertThat(componentAt(3)).isEqualTo(0);
-        // The second component of the vector lies beyond the end of the line and is cut off
+        // The second component of the vector lies beyond the end of the scan line and is cut off
         assertThat(slotAt(4)).isEqualTo(Slot.NONE);
     }
 
-    /** The same body in a bounded world: the line ends at the world edge, and nothing wraps. */
+    /** The same body in a bounded world: the scan line ends at the world edge, and nothing wraps. */
     @Test
     void walkStopsAtTheWorldEdgeWhereTheWorldIsBounded() {
         placeBodyAcrossTheEdge();

@@ -1,8 +1,10 @@
-package org.evochora.runtime.model;
+package org.evochora.runtime.worldgen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
@@ -29,7 +31,7 @@ class GenomeFlowTest {
     private static final int LABEL_VALUE = 0b1010_1010_1010;
 
     private Environment env;
-    private GenomeLines lines;
+    private GenomeScanLines scanLines;
     private GenomeFrame frame;
     private GenomeFlow flow;
 
@@ -41,7 +43,7 @@ class GenomeFlowTest {
     @BeforeEach
     void setUp() {
         env = new Environment(new int[]{64, 32}, false);
-        lines = new GenomeLines();
+        scanLines = new GenomeScanLines();
         frame = new GenomeFrame();
         flow = new GenomeFlow();
     }
@@ -96,8 +98,8 @@ class GenomeFlowTest {
 
     /** Builds the frame, entering at the given position. */
     private void build(int initialX, int[] dv) {
-        lines.build(env, ORGANISM_ID, dv, new int[]{initialX, ROW});
-        frame.build(env, lines);
+        scanLines.build(env, ORGANISM_ID, dv, new int[]{initialX, ROW});
+        frame.build(env, scanLines);
     }
 
     /** Asks whether execution runs into the cell at {@code x}. */
@@ -217,7 +219,7 @@ class GenomeFlowTest {
     }
 
     /**
-     * A cell with no code before it on its line, only a shell molecule at the beginning of the
+     * A cell with no code before it on its scan line, only a shell molecule at the beginning of the
      * organism's extent: nothing comes from there.
      */
     @Test
@@ -322,7 +324,7 @@ class GenomeFlowTest {
 
     /**
      * The organism's initial position on an unowned empty cell before its first owned cell on the
-     * line: execution starts outside the cells it owns and runs on into the cell.
+     * scan line: execution starts outside the cells it owns and runs on into the cell.
      */
     @Test
     void cellBehindAnInitialPositionBeforeTheOwnedCellsIsReached() {

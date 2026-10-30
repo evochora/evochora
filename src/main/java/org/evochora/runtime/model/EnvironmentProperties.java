@@ -58,11 +58,11 @@ public class EnvironmentProperties {
     /**
      * Steps one coordinate one cell along its axis, around the world edge, without allocating.
      * <p>
-     * Meant for a walk that moves one coordinate of a reusable position array at a time and stays
-     * within an organism's extent on a line. In a toroidal world that extent can cross the world
-     * edge, and the step follows it there. In a bounded world it never does, so the step reaches
-     * the edge only where no such walk goes; it wraps there as well, so that the result always
-     * names a cell of the world.
+     * Meant for a walk that moves one coordinate of a reusable position array at a time. The step
+     * wraps at the world edge in a toroidal and in a bounded world alike, so that the result always
+     * names a cell of the world, unlike {@link #getNextPosition} and {@link #getTargetCoordinate},
+     * which wrap only in a toroidal world; a walk that must end at the edge of a bounded world
+     * checks for it itself.
      *
      * @param pos The coordinate along the axis, within the world.
      * @param axis The dimension the step runs along.
