@@ -47,6 +47,9 @@ jobs:
     # Skip redundant test run for release events - the tag was already tested on main
     if: github.event_name != 'release'
     strategy:
+      # Every leg runs to its end, so that a failure on one platform does not hide whether the
+      # others pass.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     permissions:
