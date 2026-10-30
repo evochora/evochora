@@ -294,7 +294,7 @@ public class StateInstruction extends Instruction {
         int energy = org.evochora.runtime.model.Molecule.fromInt(energyOperand).toScalarValue();
         int[] childDv = organism.toUnitVector(directionOperand);
         if (childDv == null) { return; }
-        // The VirtualMachine already deducted the base cost (10), now we need to deduct the energy given to child
+        // The VirtualMachine has already charged the instruction's own cost; what remains to take is the energy handed to the child.
         if (energy > 0 && organism.getEr() >= energy) {
             int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, simulation.getEnvironment());
             if (!simulation.getEnvironment().exists(childIp)) {
