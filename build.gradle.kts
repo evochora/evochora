@@ -286,7 +286,7 @@ sourceSets.main {
 // ./gradlew npmInstall -PnpmInstallCommand=install, then the checksums as described above.
 node {
     download = true
-    version = "24.22.1"
+    version = "26.13.0"
     npmInstallCommand = providers.gradleProperty("npmInstallCommand").orElse("ci")
 }
 
