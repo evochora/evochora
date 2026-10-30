@@ -282,11 +282,12 @@ sourceSets.main {
 // package.json names every package at an exact version, the newest stable one
 // when it is updated; what a package brings along stays at the version it chose, and
 // package-lock.json holds all of them with their checksums, which npm ci verifies. Gradle fetches
-// Node itself, so building needs nothing but Java. After a version in package.json changes:
+// Node itself, so building needs nothing but Java; from Node 25 on, its Linux builds need the
+// system library libatomic, so the major stays at 24. After a version in package.json changes:
 // ./gradlew npmInstall -PnpmInstallCommand=install, then the checksums as described above.
 node {
     download = true
-    version = "26.13.0"
+    version = "24.22.1"
     npmInstallCommand = providers.gradleProperty("npmInstallCommand").orElse("ci")
 }
 
