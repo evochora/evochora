@@ -197,6 +197,9 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
           cache: 'gradle'
+          # The test job of the same platform saves the Gradle cache under the same key and needs
+          # more of it; a save from this job, which ends first, would leave that part out.
+          cache-read-only: true
       # Compiling the test sources builds the resources, the web frontend among them, which npm
       # takes from this cache.
       - name: Restore npm cache
