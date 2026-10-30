@@ -85,12 +85,16 @@ class MetadataReadingComponentTest {
                 return testMetadata;
             });
         
+        // The bound lies far above the three pauses, so that a slow machine does not reach it
+        // before the fourth attempt; the call returns as soon as that attempt succeeds.
+        MetadataReadingComponent polling = new MetadataReadingComponent(mockReader, 10, 1000);
+        
         // When: Load metadata (will poll)
-        component.loadMetadata("test-run");
+        polling.loadMetadata("test-run");
         
         // Then: Metadata eventually loaded
-        assertNotNull(component.getMetadata());
-        assertEquals("test-run", component.getMetadata().getSimulationRunId());
+        assertNotNull(polling.getMetadata());
+        assertEquals("test-run", polling.getMetadata().getSimulationRunId());
         
         // Verify 4 attempts
         verify(mockReader, times(4)).getMetadata(eq("test-run"));

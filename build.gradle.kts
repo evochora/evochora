@@ -282,7 +282,8 @@ sourceSets.main {
 // package.json names every package at an exact version, the newest stable one
 // when it is updated; what a package brings along stays at the version it chose, and
 // package-lock.json holds all of them with their checksums, which npm ci verifies. Gradle fetches
-// Node itself, so building needs nothing but Java. After a version in package.json changes:
+// Node itself, so building needs nothing but Java; from Node 25 on, its Linux builds need the
+// system library libatomic, so the major stays at 24. After a version in package.json changes:
 // ./gradlew npmInstall -PnpmInstallCommand=install, then the checksums as described above.
 node {
     download = true
@@ -491,6 +492,23 @@ tasks.register<Test>("unit") {
     // Explicitly configure classpath and test classes for Gradle 9 compatibility
     classpath = sourceSets.test.get().runtimeClasspath
     testClassesDirs = sourceSets.test.get().output.classesDirs
+}
+
+// Platform comparison - runs the scenario under src/test/resources/org/evochora/determinism/ and
+// writes the fingerprint of its course to build/platform-fingerprint/. The build runs it on every
+// platform it tests and compares the fingerprints; it is not part of check, because one platform
+// alone has nothing to compare with.
+tasks.register<JavaExec>("platformFingerprint") {
+    group = "verification"
+    description = "Run the platform comparison scenario and write its fingerprint"
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("org.evochora.determinism.PlatformFingerprint")
+    maxHeapSize = "2g"
+    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    args(
+        providers.gradleProperty("platformFingerprint.lastTick").getOrElse("2000000"),
+        layout.buildDirectory.file("platform-fingerprint/fingerprint.txt").get().asFile.path
+    )
 }
 
 // Integration Tests - Medium speed, test service interactions
