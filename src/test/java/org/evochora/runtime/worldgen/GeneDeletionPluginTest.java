@@ -477,6 +477,20 @@ class GeneDeletionPluginTest {
     }
 
     @Test
+    void aLabelTheInitialPositionRunsIntoFromOutsideTheBodyIsNoCandidate() {
+        // The newborn starts on an unowned empty cell before its first owned cell on the line
+        newbornStartingAt(2, 5);
+        placeLabel(4, 5, LABEL_HASH_A);
+        placeCode(5, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(environment.getMolecule(4, 5).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
     void aBlockTheNewbornStartsInIsNoCandidate() {
         newbornStartingAt(5, 5);
         placeLabel(2, 5, LABEL_HASH_A);
@@ -548,6 +562,51 @@ class GeneDeletionPluginTest {
             assertThat(environment.getMolecule(x, 5).type())
                     .as("Cell (%d,5) should keep its energy", x).isEqualTo(Config.TYPE_ENERGY);
         }
+    }
+
+    @Test
+    void aBlockIsReadAgainstFallingCoordinatesForABackwardDirectionVector() {
+        child = Organism.restore(3, 9)
+                .parentId(child.getParentId())
+                .ip(new int[]{0, 0})
+                .dv(new int[]{-1, 0})
+                .initialPosition(new int[]{0, 0})
+                .energy(5000)
+                .build(simulation);
+        simulation.addOrganism(child);
+        // Read from x=20 towards x=10: the label, DUP, JMPI and its reference, then a DATA wall
+        placeLabel(20, 5, LABEL_HASH_A);
+        placeCode(19, 5);
+        placeOpcode(18, 5, "JMPI");
+        environment.setMolecule(new Molecule(Config.TYPE_LABELREF, LABEL_HASH_B), child.getId(), new int[]{17, 5});
+        placeData(10, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        for (int x = 17; x <= 20; x++) {
+            assertThat(isEmpty(x, 5)).as("Cell (%d,5) should be cleared", x).isTrue();
+        }
+        assertThat(environment.getMolecule(10, 5).type()).isEqualTo(Config.TYPE_DATA);
+    }
+
+    @Test
+    void aBlockAcrossTheWorldEdgeIsDeletedAcrossIt() {
+        // The world is toroidal: the block runs from x=30 over the edge to x=1, the wall stands at x=4
+        placeLabel(30, 5, LABEL_HASH_A);
+        placeCode(31, 5);
+        placeCode(0, 5);
+        placeCode(1, 5);
+        placeData(4, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        deletion(rng, 1.0, 2.0, EVERY_LABEL).delete(child, environment);
+
+        assertThat(isEmpty(30, 5)).isTrue();
+        assertThat(isEmpty(31, 5)).isTrue();
+        assertThat(isEmpty(0, 5)).isTrue();
+        assertThat(isEmpty(1, 5)).isTrue();
+        assertThat(environment.getMolecule(4, 5).type()).isEqualTo(Config.TYPE_DATA);
     }
 
     @Test

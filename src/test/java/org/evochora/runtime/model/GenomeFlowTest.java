@@ -22,7 +22,6 @@ class GenomeFlowTest {
 
     private static final int ORGANISM_ID = 7;
     private static final int ROW = 4;
-    private static final int DV_DIM = 0;
     private static final int[] FORWARD = new int[]{1, 0};
     private static final int[] BACKWARD = new int[]{-1, 0};
     /** A strategy that lets a reference address a label up to two bits away; it holds no labels here. */
@@ -30,6 +29,7 @@ class GenomeFlowTest {
     private static final int LABEL_VALUE = 0b1010_1010_1010;
 
     private Environment env;
+    private GenomeLines lines;
     private GenomeFrame frame;
     private GenomeFlow flow;
 
@@ -41,6 +41,7 @@ class GenomeFlowTest {
     @BeforeEach
     void setUp() {
         env = new Environment(new int[]{64, 32}, false);
+        lines = new GenomeLines();
         frame = new GenomeFrame();
         flow = new GenomeFlow();
     }
@@ -95,12 +96,13 @@ class GenomeFlowTest {
 
     /** Builds the frame, entering at the given position. */
     private void build(int initialX, int[] dv) {
-        frame.build(env, ORGANISM_ID, new int[]{initialX, ROW}, dv);
+        lines.build(env, ORGANISM_ID, dv, new int[]{initialX, ROW});
+        frame.build(env, lines);
     }
 
-    /** Asks whether execution runs into the cell at {@code x}, the row starting at {@code rowStart}. */
-    private boolean reached(int x, int rowStart) {
-        return flow.reachedByFallThrough(env, frame, new int[]{x, ROW}, DV_DIM, 1, x - rowStart);
+    /** Asks whether execution runs into the cell at {@code x}. */
+    private boolean reached(int x) {
+        return flow.reachedByFallThrough(env, frame, new int[]{x, ROW});
     }
 
     // ---- reachedByFallThrough ----
@@ -115,7 +117,7 @@ class GenomeFlowTest {
         place(20, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(8, 2)).isTrue();
+        assertThat(reached(8)).isTrue();
     }
 
     /**
@@ -130,7 +132,7 @@ class GenomeFlowTest {
         place(20, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(10, 2)).isFalse();
+        assertThat(reached(10)).isFalse();
     }
 
     /**
@@ -143,11 +145,11 @@ class GenomeFlowTest {
         opcode(3, "RET");
         place(30, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
-        assertThat(reached(6, 2)).isFalse();
+        assertThat(reached(6)).isFalse();
 
         withLabelOperand(3, "CALL", LABEL_VALUE);
         build(2, FORWARD);
-        assertThat(reached(8, 2)).isTrue();
+        assertThat(reached(8)).isTrue();
     }
 
     /**
@@ -162,7 +164,7 @@ class GenomeFlowTest {
         place(30, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(12, 2)).isTrue();
+        assertThat(reached(12)).isTrue();
     }
 
     /**
@@ -178,7 +180,7 @@ class GenomeFlowTest {
         place(30, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(12, 2)).isFalse();
+        assertThat(reached(12)).isFalse();
     }
 
     /**
@@ -196,7 +198,7 @@ class GenomeFlowTest {
         place(30, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(12, 2)).isTrue();
+        assertThat(reached(12)).isTrue();
     }
 
     /**
@@ -211,7 +213,7 @@ class GenomeFlowTest {
         place(30, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(9, 2)).isTrue();
+        assertThat(reached(9)).isTrue();
     }
 
     /**
@@ -225,7 +227,7 @@ class GenomeFlowTest {
         place(2, new Molecule(Config.TYPE_STRUCTURE, 100));
         build(12, FORWARD);
 
-        assertThat(reached(8, 2)).isFalse();
+        assertThat(reached(8)).isFalse();
     }
 
     /**
@@ -240,7 +242,7 @@ class GenomeFlowTest {
         place(30, new Molecule(Config.TYPE_DATA, 0));
         build(2, FORWARD);
 
-        assertThat(reached(9, 2)).isFalse();
+        assertThat(reached(9)).isFalse();
     }
 
     /**
@@ -259,7 +261,7 @@ class GenomeFlowTest {
 
         assertThat(frame.slot(env.getProperties().toFlatIndex(new int[]{4, ROW})))
                 .isEqualTo(GenomeFrame.Slot.AMBIGUOUS);
-        assertThat(reached(8, 2)).isTrue();
+        assertThat(reached(8)).isTrue();
     }
 
     /**
@@ -275,7 +277,7 @@ class GenomeFlowTest {
         place(10, new Molecule(Config.TYPE_DATA, 0));
         build(40, BACKWARD);
 
-        boolean behindJump = flow.reachedByFallThrough(env, frame, new int[]{34, ROW}, DV_DIM, -1, 40 - 34);
+        boolean behindJump = flow.reachedByFallThrough(env, frame, new int[]{34, ROW});
         assertThat(behindJump).isFalse();
     }
 
@@ -290,7 +292,7 @@ class GenomeFlowTest {
         ordinaryInstruction(13);
         build(5, FORWARD);
 
-        assertThat(reached(12, 2)).isTrue();
+        assertThat(reached(12)).isTrue();
     }
 
     /** The cell the organism started at is reached, whatever stands before it. */
@@ -301,7 +303,35 @@ class GenomeFlowTest {
         ordinaryInstruction(13);
         build(12, FORWARD);
 
-        assertThat(reached(12, 2)).isTrue();
+        assertThat(reached(12)).isTrue();
+    }
+
+    /**
+     * The organism's initial position on a shell molecule before the cell, with no code between:
+     * execution starts there, passes the molecule as a no-operation and runs on into the cell.
+     */
+    @Test
+    void cellBehindAnInitialPositionOnAShellMoleculeIsReached() {
+        place(2, new Molecule(Config.TYPE_STRUCTURE, 100));
+        label(12, LABEL_VALUE);
+        ordinaryInstruction(13);
+        build(2, FORWARD);
+
+        assertThat(reached(12)).isTrue();
+    }
+
+    /**
+     * The organism's initial position on an unowned empty cell before its first owned cell on the
+     * line: execution starts outside the cells it owns and runs on into the cell.
+     */
+    @Test
+    void cellBehindAnInitialPositionBeforeTheOwnedCellsIsReached() {
+        label(12, LABEL_VALUE);
+        ordinaryInstruction(13);
+        place(20, new Molecule(Config.TYPE_DATA, 0));
+        build(5, FORWARD);
+
+        assertThat(reached(12)).isTrue();
     }
 
     /**
@@ -316,7 +346,7 @@ class GenomeFlowTest {
         ordinaryInstruction(13);
         build(4, FORWARD);
 
-        assertThat(reached(12, 2)).isFalse();
+        assertThat(reached(12)).isFalse();
     }
 
     // ---- isJumpTarget ----
@@ -330,7 +360,7 @@ class GenomeFlowTest {
         withLabelOperand(3, "JMPI", LABEL_VALUE);
         withLabelOperand(6, "CALL", LABEL_VALUE);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isTrue();
     }
@@ -344,7 +374,7 @@ class GenomeFlowTest {
         label(2, LABEL_VALUE);
         conditionalJump(3, LABEL_VALUE);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isTrue();
     }
@@ -358,7 +388,7 @@ class GenomeFlowTest {
         label(2, LABEL_VALUE);
         withLabelOperand(3, "JMPI", ~LABEL_VALUE & Config.VALUE_MASK);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
@@ -375,7 +405,7 @@ class GenomeFlowTest {
         // One bit off: within the tolerance, so this reference addresses the label too
         withLabelOperand(6, "SKJI", LABEL_VALUE ^ 1);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
@@ -391,7 +421,7 @@ class GenomeFlowTest {
         place(4, new Molecule(Config.TYPE_REGISTER, 0));
         labelRef(5, LABEL_VALUE);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
@@ -408,7 +438,7 @@ class GenomeFlowTest {
         place(7, new Molecule(Config.TYPE_REGISTER, 0));
         labelRef(8, LABEL_VALUE);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
@@ -426,7 +456,7 @@ class GenomeFlowTest {
         withLabelOperand(3, "JMPI", LABEL_VALUE);
         withLabelOperand(6, "JMPI", other);
         build(2, FORWARD);
-        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+        flow.collectReferences(env, frame);
 
         // Flipping bit 0 moves the label to two bits from the other reference, which did not reach it before
         assertThat(flow.drawsNoForeignReference(LABEL_VALUE ^ 1, LABEL_VALUE, MATCHING)).isFalse();
@@ -438,7 +468,7 @@ class GenomeFlowTest {
 
     /** Asks whether the stretch from the label at 2 over {@code length} cells ends open. */
     private boolean open(int length) {
-        return flow.endsOpen(env, frame, new int[]{2, ROW}, length, DV_DIM, 1);
+        return flow.endsOpen(env, frame, new int[]{2, ROW}, length);
     }
 
     /**
@@ -525,6 +555,6 @@ class GenomeFlowTest {
         opcode(6, "RET");
         build(0, FORWARD);
 
-        assertThat(flow.endsOpen(env, frame, new int[]{5, ROW}, 2, DV_DIM, 1)).isFalse();
+        assertThat(flow.endsOpen(env, frame, new int[]{5, ROW}, 2)).isFalse();
     }
 }

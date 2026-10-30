@@ -1,7 +1,5 @@
 package org.evochora.runtime.model;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.evochora.runtime.Config;
@@ -9,8 +7,6 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 /**
  * The role every cell of one organism's genome carries when the virtual machine reads it as code.
@@ -37,10 +33,11 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  *   <li>cells owned by another organism are walked over like any other, because the machine does
  *       not stop at them either.</li>
  * </ul>
- * A walk ends where the organism's extent on its line ends. That extent is the arc of
- * {@link ScanLineArc} over the coordinates the organism owns on the line, so it crosses the world
- * edge only where the world is toroidal. An instruction whose operands would reach past the end of
- * the arc is cut there: the cells beyond are not part of this genome.
+ * A walk ends where the organism's extent on its line ends, as {@link GenomeLines} resolves it:
+ * the arc over the coordinates the organism owns on the line, which crosses the world edge only
+ * where the world is toroidal. An instruction whose operands would reach past the end of the arc
+ * is cut there: the cells beyond are not part of this genome. The frame is built on top of those
+ * lines, which the caller builds first and can use for its own purposes as well.
  * <p>
  * <strong>Two walks over one cell.</strong> Two starts can lead through the same cell in different
  * reading frames — a label placed inside another instruction's operand list is read as an operand
@@ -55,34 +52,38 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * would make its choice depend on that direction. A caller selects over the cells it owns and asks
  * the frame what each of them is.
  * <p>
- * <strong>What the frame offers beyond its first user.</strong> The substitution plugin reads
- * two things: whether a cell is a scalar literal and whether it is a vector component. The frame
- * answers more, and the answers are there for an operator that needs them:
+ * <strong>What the frame answers.</strong> The mutation operators read it for different
+ * purposes, and the answers are there for any operator that needs them:
  * <ul>
- *   <li>the role of every other cell — opcode, register, label reference — so that a selection
- *       weight or a perturbation can depend on where a molecule stands, not only on what it is;
- *       a CODE molecule in a literal slot, for instance, is a value there, not an opcode;</li>
+ *   <li>the role of every cell — opcode, register, literal, label reference, vector component —
+ *       so that a selection weight or a perturbation can depend on where a molecule stands, not
+ *       only on what it is: the substitution weighs a cell by its role, and a CODE molecule in a
+ *       literal slot is a value there, not an opcode;</li>
  *   <li>which cells belong to no instruction — labels, no-operation cells and cells no walk
- *       reaches — so that an operator can leave them alone or seek them out;</li>
+ *       reaches — so that an operator can leave them alone or seek them out: the deletion finds
+ *       the labels that open a block among them and leaves them standing at a block's end, and the
+ *       duplication writes such a cell into a copy as an empty one;</li>
  *   <li>the component index of a vector cell, so that an operator can act on a vector as a whole
  *       — rotate or mirror it — rather than on one of its cells;</li>
- *   <li>where an instruction begins and ends, so that a duplication can copy whole instructions
- *       instead of fragments cut at a gap, a deletion can remove one instruction, and an
- *       insertion can tell a gap between two instructions from a cell inside an operand list.</li>
+ *   <li>where an instruction begins and ends, so that an operator copies or removes whole
+ *       instructions instead of fragments, and can tell a gap between two instructions from a
+ *       cell inside an operand list.</li>
  * </ul>
  * What the frame does not know is control flow: a walk does not end at a jump, so the padding
  * behind a row's last jump is reached like the code before it. {@link GenomeFlow} answers those
  * questions on top of a built frame — whether execution runs on into a cell, whether a label is a
  * jump target and nothing else, whether a stretch of code can be left at its end.
  * <p>
+ * Besides the roles the frame tells whether a cell is the organism's initial position, where its
+ * instruction pointer enters the code without a jump.
+ * <p>
  * <strong>Determinism.</strong> The roles are a pure function of the grid, of the cells the
  * organism owns, of the initial position and of the direction vector. Nothing is carried over
  * between builds: every build reads the grid as it stands.
  * <p>
- * <strong>Allocation.</strong> The frame is an object so that its buffers — the role table, the
- * scan lines, their pool and the coordinate arrays — survive a build and are cleared at the
- * beginning of the next one. After the first builds the only allocations left per build are the
- * visitor handed to the environment's owned-cell visit and the lookup of the NOP opcode; the
+ * <strong>Allocation.</strong> The frame is an object so that its buffers — the role table and
+ * the coordinate array — survive a build and are cleared at the beginning of the next one. After
+ * the first builds the only allocation left per build is the lookup of the NOP opcode; the
  * operand sources of an opcode are the registry's own list and cost nothing.
  * <p>
  * <strong>Thread safety.</strong> Not thread-safe: a frame holds the buffers of the build that is
@@ -131,32 +132,11 @@ public final class GenomeFrame {
     /** Packed role per flat index; a cell that is absent has been reached by no walk. */
     private final Int2IntOpenHashMap roles = new Int2IntOpenHashMap();
 
-    /** The organism's cells grouped into lines, by the coordinates perpendicular to the walk. */
-    private final Int2ObjectOpenHashMap<ScanLine> scanLines = new Int2ObjectOpenHashMap<>();
-
-    /** Scan lines kept for the next build. */
-    private final ArrayList<ScanLine> scanLinePool = new ArrayList<>();
-
-    /** Number of scan lines taken from the pool in the build that is running. */
-    private int poolIndex;
-
-    /** Flat indices of the label cells a walk starts at. */
-    private final IntArrayList labelStarts = new IntArrayList();
-
-    /** Receives the ends of a line's arc; reused so that resolving a line allocates nothing. */
-    private final ScanLineArc.Result arc = new ScanLineArc.Result();
-
-    /** Coordinates of the cell a grouping pass is looking at. */
-    private int[] coordBuffer;
+    /** The lines of the genome the frame was last built on. */
+    private GenomeLines lines;
 
     /** Coordinates of the cell a walk is looking at. */
     private int[] walkCoord;
-
-    /** Strides of the perpendicular key, zero in the dimension the walk runs along. */
-    private int[] perpStrides;
-
-    /** The owned coordinates along the walk, segment by scan line, while the arcs are resolved. */
-    private int[] dvCoordCollector;
 
     /** The dimension the direction vector points along. */
     private int dvDim = -1;
@@ -167,53 +147,8 @@ public final class GenomeFrame {
     /** The number of dimensions of the world the frame was last built for. */
     private int dims;
 
-    /** The size of the world along the dimension the walk runs along. */
-    private int axisSize;
-
-    /** Flat index of the position the organism started at. */
+    /** Flat index of the position the organism started at; {@code -1} while the frame is empty. */
     private int initialFlatIndex = -1;
-
-    /**
-     * The stretch of one line the organism occupies, and where a walk along that line ends.
-     */
-    private static final class ScanLine {
-        /** Smallest coordinate the organism owns on this line, along the walk's dimension. */
-        int minDv;
-        /** Largest coordinate the organism owns on this line, along the walk's dimension. */
-        int maxDv;
-        /** Number of cells the organism owns on this line. */
-        int count;
-        /** First coordinate of the line's arc; see {@link ScanLineArc}. */
-        int arcStart;
-        /** Last coordinate of the line's arc, smaller than the first if the arc crosses the edge. */
-        int arcEnd;
-        /** Start of this line's segment in the shared coordinate buffer while arcs are resolved. */
-        int segmentStart;
-        /** Number of coordinates already placed in this line's segment. */
-        int segmentFill;
-
-        /**
-         * Begins a line at the first cell seen on it.
-         *
-         * @param dvCoord The cell's coordinate along the walk's dimension.
-         */
-        void reset(int dvCoord) {
-            this.minDv = dvCoord;
-            this.maxDv = dvCoord;
-            this.count = 1;
-        }
-
-        /**
-         * Takes a further cell of the line into account.
-         *
-         * @param dvCoord The cell's coordinate along the walk's dimension.
-         */
-        void update(int dvCoord) {
-            if (dvCoord < minDv) minDv = dvCoord;
-            if (dvCoord > maxDv) maxDv = dvCoord;
-            count++;
-        }
-    }
 
     /**
      * Creates an empty frame, which answers {@link Slot#NONE} for every cell until it is built.
@@ -226,95 +161,45 @@ public final class GenomeFrame {
      * Reads one organism's genome as the machine reads it and records what every cell is.
      * <p>
      * Everything a previous build recorded is dropped first, so the result describes the grid as
-     * it stands now. A direction vector without a non-zero component names no direction and leaves
-     * the frame empty, and so does an organism that owns no cell.
+     * it stands now. Lines without a direction, or without a line at all, leave the frame empty.
      *
-     * @param env The environment holding the cells and their owners.
-     * @param organismId The organism whose cells are read.
-     * @param initialPosition The position the organism started at, a frame start like every label.
-     * @param dv The organism's direction vector, a unit vector along one dimension.
+     * The walks start at every label the lines list and at the initial position they were built
+     * with, a frame start like every label.
+     *
+     * @param env The environment holding the cells.
+     * @param lines The organism's lines, built for the grid as it stands; kept by the frame until
+     *              its next build and not to be rebuilt before the frame is done with.
      */
-    public void build(Environment env, int organismId, int[] initialPosition, int[] dv) {
+    public void build(Environment env, GenomeLines lines) {
         roles.clear();
-        scanLines.clear();
-        labelStarts.clear();
-        poolIndex = 0;
-
+        this.lines = lines;
+        initialFlatIndex = -1;
+        dvDim = lines.dvDim();
+        if (dvDim == -1 || lines.lineCount() == 0) {
+            return;
+        }
         EnvironmentProperties props = env.getProperties();
-        initialFlatIndex = props.toFlatIndex(initialPosition);
+        initialFlatIndex = lines.initialFlatIndex();
+        step = lines.step();
         dims = props.getDimensions();
-        dvDim = -1;
-        for (int i = 0; i < dims; i++) {
-            if (dv[i] != 0) {
-                dvDim = i;
-                step = dv[i] > 0 ? 1 : -1;
-                break;
-            }
+        if (walkCoord == null || walkCoord.length != dims) {
+            walkCoord = new int[dims];
         }
-        if (dvDim == -1) {
-            return;
-        }
-        axisSize = props.getDimensionSize(dvDim);
-
-        ensureBuffers();
-        computePerpStrides(props);
-
-        groupOwnedCells(env, organismId);
-        if (scanLines.isEmpty()) {
-            return;
-        }
-        resolveArcs(env, organismId, props.isToroidal());
 
         int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
-        for (int i = 0; i < labelStarts.size(); i++) {
-            walk(env, labelStarts.getInt(i), nopOpcodeId);
+        for (int i = 0; i < lines.labelCount(); i++) {
+            walk(env, lines.labelFlatIndex(i), nopOpcodeId);
         }
         walk(env, initialFlatIndex, nopOpcodeId);
     }
 
     /**
-     * Tells whether a cell is the position the organism started at, where its instruction pointer
-     * enters the code without a jump.
+     * Reports the lines the frame was last built on.
      *
-     * @param flatIndex The cell's flat index, as {@link EnvironmentProperties#toFlatIndex(int[])}
-     *                  computes it.
-     * @return {@code true} if the frame was built with this cell as the initial position.
+     * @return The lines, or {@code null} if the frame was never built.
      */
-    public boolean isInitialPosition(int flatIndex) {
-        return flatIndex == initialFlatIndex;
-    }
-
-    /**
-     * Counts the cells of the organism's extent on a cell's line that lie before the cell, against
-     * the direction vector.
-     *
-     * @param cell The coordinates of the cell; not modified.
-     * @return The number of cells before it, or {@code -1} if the cell lies outside the extent.
-     */
-    public int cellsBefore(int[] cell) {
-        ScanLine line = lineHolding(cell);
-        if (line == null) {
-            return -1;
-        }
-        int offsetInArc = forwardDistance(line.arcStart, cell[dvDim]);
-        return step > 0 ? offsetInArc : arcLength(line) - 1 - offsetInArc;
-    }
-
-    /**
-     * Counts the cells of the organism's extent on a cell's line from the cell to the end the
-     * direction vector points to, the cell included.
-     *
-     * @param cell The coordinates of the cell; not modified.
-     * @return The number of cells from it to the end of the extent, or {@code -1} if the cell lies
-     *         outside the extent.
-     */
-    public int cellsFrom(int[] cell) {
-        ScanLine line = lineHolding(cell);
-        if (line == null) {
-            return -1;
-        }
-        int offsetInArc = forwardDistance(line.arcStart, cell[dvDim]);
-        return step > 0 ? arcLength(line) - offsetInArc : offsetInArc + 1;
+    public GenomeLines lines() {
+        return lines;
     }
 
     /**
@@ -347,113 +232,16 @@ public final class GenomeFrame {
     }
 
     /**
-     * Groups the organism's cells into lines and collects the labels among them.
-     * <p>
-     * The visit runs in flat-index order, so the labels are collected in that order; the roles the
-     * walks assign do not depend on it, because two walks that disagree about a cell make it
-     * ambiguous whichever of them ran first.
+     * Tells whether a cell is the position the organism started at, where its instruction pointer
+     * enters the code without a jump.
      *
-     * @param env The environment holding the cells and their owners.
-     * @param organismId The organism whose cells are grouped.
+     * @param flatIndex The cell's flat index, as {@link EnvironmentProperties#toFlatIndex(int[])}
+     *                  computes it.
+     * @return {@code true} if the frame was built with this cell as the initial position; never
+     *         for a frame that was left empty.
      */
-    private void groupOwnedCells(Environment env, int organismId) {
-        EnvironmentProperties props = env.getProperties();
-        env.visitCellsOwnedBy(organismId, cell -> {
-            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, dims);
-            int perpKey = perpKey(coordBuffer);
-            ScanLine line = scanLines.get(perpKey);
-            if (line == null) {
-                line = acquireScanLine();
-                line.reset(coordBuffer[dvDim]);
-                scanLines.put(perpKey, line);
-            } else {
-                line.update(coordBuffer[dvDim]);
-            }
-            if ((cell.moleculeInt() & Config.TYPE_MASK) == Config.TYPE_LABEL) {
-                labelStarts.add(props.toFlatIndex(coordBuffer));
-            }
-        });
-    }
-
-    /**
-     * Determines where a walk along each line ends, the arc the organism spans on it.
-     * <p>
-     * A line whose owned cells cannot reach around the world edge spans the arc from its smallest
-     * to its largest coordinate, which the grouping pass already knows. Only a line that can reach
-     * around it needs the coordinates in between: for those the coordinates are collected, sorted
-     * and handed to {@link ScanLineArc}, which decides where the body ends and the outside begins.
-     *
-     * @param env The environment holding the cells and their owners.
-     * @param organismId The organism whose lines are resolved.
-     * @param toroidal Whether the world wraps around at the ends of the walk's dimension.
-     */
-    private void resolveArcs(Environment env, int organismId, boolean toroidal) {
-        boolean anyWrapping = false;
-        for (ScanLine line : scanLines.values()) {
-            line.arcStart = line.minDv;
-            line.arcEnd = line.maxDv;
-            if (ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, axisSize, toroidal)) {
-                anyWrapping = true;
-            }
-        }
-        if (!anyWrapping) {
-            return;
-        }
-
-        int total = 0;
-        for (ScanLine line : scanLines.values()) {
-            line.segmentStart = total;
-            line.segmentFill = 0;
-            total += line.count;
-        }
-        if (dvCoordCollector == null || dvCoordCollector.length < total) {
-            dvCoordCollector = new int[total];
-        }
-        env.visitCellsOwnedBy(organismId, cell -> {
-            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, dims);
-            ScanLine line = scanLines.get(perpKey(coordBuffer));
-            dvCoordCollector[line.segmentStart + line.segmentFill++] = coordBuffer[dvDim];
-        });
-
-        for (ScanLine line : scanLines.values()) {
-            if (!ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, axisSize, toroidal)) {
-                continue;
-            }
-            Arrays.sort(dvCoordCollector, line.segmentStart, line.segmentStart + line.count);
-            ScanLineArc.resolve(dvCoordCollector, line.segmentStart, line.count, axisSize, toroidal, arc);
-            line.arcStart = arc.start;
-            line.arcEnd = arc.end;
-        }
-    }
-
-    /**
-     * Finds the line whose extent holds a cell.
-     *
-     * @param cell The coordinates of the cell; not modified.
-     * @return The cell's line, or {@code null} if the frame is empty or the cell lies outside the
-     *         extent of its line.
-     */
-    private ScanLine lineHolding(int[] cell) {
-        if (dvDim == -1 || cell.length != dims) {
-            return null;
-        }
-        ScanLine line = scanLines.get(perpKey(cell));
-        if (line == null || forwardDistance(line.arcStart, cell[dvDim]) >= arcLength(line)) {
-            return null;
-        }
-        return line;
-    }
-
-    /**
-     * Counts the cells of a line's arc.
-     *
-     * @param line The line.
-     * @return The number of cells from the first to the last coordinate of its arc.
-     */
-    private int arcLength(ScanLine line) {
-        return (line.arcEnd >= line.arcStart)
-                ? line.arcEnd - line.arcStart + 1
-                : axisSize - line.arcStart + line.arcEnd + 1;
+    public boolean isInitialPosition(int flatIndex) {
+        return initialFlatIndex >= 0 && flatIndex == initialFlatIndex;
     }
 
     /**
@@ -467,19 +255,12 @@ public final class GenomeFrame {
     private void walk(Environment env, int startFlatIndex, int nopOpcodeId) {
         EnvironmentProperties props = env.getProperties();
         props.flatIndexToCoordinates(startFlatIndex, walkCoord);
-        ScanLine line = scanLines.get(perpKey(walkCoord));
-        if (line == null) {
-            return;
-        }
-
-        int arcLength = arcLength(line);
-        int offsetInArc = forwardDistance(line.arcStart, walkCoord[dvDim]);
-        if (offsetInArc >= arcLength) {
-            return;
-        }
 
         // The cells still ahead of the walk: from its start to the end of the arc it moves towards.
-        int remaining = step > 0 ? arcLength - offsetInArc : offsetInArc + 1;
+        int remaining = lines.cellsFrom(walkCoord);
+        if (remaining <= 0) {
+            return;
+        }
         int pos = walkCoord[dvDim];
 
         while (remaining > 0) {
@@ -490,7 +271,7 @@ public final class GenomeFrame {
                     && opcodeId != nopOpcodeId
                     && Instruction.getPlannerById(opcodeId) != null;
             assign(props, opensInstruction ? Slot.INSTRUCTION : Slot.NONE, -1);
-            pos = advance(pos);
+            pos = props.stepAlongAxis(pos, dvDim, step);
             remaining--;
             if (!opensInstruction) {
                 continue;
@@ -506,14 +287,14 @@ public final class GenomeFrame {
                     for (int component = 0; component < dims && remaining > 0; component++) {
                         walkCoord[dvDim] = pos;
                         assign(props, Slot.VECTOR, component);
-                        pos = advance(pos);
+                        pos = props.stepAlongAxis(pos, dvDim, step);
                         remaining--;
                     }
                     continue;
                 }
                 walkCoord[dvDim] = pos;
                 assign(props, slotOf(source), -1);
-                pos = advance(pos);
+                pos = props.stepAlongAxis(pos, dvDim, step);
                 remaining--;
             }
         }
@@ -556,93 +337,5 @@ public final class GenomeFrame {
             case VECTOR -> Slot.VECTOR;
             case STACK -> Slot.NONE;
         };
-    }
-
-    /**
-     * Steps one cell along the direction vector, around the world edge where the world wraps.
-     *
-     * @param pos The current coordinate along the walk's dimension.
-     * @return The next coordinate along that dimension.
-     */
-    private int advance(int pos) {
-        int next = pos + step;
-        if (next >= axisSize) {
-            return 0;
-        }
-        if (next < 0) {
-            return axisSize - 1;
-        }
-        return next;
-    }
-
-    /**
-     * Counts the cells from one coordinate to another in the direction of rising coordinates.
-     *
-     * @param from The coordinate counted from.
-     * @param to The coordinate counted to.
-     * @return The number of steps from {@code from} to {@code to}, around the world edge if
-     *         {@code to} lies before {@code from}.
-     */
-    private int forwardDistance(int from, int to) {
-        int distance = to - from;
-        return distance < 0 ? distance + axisSize : distance;
-    }
-
-    /**
-     * Computes the key of the line a coordinate lies on, which is its coordinates in every
-     * dimension but the one the walk runs along.
-     *
-     * @param coord The cell's coordinates.
-     * @return The key of the cell's line.
-     */
-    private int perpKey(int[] coord) {
-        int key = 0;
-        for (int i = 0; i < coord.length; i++) {
-            key += coord[i] * perpStrides[i];
-        }
-        return key;
-    }
-
-    /**
-     * Computes the strides of the line key, which leave the walk's own dimension out.
-     *
-     * @param props The properties holding the world's shape.
-     */
-    private void computePerpStrides(EnvironmentProperties props) {
-        int stride = 1;
-        for (int i = dims - 1; i >= 0; i--) {
-            if (i == dvDim) {
-                perpStrides[i] = 0;
-            } else {
-                perpStrides[i] = stride;
-                stride *= props.getDimensionSize(i);
-            }
-        }
-    }
-
-    /**
-     * Sizes the coordinate buffers for the world the frame is being built for.
-     */
-    private void ensureBuffers() {
-        if (coordBuffer == null || coordBuffer.length != dims) {
-            coordBuffer = new int[dims];
-            walkCoord = new int[dims];
-            perpStrides = new int[dims];
-        }
-    }
-
-    /**
-     * Takes a scan line out of the pool, which holds the lines of the builds before.
-     *
-     * @return A scan line to be reset by the caller.
-     */
-    private ScanLine acquireScanLine() {
-        if (poolIndex < scanLinePool.size()) {
-            return scanLinePool.get(poolIndex++);
-        }
-        ScanLine line = new ScanLine();
-        scanLinePool.add(line);
-        poolIndex++;
-        return line;
     }
 }

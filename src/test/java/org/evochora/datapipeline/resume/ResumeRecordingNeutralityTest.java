@@ -82,9 +82,9 @@ class ResumeRecordingNeutralityTest {
      * deltas, so the resumed run primes its encoder with the checkpoint's snapshot and writes its
      * first ticks as deltas against it.
      * <p>
-     * Five samples per accumulated delta and five accumulated deltas per snapshot make a chunk
-     * span 25 ticks, which puts a chunk boundary on tick 25 — the tick one of the run's two deaths
-     * falls on, so that the snapshot there holds the dead organism.
+     * The intervals put a chunk boundary on a tick on which one of the run's organisms dies, so
+     * that the snapshot there holds a dead organism. A change to the run's course can move that
+     * tick; the test then names the ticks the deaths fall on, and the intervals are chosen anew.
      */
     @Test
     void resumedRun_recordsWhatTheUninterruptedRunRecorded() throws Exception {

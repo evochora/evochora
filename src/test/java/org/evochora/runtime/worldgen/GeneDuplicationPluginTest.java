@@ -1041,4 +1041,37 @@ class GeneDuplicationPluginTest {
         }
         assertThat(written).as("copies that went to the other run").isPositive();
     }
+
+    @Test
+    void aRunTheNewbornStartsInIsNoTarget() {
+        // y=2: the source. y=4: a run of eight cells the newborn's instruction pointer starts in.
+        // y=6: a run of eight cells with nothing before it.
+        int written = 0;
+        for (int seed = 0; seed < 10; seed++) {
+            setUp();
+            child = Organism.restore(3, 9)
+                    .parentId(child.getParentId())
+                    .ip(new int[]{3, 4})
+                    .dv(new int[]{1, 0})
+                    .initialPosition(new int[]{3, 4})
+                    .energy(5000)
+                    .build(simulation);
+            simulation.addOrganism(child);
+            int id = child.getId();
+            placeRisingBlock(id, 10, 2);
+            placeTargetRow(id, 4, 8);
+            placeTargetRow(id, 6, 8);
+
+            duplication(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+
+            for (int x = 0; x < 8; x++) {
+                assertThat(environment.getMolecule(x, 4).isEmpty())
+                        .as("seed=%d cell (%d,4) lies in the run the newborn starts in", seed, x).isTrue();
+            }
+            if (child.getBirthMutations() != null) {
+                written++;
+            }
+        }
+        assertThat(written).as("copies that went to the other run").isPositive();
+    }
 }

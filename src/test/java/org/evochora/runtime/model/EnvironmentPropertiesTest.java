@@ -212,4 +212,14 @@ class EnvironmentPropertiesTest {
         assertArrayEquals(new int[]{64, -1}, bounded.getTargetCoordinate(new int[]{63, 0}, new int[]{1, -1}));
         assertArrayEquals(new int[]{64, -1}, bounded.getNextPosition(new int[]{63, 0}, new int[]{1, -1}));
     }
+
+    @Test
+    void aStepAlongAnAxisWrapsAtBothEndsWithoutAllocating() {
+        EnvironmentProperties torus = new EnvironmentProperties(new int[]{32, 16}, true);
+
+        assertEquals(0, torus.stepAlongAxis(31, 0, 1));
+        assertEquals(31, torus.stepAlongAxis(0, 0, -1));
+        assertEquals(6, torus.stepAlongAxis(5, 0, 1));
+        assertEquals(0, torus.stepAlongAxis(15, 1, 1), "the step follows the size of its own axis");
+    }
 }

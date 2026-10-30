@@ -543,6 +543,30 @@ class GeneInsertionPluginTest {
     }
 
     @Test
+    void aRunTheNewbornStartsInGetsNothing() {
+        // x=6..11 lies behind an ordinary instruction; x=14..20 lies behind the unconditional jump,
+        // and the newborn's instruction pointer starts inside it
+        child = Organism.restore(3, 9)
+                .parentId(child.getParentId())
+                .ip(new int[]{17, Y})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{17, Y})
+                .energy(5000)
+                .build(simulation);
+        simulation.addOrganism(child);
+        placeLabel(2, Y, LABEL_HASH_A);
+        place(3, Y, Config.TYPE_CODE, setiId());
+        place(4, Y, Config.TYPE_REGISTER, 0);
+        place(5, Y, Config.TYPE_DATA, 1);
+        placeJump(12, Y, LABEL_HASH_A);
+        placeCode(21, Y);
+
+        assertThat(insertBeforeLabel(42L)).isNull();
+        assertEmpty(6, 12);
+        assertEmpty(14, 21);
+    }
+
+    @Test
     void aBodyWhoseOnlyRunExecutionPassesThroughGetsNothing() {
         // The only empty run lies between an ordinary instruction and the jump behind it
         placeLabel(2, Y, LABEL_HASH_A);

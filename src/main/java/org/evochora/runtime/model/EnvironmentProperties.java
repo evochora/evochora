@@ -56,6 +56,31 @@ public class EnvironmentProperties {
     }
     
     /**
+     * Steps one coordinate one cell along its axis, around the world edge, without allocating.
+     * <p>
+     * Meant for a walk that moves one coordinate of a reusable position array at a time and stays
+     * within an organism's extent on a line. In a toroidal world that extent can cross the world
+     * edge, and the step follows it there. In a bounded world it never does, so the step reaches
+     * the edge only where no such walk goes; it wraps there as well, so that the result always
+     * names a cell of the world.
+     *
+     * @param pos The coordinate along the axis, within the world.
+     * @param axis The dimension the step runs along.
+     * @param delta The step, {@code +1} or {@code -1}.
+     * @return The next coordinate along that axis.
+     */
+    public int stepAlongAxis(int pos, int axis, int delta) {
+        int next = pos + delta;
+        if (next >= worldShape[axis]) {
+            return next - worldShape[axis];
+        }
+        if (next < 0) {
+            return next + worldShape[axis];
+        }
+        return next;
+    }
+
+    /**
      * Calculates the next position based on current position and direction vector.
      * This is the core coordinate calculation logic used by both Runtime and DebugIndexer.
      * 

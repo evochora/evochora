@@ -15,6 +15,7 @@ import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.GenomeFrame;
+import org.evochora.runtime.model.GenomeLines;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
@@ -81,9 +82,10 @@ import org.slf4j.LoggerFactory;
  * through the environment's cell views in a single reservoir-sampling pass (no list collection),
  * the reservoir state and the coordinate of the chosen cell live in reusable fields, the reading
  * frame keeps its buffers between builds, and CODE mutation uses pre-computed O(1) lookup tables.
- * The only per-call allocations are the visitor lambdas, the copies of the newborn's initial
- * position and direction vector the frame is built from and, when a molecule actually changes, one
- * {@link Molecule} record per written cell and the {@link MutationRecord} handed to the newborn.
+ * The only per-call allocations are the visitor lambdas of its own pass and of building the
+ * lines, the copies of the newborn's initial position and direction vector the lines are built
+ * from and, when a molecule actually changes, one {@link Molecule} record per written cell and the
+ * {@link MutationRecord} handed to the newborn.
  * <p>
  * <strong>What it records:</strong> a write reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "substitution"} naming the changed cells, the molecule
@@ -195,7 +197,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private final Int2ObjectOpenHashMap<WeightedOpcodes> familyFlipAlternatives;
     private final Int2ObjectOpenHashMap<WeightedOpcodes> variantFlipAlternatives;
 
-    // --- Reservoir state, reused across births (only the visitor lambda and the written molecule are allocated per call) ---
+    // --- Reservoir state, reused across births ---
     /** Whether the reservoir holds a candidate cell. */
     private boolean cellChosen;
     /** Type bits (unshifted, as in the packed molecule int) of the candidate cell. */
@@ -220,6 +222,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
     /** The newborn's genome in the machine's reading frame; rebuilt for every substitution. */
     private final GenomeFrame frame = new GenomeFrame();
+    /** The lines of the newborn's genome, which the reading frame is built on. */
+    private final GenomeLines lines = new GenomeLines();
 
     /**
      * Creates a gene substitution plugin from configuration.
@@ -331,7 +335,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         }
         cellChosen = false;
         weightSum = 0.0;
-        frame.build(env, childId, child.getInitialPosition(), child.getDv());
+        lines.build(env, childId, child.getDv(), child.getInitialPosition());
+        frame.build(env, lines);
 
         // Weighted reservoir sampling over the owned cells.
         // The visit runs in flat-index order: the reservoir choice below must not depend on write history

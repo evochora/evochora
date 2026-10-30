@@ -1,6 +1,5 @@
 package org.evochora.runtime.worldgen;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -9,16 +8,15 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.GenomeFlow;
 import org.evochora.runtime.model.GenomeFrame;
+import org.evochora.runtime.model.GenomeLines;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.ScanLineArc;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 /**
  * Gene duplication birth handler inspired by Ohno's (1970) model of evolution through gene duplication.
@@ -29,7 +27,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * for later divergence through point mutation.
  * <p>
  * <strong>What a block is:</strong> the stretch from one of the newborn's LABEL cells along the
- * direction vector to the next of its LABEL cells on the same scan line, or, where no further label
+ * direction vector to the next of its LABEL cells on the same line, or, where no further label
  * follows, to the end of the newborn's extent on that line. A LABEL cell opens a block only where it
  * is an entry point in the machine's reading frame ({@link GenomeFrame}); a LABEL molecule standing
  * in another instruction's operand list is that instruction's argument and opens no block.
@@ -70,20 +68,20 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * later insertion can write. Cells at the end of a copy that would be written empty are not copied
  * at all, so that a copy asks for no room it does not use.
  * <p>
- * <strong>The reading frame</strong> is built once per duplication, for the newborn whose body is
- * copied. It is meant to serve more than this handler: as soon as a second birth handler needs to
- * know the code structure of a body, it should be built once per birth and handed to the handlers
- * instead, so that they share one answer rather than each paying for its own.
+ * <strong>The lines and the reading frame</strong> are built once per duplication, for the
+ * newborn whose body is copied. Every birth handler that reads a body's code structure builds its
+ * own, because each handler that writes changes the grid the next one reads.
  * <p>
- * The algorithm groups owned cells by scan lines perpendicular to the organism's direction vector (DV),
- * ensuring equal selection probability for each scan line regardless of cell density. A random scan line
- * is chosen among the lines that hold a qualifying NOP run, and a random LABEL is selected as the
- * source via reservoir sampling.
+ * The newborn's cells are grouped into the lines its genome lies on along the direction vector
+ * ({@link GenomeLines}), so that each line has the same chance to be the target regardless of how
+ * many cells it holds. A random line is chosen among the lines that hold a qualifying NOP run, and
+ * a random LABEL is selected as the source via reservoir sampling.
  * <p>
- * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
- * through the environment's cell views; reusable coordinate buffers, ScanLineInfo pooling and direct
- * bit extraction from packed molecule ints minimize GC pressure. The only per-call allocations are
- * one {@code getShape()} defensive copy, the two visitor lambdas (one per owned-cell pass), when a
+ * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are grouped
+ * into lines by {@link GenomeLines}, whose tables survive a birth, and the reading frame is built on
+ * those lines; reusable coordinate buffers and direct bit extraction from packed molecule ints
+ * minimize GC pressure. The only per-call allocations are one {@code getShape()} defensive copy,
+ * the copy of the newborn's direction vector, the visitors of the lines' owned-cell visits, when a
  * copy is applied the {@link MutationRecord} handed to the newborn, the defensive copy of the
  * newborn's initial position together with what one {@link GenomeFrame} build costs, and, only
  * where a copy is closed, the two {@link Molecule} records of the jump. The frame is built for
@@ -130,29 +128,15 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     private int[] coordBuffer;
     private int[] sourcePos;
     private int[] targetPos;
-    private int[] perpStrides;
 
-    // Scan line map and pool (reused across duplicate() calls)
-    /**
-     * Finds a scan line by its perpendicular key. Only for lookups: the map is reused across births
-     * and keeps the table size it once grew to, so its iteration order depends on the bodies this
-     * instance processed before, and a choice made in that order would differ between a run and
-     * its resumed or forked continuation.
-     */
-    private final Int2ObjectOpenHashMap<ScanLineInfo> scanLineMap = new Int2ObjectOpenHashMap<>();
-    /**
-     * The scan lines of the current newborn at indices {@code 0} to {@code poolIndex - 1}, in the
-     * order in which the flat-index visit of its cells first reached them - an order set by the
-     * body alone. Every pass over the scan lines runs in this order.
-     */
-    private final ArrayList<ScanLineInfo> scanLinePool = new ArrayList<>();
-    private int poolIndex;
+    /** The lines of the newborn's genome, rebuilt for every duplication. */
+    private final GenomeLines lines = new GenomeLines();
 
-    // DV coordinate collector for arc resolution (reused)
-    private int[] dvCoordCollector;
+    /** Start of the largest NOP run per line (DV coordinate), or -1 if none was found. */
+    private int[] bestNopStart = new int[0];
 
-    /** Receives the ends of a scan line's arc; reused so that resolving a line allocates nothing. */
-    private final ScanLineArc.Result arc = new ScanLineArc.Result();
+    /** Length of the largest NOP run per line, or 0 if none was found. */
+    private int[] bestNopLength = new int[0];
 
     /** Collects the record of a copy; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
@@ -174,59 +158,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
     /** Whether execution can leave the stretch the last {@link #cutBackCopyLength} returned at its end. */
     private boolean cutCopyEndsOpen;
-
-    /**
-     * Mutable scan line info for grouping owned cells by perpendicular coordinates.
-     * Pooled and reused across duplicate() calls to avoid allocation.
-     */
-    static class ScanLineInfo {
-        /** Minimum DV-dimension coordinate on this scan line. */
-        int minDv;
-        /** Maximum DV-dimension coordinate on this scan line. */
-        int maxDv;
-        /** The flat index of one owned cell on this scan line, for coordinate reconstruction. */
-        int sampleFlatIndex;
-        /** Number of owned cells on this scan line. */
-        int count;
-        /** Start of the arc this line's owned cells span (inclusive), see {@link ScanLineArc}. */
-        int walkStart;
-        /** End of the arc this line's owned cells span (inclusive), see {@link ScanLineArc}. */
-        int walkEnd;
-        /** Start of this line's segment in the shared DV coordinate buffer while walk ranges are resolved. */
-        int segmentStart;
-        /** Number of DV coordinates already placed in this line's segment. */
-        int segmentFill;
-        /** Start of the largest NOP run (DV coordinate), or -1 if none found. */
-        int bestNopStart;
-        /** Length of the largest NOP run, or 0 if none found. */
-        int bestNopLength;
-
-        /**
-         * Resets this info for a new scan line.
-         *
-         * @param dvCoord The DV-dimension coordinate of the first cell seen.
-         * @param flatIndex The flat index of the first cell seen.
-         */
-        void reset(int dvCoord, int flatIndex) {
-            this.minDv = dvCoord;
-            this.maxDv = dvCoord;
-            this.sampleFlatIndex = flatIndex;
-            this.count = 1;
-            this.bestNopStart = -1;
-            this.bestNopLength = 0;
-        }
-
-        /**
-         * Updates min/max tracking with a new DV coordinate.
-         *
-         * @param dvCoord The DV-dimension coordinate of a cell on this scan line.
-         */
-        void update(int dvCoord) {
-            if (dvCoord < minDv) minDv = dvCoord;
-            if (dvCoord > maxDv) maxDv = dvCoord;
-            count++;
-        }
-    }
 
     /**
      * Creates a gene duplication plugin.
@@ -275,8 +206,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     /**
      * Performs gene duplication for a single newborn organism.
      * <p>
-     * Groups owned cells by scan line, selects a random LABEL via reservoir sampling,
-     * finds the largest NOP area on a random scan line, and copies the blocks starting at the label
+     * Builds the newborn's lines, selects a random LABEL via reservoir sampling, finds the largest
+     * NOP area on a random line, and copies the blocks starting at the label
      * into the NOP area, as many whole blocks as that area holds. A copy that is applied is
      * recorded on the child.
      *
@@ -294,101 +225,60 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int[] shape = env.getShape();
         int dims = shape.length;
 
-        // Find the DV dimension (first non-zero component)
-        int dvDim = -1;
-        for (int i = 0; i < dims; i++) {
-            if (dv[i] != 0) {
-                dvDim = i;
-                break;
-            }
-        }
+        lines.build(env, childId, dv, child.getInitialPosition());
+        int dvDim = lines.dvDim();
         if (dvDim == -1) {
             LOG.debug("tick={} Organism {} gene duplication: degenerate DV", child.getBirthTick(), childId);
             return;
         }
 
         ensureBuffers(dims);
-        computePerpStrides(shape, dims, dvDim);
 
-        // --- Step 2: Group owned cells by scan line + reservoir sample a label ---
-        scanLineMap.clear();
-        poolIndex = 0;
-
-        // Reservoir sampling state for label selection
-        final int[] labelState = new int[3]; // [0]=perpKey, [1]=dvCoord, [2]=labelCount
-        labelState[2] = 0; // labelCount
-
-        final int dvDimFinal = dvDim;
-
-        // The visit runs in flat-index order: the reservoir choice below must not depend on write history
-        env.visitCellsOwnedBy(childId, cell -> {
-            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
-
-            int perpKey = computePerpKey(coordBuffer, dvDimFinal);
-            int dvCoord = coordBuffer[dvDimFinal];
-
-            ScanLineInfo scanLine = scanLineMap.get(perpKey);
-            if (scanLine == null) {
-                scanLine = acquireFromPool();
-                scanLine.reset(dvCoord, env.properties.toFlatIndex(coordBuffer));
-                scanLineMap.put(perpKey, scanLine);
-            } else {
-                scanLine.update(dvCoord);
+        // --- Step 2: Reservoir sample a label ---
+        // The lines list the labels in flat-index order: the reservoir choice below must not
+        // depend on write history
+        int labelCount = lines.labelCount();
+        int selectedLabelFlatIndex = -1;
+        for (int i = 0; i < labelCount; i++) {
+            if (random.nextInt(i + 1) == 0) {
+                selectedLabelFlatIndex = lines.labelFlatIndex(i);
             }
-
-            // Reservoir sampling for label selection
-            int moleculeInt = cell.moleculeInt();
-            if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
-                labelState[2]++;
-                if (random.nextInt(labelState[2]) == 0) {
-                    labelState[0] = perpKey;
-                    labelState[1] = dvCoord;
-                }
-            }
-        });
-
-        resolveWalkRanges(childId, env, dvDimFinal, shape[dvDimFinal]);
-
-        int labelCount = labelState[2];
+        }
         if (labelCount == 0) {
             if (LOG.isDebugEnabled()) {
-                LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} scan lines, 0 labels — skipping",
-                        child.getBirthTick(), childId, env.countCellsOwnedBy(childId), scanLineMap.size());
+                LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} lines, 0 labels — skipping",
+                        child.getBirthTick(), childId, env.countCellsOwnedBy(childId), lines.lineCount());
             }
             return; // no labels found
         }
 
-        int selectedLabelPerpKey = labelState[0];
-        int selectedLabelDvCoord = labelState[1];
-
         // The reading frame says of every cell whether the machine reads it as part of an
         // instruction: which runs execution runs on into, what the copy carries, which LABEL cells
         // are the block boundaries a cut-back copy may end at, and whether the copy ends open.
-        frame.build(env, childId, child.getInitialPosition(), dv);
+        frame.build(env, lines);
 
-        // --- Step 3: Scan ALL scan lines for NOP areas ---
+        // --- Step 3: Scan all lines for NOP areas ---
+        ensureLineCapacity(lines.lineCount());
         int candidateCount = 0;
-        for (int i = 0; i < poolIndex; i++) {
-            ScanLineInfo line = scanLinePool.get(i);
-            env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
-            findBestNopRun(line, env, dvDimFinal, dv[dvDimFinal], shape[dvDimFinal]);
-            if (line.bestNopLength >= minNopSize) {
+        for (int line = 0; line < lines.lineCount(); line++) {
+            env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(line), coordBuffer);
+            findBestNopRun(line, env, dvDim, dv[dvDim], shape[dvDim]);
+            if (bestNopLength[line] >= minNopSize) {
                 candidateCount++;
             }
         }
 
         if (candidateCount == 0) {
-            LOG.debug("tick={} Organism {} selected for duplication: {} labels, no scan line with a NOP run >= {} away from execution — skipping",
+            LOG.debug("tick={} Organism {} selected for duplication: {} labels, no line with a NOP run >= {} away from execution — skipping",
                     child.getBirthTick(), childId, labelCount, minNopSize);
             return;
         }
 
         // Pick a random candidate via reservoir sampling (zero allocation)
-        ScanLineInfo targetLine = null;
+        int targetLine = -1;
         int seen = 0;
-        for (int i = 0; i < poolIndex; i++) {
-            ScanLineInfo line = scanLinePool.get(i);
-            if (line.bestNopLength >= minNopSize) {
+        for (int line = 0; line < lines.lineCount(); line++) {
+            if (bestNopLength[line] >= minNopSize) {
                 seen++;
                 if (random.nextInt(seen) == 0) {
                     targetLine = line;
@@ -397,31 +287,22 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         // --- Step 4: Copy length (DV-direction-aware) ---
-        ScanLineInfo labelLine = scanLineMap.get(selectedLabelPerpKey);
-        if (labelLine == null) {
-            return; // should not happen, defensive
-        }
+        env.properties.flatIndexToCoordinates(selectedLabelFlatIndex, sourcePos);
+        int selectedLabelDvCoord = sourcePos[dvDim];
+        int labelLine = lines.lineOf(sourcePos);
+        int availableSource = lines.cellsFrom(sourcePos);
 
-        int dvStep = dv[dvDimFinal];
-        int shapeDvDim = shape[dvDimFinal];
-        int availableSource;
-        if (dvStep > 0) {
-            availableSource = toroidalForwardDistance(selectedLabelDvCoord, labelLine.walkEnd, shapeDvDim);
-        } else {
-            availableSource = toroidalForwardDistance(labelLine.walkStart, selectedLabelDvCoord, shapeDvDim);
-        }
-        // Build source position from label's scan line
-        env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
-        sourcePos[dvDimFinal] = selectedLabelDvCoord;
+        int dvStep = dv[dvDim];
+        int shapeDvDim = shape[dvDim];
 
-        int room = targetLine.bestNopLength;
+        int room = bestNopLength[targetLine];
         boolean cutBack = availableSource > room;
         int copyLength = cutBack
-                ? cutBackCopyLength(env, childId, room, selectedLabelDvCoord, dvStep, dvDimFinal, shapeDvDim)
+                ? cutBackCopyLength(env, childId, room, selectedLabelDvCoord, dvStep, dvDim)
                 // Cells the copy would write as empty carry nothing, so the copy does not reserve
                 // room for them
-                : withoutTrailingEmptyCells(env, availableSource, dvStep, dvDimFinal, shapeDvDim);
-        sourcePos[dvDimFinal] = selectedLabelDvCoord;
+                : withoutTrailingEmptyCells(env, availableSource, dvStep, dvDim);
+        sourcePos[dvDim] = selectedLabelDvCoord;
         if (copyLength == 0) {
             LOG.debug("tick={} Organism {} selected for duplication: NOP run of {} cells holds no code of the source — skipping",
                     child.getBirthTick(), childId, room);
@@ -433,12 +314,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int writtenLength = closed ? copyLength + CLOSING_JUMP_LENGTH : copyLength;
 
         // --- Step 5: Copy ---
-        // Build target position from target scan line, adjusting start for DV direction
-        env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
+        // Build target position from the target line, adjusting start for DV direction
+        env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(targetLine), targetPos);
         if (dvStep < 0) {
-            targetPos[dvDimFinal] = (targetLine.bestNopStart + writtenLength - 1) % shapeDvDim;
+            targetPos[dvDim] = (bestNopStart[targetLine] + writtenLength - 1) % shapeDvDim;
         } else {
-            targetPos[dvDimFinal] = targetLine.bestNopStart;
+            targetPos[dvDim] = bestNopStart[targetLine];
         }
 
         // The source walk starts at the chosen label, which the copy cannot recover from its values
@@ -456,35 +337,23 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             env.setMolecule(molecule, ownerId, targetPos);
 
             // In-place advancement along DV
-            sourcePos[dvDimFinal] += dvStep;
-            targetPos[dvDimFinal] += dvStep;
-
-            // Toroidal wrap
-            if (sourcePos[dvDimFinal] >= shapeDvDim) {
-                sourcePos[dvDimFinal] -= shapeDvDim;
-            } else if (sourcePos[dvDimFinal] < 0) {
-                sourcePos[dvDimFinal] += shapeDvDim;
-            }
-            if (targetPos[dvDimFinal] >= shapeDvDim) {
-                targetPos[dvDimFinal] -= shapeDvDim;
-            } else if (targetPos[dvDimFinal] < 0) {
-                targetPos[dvDimFinal] += shapeDvDim;
-            }
+            sourcePos[dvDim] = env.properties.stepAlongAxis(sourcePos[dvDim], dvDim, dvStep);
+            targetPos[dvDim] = env.properties.stepAlongAxis(targetPos[dvDim], dvDim, dvStep);
         }
 
         if (closed) {
-            writeClosingJump(env, childId, dvStep, dvDimFinal, shapeDvDim);
+            writeClosingJump(env, childId, dvStep, dvDim);
         }
 
         child.recordBirthMutation(recordBuilder.build());
 
         if (LOG.isDebugEnabled()) {
-            env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
-            sourcePos[dvDimFinal] = selectedLabelDvCoord;
-            env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
-            targetPos[dvDimFinal] = (dvStep < 0)
-                    ? (targetLine.bestNopStart + writtenLength - 1) % shapeDvDim
-                    : targetLine.bestNopStart;
+            env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(labelLine), sourcePos);
+            sourcePos[dvDim] = selectedLabelDvCoord;
+            env.properties.flatIndexToCoordinates(lines.sampleFlatIndex(targetLine), targetPos);
+            targetPos[dvDim] = (dvStep < 0)
+                    ? (bestNopStart[targetLine] + writtenLength - 1) % shapeDvDim
+                    : bestNopStart[targetLine];
             LOG.debug("tick={} Organism {} gene duplication: copied {} molecules from {} to {}",
                     child.getBirthTick(), childId, copyLength, Arrays.toString(sourcePos), Arrays.toString(targetPos));
         }
@@ -506,24 +375,23 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param labelDvCoord The DV coordinate of the chosen label, where the source begins.
      * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
      * @return The number of source cells to copy, or {@code 0} if the room holds no whole block
      *         together with the jump it needs.
      */
     private int cutBackCopyLength(Environment env, int childId, int room, int labelDvCoord,
-                                  int dvStep, int dvDim, int shapeDvDim) {
+                                  int dvStep, int dvDim) {
         int available = room;
         while (available > 0) {
             sourcePos[dvDim] = labelDvCoord;
-            int boundary = lastBlockBoundaryWithin(env, childId, available, dvStep, dvDim, shapeDvDim);
+            int boundary = lastBlockBoundaryWithin(env, childId, available, dvStep, dvDim);
             if (boundary == 0) {
                 return 0;
             }
             sourcePos[dvDim] = labelDvCoord;
             // At least the chosen label: a label is always carried
-            int carried = withoutTrailingEmptyCells(env, boundary, dvStep, dvDim, shapeDvDim);
+            int carried = withoutTrailingEmptyCells(env, boundary, dvStep, dvDim);
             sourcePos[dvDim] = labelDvCoord;
-            cutCopyEndsOpen = flow.endsOpen(env, frame, sourcePos, carried, dvDim, dvStep);
+            cutCopyEndsOpen = flow.endsOpen(env, frame, sourcePos, carried);
             if (!cutCopyEndsOpen || carried + CLOSING_JUMP_LENGTH <= room) {
                 return carried;
             }
@@ -544,13 +412,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param childId The child organism's ID.
      * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void writeClosingJump(Environment env, int childId, int dvStep, int dvDim, int shapeDvDim) {
+    private void writeClosingJump(Environment env, int childId, int dvStep, int dvDim) {
         writeBehindCopy(env, childId, new Molecule(Config.TYPE_CODE, jumpOpcodeId & Config.VALUE_MASK),
-                dvStep, dvDim, shapeDvDim);
+                dvStep, dvDim);
         writeBehindCopy(env, childId, new Molecule(Config.TYPE_LABELREF, cutLabelValue),
-                dvStep, dvDim, shapeDvDim);
+                dvStep, dvDim);
     }
 
     /**
@@ -562,19 +429,13 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param molecule The molecule to write.
      * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
      */
     private void writeBehindCopy(Environment env, int childId, Molecule molecule,
-                                 int dvStep, int dvDim, int shapeDvDim) {
+                                 int dvStep, int dvDim) {
         recordBuilder.cell(env.properties.toFlatIndex(targetPos),
                 env.getMoleculeIntAt(targetPos), molecule.toInt());
         env.setMolecule(molecule, childId, targetPos);
-        targetPos[dvDim] += dvStep;
-        if (targetPos[dvDim] >= shapeDvDim) {
-            targetPos[dvDim] -= shapeDvDim;
-        } else if (targetPos[dvDim] < 0) {
-            targetPos[dvDim] += shapeDvDim;
-        }
+        targetPos[dvDim] = env.properties.stepAlongAxis(targetPos[dvDim], dvDim, dvStep);
     }
 
     /**
@@ -611,10 +472,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param copyLength The length the copy would have.
      * @param dvStep The step along the direction vector, 1 or -1.
      * @param dvDim The dimension the direction vector runs along.
-     * @param shapeDvDim The size of the world along that dimension.
      * @return The length up to and including the last cell the copy carries, 0 if it carries none.
      */
-    private int withoutTrailingEmptyCells(Environment env, int copyLength, int dvStep, int dvDim, int shapeDvDim) {
+    private int withoutTrailingEmptyCells(Environment env, int copyLength, int dvStep, int dvDim) {
         int carried = 0;
         int dvPos = sourcePos[dvDim];
         for (int offset = 0; offset < copyLength; offset++) {
@@ -622,12 +482,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             if (env.getMoleculeIntAt(sourcePos) != 0 && carriedByACopy(env, sourcePos)) {
                 carried = offset + 1;
             }
-            dvPos += dvStep;
-            if (dvPos >= shapeDvDim) {
-                dvPos -= shapeDvDim;
-            } else if (dvPos < 0) {
-                dvPos += shapeDvDim;
-            }
+            dvPos = env.properties.stepAlongAxis(dvPos, dvDim, dvStep);
         }
         return carried;
     }
@@ -652,19 +507,13 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param room The number of cells the target's empty run offers.
      * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
      * @return The number of cells to copy, or {@code 0} if no block fits.
      */
-    private int lastBlockBoundaryWithin(Environment env, int childId, int room, int dvStep, int dvDim, int shapeDvDim) {
+    private int lastBlockBoundaryWithin(Environment env, int childId, int room, int dvStep, int dvDim) {
         int boundary = 0;
         int dvPos = sourcePos[dvDim];
         for (int offset = 1; offset <= room; offset++) {
-            dvPos += dvStep;
-            if (dvPos >= shapeDvDim) {
-                dvPos -= shapeDvDim;
-            } else if (dvPos < 0) {
-                dvPos += shapeDvDim;
-            }
+            dvPos = env.properties.stepAlongAxis(dvPos, dvDim, dvStep);
             sourcePos[dvDim] = dvPos;
             if ((env.getMoleculeIntAt(sourcePos) & Config.TYPE_MASK) != Config.TYPE_LABEL) {
                 continue;
@@ -691,71 +540,47 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             sourcePos = new int[dims];
             targetPos = new int[dims];
             runEntryPos = new int[dims];
-            perpStrides = new int[dims];
         }
     }
 
     /**
-     * Computes strides for the perpendicular key calculation, excluding the DV dimension.
+     * Sizes the per-line results for the number of lines of the current newborn.
      *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
-     * @param dvDim The DV dimension index.
+     * @param lineCount The number of lines.
      */
-    private void computePerpStrides(int[] shape, int dims, int dvDim) {
-        int stride = 1;
-        for (int i = dims - 1; i >= 0; i--) {
-            if (i != dvDim) {
-                perpStrides[i] = stride;
-                stride *= shape[i];
-            } else {
-                perpStrides[i] = 0;
-            }
+    private void ensureLineCapacity(int lineCount) {
+        if (bestNopStart.length < lineCount) {
+            bestNopStart = new int[lineCount];
+            bestNopLength = new int[lineCount];
         }
     }
 
     /**
-     * Computes a unique perpendicular key from coordinates, excluding the DV dimension.
-     *
-     * @param coord The coordinate array.
-     * @param dvDim The DV dimension index to exclude.
-     * @return A unique integer key for the perpendicular coordinate combination.
-     */
-    private int computePerpKey(int[] coord, int dvDim) {
-        int key = 0;
-        for (int i = 0; i < coord.length; i++) {
-            key += coord[i] * perpStrides[i];
-        }
-        return key;
-    }
-
-    /**
-     * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0) that
-     * execution does not run on into. Results are stored in the ScanLineInfo's
-     * bestNopStart/bestNopLength fields.
+     * Scans a line for the largest contiguous run of empty cells (CODE:0, marker:0) that
+     * execution does not run on into. Results are stored in {@link #bestNopStart} and
+     * {@link #bestNopLength} at the line's number.
      * <p>
-     * Walks along the scan line's arc ({@link ScanLineInfo#walkStart} to
-     * {@link ScanLineInfo#walkEnd}), correctly handling toroidal wrapping.
+     * Walks along the line's extent ({@link GenomeLines#arcStart} to {@link GenomeLines#arcEnd}),
+     * correctly handling toroidal wrapping.
      * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
-     * with the scan line's sampleFlatIndex before calling) and needs {@link #frame} built.
+     * with the line's {@link GenomeLines#sampleFlatIndex} before calling) and needs {@link #frame}
+     * built.
      *
-     * @param line The scan line to scan.
+     * @param line The number of the line to scan.
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
      * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void findBestNopRun(ScanLineInfo line, Environment env, int dvDim, int dvStep, int shapeDvDim) {
+    private void findBestNopRun(int line, Environment env, int dvDim, int dvStep, int shapeDvDim) {
         int nopRunStart = -1;
         int nopRunLength = 0;
-        line.bestNopStart = -1;
-        line.bestNopLength = 0;
+        bestNopStart[line] = -1;
+        bestNopLength[line] = 0;
 
-        int arcLength = (line.walkEnd >= line.walkStart)
-                ? line.walkEnd - line.walkStart + 1
-                : shapeDvDim - line.walkStart + line.walkEnd + 1;
+        int arcLength = lines.arcLength(line);
 
-        int dvPos = line.walkStart;
+        int dvPos = lines.arcStart(line);
         for (int step = 0; step < arcLength; step++) {
             coordBuffer[dvDim] = dvPos;
             int moleculeInt = env.getMoleculeIntAt(coordBuffer);
@@ -771,8 +596,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
                 nopRunStart = -1;
             }
 
-            dvPos++;
-            if (dvPos >= shapeDvDim) dvPos = 0;
+            dvPos = env.properties.stepAlongAxis(dvPos, dvDim, 1);
         }
         offerNopRun(line, env, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim);
     }
@@ -781,10 +605,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * Takes a NOP run as the line's best if it is longer than the best so far, long enough to be a
      * target at all, and away from execution.
      * <p>
-     * The run is asked about at the cell execution would enter it by; the empty cells of the run
-     * itself change nothing about the answer. A run too short to matter is not asked about.
+     * A run the organism started in is passed over: its instruction pointer would start inside
+     * the copy. Otherwise the run is asked about at the cell execution would enter it by; the
+     * empty cells of the run itself change nothing about the answer. A run too short to matter is
+     * not asked about.
      *
-     * @param line The scan line the run lies on.
+     * @param line The number of the line the run lies on.
      * @param env The simulation environment.
      * @param runStart The run's smallest DV coordinate, in the direction of rising coordinates.
      * @param runLength The number of cells of the run; 0 if there is none.
@@ -792,125 +618,25 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void offerNopRun(ScanLineInfo line, Environment env, int runStart, int runLength,
+    private void offerNopRun(int line, Environment env, int runStart, int runLength,
                              int dvDim, int dvStep, int shapeDvDim) {
-        if (runLength <= line.bestNopLength || runLength < minNopSize) {
+        if (runLength <= bestNopLength[line] || runLength < minNopSize) {
             return;
         }
         System.arraycopy(coordBuffer, 0, runEntryPos, 0, runEntryPos.length);
+        for (int i = 0; i < runLength; i++) {
+            runEntryPos[dvDim] = (runStart + i) % shapeDvDim;
+            if (frame.isInitialPosition(env.properties.toFlatIndex(runEntryPos))) {
+                return;
+            }
+        }
         int entry = dvStep > 0 ? runStart : (runStart + runLength - 1) % shapeDvDim;
         runEntryPos[dvDim] = entry;
-        int cellsBefore = dvStep > 0
-                ? toroidalForwardDistance(line.walkStart, entry, shapeDvDim) - 1
-                : toroidalForwardDistance(entry, line.walkEnd, shapeDvDim) - 1;
-        if (flow.reachedByFallThrough(env, frame, runEntryPos, dvDim, dvStep, cellsBefore)) {
+        if (flow.reachedByFallThrough(env, frame, runEntryPos)) {
             return;
         }
-        line.bestNopStart = runStart;
-        line.bestNopLength = runLength;
-    }
-
-    /**
-     * Determines the walk range of each scan line, the arc the newborn spans on that line.
-     * <p>
-     * A line whose owned cells cannot reach around the world edge spans the arc from its smallest
-     * to its largest DV coordinate, which the grouping pass already knows. Only a line that can
-     * reach around it needs the coordinates in between: for those this method collects the DV
-     * coordinates of the owned cells, sorts them and hands them to {@link ScanLineArc}, which
-     * decides where the body ends and the outside begins.
-     *
-     * @param childId The newborn whose owned cells were grouped into scan lines.
-     * @param env The simulation environment.
-     * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
-     */
-    private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
-        boolean toroidal = env.properties.isToroidal();
-        boolean anyWrapping = false;
-        for (int i = 0; i < poolIndex; i++) {
-            ScanLineInfo line = scanLinePool.get(i);
-            line.walkStart = line.minDv;
-            line.walkEnd = line.maxDv;
-            if (ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
-                anyWrapping = true;
-            }
-        }
-
-        if (!anyWrapping) {
-            return;
-        }
-
-        // One pass over the child's cells groups the DV coordinates by scan line: every line owns
-        // a segment of one shared buffer, starting at its offset, sized by its cell count.
-        int total = 0;
-        for (int i = 0; i < poolIndex; i++) {
-            ScanLineInfo line = scanLinePool.get(i);
-            line.segmentStart = total;
-            line.segmentFill = 0;
-            total += line.count;
-        }
-        ensureDvCollector(total);
-        final int dvDimF = dvDim;
-        env.visitCellsOwnedBy(childId, cell -> {
-            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
-            ScanLineInfo line = scanLineMap.get(computePerpKey(coordBuffer, dvDimF));
-            dvCoordCollector[line.segmentStart + line.segmentFill++] = coordBuffer[dvDimF];
-        });
-
-        for (int i = 0; i < poolIndex; i++) {
-            ScanLineInfo line = scanLinePool.get(i);
-            if (!ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
-                continue;
-            }
-            int from = line.segmentStart;
-            int count = line.count;
-            Arrays.sort(dvCoordCollector, from, from + count);
-            ScanLineArc.resolve(dvCoordCollector, from, count, shapeDvDim, toroidal, arc);
-            line.walkStart = arc.start;
-            line.walkEnd = arc.end;
-        }
-    }
-
-    /**
-     * Ensures the DV coordinate collector buffer has sufficient capacity.
-     *
-     * @param capacity Required minimum capacity.
-     */
-    private void ensureDvCollector(int capacity) {
-        if (dvCoordCollector == null || dvCoordCollector.length < capacity) {
-            dvCoordCollector = new int[capacity];
-        }
-    }
-
-    /**
-     * Computes the number of cells from {@code from} to {@code to} going in the positive
-     * direction on a toroidal axis, inclusive of both endpoints.
-     *
-     * @param from Start coordinate.
-     * @param to End coordinate.
-     * @param axisSize Size of the toroidal axis.
-     * @return The forward distance including both endpoints.
-     */
-    private static int toroidalForwardDistance(int from, int to, int axisSize) {
-        int d = to - from;
-        if (d < 0) d += axisSize;
-        return d + 1;
-    }
-
-    /**
-     * Acquires a ScanLineInfo from the pool, or creates a new one if the pool is exhausted.
-     * After warmup (first few ticks), this method never allocates.
-     *
-     * @return A reusable ScanLineInfo instance.
-     */
-    private ScanLineInfo acquireFromPool() {
-        if (poolIndex < scanLinePool.size()) {
-            return scanLinePool.get(poolIndex++);
-        }
-        ScanLineInfo info = new ScanLineInfo();
-        scanLinePool.add(info);
-        poolIndex++;
-        return info;
+        bestNopStart[line] = runStart;
+        bestNopLength[line] = runLength;
     }
 
     /** {@inheritDoc} */

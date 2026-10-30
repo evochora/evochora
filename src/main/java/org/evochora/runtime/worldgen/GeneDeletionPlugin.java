@@ -8,6 +8,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.GenomeFlow;
 import org.evochora.runtime.model.GenomeFrame;
+import org.evochora.runtime.model.GenomeLines;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
@@ -45,8 +46,8 @@ import java.util.Random;
  * because it is not part of the newborn's genome.
  * <p>
  * <strong>Which labels are candidates:</strong> only those whose value the newborn's body holds at
- * least {@code minLabelCount} times among its LABEL cells that are entry points. At the default of
- * 2 the deletion removes only a block of which the body carries a second one under the same label
+ * least {@code minLabelCount} times among its LABEL cells that are entry points. With a minimum of
+ * two the deletion removes only a block of which the body carries a second one under the same label
  * value, so that the references to the removed label find that one — the counterpart of
  * duplication, which leaves a second block under the same label value. The two need not be equal:
  * point mutations and insertions let duplicates diverge, and which of them survives is left to
@@ -57,20 +58,21 @@ import java.util.Random;
  * {@code minLabelCount = 1} makes every label a candidate again.
  * <p>
  * Among the candidates a label is drawn with weight = count^exponent, count being how often its
- * value occurs and the exponent configurable. With exponent=2.0 (default) this yields quadratic
- * scaling — biologically motivated by tandem repeat instability where the probability of deletion
- * through misalignment grows as O(N²) with repeat count.
+ * value occurs and the exponent configurable. An exponent of two yields quadratic scaling —
+ * biologically motivated by tandem repeat instability where the probability of deletion through
+ * misalignment grows as O(N²) with repeat count.
  * <p>
  * The thermodynamic cost system (value-dependent POKE costs) provides the counterweight to
  * genome bloat from duplication. This plugin provides the matching variation: the redundant blocks
  * duplication leaves behind are the ones that can be taken away again.
  * <p>
- * <strong>Performance:</strong> The reading frame is built once for every newborn the deletion
- * rate selects that carries a label, before the candidates are known, because which labels are
- * candidates is read from it. Each candidate costs a walk back to the code before its label and a
- * walk along its block. Beyond the frame's own allocations, a deletion allocates the visitor of the
- * owned-cell visit, the copies of the newborn's direction vector and initial position and, when it
- * is applied, the {@link MutationRecord}.
+ * <strong>Performance:</strong> The lines of the genome ({@link GenomeLines}) are built for every
+ * newborn the deletion rate selects, and the reading frame on top of them for every such newborn
+ * that carries a label, before the candidates are known, because which labels are candidates is
+ * read from it. Each candidate costs a walk back to the code before its label and a walk along its
+ * block. Beyond what building the lines and the frame allocates, a deletion allocates the copies
+ * of the newborn's direction vector and initial position and, when it is applied, the
+ * {@link MutationRecord}; the debug output allocates nothing while debug logging is off.
  * <p>
  * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared
@@ -93,6 +95,9 @@ public class GeneDeletionPlugin implements IBirthHandler {
     /** The kind this plugin reports its deletions under. */
     private static final String MUTATION_KIND = "deletion";
 
+    /** What a cleared cell holds. */
+    private static final Molecule EMPTY_CELL = new Molecule(Config.TYPE_CODE, 0);
+
     private final Random random;
     private final double deletionRate;
     private final double countExponent;
@@ -109,10 +114,13 @@ public class GeneDeletionPlugin implements IBirthHandler {
     /** The reading frame of the newborn, rebuilt for every deletion. */
     private final GenomeFrame frame = new GenomeFrame();
 
+    /** The lines of the newborn's genome, rebuilt for every deletion. */
+    private final GenomeLines lines = new GenomeLines();
+
     /** Answers whether execution runs into a label on its own, on top of the frame. */
     private final GenomeFlow flow = new GenomeFlow();
 
-    /** Coordinates of the label a candidate check or the deletion starts at. */
+    /** Coordinates of the label being looked at while the candidates are collected and checked. */
     private int[] labelCoord;
 
     /** Coordinates of the cell a walk along a block stands on. */
@@ -165,23 +173,21 @@ public class GeneDeletionPlugin implements IBirthHandler {
     void delete(Organism child, Environment env) {
         int childId = child.getId();
         if (env.countCellsOwnedBy(childId) == 0) {
-            LOG.debug("tick={} Organism {} gene deletion: no owned cells", child.getBirthTick(), childId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} gene deletion: no owned cells", child.getBirthTick(), childId);
+            }
             return;
         }
 
         int[] dv = child.getDv();
-        int dvDim = -1;
-        for (int i = 0; i < dv.length; i++) {
-            if (dv[i] != 0) {
-                dvDim = i;
-                break;
-            }
-        }
+        lines.build(env, childId, dv, child.getInitialPosition());
+        int dvDim = lines.dvDim();
         if (dvDim == -1) {
-            LOG.debug("tick={} Organism {} gene deletion: degenerate DV", child.getBirthTick(), childId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} gene deletion: degenerate DV", child.getBirthTick(), childId);
+            }
             return;
         }
-        int dvStep = dv[dvDim] > 0 ? 1 : -1;
         int dims = env.properties.getDimensions();
         if (labelCoord == null || labelCoord.length != dims) {
             labelCoord = new int[dims];
@@ -189,30 +195,23 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         // --- Phase 1: Collect the labels that are entry points and count hash frequencies ---
-        labelFlatIndices.clear();
-        labelHashes.clear();
-        hashCounts.clear();
-
-        // The visit runs in flat-index order: the choice below must not depend on write history
-        env.visitCellsOwnedBy(childId, cell -> {
-            int moleculeInt = cell.moleculeInt();
-            if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
-                labelFlatIndices.add(env.properties.toFlatIndex(cell.coordinate()));
-                labelHashes.add(moleculeInt & Config.VALUE_MASK);
+        // The lines list the labels in flat-index order: the choice below must not depend on
+        // write history
+        if (lines.labelCount() == 0) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
             }
-        });
-
-        if (labelFlatIndices.isEmpty()) {
-            LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
             return;
         }
 
-        frame.build(env, childId, child.getInitialPosition(), dv);
-        keepEntryPoints();
+        frame.build(env, lines);
+        collectEntryPoints(env);
 
         if (labelFlatIndices.isEmpty()) {
-            LOG.debug("tick={} Organism {} selected for deletion but has no label that is an entry point",
-                    child.getBirthTick(), childId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} selected for deletion but has no label that is an entry point",
+                        child.getBirthTick(), childId);
+            }
             return;
         }
 
@@ -229,7 +228,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
             if (count < minLabelCount) {
                 continue;
             }
-            int length = removableBlockLength(env, labelFlatIndices.getInt(i), dvDim, dvStep);
+            int length = removableBlockLength(env, labelFlatIndices.getInt(i));
             if (length == 0) {
                 continue;
             }
@@ -242,8 +241,10 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         if (selectedIdx < 0) {
-            LOG.debug("tick={} Organism {} selected for deletion but has no label occurring at least {} times "
-                    + "whose block can be removed", child.getBirthTick(), childId, minLabelCount);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} selected for deletion but has no label occurring at least {} times "
+                        + "whose block can be removed", child.getBirthTick(), childId, minLabelCount);
+            }
             return;
         }
 
@@ -256,11 +257,10 @@ public class GeneDeletionPlugin implements IBirthHandler {
                 .param(hashCounts.get(labelHashes.getInt(selectedIdx)));
 
         env.properties.flatIndexToCoordinates(selectedFlatIndex, walkCoord);
-        int axisSize = env.properties.getDimensionSize(dvDim);
         int deletedCount = 0;
         for (int k = 0; k < selectedLength; k++) {
             if (k > 0) {
-                walkCoord[dvDim] = step(walkCoord[dvDim], dvStep, axisSize);
+                walkCoord[dvDim] = env.properties.stepAlongAxis(walkCoord[dvDim], dvDim, lines.step());
             }
             int moleculeInt = env.getMoleculeIntAt(walkCoord);
             // An empty cell holds nothing to remove, and a cell the child does not own is not
@@ -269,7 +269,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
                 continue;
             }
             recordBuilder.cell(env.properties.toFlatIndex(walkCoord), moleculeInt, 0);
-            env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, walkCoord);
+            env.setMolecule(EMPTY_CELL, 0, walkCoord);
             deletedCount++;
         }
 
@@ -283,24 +283,26 @@ public class GeneDeletionPlugin implements IBirthHandler {
     }
 
     /**
-     * Keeps of the collected labels those the frame reads as entry points, in their order, and
-     * counts how often each value occurs among them.
+     * Collects of the newborn's labels those the frame reads as entry points, in flat-index order,
+     * and counts how often each value occurs among them.
+     *
+     * @param env The simulation environment.
      */
-    private void keepEntryPoints() {
-        int kept = 0;
-        for (int i = 0; i < labelFlatIndices.size(); i++) {
-            int flatIndex = labelFlatIndices.getInt(i);
+    private void collectEntryPoints(Environment env) {
+        labelFlatIndices.clear();
+        labelHashes.clear();
+        hashCounts.clear();
+        for (int i = 0; i < lines.labelCount(); i++) {
+            int flatIndex = lines.labelFlatIndex(i);
             if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE) {
                 continue;
             }
-            int hash = labelHashes.getInt(i);
-            labelFlatIndices.set(kept, flatIndex);
-            labelHashes.set(kept, hash);
+            env.properties.flatIndexToCoordinates(flatIndex, labelCoord);
+            int hash = env.getMoleculeIntAt(labelCoord) & Config.VALUE_MASK;
+            labelFlatIndices.add(flatIndex);
+            labelHashes.add(hash);
             hashCounts.addTo(hash, 1);
-            kept++;
         }
-        labelFlatIndices.size(kept);
-        labelHashes.size(kept);
     }
 
     /**
@@ -313,25 +315,24 @@ public class GeneDeletionPlugin implements IBirthHandler {
      * newborn's extent on the line, without the cells at its end that are part of no instruction.
      *
      * @param env The simulation environment.
-     * @param labelFlatIndex The flat index of a label the frame reads as an entry point.
-     * @param dvDim The dimension the direction vector points along.
-     * @param dvStep The step along that dimension, {@code +1} or {@code -1}.
+     * @param labelFlatIndex The flat index of a label the frame reads as an entry point, one of the
+     *                       newborn's own labels, which lies within the extent of its line.
      * @return The number of cells the deletion spans, at least one for the label itself, or
      *         {@code 0} if the block cannot be removed.
      */
-    private int removableBlockLength(Environment env, int labelFlatIndex, int dvDim, int dvStep) {
+    private int removableBlockLength(Environment env, int labelFlatIndex) {
         env.properties.flatIndexToCoordinates(labelFlatIndex, labelCoord);
-        if (flow.reachedByFallThrough(env, frame, labelCoord, dvDim, dvStep, frame.cellsBefore(labelCoord))) {
+        if (flow.reachedByFallThrough(env, frame, labelCoord)) {
             return 0;
         }
 
-        int axisSize = env.properties.getDimensionSize(dvDim);
-        int extent = frame.cellsFrom(labelCoord);
+        int dvDim = lines.dvDim();
+        int extent = lines.cellsFrom(labelCoord);
         System.arraycopy(labelCoord, 0, walkCoord, 0, labelCoord.length);
         int length = 1;
         int initialPositionOffset = -1;
         for (int walked = 1; walked < extent; walked++) {
-            walkCoord[dvDim] = step(walkCoord[dvDim], dvStep, axisSize);
+            walkCoord[dvDim] = env.properties.stepAlongAxis(walkCoord[dvDim], dvDim, lines.step());
             if ((env.getMoleculeIntAt(walkCoord) & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 break;
             }
@@ -344,25 +345,6 @@ public class GeneDeletionPlugin implements IBirthHandler {
             }
         }
         return initialPositionOffset >= 0 && initialPositionOffset < length ? 0 : length;
-    }
-
-    /**
-     * Steps one cell along an axis, around the world edge.
-     *
-     * @param pos The current coordinate.
-     * @param delta The step, {@code +1} or {@code -1}.
-     * @param axisSize The size of the axis.
-     * @return The next coordinate.
-     */
-    private static int step(int pos, int delta, int axisSize) {
-        int next = pos + delta;
-        if (next >= axisSize) {
-            return next - axisSize;
-        }
-        if (next < 0) {
-            return next + axisSize;
-        }
-        return next;
     }
 
     /** {@inheritDoc} */

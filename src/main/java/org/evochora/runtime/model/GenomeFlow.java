@@ -32,9 +32,9 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * an empty cell, a molecule that is not CODE, an opcode value registered nowhere — as a
  * no-operation of one cell and moves on. Every walk here passes such cells the same way, and an
  * operand cell as well, which leads back to its opcode. A registered opcode the frame gives no
- * role is passed too: every walk of the frame runs from a label to the end of its line, so such a
- * cell stands before the first label of its line, where the machine never reads, and no cell with
- * a role can stand before it.
+ * role is passed too: every walk of the frame runs from a frame start — a label or the initial
+ * position — to the end of its line, so such a cell stands before the first frame start of its
+ * line, where the machine never reads, and no cell with a role can stand before it.
  * <p>
  * <strong>What it cannot see.</strong> A jump whose target is computed at run time carries no label
  * reference in the genome, so {@link #isJumpTarget} does not know of it.
@@ -80,17 +80,15 @@ public final class GenomeFlow {
      *
      * @param env The environment holding the cells.
      * @param frame The reading frame of the organism, built for the grid as it stands.
-     * @param cell The coordinates of the cell asked about; not modified.
-     * @param dvDim The dimension the organism's direction vector points along.
-     * @param dvStep The step along that dimension, {@code +1} or {@code -1}.
-     * @param cellsBefore The number of cells of the organism's extent on the line that lie before
-     *                    {@code cell} against the direction vector.
+     * @param cell The coordinates of a cell within the organism's extent; not modified.
      * @return {@code true} if execution can run into the cell without a jump to it.
      */
-    public boolean reachedByFallThrough(Environment env, GenomeFrame frame, int[] cell,
-                                        int dvDim, int dvStep, int cellsBefore) {
+    public boolean reachedByFallThrough(Environment env, GenomeFrame frame, int[] cell) {
         EnvironmentProperties props = env.getProperties();
-        int axisSize = props.getDimensionSize(dvDim);
+        GenomeLines lines = frame.lines();
+        int dvDim = lines.dvDim();
+        int dvStep = lines.step();
+        int cellsBefore = Math.max(0, lines.cellsBefore(cell));
         copyToBuffer(cell);
 
         if (frame.isInitialPosition(props.toFlatIndex(coord))) {
@@ -99,7 +97,7 @@ public final class GenomeFlow {
         boolean behindFlowEnd = false;
         int pos = cell[dvDim];
         for (int i = 0; i < cellsBefore; i++) {
-            pos = step(pos, -dvStep, axisSize);
+            pos = props.stepAlongAxis(pos, dvDim, -dvStep);
             coord[dvDim] = pos;
             int flatIndex = props.toFlatIndex(coord);
             int moleculeInt = env.getMoleculeIntAt(coord);
@@ -144,24 +142,20 @@ public final class GenomeFlow {
      *
      * @param env The environment holding the cells.
      * @param frame The reading frame of the organism, built for the grid as it stands.
-     * @param organismId The organism whose label references are read.
-     * @param dvDim The dimension the organism's direction vector points along.
-     * @param dvStep The step along that dimension, {@code +1} or {@code -1}.
      */
-    public void collectReferences(Environment env, GenomeFrame frame, int organismId,
-                                  int dvDim, int dvStep) {
+    public void collectReferences(Environment env, GenomeFrame frame) {
         referenceValues.clear();
         referenceIsControlFlow.clear();
         EnvironmentProperties props = env.getProperties();
-        int axisSize = props.getDimensionSize(dvDim);
-        env.visitCellsOwnedBy(organismId, cell -> {
+        GenomeLines lines = frame.lines();
+        env.visitCellsOwnedBy(lines.organismId(), cell -> {
             int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) != Config.TYPE_LABELREF) {
                 return;
             }
             referenceValues.add(moleculeInt & Config.VALUE_MASK);
             referenceIsControlFlow.add(
-                    isControlFlowOperand(env, frame, props, cell.coordinate(), dvDim, dvStep, axisSize));
+                    isControlFlowOperand(env, frame, props, cell.coordinate()));
         });
     }
 
@@ -229,14 +223,13 @@ public final class GenomeFlow {
      * @param frame The reading frame of the organism, built for the grid as it stands.
      * @param firstCell The coordinates of the stretch's first cell; not modified.
      * @param length The number of cells of the stretch along the direction vector.
-     * @param dvDim The dimension the organism's direction vector points along.
-     * @param dvStep The step along that dimension, {@code +1} or {@code -1}.
      * @return {@code true} if execution can run past the last cell of the stretch.
      */
-    public boolean endsOpen(Environment env, GenomeFrame frame, int[] firstCell, int length,
-                            int dvDim, int dvStep) {
+    public boolean endsOpen(Environment env, GenomeFrame frame, int[] firstCell, int length) {
         EnvironmentProperties props = env.getProperties();
-        int axisSize = props.getDimensionSize(dvDim);
+        GenomeLines lines = frame.lines();
+        int dvDim = lines.dvDim();
+        int dvStep = lines.step();
         copyToBuffer(firstCell);
 
         int lastOpcodeId = -1;
@@ -252,7 +245,7 @@ public final class GenomeFlow {
                 opcodeIdBeforeLast = lastOpcodeId;
                 lastOpcodeId = Molecule.extractSignedValue(env.getMoleculeIntAt(coord));
             }
-            pos = step(pos, dvStep, axisSize);
+            pos = props.stepAlongAxis(pos, dvDim, dvStep);
         }
         if (lastOpcodeId == -1 || !Instruction.neverFallsThrough(lastOpcodeId)) {
             return true;
@@ -271,13 +264,13 @@ public final class GenomeFlow {
      * @param frame The reading frame of the organism.
      * @param props The properties flat indices are computed with.
      * @param referenceCell The coordinates of the reference; not modified.
-     * @param dvDim The dimension the direction vector points along.
-     * @param dvStep The step along that dimension.
-     * @param axisSize The size of the world along that dimension.
      * @return {@code true} if the reference is what a jump or a call matches against.
      */
     private boolean isControlFlowOperand(Environment env, GenomeFrame frame, EnvironmentProperties props,
-                                         int[] referenceCell, int dvDim, int dvStep, int axisSize) {
+                                         int[] referenceCell) {
+        GenomeLines lines = frame.lines();
+        int dvDim = lines.dvDim();
+        int axisSize = lines.axisSize();
         copyToBuffer(referenceCell);
         if (frame.slot(props.toFlatIndex(coord)) != Slot.LABEL) {
             return false;
@@ -285,7 +278,7 @@ public final class GenomeFlow {
         int pos = referenceCell[dvDim];
         // The walk ends at the first cell that is no operand, so it is as short as an operand list.
         for (int i = 0; i < axisSize; i++) {
-            pos = step(pos, -dvStep, axisSize);
+            pos = props.stepAlongAxis(pos, dvDim, -lines.step());
             coord[dvDim] = pos;
             Slot slot = frame.slot(props.toFlatIndex(coord));
             if (slot == Slot.INSTRUCTION) {
@@ -297,25 +290,6 @@ public final class GenomeFlow {
             }
         }
         return false;
-    }
-
-    /**
-     * Steps one cell along an axis, around the world edge.
-     *
-     * @param pos The current coordinate.
-     * @param delta The step, {@code +1} or {@code -1}.
-     * @param axisSize The size of the axis.
-     * @return The next coordinate.
-     */
-    private static int step(int pos, int delta, int axisSize) {
-        int next = pos + delta;
-        if (next >= axisSize) {
-            return next - axisSize;
-        }
-        if (next < 0) {
-            return next + axisSize;
-        }
-        return next;
     }
 
     /**
