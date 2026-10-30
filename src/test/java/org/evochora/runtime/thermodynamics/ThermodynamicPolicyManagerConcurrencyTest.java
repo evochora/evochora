@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.instructions.NopInstruction;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.ConfigFactory;
@@ -29,13 +29,16 @@ import com.typesafe.config.ConfigFactory;
  * {@code ArrayIndexOutOfBoundsException} in the middle of a tick — the virtual machine turns that
  * into an instruction failure, so it reads as a defect in the organism's program.
  * <p>
- * The test passes on a fixed-size cache and would fail on a growing one. It carries no tag because
- * it fits neither the unit budget (under 0.2s) nor the integration one: three thousand attempts and
- * roughly two seconds are what it takes to hit the interleaving reliably. Remove {@code @Disabled}
- * to run it while working on this cache.
+ * The test passes on a fixed-size cache and fails on a growing one. A growing cache loses the race
+ * within the first few attempts; the number of attempts lies far above that, so that a machine on
+ * which the threads overlap less still reaches it. One pool serves every attempt, because starting
+ * threads anew for each attempt would cost far more than the lookups themselves.
  */
-@Disabled("Too slow for the suite; see the class comment for what it covers and when to run it.")
+@Tag("integration")
 class ThermodynamicPolicyManagerConcurrencyTest {
+
+    /** How many fresh managers the lookups race on before the cache is taken to be safe. */
+    private static final int ATTEMPTS = 200;
 
     private static final String THERMO_CONFIG = """
             default {
@@ -55,16 +58,16 @@ class ThermodynamicPolicyManagerConcurrencyTest {
         List<Integer> opcodeIds = spreadAcrossTheOpcodeRange();
         List<Throwable> failures = new CopyOnWriteArrayList<>();
 
-        // Each attempt starts from a fresh manager, because a cache is only ever populated during the
-        // warm-up of a run — which is exactly what a resume creates in the middle of one.
-        for (int attempt = 0; attempt < 3000 && failures.isEmpty(); attempt++) {
-            ThermodynamicPolicyManager manager =
-                    new ThermodynamicPolicyManager(ConfigFactory.parseString(THERMO_CONFIG));
+        ExecutorService pool = Executors.newFixedThreadPool(opcodeIds.size());
+        try {
+            // Each attempt starts from a fresh manager, because a cache is only ever populated during
+            // the warm-up of a run — which is exactly what a resume creates in the middle of one.
+            for (int attempt = 0; attempt < ATTEMPTS && failures.isEmpty(); attempt++) {
+                ThermodynamicPolicyManager manager =
+                        new ThermodynamicPolicyManager(ConfigFactory.parseString(THERMO_CONFIG));
 
-            CountDownLatch startTogether = new CountDownLatch(1);
-            CountDownLatch finished = new CountDownLatch(opcodeIds.size());
-            ExecutorService pool = Executors.newFixedThreadPool(opcodeIds.size());
-            try {
+                CountDownLatch startTogether = new CountDownLatch(1);
+                CountDownLatch finished = new CountDownLatch(opcodeIds.size());
                 for (int opcodeId : opcodeIds) {
                     pool.execute(() -> {
                         try {
@@ -81,9 +84,9 @@ class ThermodynamicPolicyManagerConcurrencyTest {
                 }
                 startTogether.countDown();
                 assertThat(finished.await(10, TimeUnit.SECONDS)).as("all lookups finished").isTrue();
-            } finally {
-                shutDownAndWait(pool);
             }
+        } finally {
+            shutDownAndWait(pool);
         }
 
         assertThat(failures)
@@ -92,14 +95,14 @@ class ThermodynamicPolicyManagerConcurrencyTest {
     }
 
     /**
-     * Ends one attempt's pool and waits for its threads to be gone.
+     * Ends the pool of the lookups and waits for its threads to be gone.
      * <p>
-     * {@code shutdownNow} only interrupts the running tasks and returns, so without the wait an
-     * attempt whose lookups timed out would leave its threads behind while the next attempt starts
-     * its own. Threads from an earlier attempt still reaching the cache would blur what this test
-     * observes, and they would do so exactly when it has something to report.
+     * {@code shutdownNow} only interrupts the running tasks and returns, so without the wait a run
+     * whose lookups timed out would leave its threads behind while the next test class starts. The
+     * attempts need no such wait among themselves: each one waits for all of its lookups before the
+     * next begins, and a lookup that does not finish fails the test.
      *
-     * @param pool the pool of the attempt that just ended
+     * @param pool the pool the lookups ran in
      */
     private static void shutDownAndWait(ExecutorService pool) {
         pool.shutdownNow();
