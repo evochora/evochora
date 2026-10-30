@@ -1,0 +1,146 @@
+# behavior/harvest/random-run.evo
+# Harvesting: straight runs in random directions, eating the energy found beside the way.
+# Energy the organism owns is left where it is.
+#
+# STEP REF RESULT takes no further parameters and makes at most one run per call.
+#
+# Result:
+#   DATA:0    energy was eaten
+#   ENDED     the run reached its length without finding energy
+#   BLOCKED   the way ahead was blocked before the run ended
+#   STUCK     no direction was passable; the next call starts from the instruction pointer
+#
+# Reads no flag and no value. DP0 is left where the next call goes on from: next to the eaten
+# cell, at the end of the run, or on the instruction pointer. Requires nothing of the main file.
+#
+# Extent: 92 x 13 cells.
+
+# ----------------------------
+# Constants
+# ----------------------------
+.CONST RUN_MIN  DATA:50                  # A run is at least this many moves long...
+.CONST RUN_SPAN DATA:100                 # ...and less than this many moves longer
+
+EXPORT .CONST ENDED   DATA:1             # Run over, nothing found
+EXPORT .CONST BLOCKED DATA:2             # Way ahead blocked, nothing found
+EXPORT .CONST STUCK   DATA:3             # No way out, started again from the instruction pointer
+
+# ===========================================================================
+# STEP - one run
+# ===========================================================================
+.ORG 0|0
+EXPORT .PROC STEP REF RESULT
+
+  # State that outlives a call
+  .REG %POS   %SLR0   # Where the last call stopped
+  .REG %BACK  %SDR0   # Bitmask of the way back along the last run
+
+  # Working registers, gone with the return
+  .REG %DIR   %PDR0   # Direction of this run as a unit vector
+  .REG %FWD   %PDR1   # ...and as a bitmask
+  .REG %MASK  %PDR2   # Result of a scan
+  .REG %VEC   %PDR3   # Scratch vector
+  .REG %LEFT  %PDR4   # Moves left in this run, 0 while none is drawn
+
+  # ===========================================================================
+  # ENTER - back to where the last call stopped; the very first call starts at the IP
+  # ===========================================================================
+  # Entry point with redundant jumps for mutation resistance
+  NOP; JMPI STEP_ENTER; NOP^8; JMPI STEP_ENTER; NOP^4
+  STEP_ENTER: NOP^2
+    SETI %LEFT DATA:0; NOP^4                # No run drawn yet
+    JFSL %POS STEP_RESUME; NOP^4            # A position from the last call: go back there
+    SYNC; NOP^4                             # Never called before: start from the IP...
+    SETI %BACK DATA:0; NOP^4                # ...with no way back to avoid
+    JMPI STEP_SCAN; NOP^4; JMPI STEP_SCAN
+  NOP^4
+  STEP_RESUME: NOP^2
+    SKLR %POS; NOP^4                        # Look first where we stopped: a source may have grown back
+    JMPI STEP_SCAN; NOP^4; JMPI STEP_SCAN
+
+  # ===========================================================================
+  # SCAN - eat energy beside the DP, if there is any
+  # ===========================================================================
+  .ORG 0|@+2
+  STEP_SCAN: NOP^2
+    SNTI %MASK ENERGY:0; NOP^2              # Energy among the neighbours?
+    JFI %MASK DATA:0 STEP_GO; NOP^2         # ...no, on with the run
+    RBIR %VEC %MASK; NOP^2                  # Pick one of them
+    B2VR %VEC %VEC; NOP^2                   # ...as a direction
+    SCAN %MASK %VEC; NOP^2                  # Read the cell again
+    JFMR %VEC STEP_GO; NOP^2                # Our own energy is no food: a store, or an operand of our code
+    JLEI %MASK DATA:0 STEP_GO; NOP^2        # ENERGY:0 holds nothing; eating it blinds this scan
+    JNTI %MASK ENERGY:0 STEP_GO; NOP^2      # Still energy? The last look before we take it
+    PEEK %MASK %VEC; NOP^2                  # Eat it
+    SETI RESULT DATA:0; NOP^2               # Acted
+    JMPI STEP_RETURN; NOP^9; JMPI STEP_RETURN
+  NOP^4
+  STEP_GO: NOP^2
+    JLEI %LEFT DATA:0 STEP_DRAW; NOP^4      # No run under way: draw one
+    JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
+
+  # ===========================================================================
+  # DRAW - a random passable direction, not the way back unless it is the only one
+  # ===========================================================================
+  .ORG 0|@+2
+  STEP_DRAW: NOP^2
+    SPNR %MASK; NOP^4                       # Passable directions
+    JFI %MASK DATA:0 STEP_STUCK; NOP^4      # ...none
+    SETR %FWD %MASK; NOP^4                  # A copy to strike the way back from
+    ADNR %FWD %BACK; NOP^4                  # Without the way back...
+    INI %FWD DATA:0                         # ...unless nothing else is left
+    SETR %MASK %FWD; NOP^4                  # ...and the rest is what to draw from
+    RBIR %FWD %MASK; NOP^4                  # Pick one
+    B2VR %DIR %FWD; NOP^4                   # The drawn direction as a vector
+    JMPI STEP_DRAW_RUN; NOP^4; JMPI STEP_DRAW_RUN
+
+  .ORG 0|@+2
+  STEP_DRAW_RUN: NOP^2
+    SETV %VEC 0|0; NOP^4                    # The way back along this run...
+    SUBR %VEC %DIR; NOP^4                   # 0|0 minus the direction: its reverse
+    V2BR %BACK %VEC; NOP^4                  # ...kept for the next draw
+    SETI %LEFT RUN_SPAN; NOP^4              # A random length...
+    RAND %LEFT; NOP^4                       # 0 up to the span
+    ADDI %LEFT RUN_MIN; NOP^4               # ...no shorter than the minimum
+    JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
+
+  # ===========================================================================
+  # MOVE - one step ahead, then look around again
+  # ===========================================================================
+  .ORG 0|@+2
+  STEP_MOVE: NOP^2
+    SPNR %MASK; NOP^4                       # Passable directions from here
+    ANDR %MASK %FWD; NOP^4                  # The way ahead passable?
+    JFI %MASK DATA:0 STEP_BLOCKED; NOP^4    # ...no, the run ends here
+    SEEK %DIR                               # One step
+    JFER STEP_BLOCKED; NOP^4                # Taken between the look and the step
+    DECR %LEFT; NOP^4                       # One move fewer left
+    JLEI %LEFT DATA:0 STEP_ENDED; NOP^4     # Run over
+    JMPI STEP_SCAN; NOP^4; JMPI STEP_SCAN
+
+  # ===========================================================================
+  # ENDINGS - what happened, then where we stopped
+  # ===========================================================================
+  .ORG 0|@+2
+  STEP_ENDED: NOP^2
+    SETI RESULT ENDED; NOP^4                # Nothing found on the whole run
+    JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
+  NOP^4
+  STEP_BLOCKED: NOP^2
+    SETI RESULT BLOCKED; NOP^4              # Nothing found before the way was blocked
+    JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
+  NOP^4
+  STEP_STUCK: NOP^2
+    SYNC; NOP^4                             # Nowhere to go: the next call starts from the IP
+    SETI RESULT STUCK; NOP^4                # Reported as stuck
+    JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
+
+  .ORG 0|@+2
+  STEP_RETURN: NOP^2
+    DPLR %POS; NOP^4                        # The next call goes on from here
+    # Multiple RET instructions for mutation resistance
+    NOP^4; RET; NOP^12; RET; NOP^4; RET
+
+  # Safety jumps at end of procedure (in case mutation causes fall-through)
+  NOP; JMPI STEP_RETURN; NOP^3; JMPI STEP_RETURN
+.ENDPROC

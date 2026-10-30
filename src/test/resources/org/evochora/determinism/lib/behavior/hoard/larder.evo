@@ -1,0 +1,141 @@
+# behavior/hoard/larder.evo
+# Hoarding in a larder: one cell of the body holds a store of energy, put aside in good times
+# and taken back in bad ones.
+#
+# STEP REF RESULT REF STOCKED moves energy between the organism and its store at most once per
+# call, in the first of these modes that applies:
+#   energy below CRITICAL    a ration of at most RESERVE comes out of the store
+#   energy above OVERFLOW    what lies above OVERFLOW goes into the store
+#   store below RESERVE      what lies above AFFORD goes into the store, until it holds RESERVE
+#
+# Result:
+#   DATA:0      energy went into the store
+#   EMERGENCY   a ration came out; it is meant for the search for energy
+#   anything else: nothing moved, because no mode applied, the store was empty or full, or the
+#   store could not be found
+#
+# STOCKED on return: DATA:1 while the store holds at least RESERVE, and when it cannot be found;
+# DATA:0 otherwise.
+#
+# Values CRITICAL, AFFORD, OVERFLOW and RESERVE, without default and exported, so that the gates
+# of the main file read the same values. CRITICAL lies above what a round costs, and CRITICAL plus
+# RESERVE below the energy at which the other behaviors pause, so that a ration pays the search
+# and not what else the organism does. AFFORD lies above CRITICAL; OVERFLOW lies above AFFORD and
+# a harvest below max-energy, so that no harvest is lost at the limit.
+#
+# Requires of the main file: a call when the energy lies below CRITICAL, when it lies above
+# OVERFLOW, and when STOCKED is DATA:0 and the energy lies above AFFORD. A harvest that leaves
+# energy the organism owns where it is, and a reproduction that copies energy in the body as
+# ENERGY:0, so that the store reaches a child empty.
+#
+# The data pointers carry no meaning after a return.
+#
+# Extent: 99 x 11 cells, the store among them.
+
+# ----------------------------
+# Values and constants
+# ----------------------------
+EXPORT .REQUIRE VALUE CRITICAL           # Below it the organism is in danger
+EXPORT .REQUIRE VALUE AFFORD             # Above it the organism can afford to fill the store
+EXPORT .REQUIRE VALUE OVERFLOW           # Above it a harvest would be lost at max-energy
+EXPORT .REQUIRE VALUE RESERVE            # What the store keeps for an emergency
+
+EXPORT .CONST EMERGENCY DATA:1           # A ration came out of the store
+
+# ----------------------------
+# The store: a label, and east of it the cell that holds the energy
+# ----------------------------
+.ORG 0|0
+STORE:
+.PLACE ENERGY:0 1|0
+
+# ===========================================================================
+# STEP - one move between the organism and its store
+# ===========================================================================
+.ORG 0|2
+EXPORT .PROC STEP REF RESULT REF STOCKED
+
+  # Working registers, gone with the return
+  .REG %E     %PDR0   # Energy, as ENERGY to be reckoned with the store
+  .REG %OLD   %PDR1   # What the store holds
+  .REG %NEW   %PDR2   # What it is to hold
+  .REG %RES   %PDR3   # RESERVE, the only place it is read
+  .REG %TMP   %PDR4   # An amount
+  .REG %SPOT  %PLR0   # The label beside the store
+
+  # Entry point with redundant jumps for mutation resistance
+  NOP; JMPI STEP_ENTER; NOP^4; JMPI STEP_ENTER; NOP^4
+  STEP_ENTER: NOP^2
+    SETI STOCKED DATA:1; NOP^2              # A store that cannot be found asks for no filling
+    LRLI %SPOT STORE; NOP^2                 # The label beside the store
+    JNSL %SPOT STEP_RETURN; NOP^2           # Lost: nothing to move
+    SKLR %SPOT; SCNI %OLD 1|0; NOP^2        # What the store holds
+    IFI %OLD CODE:0                         # An empty cell holds nothing...
+      SETI %OLD ENERGY:0; NOP^2             # ...and takes energy as the store does
+    JNTI %OLD ENERGY:0 STEP_RETURN; NOP^2   # Something else stands there: not ours to replace
+    JMPI STEP_READ; NOP^4; JMPI STEP_READ
+
+  STEP_READ: NOP^2
+    SETR %NEW %OLD; NOP^2                   # Nothing moves unless a mode says so
+    SETI %RES RESERVE; NOP^2                # RESERVE, read here alone...
+    TYPI %RES ENERGY:0; NOP^2               # ...as ENERGY at run time: an ENERGY operand would reach a child as ENERGY:0
+    NRG %E; TYPI %E ENERGY:0; NOP^2         # The energy, of the same type as the store
+    JMPI MODE; NOP^4; JMPI MODE
+
+  # ===========================================================================
+  # MODE - the first mode that applies
+  # ===========================================================================
+  .ORG 0|@+2
+  .CONTROL MODE
+    JLTI %E CRITICAL RATION; NOP^2          # In danger: a ration out
+    SETR %TMP %E; SUBI %TMP OVERFLOW; NOP^2 # How far above OVERFLOW...
+    JGTI %TMP ENERGY:0 SURPLUS; NOP^2       # ...if at all: that much in
+    JGER %OLD %RES STEP_SETTLE; NOP^2       # Stocked: nothing more to put aside
+    SETR %TMP %E; SUBI %TMP AFFORD; NOP^2   # How far above AFFORD...
+    JGTI %TMP ENERGY:0 STOCK; NOP^2         # ...if at all: toward RESERVE
+    JMPI STEP_SETTLE; NOP^4; JMPI STEP_SETTLE
+  .ORG 0|@+2
+  .CASE RATION
+    SETR %NEW %OLD; SUBR %NEW %RES; NOP^2   # The store less a ration...
+    MAXI %NEW ENERGY:0; NOP^2               # ...but never below empty
+    SETI RESULT EMERGENCY; NOP^2            # For the search, if it comes out
+    JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
+  .CASE SURPLUS
+    SETR %NEW %OLD; ADDR %NEW %TMP; NOP^2   # The store and the surplus; a full store holds what it can
+    SETI RESULT DATA:0; NOP^2               # Acted, if it goes in
+    JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
+  .CASE STOCK
+    SETR %NEW %RES; SUBR %NEW %OLD; NOP^2   # Room left below RESERVE...
+    MINR %TMP %NEW; NOP^2                   # ...or what can be afforded, the smaller
+    SETR %NEW %OLD; ADDR %NEW %TMP; NOP^2   # The store and that much
+    SETI RESULT DATA:0; NOP^2               # Acted, if it goes in
+    JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
+  .ENDCONTROL
+
+  # ===========================================================================
+  # MOVE - write the store; what it held is booked against the energy, what it holds now too
+  # ===========================================================================
+  .ORG 0|@+2
+  STEP_MOVE: NOP^2
+    JFR %NEW %OLD STEP_IDLE; NOP^2          # Empty or full: nothing to move
+    SETR %TMP %NEW; PPKI %TMP 1|0; NOP^2    # Take out the old, put in the new, in one tick
+    JFER STEP_IDLE; NOP^2                   # Failed: nothing moved
+    JMPI STEP_SETTLE; NOP^4; JMPI STEP_SETTLE
+  STEP_IDLE: NOP^2
+    SETI RESULT CODE:0; NOP^2               # Nothing moved
+    SETR %NEW %OLD; NOP^2                   # The store as it was
+    JMPI STEP_SETTLE; NOP^4; JMPI STEP_SETTLE
+
+  # ===========================================================================
+  # ENDINGS
+  # ===========================================================================
+  .ORG 0|@+2
+  STEP_SETTLE: NOP^2
+    SETI STOCKED DATA:0; NOP^2              # Below RESERVE...
+    GETR %NEW %RES                          # ...unless it holds at least that much
+      SETI STOCKED DATA:1; NOP^2
+    JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
+  STEP_RETURN:
+    # Multiple RET instructions for mutation resistance
+    NOP^4; RET; NOP^12; RET; NOP^4; RET
+.ENDPROC
