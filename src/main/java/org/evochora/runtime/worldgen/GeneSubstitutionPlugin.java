@@ -641,7 +641,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      */
     private int mutateValue(int rawValue, double exponent) {
         int value = Molecule.extractSignedValue(rawValue);
-        int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(value), exponent)));
+        // StrictMath gives the same result on every platform, so the delta, and with it the run,
+        // does not depend on the machine.
+        int delta = Math.max(1, (int) Math.round(StrictMath.pow(Math.abs(value), exponent)));
         int offset = random.nextInt(2 * delta + 1) - delta;
         return ValueBounds.bound((long) value + offset) & Config.VALUE_MASK;
     }

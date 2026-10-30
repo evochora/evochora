@@ -157,7 +157,9 @@ public class GeneDeletionPlugin implements IBirthHandler {
             if (count < minLabelCount) {
                 continue;
             }
-            double weight = Math.pow(count, countExponent);
+            // StrictMath gives the same result on every platform, so the selection, and with it
+            // the run, does not depend on the machine.
+            double weight = StrictMath.pow(count, countExponent);
             totalWeight += weight;
             if (random.nextDouble() * totalWeight < weight) {
                 selectedIdx = i;
