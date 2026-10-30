@@ -333,7 +333,8 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - **NEVER use `Thread.sleep()` in tests**
 
 **Test Data:**
-- Assembly code: inline in tests, NOT in separate files
+- A test brings everything it runs on: its configuration and its programs. It never reads `config/evochora.conf` or a program under `assembly/`, so that a change to what the project ships does not turn it red
+- Assembly code: inline in the test. A program too large for that, or one that imports others, lies under `src/test/resources` beside the test's package; a copy of a shipped program says in its header that it is deliberately not kept in step with the original
 - Protobuf messages: construct inline using builders
 - Instruction set: Call `Instruction.init()` before compiler/runtime tests
 
