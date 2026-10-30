@@ -257,12 +257,13 @@ jobs:
 
   release:
     name: Build, Package & Release
-    needs: [test, compare-fingerprints]
+    needs: [test, fingerprint, compare-fingerprints]
     runs-on: ubuntu-latest
     # Run on: push to main, push of v* tag, OR release published (with v* tag)
     if: |
       always() &&
       (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.fingerprint.result == 'success' || needs.fingerprint.result == 'skipped') &&
       (needs.compare-fingerprints.result == 'success' || needs.compare-fingerprints.result == 'skipped') &&
       github.event_name != 'pull_request' &&
       (
