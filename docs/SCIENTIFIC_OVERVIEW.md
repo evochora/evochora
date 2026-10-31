@@ -35,9 +35,10 @@ This document describes the platform's physics, the tools for observing and anal
     - [5.2 Host–Parasite Coevolution](#52-hostparasite-coevolution)
     - [5.3 Heterogeneous and Dynamic Environments](#53-heterogeneous-and-dynamic-environments)
     - [5.4 The Structure of Variation](#54-the-structure-of-variation)
-    - [5.5 A Digital Eukaryogenesis](#55-a-digital-eukaryogenesis)
-    - [5.6 From Internal Coordination to Multicellularity](#56-from-internal-coordination-to-multicellularity)
-    - [5.7 Digital Chemistry and Reaction Networks](#57-digital-chemistry-and-reaction-networks)
+    - [5.5 Genotype and Phenotype](#55-genotype-and-phenotype)
+    - [5.6 A Digital Eukaryogenesis](#56-a-digital-eukaryogenesis)
+    - [5.7 From Internal Coordination to Multicellularity](#57-from-internal-coordination-to-multicellularity)
+    - [5.8 Digital Chemistry and Reaction Networks](#58-digital-chemistry-and-reaction-networks)
 6. [Architecture, Reproducibility and Scale](#6-architecture-reproducibility-and-scale)
     - [6.1 Architecture](#61-architecture)
     - [6.2 Reproducibility](#62-reproducibility)
@@ -205,7 +206,7 @@ Digital systems have produced such ecologies. In Tierra, an ecology of parasites
 
 Evochora can turn these questions into experiments through its ancestors and its configuration. A run can be seeded with several strategies, and the cost of a fight is a setting of the run. Since the default ancestor is assembled from a library of behaviors ([The Ancestor](#25-the-ancestor)), a strategy can be a variant of it: a behavior exchanged, a flag set, a threshold changed ([Setting Up a Run](#31-setting-up-a-run)), as in its aggressive variant. Conceivable experiments start with two strategies on the same energy supply, to see whether they coexist or one excludes the other, and whether the density and the arrangement of the energy sources decide it. The cost of aggression can be varied between runs, to find the price at which aggressors lose, and the shell the ancestor builds around each child can be tested in populations with and without aggressors, to see whether the defense pays. Long runs can show whether evolution alters the strategies or makes them converge. Every organism's record names the ancestor program it descends from, so the fate of each strategy can be read from the data, and the visualizer colors organisms by lineage. An experiment of this kind can be set up today from a configuration and its ancestors. The analytics count the population by genome, so comparing strategies is a query on the recorded data; a metric by ancestor program, a small addition, would make it a chart of the analyzer.
 
-Coexistence through niches lies one step further. Two strategies that live on different things need a second kind of energy or a molecule only some can use, which is the chemistry of [Matter and Chemistry](#57-matter-and-chemistry).
+Coexistence through niches lies one step further. Two strategies that live on different things need a second kind of energy or a molecule only some can use, which is the chemistry of [Matter and Chemistry](#58-matter-and-chemistry).
 
 ### 5.2 Host–Parasite Coevolution
 
@@ -237,7 +238,15 @@ Conceivable experiments vary the rates of the operators one at a time and togeth
 
 All of this is configuration; the operators are plugins of the birth with full access to the newborn's body, and others can be written against the same interface. Three ideas lie beyond them. Mutation during life rather than at birth, Avida's cosmic ray, would be an interceptor plugin, for which the interface exists but no plugin yet. Copy errors at the instruction that writes a cell, rather than at the child, would make mutation part of the copy itself. And a mutation rate that depends on the organism's own energy or entropy would give Evochora a counterpart of stress-induced mutagenesis, where bacteria raise their mutation rate when they are poorly adapted [(Galhardo et al., 2007)](#ref-galhardo-2007); whether such a rule helps a population out of a poor environment or hastens its end is a question that rule would allow.
 
-### 5.5 A Digital Eukaryogenesis
+### 5.5 Genotype and Phenotype
+
+In biology, hereditary information and the body it describes are separate, and the machinery between them, which reads the one and builds the other, is itself a product of evolution. Von Neumann held such a separation, a description and a constructor, to be the condition for complexity to evolve; Tierra showed that a program which copies itself instruction by instruction evolves without it [(Ray, 1991)](#ref-ray-1991). Taylor names the catch: where the machinery that reads the genotype cannot evolve, as Tierra's processor cannot, evolution cannot find new ways of representing a phenotype [(Taylor, 2014)](#ref-taylor-2014). Aevol has a designed and explicit map from sequence to function [(Batut et al., 2013)](#ref-batut-2013), Flow-Lenia carries the parameters of its rule in the mass of a creature [(Plantec et al., 2023)](#ref-plantec-2023), and many simulations of evolution vary a vector of traits and nothing else. Where a separation comes from, designed or evolved, is open; Evochora leaves it to the organism, and that makes it an experiment.
+
+In Evochora, the body is the program, and the numbers in a program are DATA cells: every threshold, every child's dowry, every width stands as a literal in an instruction. The substitution plugin weights molecules by type and, on top, by the slot they stand in, literals above the rest ([Plugin Interfaces](#24-plugin-interfaces)). With the weights of CODE and LABEL at zero and that of DATA above it, a run varies only the numbers and leaves the logic alone: the evolution of traits that simple simulations perform, by configuration, with the full variation beside it for comparison. One step further, an ancestor can keep its parameters in one region of its body, read by its logic, and a plugin can confine variation to that region. The organism then has a designed genotype, and what reads it is not the machine but its own code; the machine beneath stays fixed, in Evochora as in Tierra, but the layer above it can evolve.
+
+Conceivable experiments set the evolution of traits against the full variation, to see which adapts faster, which stays stable, and whether the full variation finds behavior that the variation of traits cannot. A designed genotype can hold the size of the shell as one of its fields, to see whether size responds to selection when only it varies. All of this is configuration and an ancestor; the plugin for a region would be a small addition.
+
+### 5.6 A Digital Eukaryogenesis
 
 Life on Earth stayed small and simple for most of its history, and one explanation is energetic. A cell gains its energy at its membrane, and a membrane grows more slowly than the volume it has to supply; more genes and more proteins per cell were, for a prokaryote, more than its surface could pay for. The step to complex cells came when energy production moved inside, with the mitochondria, engulfed bacteria that kept their own membranes and part of their own genome [(Lane & Martin, 2010)](#ref-lane-martin-2010). This is a hypothesis about geometry and energy, and the systems of the comparison could not test it, because in Tierra, Avida and Aevol an organism has no shape and no surface. In Evochora it has both: an area of cells and an edge.
 
@@ -245,7 +254,7 @@ Today the two sides of the account are uneven. A child costs its parent one writ
 
 The way out, in the analogy, is to move energy production inside. The biology sits between two designs: a mitochondrion has a body and a reproduction of its own, but most of its machinery comes from the host. In Evochora the simpler half can be built today: a parent can fork a child without a body of its own, whose instruction pointer runs one routine of the parent, a harvest, say, and leaves what it gathers where the parent takes it up, and the parent decides how many such helpers it keeps. The fuller forms would need a runtime extension: a body within the body, or execution contexts that share ownership with the organism, so that each part could copy itself and the organism divide like a cell. Whether a body with a helper sustains more code than one without, and whether coordination between them can arise from the cells they share or needs instructions of its own, are the questions this direction would put.
 
-### 5.6 From Internal Coordination to Multicellularity
+### 5.7 From Internal Coordination to Multicellularity
 
 The coordination challenge described in the previous section has implications beyond individual organisms. If internal parallelism requires signaling between co-located execution contexts, the same mechanisms could be externalized for communication between neighboring organisms. This leads to a hypothesis about the **Major Transition to Multicellularity** [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995): the signaling machinery evolved for *internal* coordination acts as a **pre-adaptation (exaptation)** for *external* cooperation.
 
@@ -259,7 +268,7 @@ With the current instruction set, inter-organism signaling is already possible i
 
 Acknowledging that the spontaneous evolution of such complex architectures could take prohibitively long (mirroring the "Boring Billion" stasis in Earth's history), researchers can seed experiments with engineered multi-threaded primordials that already possess internal coordination, testing directly whether pre-existing signaling channels accelerate the transition to multicellularity.
 
-### 5.7 Digital Chemistry and Reaction Networks
+### 5.8 Digital Chemistry and Reaction Networks
 
 Evochora's current thermodynamic model — with its two-axis energy/entropy economy — already provides meaningful selection pressure. But the resource landscape remains simple: organisms harvest a single type of energy molecule. Biological ecosystems, by contrast, are driven by complex chemical reaction networks where the waste products of one metabolic pathway become resources for another, giving rise to trophic webs and circular economies.
 
