@@ -32,11 +32,12 @@ This document describes the platform's physics, the tools for observing and anal
 4. [First Results](#4-first-results)
 5. [Research Directions](#5-research-directions)
     - [5.1 Replicator Ecology](#51-replicator-ecology)
-    - [5.2 Environmental Heterogeneity and Dynamic Worlds](#52-environmental-heterogeneity-and-dynamic-worlds)
-    - [5.3 Evolvability and Mutation Regimes](#53-evolvability-and-mutation-regimes)
-    - [5.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#54-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
-    - [5.5 From Internal Coordination to Multicellularity](#55-from-internal-coordination-to-multicellularity)
-    - [5.6 Digital Chemistry and Reaction Networks](#56-digital-chemistry-and-reaction-networks)
+    - [5.2 Host–Parasite Coevolution](#52-hostparasite-coevolution)
+    - [5.3 Environmental Heterogeneity and Dynamic Worlds](#53-environmental-heterogeneity-and-dynamic-worlds)
+    - [5.4 Evolvability and Mutation Regimes](#54-evolvability-and-mutation-regimes)
+    - [5.5 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#55-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
+    - [5.6 From Internal Coordination to Multicellularity](#56-from-internal-coordination-to-multicellularity)
+    - [5.7 Digital Chemistry and Reaction Networks](#57-digital-chemistry-and-reaction-networks)
 6. [Architecture, Reproducibility and Scale](#6-architecture-reproducibility-and-scale)
     - [6.1 Architecture](#61-architecture)
     - [6.2 Reproducibility](#62-reproducibility)
@@ -206,7 +207,17 @@ Evochora can turn these questions into experiments through its ancestors and its
 
 Coexistence through niches lies one step further. Two strategies that live on different things need a second kind of energy or a molecule only some can use, which is the chemistry of [Matter and Chemistry](#57-matter-and-chemistry).
 
-### 5.2 Environmental Heterogeneity and Dynamic Worlds
+### 5.2 Host–Parasite Coevolution
+
+Parasites appear wherever a replicator can use another's machinery. In Tierra they arose in the first runs: programs that had lost their copy routine and used a neighbor's, hosts immune to them, and hyperparasites that turned the parasites' processing to their own reproduction [(Ray, 1991)](#ref-ray-1991). In Stringmol they arise almost at once. A mixed population dies of them, while a spatial one forms waves in which hosts and parasites pursue one another and both persist; under that pursuit the replicators evolve ways to tell their own copies from parasites, the parasites evolve around them, and when parasites become rare the hosts shed their defenses again [(Hickinbotham et al., 2021)](#ref-hickinbotham-2021). In Avida, where every organism runs on a processor of its own, parasites had to be introduced; hosts that coevolved with them developed more complex functions and more evolvable genomes than hosts without them [(Zaman et al., 2014)](#ref-zaman-2014). Parasitism is among the few mechanisms for which a drive toward complexity has been shown in digital systems.
+
+In Evochora, how a jump finds its label is a plugin of the run. The standard label matching ([Plugin Interfaces](#24-plugin-interfaces)) takes a neighbor's label only when none of the organism's own matches. The instruction pointer executes what stands in a cell, whoever owns it; the data pointers never enter another's cells ([Ownership and Thermodynamics](#23-ownership-and-thermodynamics)), so a neighbor's body can be read only from outside, and written into only by exchanging a cell at its edge. Organisms that jump to a neighbor's label and execute its code can be seen in many runs. Under the standard strategy this happens when an organism's own label is missing or changed, by a flawed copy or by a mutation, and what it executes then is a relative's routine in place of the one it lost.
+
+Whether that becomes a way of life is the question. A lineage that lives on a neighbor's routine needs a relative with matching labels within reach, generation after generation; whether it can keep one, and what follows if it does, waves, defenses and their loss as in Stringmol, is open. The conditions are settings of a run: the reach and tolerance of the label search, where the ancestor places its children, the price of a foreign read, and the namespace flip, a plugin option that changes every label of a newborn by one bit, so that the addresses of lineages drift apart with the generations and out of a parasite's tolerance. Which organism executed whose code stands in the record at every recorded tick, as the position of its instruction pointer against the owner of the cell; counted over a whole run, it would be a metric, computed by a query on the record or by a new analytics plugin.
+
+Two things lie beyond what arises by itself. A parasite ancestor could be written by hand with the system as it is: a program that writes cells into a neighbor's body, so that the neighbor's instruction pointer executes logic that serves the parasite, paid with the neighbor's energy. The second would require an instruction added to the system: a jump whose tolerance and reach the program sets itself would place the search under selection, and whether selection widens it toward exploitation or narrows it is a question only such an instruction can put.
+
+### 5.3 Environmental Heterogeneity and Dynamic Worlds
 
 In biological evolution, environmental heterogeneity is a primary driver of diversification. Geographic barriers create isolated populations that diverge independently [(Mayr, 1963)](#ref-mayr-1963), resource gradients produce niche specialization, and catastrophic events reset ecological landscapes, opening opportunities for adaptive radiation [(Schluter, 2000)](#ref-schluter-2000).
 
@@ -214,7 +225,7 @@ Evochora's current environment is largely homogeneous — energy is distributed 
 
 The scientific question is direct: does environmental structure alone drive diversification in digital organisms, as it does in biological evolution? Can geographic isolation produce divergent lineages from a single ancestor? Do populations recover differently after catastrophic events depending on their mutation regime or replication strategy? These experiments require no changes to the core runtime — only configuration of the existing plugin architecture for resource distribution and STRUCTURE placement.
 
-### 5.3 Evolvability and Mutation Regimes
+### 5.4 Evolvability and Mutation Regimes
 
 Mutation is the ultimate source of evolutionary innovation, yet its implementation in most artificial life platforms remains surprisingly simplistic — typically a single, globally applied mechanism such as random bit-flips at a fixed rate [(Ray, 1991)](#ref-ray-1991). This ignores both the concept of evolvability — the capacity of a system for adaptive evolution, which itself evolves [(Wagner, 2005)](#ref-wagner-2005) — and the role of non-adaptive forces such as drift and mutation pressure in shaping genome architecture [(Lynch, 2007)](#ref-lynch-2007). By hard-coding a specific mutation model, simulations inadvertently fix the topology of the fitness landscape, potentially blocking routes to higher complexity.
 
@@ -233,7 +244,7 @@ The experimental program is straightforward: by systematically varying these par
 
 Additional mutation mechanisms not yet implemented but architecturally straightforward could further expand this space: environment-driven mutation ("cosmic radiation") that decouples variation from reproduction, copy-error mutation tied to the POKE instruction rather than birth, or somatic mutation affecting an organism's runtime state (registers, stacks) without altering its heritable genome.
 
-### 5.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis
+### 5.5 The Bioenergetics of Complexity: A Digital Eukaryogenesis
 
 A central puzzle in evolutionary biology is why life on Earth remained microscopic and relatively simple for billions of years before the sudden explosion of complex eukaryotic life. The leading hypothesis, the **"Energetics of Genome Complexity"** [(Lane & Martin, 2010)](#ref-lane-martin-2010), posits that prokaryotes are fundamentally constrained by their bioenergetics: a single cell cannot expand its genome size (and thus complexity) significantly because its energy generation is limited by its surface area. The transition to complexity (Eukaryogenesis) was only possible through endosymbiosis—the internalization of energy-producing bacteria (mitochondria)—which broke this barrier by internalizing the surface area for energy production.
 
@@ -241,7 +252,7 @@ Evochora is uniquely architected to test if a similar **"Processing Power Constr
 
 The basic mechanism already exists: Evochora's `FORK` instruction can spawn a secondary, fully independent VM context — complete with its own registers, stacks, and data pointers — within the same organism body. However, without coordination, two execution contexts on shared code are merely co-located competitors, not cooperating subsystems. The real scientific challenge is the evolution of coordination: how do two threads within the same body synchronize their actions? One approach, already possible with the current instruction set, is indirect signaling via molecules placed in the shared environment. A more structured approach — direct messaging channels between co-located execution contexts — would require extending the runtime. Whether coordination emerges through existing mechanisms or requires new instructions is itself an open question. The hypothesis is that this internal parallelization, once coordinated, is not just a performance optimization but a necessary prerequisite for the evolution of higher-order complexity.
 
-### 5.5 From Internal Coordination to Multicellularity
+### 5.6 From Internal Coordination to Multicellularity
 
 The coordination challenge described in the previous section has implications beyond individual organisms. If internal parallelism requires signaling between co-located execution contexts, the same mechanisms could be externalized for communication between neighboring organisms. This leads to a hypothesis about the **Major Transition to Multicellularity** [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995): the signaling machinery evolved for *internal* coordination acts as a **pre-adaptation (exaptation)** for *external* cooperation.
 
@@ -255,7 +266,7 @@ With the current instruction set, inter-organism signaling is already possible i
 
 Acknowledging that the spontaneous evolution of such complex architectures could take prohibitively long (mirroring the "Boring Billion" stasis in Earth's history), researchers can seed experiments with engineered multi-threaded primordials that already possess internal coordination, testing directly whether pre-existing signaling channels accelerate the transition to multicellularity.
 
-### 5.6 Digital Chemistry and Reaction Networks
+### 5.7 Digital Chemistry and Reaction Networks
 
 Evochora's current thermodynamic model — with its two-axis energy/entropy economy — already provides meaningful selection pressure. But the resource landscape remains simple: organisms harvest a single type of energy molecule. Biological ecosystems, by contrast, are driven by complex chemical reaction networks where the waste products of one metabolic pathway become resources for another, giving rise to trophic webs and circular economies.
 
@@ -406,4 +417,5 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 - <a id="ref-taylor-2015"></a>Taylor, T. (2015). Requirements for open-ended evolution in natural and artificial systems. arXiv:1507.07403. [https://arxiv.org/abs/1507.07403](https://arxiv.org/abs/1507.07403)
 - <a id="ref-wagner-2005"></a>Wagner, A. (2005). *Robustness and Evolvability in Living Systems*. Princeton University Press.
 - <a id="ref-wagner-2013"></a>Wagner, A. P., Zaman, L., Dworkin, I., & Ofria, C. (2013). Behavioral strategy chases promote the evolution of prey intelligence. Preprint: [https://arxiv.org/abs/1310.1369](https://arxiv.org/abs/1310.1369)
+- <a id="ref-zaman-2014"></a>Zaman, L., Meyer, J. R., Devangam, S., Bryson, D. M., Lenski, R. E., & Ofria, C. (2014). Coevolution drives the emergence of complex traits and promotes evolvability. *PLOS Biology*, 12(12), e1002023.
 - <a id="ref-moreno-2022"></a>Moreno, F., & Ofria, C. (2022). Exploring the Fraternal Transitions to Multicellularity in Digital Evolution. *Artificial Life*, 28(1), 1-24.
