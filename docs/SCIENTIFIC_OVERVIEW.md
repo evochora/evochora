@@ -33,7 +33,7 @@ This document describes the platform's physics, the tools for observing and anal
 5. [Research Directions](#5-research-directions)
     - [5.1 Replicator Ecology](#51-replicator-ecology)
     - [5.2 Host–Parasite Coevolution](#52-hostparasite-coevolution)
-    - [5.3 Environmental Heterogeneity and Dynamic Worlds](#53-environmental-heterogeneity-and-dynamic-worlds)
+    - [5.3 Heterogeneous and Dynamic Environments](#53-heterogeneous-and-dynamic-environments)
     - [5.4 Evolvability and Mutation Regimes](#54-evolvability-and-mutation-regimes)
     - [5.5 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#55-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
     - [5.6 From Internal Coordination to Multicellularity](#56-from-internal-coordination-to-multicellularity)
@@ -217,13 +217,15 @@ Whether that becomes a way of life is the question. A lineage that lives on a ne
 
 Two things lie beyond what arises by itself. A parasite ancestor could be written by hand with the system as it is: a program that writes cells into a neighbor's body, so that the neighbor's instruction pointer executes logic that serves the parasite, paid with the neighbor's energy. The second would require an instruction added to the system: a jump whose tolerance and reach the program sets itself would place the search under selection, and whether selection widens it toward exploitation or narrows it is a question only such an instruction can put.
 
-### 5.3 Environmental Heterogeneity and Dynamic Worlds
+### 5.3 Heterogeneous and Dynamic Environments
 
-In biological evolution, environmental heterogeneity is a primary driver of diversification. Geographic barriers create isolated populations that diverge independently [(Mayr, 1963)](#ref-mayr-1963), resource gradients produce niche specialization, and catastrophic events reset ecological landscapes, opening opportunities for adaptive radiation [(Schluter, 2000)](#ref-schluter-2000).
+Biology explains much of diversification by the structure of the environment. Populations separated by a barrier diverge [(Mayr, 1963)](#ref-mayr-1963), gradients of resources make specialists, and after a catastrophe the emptied space fills with radiations of new forms [(Schluter, 2000)](#ref-schluter-2000). On Earth all of this is observed after the fact. In a simulation the structure is a choice. Avida has resources that can be confined to places and an event system that disturbs a run at set times, with extinctions or changed mutation rates [(Ofria & Wilke, 2004)](#ref-ofria-2004).
 
-Evochora's current environment is largely homogeneous — energy is distributed uniformly, and the spatial landscape does not change over time. Introducing heterogeneity along both spatial and temporal axes opens a rich experimental space. Spatial heterogeneity can be created using STRUCTURE molecules as impassable barriers (rivers, mountain ranges), defining resource-rich and resource-poor regions, or establishing isolated "islands" connected by narrow corridors. Temporal dynamics can range from gradual environmental shifts — slow migration of resource zones — to sudden catastrophes that destroy local populations and reset regions to empty space.
+In Evochora, the structure of the environment is matter. A barrier can be a wall of STRUCTURE molecules, and crossing it costs what the run charges for taking a cell apart, so isolation has a price rather than a rule. A gradient, a season or a zone of energy that drifts across the environment can be made of where and when ENERGY molecules are placed. A lineage passes a gap only by building its children on the other side, so migration can be read from the record as the spread of a lineage, cell by cell. The dimensions, size and topology of the grid, a torus or a bounded box, are settings of a run.
 
-The scientific question is direct: does environmental structure alone drive diversification in digital organisms, as it does in biological evolution? Can geographic isolation produce divergent lineages from a single ancestor? Do populations recover differently after catastrophic events depending on their mutation regime or replication strategy? These experiments require no changes to the core runtime — only configuration of the existing plugin architecture for resource distribution and STRUCTURE placement.
+Conceivable experiments start with one ancestor on both sides of a wall, to see whether isolation alone makes the lineages diverge. Islands joined by narrow corridors can show whether they hold a diversity an open environment loses. A region emptied at a chosen tick can show how populations return, and whether the return depends on their mutation regime or their strategy. A gradient of energy can show whether sparing strategies settle the poor part and fast ones the rich.
+
+The energy sources that come with Evochora place energy evenly at random, at fixed points at intervals, or in vaults behind walls ([Plugin Interfaces](#24-plugin-interfaces)), and size, dimensions and topology are configuration. Walls, regions, gradients, seasons and catastrophes would each be a small tick plugin: a plugin runs every tick with full access to the environment, so a landscape that changes over time would be a few lines of Java. One idea goes further, a molecule a pointer cannot simply take apart: the instruction that tries fails, and the molecule loses one of its value with every attempt until it dissolves at zero, or never, if its value is negative. A barrier would then be measured in attempts rather than in energy, and an experiment could separate the two.
 
 ### 5.4 Evolvability and Mutation Regimes
 
