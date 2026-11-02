@@ -7,8 +7,8 @@ description: Package a finished Evochora run as a citable experiment record on Z
 
 A record is a self-contained, citable package of one run and one finding. Anyone can read the
 finding, re-run the analysis and browse the run in the visualizer — without the project's servers
-and independent of later changes to the code or its persisted formats. Three records exist; all
-were built this way (`docs/PUBLISHED_EXPERIMENTS.md`). Every step below ran at least twice; the
+and independent of later changes to the code or its persisted formats. Every record so far
+(`docs/PUBLISHED_EXPERIMENTS.md`) was built this way. Every step below ran at least twice; the
 pitfalls at the end each cost a session, and the rules of section 3 and section 7 each cost a
 round of iteration before they were written down.
 
@@ -40,6 +40,7 @@ app/                    distribution that serves this run (bin/, lib/, assembly/
 src/                    source archive of that revision and GIT_REVISION
 config/evochora.conf    the configuration shipped with the build, unchanged
 config/run.conf         includes evochora.conf and sets only what the run had different (see below)
+config/fork.conf        where the mechanism needs the execution tick by tick: serves data-fork/ (see below)
 analysis.ipynb          the same notebook as on the record, executed
 analysis/               the helper module it imports, requirements.txt, and analysis/data/ with tables that are data
 stills/, figures/       the frames the notebook shows, and its figures
@@ -47,6 +48,7 @@ data/KEEP_BLOCKS.json   the kept blocks
 data/storage/<runId>/analytics/   complete
 data/storage/<runId>/raw/         kept blocks only
 data/database/                    kept blocks only: index database and environment chunk files
+data-fork/              a fork of the run that recorded every tick of the window in which the mechanism runs
 ```
 
 **The configuration of the run.** `run.conf` is written by comparing the options the run recorded
@@ -75,11 +77,22 @@ programs once. Start probe with both commands before the tar.
 **`analysis/requirements.txt`** pins the versions the notebook was executed with and names the
 Python version that actually ran; no minimum version is claimed that was not tried.
 
-**What the package cannot show does not go into the record.** Tables from deterministic
-re-executions (the trace recorder) go into `analysis/data/` as data, their origin stated in the
-provenance; a still is rendered at a kept tick and its caption names the region in world
-coordinates, so that the visualizer shows the same place; a number the analytics cannot reproduce
-is not written.
+**What the package cannot show does not go into the record.** A still is rendered at a kept tick
+and its caption names the region in world coordinates, so that the visualizer shows the same
+place; a number the analytics cannot reproduce is not written. The trace recorder is working
+material and nothing of it goes into a record.
+
+**The mechanism is shown by a fork, not by a trace.** Where the finding rests on what the program
+does at particular ticks, the package carries a fork of the run over that window, recorded with
+the detailed profile, so that the reader follows the organism instruction by instruction in the
+visualizer: `node fork --run <runId> --from <t0> --to <t1> --profile detailed --storage fork-source`
+with a `pipeline.resources.fork-source` resource pointing at the run and `pauseTicks = [<t1>]`, so
+that the fork stops where the window ends; the services are stopped with
+`POST /pipeline/api/stop` and the node with SIGTERM; `queue/`, `topic/` and the trace database are
+removed before the tar. `config/fork.conf` serves it with
+`node show`, the README names the command next to the run's. The fork's index holds no mutation
+from before its window; the notebook says so where it reads the fork. The mechanism itself is
+derived from the program and the bodies in the text, and the fork is where the reader checks it.
 
 ## 2 · Sampling rule
 
@@ -96,7 +109,8 @@ Cutting the index database without a node: the build's H2 jar, the source opened
 block one `INSERT … WHERE TICK_NUMBER BETWEEN a AND b` over the primary key; tables `METADATA`
 and `ORGANISMS` whole, `ORGANISM_TICKS`, `ORGANISM_TICK_STATS` and `ENVIRONMENT_CHUNKS` for the
 kept blocks; the chunk files `blobs/env-chunks/<SCHEMA>/…/chunk_<firstTick>.pb.zst` copied for the
-same blocks. Originals stay untouched. Finish H2 with plain `SHUTDOWN`.
+same blocks. Originals stay untouched. Finish H2 with plain `SHUTDOWN`. The H2 tools take only
+absolute paths to the database; this holds for the notebook's export of the organisms table too.
 
 **Missing analytics are regenerated, not reconstructed.** Analytics derive deterministically from
 raw: run a node whose `startupSequence` lists only the analytics indexer(s), with the run's `runId`
@@ -156,6 +170,22 @@ before the event; **3** the event with the genome-level evidence;
 - Every number with its base population and n; intervals are bootstrap intervals over parents,
   because siblings share a place and a time; the slope of one trajectory of one run carries no
   sampling uncertainty; a generation time is given as mean and as median, because the two differ.
+- A comparison within a parent, between its children of two kinds, is made at equal birth rank
+  and with both weightings, every child equal and every parent equal, and the text gives both:
+  the kinds are not born in the same order, a later child of either kind is born into a
+  surrounding its elder siblings have harvested, and the two weightings differed by half the
+  effect once. A comparison at equal rank is conditioned on what happened to the earlier
+  children; the text says so.
+- What a stratification expects and what is observed come from the same sample and the same
+  estimator, or they are not compared: an expectation computed on the sample with the measured
+  density, set against an observation over the whole window, reversed a finding once, and the
+  reversal was an artefact.
+- A quantity read from the nearest kept tick stands before or after the event it is compared
+  with, never at it; a comparison that rests on it is repeated with each side alone, and the text
+  names the bias of each.
+- A finding without intervention is an observational finding: what a stratification implies is
+  "expected from the strata", never "predicted"; "testable predictions" are the experiments the
+  interpretation proposes at its end, and nothing else.
 - A before-and-after figure is reported only where the notebook explains the difference; a number
   that is shown and not explained is a gap, not an observation.
 - The platform's own terms, taken from the program files of the run's revision inside the package
@@ -174,7 +204,9 @@ before the event; **3** the event with the genome-level evidence;
   (DuckDB, pandas). The sections that query the running package on `localhost:8081` say so and
   cache their requests under `analysis-cache/`.
 - Helper code lives in `analysis/` next to the notebook as a module, including the figures; a
-  notebook cell is a few readable lines.
+  notebook cell is a few readable lines. The notebook is generated by a builder script kept with
+  the record's sources in the repository, so that a version is rebuilt from one file; the builder
+  stops on a passage it does not find rather than build an older text.
 - Framing rules decided by the user: exploratory framing, no hypothesis written after the result;
   disclosure of what was not tested at the end, not scattered; provenance that explains nothing
   to the reader stays out.
@@ -193,8 +225,10 @@ bin/evochora video lineage --run-id <runId> --start-tick <t0> --end-tick <t1> --
     --scale 0.25 --glow-size 0.2 --fps 25 --format mp4 --crf 26 --overlay info,logo --clade <genomeHash>:<hue>
 ```
 
-Clade seeds are member genomes taken from the organism snapshots; without `--clade`, lineage colors
-are random-walk hues from a common ancestor and do not show the clades. A preview with coarse
+The logo overlay is part of every clip. Clade roots are every genome hash of every member of each group, taken from the
+organisms table and passed through an argument file, not a few seeds: with seeds only, members
+whose hash differs from the seeds' fall out of their clade's colour. Without `--clade`, lineage
+colours are random-walk hues from a common ancestor and do not show the clades. A preview with coarse
 sampling goes to the user for approval, and its size per frame gives the final size (≈60–120 MB
 plays inline on Zenodo). Stills at cell resolution come from the `exact` renderer at scale 1, cut
 to a region of the world and enlarged by an integer factor; the caption states the region and the
@@ -207,9 +241,13 @@ pixels per cell as the command made them.
 2. One reviewer as a referee of a data publication, with the executed HTML and the package only,
    who gives the verdict on the whole first (one story, same claim at the same strength
    everywhere, observation apart from interpretation) and the findings by weight after.
-3. The mechanical check: every number in the markdown against the outputs, the class sentence
-   of the appendix against its slopes, figures numbered in reading order, the forbidden words (invented terms), every path named exists in the package, a
-   fresh execution against the package with zero errors.
+3. The mechanical check, a script kept with the record's sources (`mechanical_check.py <package>
+   <html>`): zero errors in the executed notebook, its size under 1 MiB, the headings of the
+   rendered HTML against the expected list, the forbidden words (invented terms, a word the
+   project does not use), figures captioned in reading order and every figure referred to
+   captioned, every path named exists in the package, the class sentence of the appendix against
+   its slopes, the abstract at most 170 words; and by hand every number in the markdown against
+   the outputs.
 
 Findings are not worked in one by one. The affected section is rewritten from the chain, and every
 change is checked against all rules written down before, not only against the rule that caused it.
@@ -271,3 +309,8 @@ The round ends when a pass brings no finding with substance.
   non-integer grid weighed 1.2 MB on its own.
 - The scratchpad under `/tmp` is cleaned by age; a worktree, a build installation and a venv were
   lost that way. Nothing that must survive a pause lives only there.
+- A within-parent comparison averaged over all children set the first child, mostly of one kind,
+  against the later ones of the other, and read as "no difference"; an expectation from the
+  birthplace sample was compared with an observation over the whole window and read as "half";
+  a square chosen after the result was presented as the measure. Each of these was found by a
+  reviewer, and each is a rule in section 3 now.
