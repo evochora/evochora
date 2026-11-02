@@ -144,8 +144,9 @@ before the event; **3** the event with the genome-level evidence;
   mean lifetime changed; the bracket in which the copy channel founds components, and whether the
   class depends on it; the parameters (a' percentiles, band width, number of shadow seeds); a
   short table of the window values; and two figures, mean activity in both units and new activity,
-  each with the range of the shadow. Where the appendix stands against the finding — no new
-  activity above the shadow in the window of a sweep — the interpretation says so.
+  each with the range of the shadow. It says that MODES complexity is absent and why, in the words
+  of the `analyze-run` section. Where the appendix stands against the finding — no new activity
+  above the shadow in the window of a sweep — the interpretation says so.
 - Observation, derivation, interpretation and speculation are kept apart and named as such. Where
   nothing was intervened, the wording is "consistent with", in the title, the abstract, the
   headings and the interpretation alike. In a stationary population a lineage that rises has more

@@ -338,7 +338,9 @@ a bodied descendant, or is itself, alive at t + F, F a number of generation time
 the script uses two lengths. Change counts the persistent components not persistent at the
 previous window end, novelty those never persistent before, ecology is the Shannon entropy of
 their carrier counts. Windows whose t + F lies beyond the run have no value. Complexity, the fourth
-MODES measure, needs a measure per organism that the data do not hold.
+MODES measure, is not computed: MODES leaves the measure to the system, and none is established for
+Evochora yet. The analytics and the organisms table hold none; the bodies at the recorded ticks
+would allow one.
 
 **Checks the script reports**, each of which must hold: one `births` row per organism with a
 parent and the same `birth_tick`; the living per raster point equal to `population.bodied_count`;
