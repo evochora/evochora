@@ -266,6 +266,85 @@ along the ancestors: the genome at which it changes is the one whose change to r
 (`0-9a-zA-Z`) of its *unsigned* 64-bit hash — the chart legends, the analysis scripts. Compute it
 the same way and a band in the Analyzer and a row in a notebook are recognisably the same genome.
 
+## Evolutionary activity and the class after Bedau
+
+The field's measure of whether a run keeps producing adaptations is the evolutionary activity
+statistics of Bedau, Snyder & Packard ("A classification of long-term evolutionary dynamics",
+*Artificial Life VI*, 1998, pp. 228–237), normalised by a neutral shadow; Channon (2003) applied
+them to Geb. MODES (Dolson, Vostinar, Wiser & Ofria, *Artificial Life* 25(1), 2019) adds change,
+novelty and ecology of the components that persist. `scripts/evolutionary_activity.py` computes
+both for one run; a record's notebook imports it from its `analysis/` module.
+
+**What it reads, all complete and read only:** the `ORGANISMS` table (exported once with the H2
+shell, the database opened with `ACCESS_MODE_DATA=r`; no node may hold it), `births` for the
+variation class of every birth, and `population` as the independent count of the living. A run
+indexed without the `births` plugin cannot be computed; the script stops rather than fall back to
+another rule.
+
+**The component is not the genome hash.** The hash also changes with cells outside the code — DATA
+operands, ENERGY cells, a shell — so that a large share of births can carry a new hash without a
+new program. A component is a genome since the last birth a mutation plugin changed: a birth whose
+`births.variation` is a mutation class (`duplication`, `deletion`, `instruction_insertion`,
+`label_insertion`, `substitution`, `multiple`, `other`) founds one, every other bodied birth
+inherits its parent's. This is the classification the Analyzer uses, with its rule that a birth
+whose genome equals the parent's received no variation even where a plugin wrote. Only bodied
+organisms count.
+
+**The copy channel founds no component.** Births of class `no_event` are left out, so novelty from
+defective copies is not counted. They cannot be separated from hash changes outside the code
+without reading bodies, which a record package does not hold for every birth. The script therefore
+computes a bracket in which `no_event` founds components too; it overcounts with every hash change
+outside the code and is a probe of whether the class depends on the definition, not a measure of
+the copy channel. A record states this limit.
+
+**The statistics.** Activity of a component: the number of raster points (the analytics interval)
+at which it has living carriers, an organism living at t when `birth ≤ t < death`. Per window
+end: diversity D (components with carriers), total and mean cumulative activity, and new activity
+after eq. 7 of the paper, the activity of the present components whose activity lies in a narrow
+band [a₀, a₁] around a threshold a', divided by D. a' is a percentile of the activity the shadow's
+components reach; the script takes two percentiles, the higher as the reading and the lower as a
+probe, and a fixed relative band width. Name both in a record. Counting every component founded in
+a window instead measures the many short-lived ones and is not Bedau's new activity.
+
+**The shadow.** The same sequence of births and deaths, read from the table: a newborn takes the
+component of a random living shadow organism unless the real birth founds a component, a death
+removes a random living one. Population size and turnover are those of the run, selection is
+random. One shadow is one random draw, and a different seed visibly shifts its curves and, through
+a', the real new activity; the script replays several seeds and gives their mean and range, and
+takes a' from all of their components. A difference between real and shadow counts only outside
+that range.
+
+**Time unit.** The paper counts one unit per time step. Evochora's tick is as arbitrary as Avida's
+update or Tierra's executed instruction, and when the generation time changes over a run, activity
+in ticks follows it. The script gives mean activity in ticks and in generations (a raster point
+weighs one raster interval divided by the mean age of the parent at a birth in its window). The
+shadow does not correct for this: its lifetimes follow the turnover, not the generation time, and
+where most organisms die young while parents are the long-lived, the two diverge and the ratio of
+real to shadow moves with the generation time. Report both units; where they give different
+classes, say so, with the factors by which generation time and mean lifetime changed.
+
+**The class.** Literally after the paper: class 1, D bounded, new activity zero, mean activity
+zero; class 2, D bounded, new activity positive, mean activity bounded; class 3, **D unbounded**,
+new activity positive, mean activity bounded. Bounded D with positive new activity and unbounded
+mean activity is none of the three; the paper names it as a case not covered. The appendix defines
+boundedness for infinite time, so a finite run shows a trend. The script gives Theil-Sen slopes
+against the generations elapsed, per 100 generations and relative, over the whole run and from
+the end of its first third, and no verdict: the class is a judgement, written with the slopes it
+rests on so that a reader can weigh it. A significance test does not decide it — a saturating
+curve has a significantly positive slope too.
+
+**MODES.** A component persists at a window end t when it has carriers and a carrier born by t has
+a bodied descendant, or is itself, alive at t + F, F a number of generation times of the window;
+the script uses two lengths. Change counts the persistent components not persistent at the
+previous window end, novelty those never persistent before, ecology is the Shannon entropy of
+their carrier counts. Windows whose t + F lies beyond the run have no value. Complexity, the fourth
+MODES measure, needs a measure per organism that the data do not hold.
+
+**Checks the script reports**, each of which must hold: one `births` row per organism with a
+parent and the same `birth_tick`; the living per raster point equal to `population.bodied_count`;
+the shadow with the same number of living at every raster point; no shadow event on an empty
+population.
+
 ## A node and its endpoints
 
 A node serves the run's index to the Visualizer, the Analyzer and their HTTP APIs. Two nodes on one
@@ -490,3 +569,9 @@ the lineage's past all take part.
   groups is measured on many organisms.
 - **A walk over the genome lineage can loop** when it only takes the earliest edge; see "Walking the
   tree".
+- **A genome hash is not a component of evolutionary activity.** Counting hashes counts every
+  change of a DATA or ENERGY cell as a new genome; see "Evolutionary activity and the class after
+  Bedau".
+- **New activity is not the activity of the components founded in a window.** That sum is ruled by
+  the many short-lived mutants and lies below the shadow for that reason alone; Bedau's new
+  activity is the band of eq. 7.

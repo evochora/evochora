@@ -117,7 +117,9 @@ numbered links, then one figure per link, then the text that connects them; ever
 does not need is absent. Every figure and every table has a sentence that says which link needs
 it; what has no such sentence is removed, and a table that repeats a figure in numbers is removed.
 A notebook that grew by adding a line for every reviewer's point reads as what it is and is
-rebuilt from the chain, not patched.
+rebuilt from the chain, not patched. The one exception is the appendix on evolutionary activity
+below: it is the same in every record, so that records can be compared, and is not part of the
+chain.
 
 - Stored **executed**, with outputs — unlike the notebooks in the repository. Zero errors on a
   clean execution against the package is the acceptance test; after every execution the numbers in
@@ -126,13 +128,24 @@ rebuilt from the chain, not patched.
   abstract of at most 170 words, three lines on how to use the package; **1** background and
   methods: the platform in two sentences, a glossary of the terms the record uses, a table of the
   run's facts from its resolved configuration, how the data were recorded and what the notebook
-  derives; **2** the state before the event; **3** the event with the genome-level evidence;
+  derives, with a row for the run's class after Bedau that points to the appendix; **2** the state
+before the event; **3** the event with the genome-level evidence;
   **4** the dynamics over time (share per kept block, logistic fit, validation against directly
   read bodies, the map that shows clumping); **5** how the carriers reproduced against the others;
   **6** what changed in the world; **7** the line of descent and the alternatives examined;
   **8** interpretation; **9** limitations; **10** data records (a table: path, content, format,
   coverage, size), technical validation, usage notes, code availability, provenance; the
-  disclosure sentence last.
+  disclosure sentence last; **A** the appendix on evolutionary activity (below).
+- **The appendix on evolutionary activity**, in every record, computed from the package with
+  `evolutionary_activity.py` of the `analyze-run` skill, copied into `analysis/`; that skill's
+  section "Evolutionary activity and the class after Bedau" defines what is computed. It holds the
+  class as a sentence with the Theil-Sen slopes it rests on, in generations and in ticks, and
+  where the two give different classes it says so with the factors by which generation time and
+  mean lifetime changed; the bracket in which the copy channel founds components, and whether the
+  class depends on it; the parameters (a' percentiles, band width, number of shadow seeds); a
+  short table of the window values; and two figures, mean activity in both units and new activity,
+  each with the range of the shadow. Where the appendix stands against the finding — no new
+  activity above the shadow in the window of a sweep — the interpretation says so.
 - Observation, derivation, interpretation and speculation are kept apart and named as such. Where
   nothing was intervened, the wording is "consistent with", in the title, the abstract, the
   headings and the interpretation alike. In a stationary population a lineage that rises has more
@@ -148,8 +161,14 @@ rebuilt from the chain, not patched.
   (procedure names, paths), never from `main`; no invented vocabulary.
 - A short title inside the figure, the caption as a sentence below it; tables rendered as tables
   (`display`), not printed as text; no printed line longer than the page. The notebook stays under
-  1 MB, or Zenodo shows no preview: frames are embedded pixel for pixel at a grid the figure can
-  hold, never resampled.
+  1 MiB, or Zenodo shows no preview (`PREVIEWER_MAX_FILE_SIZE_BYTES` of InvenioRDM's previewer,
+  which Zenodo does not raise for notebooks): frames are embedded pixel for pixel at a grid the
+  figure can hold, never resampled.
+- Diagrams — lines, bars, areas — are embedded as palette PNGs of a few dozen colours at the size
+  they are shown (`notebook_png` in `evolutionary_activity.py`); this takes a diagram to about a
+  quarter of its size, and each one is compared with its full version side by side before it goes
+  in. Stills and frames of the world never: a palette changes the colours of their markers. The
+  full versions go into `figures/`.
 - Every figure except organism-level forensics reads the Parquet analytics in `data/` directly
   (DuckDB, pandas). The sections that query the running package on `localhost:8081` say so and
   cache their requests under `analysis-cache/`.
@@ -187,8 +206,8 @@ pixels per cell as the command made them.
 2. One reviewer as a referee of a data publication, with the executed HTML and the package only,
    who gives the verdict on the whole first (one story, same claim at the same strength
    everywhere, observation apart from interpretation) and the findings by weight after.
-3. The mechanical check: every number in the markdown against the outputs, figures numbered in
-   reading order, the forbidden words (invented terms), every path named exists in the package, a
+3. The mechanical check: every number in the markdown against the outputs, the class sentence
+   of the appendix against its slopes, figures numbered in reading order, the forbidden words (invented terms), every path named exists in the package, a
    fresh execution against the package with zero errors.
 
 Findings are not worked in one by one. The affected section is rewritten from the chain, and every
@@ -247,7 +266,7 @@ The round ends when a pass brings no finding with substance.
   from the chain; a comparison presented as "decisive" showed only the sweep in other numbers; an
   energy budget counted the energy handed to a child as consumed; an explanation for excess shells
   was written without reading the death handler. Each of these is a rule in section 3 now.
-- The Zenodo preview renders no notebook above about 1 MB; a figure of two frames resampled onto a
+- The Zenodo preview renders no notebook above 1 MiB; a figure of two frames resampled onto a
   non-integer grid weighed 1.2 MB on its own.
 - The scratchpad under `/tmp` is cleaned by age; a worktree, a build installation and a venv were
   lost that way. Nothing that must survive a pause lives only there.
