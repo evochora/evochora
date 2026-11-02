@@ -1,6 +1,10 @@
 # Contributing to Evochora
 
-Thank you for your interest in contributing to Evochora! We are building a foundational platform for digital evolution research and welcome contributions from developers, biologists, and complexity scientists.
+Contributions of any kind are welcome: running experiments, writing organisms, reporting problems, improving the code or the documentation, or simply telling us what you think.
+
+A small, clear fix can come as a pull request right away. For anything larger, please open an issue or a discussion first, so that we can agree on the direction before you put work into it.
+
+Below you'll find how to get started, whether you want to run experiments or work on the code.
 
 ## Quick Start (How to Build)
 
