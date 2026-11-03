@@ -258,25 +258,18 @@ jobs:
           done
           exit $status
 
-  release:
-    name: Build, Package & Release
-    needs: [test, fingerprint, compare-fingerprints]
+  # Builds the platform distributions every event publishes or tests. It starts with the tests,
+  # not after them, so that packaging, start tests and the image add no time to a pull request as
+  # long as they are shorter than the tests and the reviews. The version comes from the release tag
+  # for a release and is "latest" for anything else.
+  package:
+    name: Package
     runs-on: ubuntu-latest
-    # Run on: push to main, push of v* tag, OR release published (with v* tag)
-    if: |
-      always() &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
-      (needs.fingerprint.result == 'success' || needs.fingerprint.result == 'skipped') &&
-      (needs.compare-fingerprints.result == 'success' || needs.compare-fingerprints.result == 'skipped') &&
-      github.event_name != 'pull_request' &&
-      (
-        github.ref == 'refs/heads/main' ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
-      )
     permissions:
-      contents: write
-      packages: write
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
     steps:
       - name: Determine version tag
         id: version
@@ -296,7 +289,7 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
             echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
-            # Main branch push: use 'latest'
+            # Main branch push, pull request or manual run: use 'latest'
             echo "tag=latest" >> "$GITHUB_OUTPUT"
             echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
@@ -305,7 +298,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # For release events, checkout the tag explicitly.
-          # For push/workflow_dispatch, use the triggering commit (github.sha).
+          # For everything else, use the triggering commit (github.sha).
           ref: ${{ steps.version.outputs.is_release == 'true' && steps.version.outputs.tag || github.sha }}
 
       - name: Set up JDK 25 and Gradle Cache
@@ -325,16 +318,108 @@ jobs:
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
 
-      - name: Build Distribution Archives with Gradle
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build the platform distributions
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: ./gradlew distZip distTar --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
+        run: >-
+          ./gradlew linuxX64DistTar linuxAarch64DistTar macosAarch64DistTar windowsX64DistZip
+          --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
 
-      - name: Upload Distribution Artifact
+      - name: Upload the distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: evochora-distribution
-          path: build/distributions/
+          name: evochora-distributions
+          path: |
+            build/distributions/*.tar.gz
+            build/distributions/*.zip
+          if-no-files-found: error
+
+  # Starts each distribution on its platform the way a user does: see tools/ci/start_test.py. The
+  # older Java the guard must refuse is installed beside it; setup-java points JAVA_HOME at it as
+  # well, which the start script must not follow while the archive brings its own runtime.
+  start-test:
+    name: Start Test (${{ matrix.platform }})
+    needs: package
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Every leg runs to its end, so that a failure on one platform does not hide whether the
+      # others start.
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: windows-x64, os: windows-latest }
+          - { platform: macos-aarch64, os: macos-latest }
+          - { platform: linux-x64, os: ubuntu-latest }
+          # GitHub offers its Linux ARM runner under a versioned label only
+          - { platform: linux-aarch64, os: ubuntu-24.04-arm }
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.is_release == 'true' && needs.package.outputs.tag || github.sha }}
+          sparse-checkout: tools/ci
+
+      - name: Download the distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evochora-distributions
+          path: distributions
+
+      - name: Set up the older Java the guard must refuse
+        id: old-java
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Start the distribution
+        shell: bash
+        env:
+          OLD_JAVA: ${{ steps.old-java.outputs.path }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          python=python3; command -v python3 > /dev/null || python=python
+          "$python" -I tools/ci/start_test.py distributions/evochora-*-"$PLATFORM".* --old-java "$OLD_JAVA"
+
+  # Builds the node image for both architectures from the Linux distributions the start tests ran,
+  # starts the amd64 image once, and pushes both only for what is published: main, a v* tag or a
+  # published release, the refs the publish job releases from. A pull request or a manual run on
+  # another branch builds the image without pushing it, so that it cannot overwrite a published tag.
+  docker:
+    name: Docker Image
+    needs: package
+    runs-on: ubuntu-latest
+    env:
+      PUBLISH: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.is_release == 'true' && needs.package.outputs.tag || github.sha }}
+
+      - name: Download the distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evochora-distributions
+          path: distributions
+
+      # The same layout the Gradle task dockerContext makes, from the archives the start tests ran
+      - name: Lay out the build context
+        run: |
+          set -euo pipefail
+          mkdir -p build/docker
+          cp distributions/evochora-*-linux-x64.tar.gz build/docker/amd64.tar.gz
+          cp distributions/evochora-*-linux-aarch64.tar.gz build/docker/arm64.tar.gz
+          cp infrastructure/docker/evochora-node/entrypoint.sh build/docker/
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -342,37 +427,97 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Build the amd64 image to start it
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: build/docker
+          file: ./infrastructure/docker/evochora-node/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: evochora-start-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start the image
+        run: docker run --rm evochora-start-test bin/evochora --help
+
       - name: Log in to GitHub Container Registry
+        if: env.PUBLISH == 'true' && github.event_name != 'pull_request'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push the image for both architectures
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: .
+          context: build/docker
           file: ./infrastructure/docker/evochora-node/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.tag }}
+          push: ${{ env.PUBLISH == 'true' && github.event_name != 'pull_request' }}
+          tags: ghcr.io/${{ github.repository }}:${{ needs.package.outputs.tag }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.version.outputs.tag }}
-          build-args: |
-            RELEASE_TAG=${{ steps.version.outputs.tag }}
-            GIT_REVISION=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.package.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create or Update GitHub Release
+  # Publishes the distributions as the release of their tag, or as the pre-release "latest" for the
+  # current state of main, once everything before it has passed. The pre-release carries the fixed
+  # text of .github/release-notes-latest.md; a release with a version number keeps the text it was
+  # published with.
+  publish:
+    name: Publish Release
+    needs: [test, fingerprint, compare-fingerprints, package, start-test, docker]
+    runs-on: ubuntu-latest
+    # Run on: push to main, push of v* tag, OR release published (with v* tag)
+    if: |
+      always() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.fingerprint.result == 'success' || needs.fingerprint.result == 'skipped') &&
+      (needs.compare-fingerprints.result == 'success' || needs.compare-fingerprints.result == 'skipped') &&
+      needs.package.result == 'success' && needs.start-test.result == 'success' &&
+      needs.docker.result == 'success' &&
+      github.event_name != 'pull_request' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v') ||
+        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+      )
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.is_release == 'true' && needs.package.outputs.tag || github.sha }}
+          sparse-checkout: .github
+
+      - name: Download the distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evochora-distributions
+          path: distributions
+
+      - name: Update the pre-release latest
+        if: needs.package.outputs.tag == 'latest'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          # 'latest' is a pre-release, versioned tags are full releases
-          prerelease: ${{ steps.version.outputs.tag == 'latest' }}
+          tag_name: latest
+          prerelease: true
+          body_path: .github/release-notes-latest.md
           files: |
-            build/distributions/*.zip
-            build/distributions/*.tar.gz
+            distributions/*.tar.gz
+            distributions/*.zip
+
+      - name: Create or update the release
+        if: needs.package.outputs.tag != 'latest'
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ needs.package.outputs.tag }}
+          prerelease: false
+          files: |
+            distributions/*.tar.gz
+            distributions/*.zip
