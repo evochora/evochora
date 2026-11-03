@@ -28,8 +28,8 @@ java-runtime.txt
     Where the licenses and the sources of the Java runtime in jre/ are.
 
 docker-image.txt
-    Present in the Docker image only: where the sources of the operating system packages and
-    of the Java runtime in the image are published.
+    Present in the Docker image only: where the licenses and the sources of the operating
+    system packages in the image are.
 
 Source code of the libraries is available from the project URLs in java-libraries.txt and
 frontend-libraries.txt.

@@ -790,6 +790,17 @@ targetPlatforms.forEach { platform ->
     tasks.named<Tar>("${platform.distributionName}DistTar") { enabled = !platform.zip }
 }
 
+// The build context of the node's Docker image: the Linux distributions, each named by the
+// architecture Docker builds for, and the image's entrypoint script
+tasks.register<Sync>("dockerContext") {
+    group = "distribution"
+    description = "Lays out the build context of the Docker image under build/docker"
+    into(layout.buildDirectory.dir("docker"))
+    from(tasks.named("linuxX64DistTar")) { rename { "amd64.tar.gz" } }
+    from(tasks.named("linuxAarch64DistTar")) { rename { "arm64.tar.gz" } }
+    from("infrastructure/docker/evochora-node/entrypoint.sh")
+}
+
 // Builds the distribution of the platform this build runs on and unpacks it under build/install,
 // to try out what a user of that platform downloads
 tasks.register("installRuntimeDist") {
