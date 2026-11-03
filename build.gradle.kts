@@ -472,8 +472,12 @@ val frontendLicenses = tasks.register("frontendLicenses") {
                     .append("${manifest["homepage"] ?: repository}  -> $directory/\n")
             }
         }
-        kept.resolve("duckdb-extensions").listFiles().orEmpty()
-            .forEach { it.copyTo(root.resolve("frontend/duckdb/extensions/${it.name}")) }
+        val extensionLicenses = kept.resolve("duckdb-extensions").listFiles().orEmpty()
+            .filter { frontendLicenseFileName.matches(it.name) }
+        if (extensionLicenses.isEmpty()) {
+            throw GradleException("The DuckDB parquet extension carries no license file, and $kept/duckdb-extensions holds none")
+        }
+        extensionLicenses.forEach { it.copyTo(root.resolve("frontend/duckdb/extensions/${it.name}")) }
         overview.append("DuckDB parquet extension $extensionCore  MIT  https://duckdb.org  -> duckdb/extensions/\n")
         root.resolve("frontend-libraries.txt").writeText(overview.toString())
     }
@@ -741,6 +745,8 @@ targetPlatforms.forEach { platform ->
         val jreDir = layout.buildDirectory.dir("jre/${platform.classifier}")
         val home = if (platform.osName == "mac") "Contents/Home/" else ""
         val out = layout.buildDirectory.file("java-runtime-notice/${platform.classifier}/java-runtime.txt")
+        // The release file is what the notice is written from, so a new JRE writes it anew
+        inputs.file(jreDir.map { it.file("${home}release") })
         outputs.file(out)
         doLast {
             val release = Properties()
