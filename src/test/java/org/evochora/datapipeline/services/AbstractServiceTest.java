@@ -190,7 +190,7 @@ public class AbstractServiceTest {
             // line carries the trace that finds it - at ERROR, where a production run sees it.
             assertEquals("{} stopped with ERROR", recorder.message);
             assertNotNull(recorder.throwable, "the stack trace is part of the ERROR line");
-            assertEquals("test-induced defect", recorder.throwable.getMessage());
+            assertSame(defect, recorder.throwable, "the ERROR line carries the trace of the defect itself");
         } finally {
             loggerContext.getTurboFilterList().remove(recorder);
         }

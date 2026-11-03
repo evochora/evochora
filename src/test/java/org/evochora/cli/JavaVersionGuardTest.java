@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.Properties;
 
@@ -69,6 +70,8 @@ class JavaVersionGuardTest {
     void entryPoint_IsTheMainMethodOfTheCommandLineInterface() throws ReflectiveOperationException {
         assertThat(JavaVersionGuard.entryPoint().type())
                 .isEqualTo(MethodType.methodType(void.class, String[].class));
+        assertThat(MethodHandles.lookup().revealDirect(JavaVersionGuard.entryPoint()).getDeclaringClass())
+                .isEqualTo(CommandLineInterface.class);
     }
 
     private static Properties requiring(String requiredJava) {
