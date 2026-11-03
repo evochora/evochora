@@ -801,16 +801,24 @@ tasks.register("platformDistributions") {
     }
 }
 
-// Builds the distribution of the platform this build runs on and unpacks it under build/install,
-// to try out what a user of that platform downloads
-tasks.register("installRuntimeDist") {
+// Builds the platform distribution of the machine this build runs on and unpacks it under
+// build/install, to try out what a user of that machine downloads. A machine no platform
+// distribution covers fails only when the task runs, not while the build is configured, so that
+// the project still loads there, in an IDE or for a task list.
+tasks.register("installLocalPlatformDist") {
     group = "distribution"
-    description = "Installs the distribution of this platform, with its Java runtime, under build/install"
+    description = "Installs the platform distribution of this machine, with its Java runtime, under build/install"
     val osName = System.getProperty("os.name").lowercase(Locale.ROOT)
     val osArch = System.getProperty("os.arch").lowercase(Locale.ROOT).let { if (it == "x86_64") "amd64" else it }
     val host = targetPlatforms.firstOrNull { osName.startsWith(it.osName) && osArch == it.osArch }
-        ?: throw GradleException("No distribution with a Java runtime for $osName/$osArch")
-    dependsOn("install${host.taskSuffix}Dist")
+    if (host != null) {
+        dependsOn("install${host.taskSuffix}Dist")
+    }
+    doFirst {
+        if (host == null) {
+            throw GradleException("No platform distribution for $osName/$osArch")
+        }
+    }
 }
 
 tasks.withType<Tar> {
