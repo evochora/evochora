@@ -24,6 +24,9 @@ frontend/
 texts/
     The full text of each license that the libraries name without carrying it.
 
+java-runtime.txt
+    Where the licenses and the sources of the Java runtime in jre/ are.
+
 docker-image.txt
     Present in the Docker image only: where the sources of the operating system packages and
     of the Java runtime in the image are published.

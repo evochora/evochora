@@ -6,6 +6,7 @@ import com.github.jk1.license.render.TextReportRenderer
 import com.google.protobuf.gradle.*
 import groovy.json.JsonSlurper
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 import java.util.Properties
 import javax.inject.Inject
 import org.gradle.jvm.application.tasks.CreateStartScripts
@@ -55,6 +56,19 @@ if (version.toString().endsWith("-SNAPSHOT")) {
     version = version.toString().removeSuffix("-SNAPSHOT")
 }
 
+// The Java runtime the platform distributions bring, as Adoptium names the Temurin release
+val temurinVersion = "25.0.5+8"
+val temurinFeature = temurinVersion.substringBefore('.')
+
+// The libraries with native code that publish, beside a main jar carrying the native library of
+// every platform they support, a jar per platform carrying that platform's alone. The platform
+// distributions take the latter in place of the main jar.
+data class NativeLibrary(val group: String, val module: String, val version: String) {
+    val mainJar: String = "$module-$version.jar"
+}
+val duckdbJdbc = NativeLibrary("org.duckdb", "duckdb_jdbc", "2.0.0.0")
+val zstdJni = NativeLibrary("com.github.luben", "zstd-jni", "1.5.7-24")
+
 repositories {
     mavenCentral()
     // DuckDB's own extension repository, for the extensions the analyzer's DuckDB-WASM loads; see
@@ -64,6 +78,15 @@ repositories {
         patternLayout { artifact("[revision]/[classifier]/[module].duckdb_extension.[ext]") }
         metadataSources { artifact() }
         content { includeGroup("org.duckdb.extensions") }
+    }
+    // Adoptium's GitHub releases of Eclipse Temurin, for the Java runtime each platform's
+    // distribution brings; see temurinVersion below. A release is named by the version with "+",
+    // its files by the version with "_": the module carries the second, the revision the first.
+    ivy {
+        url = uri("https://github.com/adoptium/temurin${temurinFeature}-binaries/releases/download")
+        patternLayout { artifact("jdk-[revision]/OpenJDK${temurinFeature}U-jre_[classifier]_hotspot_[module].[ext]") }
+        metadataSources { artifact() }
+        content { includeGroup("net.adoptium") }
     }
 }
 
@@ -112,13 +135,13 @@ dependencies {
     implementation("org.apache.commons:commons-rng-simple:1.7")
 
     // Zstd compression library with bundled native binaries for cross-platform support
-    implementation("com.github.luben:zstd-jni:1.5.7-24")
+    implementation("${zstdJni.group}:${zstdJni.module}:${zstdJni.version}")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
     implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
 
     // DuckDB JDBC driver for analytics
-    implementation("org.duckdb:duckdb_jdbc:2.0.0.0")
+    implementation("${duckdbJdbc.group}:${duckdbJdbc.module}:${duckdbJdbc.version}")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
     implementation("org.apache.artemis:artemis-jakarta-server:2.57.0")
@@ -610,28 +633,173 @@ tasks.named("check") {
     dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
 }
 
+// What every distribution carries beside its start scripts and its libraries
+val distributionContents = copySpec {
+    from("assembly") {
+        into("assembly")
+    }
+    from("config") {
+        // config/ is where a machine keeps its own overrides; only the configuration
+        // meant for everyone belongs in the distribution
+        include("evochora.conf")
+        into("config")
+    }
+    from("README.md")
+    from("LICENSE")
+    into("licenses") {
+        from("src/licenses") { exclude("frontend/**") }
+        from(javaLicenseReport) { include("java-libraries.txt") }
+        from(javaLicenseReport) { include("*.jar/**"); into("java") }
+        from(frontendLicenses)
+    }
+}
+
 distributions {
     main {
         contents {
-            from("assembly") {
-                into("assembly")
-            }
-            from("config") {
-                // config/ is where a machine keeps its own overrides; only the configuration
-                // meant for everyone belongs in the distribution
-                include("evochora.conf")
-                into("config")
-            }
-            from("README.md")
-            from("LICENSE")
-            into("licenses") {
-                from("src/licenses") { exclude("frontend/**") }
-                from(javaLicenseReport) { include("java-libraries.txt") }
-                from(javaLicenseReport) { include("*.jar/**"); into("java") }
-                from(frontendLicenses)
-            }
+            with(distributionContents)
         }
     }
+}
+
+// The distributions that are published: one per supported platform, each bringing that
+// platform's Java runtime in jre/ and, for each native library, the jar for that platform in place
+// of the main jar. The main distribution, which brings neither, is what installDist builds for
+// development.
+data class TargetPlatform(
+    /** The platform as the archive's name carries it */
+    val classifier: String,
+    /** The platform as Temurin's file names carry it */
+    val temurin: String,
+    /** The archive type Temurin publishes for the platform */
+    val temurinExtension: String,
+    /** For each native library, the classifier of its jar for the platform */
+    val nativeJars: Map<NativeLibrary, String>,
+    /** The JVM's os.name and os.arch on the platform, to find the host's distribution */
+    val osName: String,
+    val osArch: String,
+) {
+    val taskSuffix: String = classifier.split("-").joinToString("") { it.replaceFirstChar(Char::uppercase) }
+    val distributionName: String = taskSuffix.replaceFirstChar(Char::lowercase)
+    val zip: Boolean = osName == "windows"
+}
+
+val targetPlatforms = listOf(
+    TargetPlatform("windows-x64", "x64_windows", "zip",
+        mapOf(duckdbJdbc to "windows_amd64", zstdJni to "win_amd64"), "windows", "amd64"),
+    TargetPlatform("macos-aarch64", "aarch64_mac", "tar.gz",
+        mapOf(duckdbJdbc to "macos_arm64", zstdJni to "darwin_aarch64"), "mac", "aarch64"),
+    TargetPlatform("linux-x64", "x64_linux", "tar.gz",
+        mapOf(duckdbJdbc to "linux_amd64", zstdJni to "linux_amd64"), "linux", "amd64"),
+    TargetPlatform("linux-aarch64", "aarch64_linux", "tar.gz",
+        mapOf(duckdbJdbc to "linux_arm64", zstdJni to "linux_aarch64"), "linux", "aarch64"),
+)
+
+targetPlatforms.forEach { platform ->
+    val jreArchive = configurations.create("jre${platform.taskSuffix}") {
+        isTransitive = false
+        isCanBeConsumed = false
+    }
+    val nativeJars = configurations.create("nativeJars${platform.taskSuffix}") {
+        isTransitive = false
+        isCanBeConsumed = false
+    }
+    dependencies {
+        jreArchive("net.adoptium:${temurinVersion.replace('+', '_')}:$temurinVersion:${platform.temurin}@${platform.temurinExtension}")
+        platform.nativeJars.forEach { (library, classifier) ->
+            nativeJars("${library.group}:${library.module}:${library.version}:$classifier")
+        }
+    }
+
+    // The runtime classpath with each native library's jar for the platform in place of its main
+    // jar. A classpath without a main jar would mean the dependency changed its name, and the
+    // platform's jar would land beside whatever replaced it.
+    val runtimeClasspath = configurations.runtimeClasspath.get()
+    val mainJars = platform.nativeJars.keys.map { it.mainJar }.toSet()
+    val platformLibraries = files(runtimeClasspath.filter { it.name !in mainJars }, nativeJars)
+    val checkMainJars = {
+        val missing = mainJars - runtimeClasspath.map { it.name }.toSet()
+        if (missing.isNotEmpty()) {
+            throw GradleException("The runtime classpath holds no $missing for ${platform.classifier}'s jars to replace")
+        }
+    }
+
+    // The JRE unpacked without its top directory: what the distribution carries as jre/
+    val unpackJre = tasks.register<Sync>("unpackJre${platform.taskSuffix}") {
+        from(jreArchive.elements.map { elements ->
+            val archive = elements.single().asFile
+            if (platform.zip) zipTree(archive) else tarTree(archive)
+        })
+        eachFile { relativePath = RelativePath(true, *relativePath.segments.drop(1).toTypedArray()) }
+        includeEmptyDirs = false
+        into(layout.buildDirectory.dir("jre/${platform.classifier}"))
+    }
+
+    // Where the sources and licenses of the JRE are, read from the release file it carries
+    val javaRuntimeNotice = tasks.register("javaRuntimeNotice${platform.taskSuffix}") {
+        dependsOn(unpackJre)
+        val jreDir = layout.buildDirectory.dir("jre/${platform.classifier}")
+        val home = if (platform.osName == "mac") "Contents/Home/" else ""
+        val out = layout.buildDirectory.file("java-runtime-notice/${platform.classifier}/java-runtime.txt")
+        outputs.file(out)
+        doLast {
+            val release = Properties()
+            jreDir.get().file("${home}release").asFile.inputStream().use { release.load(it) }
+            fun field(key: String) = release.getProperty(key)?.trim('"')
+                ?: throw GradleException("The JRE's release file has no $key")
+            out.get().asFile.apply { parentFile.mkdirs() }.writeText(
+                "Java runtime: ${field("IMPLEMENTOR")} ${field("IMPLEMENTOR_VERSION")}, in jre/\n" +
+                    "  licenses: jre/${home}legal/\n" +
+                    "  sources:  ${field("SOURCE_REPO").removeSuffix(".git")}/tree/${field("SOURCE").substringAfterLast("git:")}\n"
+            )
+        }
+    }
+
+    val startScripts = tasks.register<CreateStartScripts>("startScripts${platform.taskSuffix}") {
+        doFirst { checkMainJars() }
+        applicationName = "evochora"
+        mainClass.set(application.mainClass)
+        defaultJvmOpts = application.applicationDefaultJvmArgs
+        classpath = files(tasks.jar) + platformLibraries
+        outputDir = layout.buildDirectory.dir("scripts/${platform.classifier}").get().asFile
+    }
+
+    distributions.create(platform.distributionName) {
+        distributionBaseName = "evochora"
+        distributionClassifier = platform.classifier
+        contents {
+            with(distributionContents)
+            into("bin") {
+                from(startScripts)
+                filePermissions { unix("rwxr-xr-x") }
+            }
+            into("lib") {
+                from(tasks.jar)
+                from(platformLibraries)
+            }
+            into("jre") {
+                from(unpackJre)
+                // Archives get fixed permissions, which would leave the JRE's programs unable to
+                // run; a file the unpacked JRE can execute is executable in the archive as well
+                eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+            }
+            into("licenses") { from(javaRuntimeNotice) }
+        }
+    }
+    tasks.named<Zip>("${platform.distributionName}DistZip") { enabled = platform.zip }
+    tasks.named<Tar>("${platform.distributionName}DistTar") { enabled = !platform.zip }
+}
+
+// Builds the distribution of the platform this build runs on and unpacks it under build/install,
+// to try out what a user of that platform downloads
+tasks.register("installRuntimeDist") {
+    group = "distribution"
+    description = "Installs the distribution of this platform, with its Java runtime, under build/install"
+    val osName = System.getProperty("os.name").lowercase(Locale.ROOT)
+    val osArch = System.getProperty("os.arch").lowercase(Locale.ROOT).let { if (it == "x86_64") "amd64" else it }
+    val host = targetPlatforms.firstOrNull { osName.startsWith(it.osName) && osArch == it.osArch }
+        ?: throw GradleException("No distribution with a Java runtime for $osName/$osArch")
+    dependsOn("install${host.taskSuffix}Dist")
 }
 
 tasks.withType<Tar> {
