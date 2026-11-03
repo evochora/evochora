@@ -35,6 +35,11 @@ WINDOWS = os.name == "nt"
 STATUS_URL = "http://localhost:8081/pipeline/api/status"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LOG_PROBLEM = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (WARN|ERROR)\b")
+# The JVM's own warnings, in the three forms it writes them: the JDK's at run time, the virtual
+# machine's ("OpenJDK 64-Bit Server VM warning: ..."), and those of its unified logging, which
+# begin with the uptime ("[0.012s][warning][gc] ..."); a line of the node's own log, which begins
+# with its date, is none of them
+JVM_WARNING = re.compile(r"^(?!\d{4}-\d\d-\d\d )(WARNING:|\S.* VM warning:|\[\d+[.,]\d+s\]\[warning\])")
 
 
 def unpack(archive: Path, into: Path) -> Path:
@@ -198,7 +203,7 @@ def check_node_run(root: Path, timeout: float) -> list:
     # Read once the node has ended, so that what it logs while it shuts down is checked as well
     text = log.read_text(encoding="utf-8", errors="replace")
     for line in ANSI.sub("", text).splitlines():
-        if LOG_PROBLEM.match(line) or line.startswith("WARNING:"):
+        if LOG_PROBLEM.match(line) or JVM_WARNING.match(line):
             problems.append(f"logged: {line}")
     if problems:
         problems.append("log of the node run:\n" + text)
