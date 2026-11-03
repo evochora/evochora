@@ -80,15 +80,21 @@ public class AbstractServiceTest {
     /** A service whose loop throws, as a defect in a service would. */
     private static class FailingService extends AbstractService {
         private final CountDownLatch terminated = new CountDownLatch(1);
+        private final Throwable defect;
 
-        protected FailingService(String name, Config options, Map<String, List<IResource>> resources) {
+        protected FailingService(String name, Config options, Map<String, List<IResource>> resources,
+                                 Throwable defect) {
             super(name, options, resources);
+            this.defect = defect;
         }
 
         @Override
         protected void run() {
             try {
-                throw new IllegalStateException("test-induced defect");
+                if (defect instanceof Error error) {
+                    throw error;
+                }
+                throw (RuntimeException) defect;
             } finally {
                 terminated.countDown();
             }
@@ -123,7 +129,16 @@ public class AbstractServiceTest {
 
     @Test
     void anExceptionFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
-        FailingService service = new FailingService("failing-service", config, resources);
+        assertTheDefectIsLoggedAndStopsTheServiceWithError(new IllegalStateException("test-induced defect"));
+    }
+
+    @Test
+    void anErrorFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
+        assertTheDefectIsLoggedAndStopsTheServiceWithError(new LinkageError("test-induced defect"));
+    }
+
+    private void assertTheDefectIsLoggedAndStopsTheServiceWithError(Throwable defect) throws InterruptedException {
+        FailingService service = new FailingService("failing-service", config, resources, defect);
         LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
         ErrorCallRecorder recorder = new ErrorCallRecorder();
         recorder.start();

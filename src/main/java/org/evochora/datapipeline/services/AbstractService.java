@@ -282,13 +282,15 @@ public abstract class AbstractService implements IService, IMonitorable {
         } catch (InterruptedException e) {
             log.debug("Service thread interrupted, shutting down.");
             Thread.currentThread().interrupt();
-        } catch (Exception e) {
+        } catch (Exception | Error e) {
+            // An Error is caught as well: left to the JVM, it would end the thread on stderr, out
+            // of the log, and the service would count as STOPPED rather than as failed.
             if (isInterruptInduced(e)) {
                 log.debug("Service thread interrupted, shutting down.");
                 Thread.currentThread().interrupt();
             } else {
-                // The service's own loop let the exception through, so its cause is not one the
-                // service knows how to handle: a defect, and the trace is what finds it.
+                // The service's own loop let the exception or error through, so its cause is not
+                // one the service knows how to handle: a defect, and the trace is what finds it.
                 log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
                 currentState.set(State.ERROR);
             }
