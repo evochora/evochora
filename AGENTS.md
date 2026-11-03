@@ -41,8 +41,8 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew installDist        # Distribution for development under build/install/evochora, run on JAVA_HOME
-./gradlew installRuntimeDist # This platform's published distribution, with its Java runtime, under build/install
-./gradlew linuxX64DistTar    # A published archive; likewise linuxAarch64DistTar, macosAarch64DistTar, windowsX64DistZip
+./gradlew installLocalPlatformDist  # This machine's platform distribution, with its Java runtime, under build/install
+./gradlew platformDistributions     # Every published platform archive, under build/distributions
 ./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
 ./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```
@@ -372,7 +372,8 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 **Framework:**
 - Use SLF4J + Logback: `LoggerFactory.getLogger(this.getClass())`
-- NEVER use `System.out.println()` or `System.err.println()`
+- Code that runs inside the node (`node`, `datapipeline`, `runtime`, `compiler`) NEVER writes to `System.out` or `System.err`: a running node's console is watched by nobody, and only its log is read. `ConsoleOutputRulesTest` enforces this
+- The console is for the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version), which write their results, progress and errors there; for the launcher's Java check, which runs before logging exists; for a report that the logging framework itself is unavailable; and for the welcome banner, shown only with `PLAIN` logging
 
 **Log Levels by Component:**
 
@@ -519,7 +520,7 @@ void send(T message) throws InterruptedException;
 
 ## CI & PR Expectations
 
-- CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows (includes the PMD gate).
+- CI: GitHub Actions that run `./gradlew build` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: the standard configuration must run until every indexer has processed ticks and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
 - PR must include: a summary of what changed and why, the verification that was performed, green CI.
 - Branch naming: short and purpose-describing, e.g. `feature/<topic>`.
 
