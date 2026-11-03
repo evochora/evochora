@@ -15,6 +15,7 @@ it runs on every runner as it is. Exits with 0 when every check passes, 1 otherw
 """
 
 import argparse
+import ctypes
 import json
 import os
 import re
@@ -146,6 +147,17 @@ def waiting_services(status) -> list:
     return [s["name"] for s in counting if s["metrics"]["ticks_processed"] <= 0]
 
 
+def take_ctrl_c() -> None:
+    """Lets this process and the processes it starts take Ctrl+C again, as they do in cmd.
+
+    Windows passes the ignoring of Ctrl+C on from a process to every process it starts, and Git
+    Bash starts the programs it runs ignoring it; a node started from there would never see the
+    Ctrl+C the test sends it.
+    """
+    if not ctypes.WinDLL("kernel32", use_last_error=True).SetConsoleCtrlHandler(None, False):
+        raise OSError(f"SetConsoleCtrlHandler failed: {ctypes.get_last_error()}")
+
+
 def check_node_run(root: Path, timeout: float) -> list:
     log = root / "node.log"
     problems = []
@@ -210,6 +222,8 @@ def main() -> int:
     parser.add_argument("--old-java", required=True, help="installation directory of a Java older than Evochora needs")
     parser.add_argument("--timeout", type=float, default=600, help="seconds the node run may take")
     args = parser.parse_args()
+    if WINDOWS:
+        take_ctrl_c()
 
     work = Path(tempfile.mkdtemp(prefix="evochora-start-test-"))
     problems = []
