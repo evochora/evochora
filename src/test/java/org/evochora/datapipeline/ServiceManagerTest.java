@@ -74,6 +74,44 @@ public class ServiceManagerTest {
         """, maxMessages, maxMessages));
     }
 
+    /** A service whose construction fails for a reason the manager does not recognise. */
+    public static class ConstructionFailingService extends org.evochora.datapipeline.services.AbstractService {
+        public ConstructionFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
+            super(name, options, resources);
+            throw new IllegalStateException("test-induced defect");
+        }
+
+        @Override
+        protected void run() {
+        }
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
+    void aServiceFailingToStartIsReportedAsErrorAndTheOthersStartAllTheSame() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = true
+              startupSequence = ["consumer", "broken", "producer"]
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$ConstructionFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state(),
+                        "a service after the failed one in the startup sequence is started all the same");
+            });
+            ServiceStatus broken = sm.getServiceStatus("broken");
+            assertEquals(IService.State.ERROR, broken.state());
+            assertFalse(broken.healthy());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
     @Test
     void testInitialization() {
         ServiceManager serviceManager = new ServiceManager(createTestConfig(false));

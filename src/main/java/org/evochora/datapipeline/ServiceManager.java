@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -83,6 +84,8 @@ public class ServiceManager implements IMonitorable {
     private final Map<String, IService> services = new ConcurrentHashMap<>();
     private final Map<String, IResource> resources = new ConcurrentHashMap<>();
     private final Map<String, List<ResourceBinding>> serviceResourceBindings = new ConcurrentHashMap<>();
+    // Services whose last start failed, which left them without an instance; reported as ERROR
+    private final Set<String> failedToStart = ConcurrentHashMap.newKeySet();
     private final List<String> startupSequence;
     private final Map<String, List<PendingBinding>> pendingBindingsMap = new ConcurrentHashMap<>();
     // Stores the wrapped resources currently being created for a service (used to coordinate between factory and bindings)
@@ -109,7 +112,9 @@ public class ServiceManager implements IMonitorable {
      * <p>
      * If {@code autoStart} is absent or true and a non-empty {@code startupSequence} is configured,
      * the services it names are started in that order before the constructor returns, and a memory
-     * estimate for the running pipeline is logged afterwards. Otherwise nothing is started and the
+     * estimate for the running pipeline is logged afterwards. A service that fails to start is
+     * logged and reported as failed, as {@link #startService(String)} describes, and the services
+     * after it are started all the same. Otherwise nothing is started and the
      * services wait for {@link #startAll()} or {@link #startService(String)}.
      *
      * @param rootConfig configuration holding a {@code pipeline} section; nothing outside that
@@ -118,8 +123,6 @@ public class ServiceManager implements IMonitorable {
      *                                  the options of a configured simulation engine do not form
      *                                  valid simulation parameters — checked before anything is
      *                                  started, so that the failure leaves no service running
-     * @throws RuntimeException if auto-starting a service fails for a reason the manager does not
-     *                          recognise, in which case the failure is not swallowed but passed on
      */
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
@@ -705,12 +708,11 @@ public class ServiceManager implements IMonitorable {
      * A service that identifies itself as the source of the simulation run becomes the one the
      * manager reports through {@link #getActiveRunId()}.
      * <p>
-     * Most failures to start are not passed on. Insufficient memory, a program that does not
-     * compile, a checkpoint that cannot be resumed from, a rejected configuration and a world too
-     * large for a Java array are logged with an explanation, and so is any checked exception; in
+     * A failure to start is not passed on. Insufficient memory, a program that does not compile, a
+     * checkpoint that cannot be resumed from, a rejected configuration and a world too large for a
+     * Java array are logged with an explanation, and any other failure with its stack trace; in
      * each case the service is left without an instance and is reported as
-     * {@link IService.State#STOPPED} afterwards. Every other {@link RuntimeException} is logged and
-     * rethrown.
+     * {@link IService.State#ERROR} until a later start of it succeeds.
      *
      * @param name the configured name of the service
      * @throws IllegalArgumentException if no service of that name is defined
@@ -775,6 +777,7 @@ public class ServiceManager implements IMonitorable {
                 }
 
                 newServiceInstance.start();
+                failedToStart.remove(name);
             } finally {
                 // Step 5: Clean up temporary map
                 activeWrappedResources.remove(name);
@@ -785,6 +788,7 @@ public class ServiceManager implements IMonitorable {
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
+            failedToStart.add(name);
 
             // Provide friendly, actionable error message with memory calculation
             String errorMsg = "Failed to start service '" + name + "': Insufficient memory.";
@@ -804,7 +808,7 @@ public class ServiceManager implements IMonitorable {
             }
 
             log.error(errorMsg);
-            // Don't throw - just log and return. Service remains in stopped state.
+            // Don't throw - just log and return. The service is reported as failed.
             return;
         } catch (RuntimeException e) {
             // Clean up maps in case of a startup failure.
@@ -812,6 +816,7 @@ public class ServiceManager implements IMonitorable {
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
+            failedToStart.add(name);
 
             // Unwrap reflection exceptions to find root cause
             Throwable cause = e;
@@ -843,7 +848,7 @@ public class ServiceManager implements IMonitorable {
             // Check if this is a compilation error (CompilationException contains formatted error messages)
             if (cause instanceof CompilationException) {
                 log.error("Compilation failed for service '{}':\n{}", name, cause.getMessage());
-                // Don't throw - just log and return. Service remains in stopped state.
+                // Don't throw - just log and return. The service is reported as failed.
                 return;
             }
 
@@ -854,7 +859,7 @@ public class ServiceManager implements IMonitorable {
             if (resumeFailure != null) {
                 String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
                 log.error(errorMsg);
-                // Don't throw - just log and return. Service remains in stopped state.
+                // Don't throw - just log and return. The service is reported as failed.
                 return;
             }
 
@@ -863,7 +868,7 @@ public class ServiceManager implements IMonitorable {
             if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
                 String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
                 log.error(errorMsg);
-                // Don't throw - just log and return. Service remains in stopped state.
+                // Don't throw - just log and return. The service is reported as failed.
                 return;
             }
 
@@ -882,9 +887,9 @@ public class ServiceManager implements IMonitorable {
                 }
             }
 
-            // Re-throw other runtime exceptions
+            // Any other cause is unknown to the manager: a defect, logged with the trace that finds
+            // it, which stops this service but not the start of the others
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
-            throw e;
         }
     }
 
@@ -1151,8 +1156,9 @@ public class ServiceManager implements IMonitorable {
     /**
      * The current status of one configured service.
      * <p>
-     * A configured service without an instance — never started, or discarded after a failed start —
-     * is reported as {@link IService.State#STOPPED} with no metrics, errors or resource bindings.
+     * A configured service without an instance is reported with no metrics, errors or resource
+     * bindings: as unhealthy and {@link IService.State#ERROR} if its last start failed, and as
+     * {@link IService.State#STOPPED} if it has never been started.
      * For an existing instance, health is what the service reports about itself if it can be
      * monitored, and otherwise follows from its state alone: anything but
      * {@link IService.State#ERROR} counts as healthy.
@@ -1170,7 +1176,9 @@ public class ServiceManager implements IMonitorable {
 
         IService service = services.get(serviceName);
         if (service == null) {
-            return new ServiceStatus(IService.State.STOPPED, true, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
+            boolean failed = failedToStart.contains(serviceName);
+            return new ServiceStatus(failed ? IService.State.ERROR : IService.State.STOPPED, !failed,
+                    Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
         }
 
         List<ResourceBinding> resourceBindings = serviceResourceBindings.getOrDefault(serviceName, Collections.emptyList());
