@@ -44,8 +44,8 @@ jobs:
   test:
     name: Build & Test
     runs-on: ${{ matrix.os }}
-    # Skip redundant test run for release events - the tag was already tested on main
-    if: github.event_name != 'release'
+    # Runs for a published release as well: the release is built anew from its tag, so its tests
+    # run on that tag rather than relying on an earlier run that nothing ties to it
     strategy:
       # Every leg runs to its end, so that a failure on one platform does not hide whether the
       # others pass.
@@ -175,8 +175,6 @@ jobs:
   fingerprint:
     name: Platform Fingerprint
     runs-on: ${{ matrix.os }}
-    # Skip for release events - the tag was already compared on main
-    if: github.event_name != 'release'
     strategy:
       # Every leg runs to its end, so that the comparison sees every platform's fingerprint.
       fail-fast: false
@@ -223,7 +221,6 @@ jobs:
     name: Compare Platform Fingerprints
     needs: fingerprint
     runs-on: ubuntu-latest
-    if: github.event_name != 'release'
     permissions:
       contents: read
     steps:
@@ -455,9 +452,8 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       always() &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
-      (needs.fingerprint.result == 'success' || needs.fingerprint.result == 'skipped') &&
-      (needs.compare-fingerprints.result == 'success' || needs.compare-fingerprints.result == 'skipped') &&
+      needs.test.result == 'success' && needs.fingerprint.result == 'success' &&
+      needs.compare-fingerprints.result == 'success' &&
       needs.package.result == 'success' && needs.start-test.result == 'success' &&
       needs.docker.result == 'success' &&
       github.event_name != 'pull_request' &&
@@ -528,9 +524,8 @@ jobs:
     # Run on: push to main, push of v* tag, OR release published (with v* tag)
     if: |
       always() &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
-      (needs.fingerprint.result == 'success' || needs.fingerprint.result == 'skipped') &&
-      (needs.compare-fingerprints.result == 'success' || needs.compare-fingerprints.result == 'skipped') &&
+      needs.test.result == 'success' && needs.fingerprint.result == 'success' &&
+      needs.compare-fingerprints.result == 'success' &&
       needs.package.result == 'success' && needs.start-test.result == 'success' &&
       needs.docker.result == 'success' &&
       github.event_name != 'pull_request' &&
