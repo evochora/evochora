@@ -606,6 +606,10 @@ val checkLicenseFiles = tasks.register("checkLicenseFiles") {
         val libraries = (JsonSlurper().parse(reportDir.resolve("index.json")) as Map<String, Any>)
             .getValue("dependencies") as List<Map<String, Any?>>
         val keptGroups = kept.listFiles().orEmpty().map { it.name }.toSet()
+        val licenseFileName = Regex("(?i)(LICENSE|COPYING|NOTICE).*")
+        val withoutLicenseFile = kept.listFiles().orEmpty()
+            .filter { group -> group.listFiles().orEmpty().none { it.isFile && licenseFileName.matches(it.name) } }
+            .map { it.name }
         val namingTheHolder = Regex(".*\\b(BSD|MIT)\\b.*")
         val withoutFile = libraries.filter { library ->
             @Suppress("UNCHECKED_CAST")
@@ -616,10 +620,12 @@ val checkLicenseFiles = tasks.register("checkLicenseFiles") {
             licenses.isNotEmpty() && licenses.all { namingTheHolder.matches(it) } && !embedded && group !in keptGroups
         }.map { it["moduleName"] }
         val leftOver = keptGroups - libraries.map { (it["moduleName"] as String).substringBefore(":") }.toSet()
-        if (withoutFile.isNotEmpty() || leftOver.isNotEmpty()) {
+        if (withoutFile.isNotEmpty() || leftOver.isNotEmpty() || withoutLicenseFile.isNotEmpty()) {
             throw GradleException(
                 "Libraries under BSD or MIT whose jar carries no license file and that have none in $kept: " +
-                    "$withoutFile. Directories in $kept that no library on the runtime classpath belongs to: $leftOver"
+                    "$withoutFile. Directories in $kept that no library on the runtime classpath belongs to: " +
+                    "$leftOver. Directories in $kept without a file named LICENSE, COPYING or NOTICE: " +
+                    "$withoutLicenseFile"
             )
         }
     }
