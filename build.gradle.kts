@@ -761,7 +761,8 @@ targetPlatforms.forEach { platform ->
         mainClass.set(application.mainClass)
         defaultJvmOpts = application.applicationDefaultJvmArgs
         classpath = files(tasks.jar) + platformLibraries
-        outputDir = layout.buildDirectory.dir("scripts/${platform.classifier}").get().asFile
+        // Apart from build/scripts, which the main distribution takes into its bin/ as a whole
+        outputDir = layout.buildDirectory.dir("platform-scripts/${platform.classifier}").get().asFile
     }
 
     distributions.create(platform.distributionName) {
