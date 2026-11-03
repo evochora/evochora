@@ -497,12 +497,13 @@ jobs:
           cache-from: type=gha
 
   # Publishes the distributions as the release of their tag, or as the pre-release "latest" for the
-  # current state of main, once everything before it has passed. The pre-release carries the fixed
+  # current state of main, once everything before it has passed, the push of the image included, so
+  # that a release never names an image that is missing or old. The pre-release carries the fixed
   # text of .github/release-notes-latest.md; a release with a version number keeps the text it was
   # published with.
   publish:
     name: Publish Release
-    needs: [test, fingerprint, compare-fingerprints, package, start-test, docker]
+    needs: [test, fingerprint, compare-fingerprints, package, start-test, docker, docker-push]
     runs-on: ubuntu-latest
     # Run on: push to main, push of v* tag, OR release published (with v* tag)
     if: |
@@ -510,7 +511,7 @@ jobs:
       needs.test.result == 'success' && needs.fingerprint.result == 'success' &&
       needs.compare-fingerprints.result == 'success' &&
       needs.package.result == 'success' && needs.start-test.result == 'success' &&
-      needs.docker.result == 'success' &&
+      needs.docker.result == 'success' && needs.docker-push.result == 'success' &&
       github.event_name != 'pull_request' &&
       (
         github.ref == 'refs/heads/main' ||
