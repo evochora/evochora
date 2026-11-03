@@ -330,25 +330,17 @@ val buildRevision: String = providers.of(BuildRevisionSource::class) {
     parameters.projectDir.set(rootProject.layout.projectDirectory)
 }.get()
 
-val writeBuildInfo = tasks.register("writeBuildInfo") {
+// Written as a properties file by Gradle's own task, which escapes every value as the format
+// requires and writes no timestamp: a release tag may hold any character a tag allows, and what
+// is read back is exactly what was written
+val writeBuildInfo = tasks.register<WriteProperties>("writeBuildInfo") {
     group = "build"
     description = "Records the revision of the sources and the version of the build on the classpath"
-
-    val revision = buildRevision
-    val buildVersion = project.version.toString()
+    destinationFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
+    property("revision", buildRevision)
+    property("version", project.version.toString())
     // The Java the code is compiled for, which JavaVersionGuard requires of the Java it runs on
-    val requiredJava = java.toolchain.languageVersion.get().asInt()
-    val propertiesFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
-    inputs.property("revision", revision)
-    inputs.property("version", buildVersion)
-    inputs.property("requiredJava", requiredJava)
-    outputs.file(propertiesFile)
-
-    doLast {
-        val target = propertiesFile.get().asFile
-        target.parentFile.mkdirs()
-        target.writeText("revision=$revision\nversion=$buildVersion\nrequiredJava=$requiredJava\n")
-    }
+    property("requiredJava", java.toolchain.languageVersion.get().asInt())
 }
 
 sourceSets.main {

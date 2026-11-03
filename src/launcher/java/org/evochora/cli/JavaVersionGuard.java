@@ -46,7 +46,8 @@ public final class JavaVersionGuard {
         try {
             refusal = refusal(readBuildInfo(), System.getProperty("java.specification.version"),
                     System.getProperty("java.home"));
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
+            // IllegalArgumentException is what Properties.load throws for a malformed escape
             refusal = "Cannot check the Java version: reading " + BUILD_INFO + " failed: " + e.getMessage();
         }
         if (refusal != null) {
