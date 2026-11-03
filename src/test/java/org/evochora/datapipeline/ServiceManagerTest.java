@@ -16,9 +16,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -498,6 +500,69 @@ public class ServiceManagerTest {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> new ServiceManager(config));
         assertTrue(exception.getMessage().contains("samplingInterval"), exception.getMessage());
+    }
+
+    /** A service that needs no resources and runs until it is stopped. */
+    private static class IdleService extends org.evochora.datapipeline.services.AbstractService {
+        IdleService(String name) {
+            super(name, ConfigFactory.empty(), java.util.Map.of());
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            while (!isStopRequested()) {
+                checkPause();
+                Thread.sleep(10);
+            }
+        }
+    }
+
+    /**
+     * A start that fails while a second start of the same service waits must leave the second one
+     * to come up on its own: without the manager's lock the second would register a running
+     * instance during the first one's construction, and the first one's failure would then remove
+     * that instance from the registry and report the service as failed beside it.
+     */
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'producer'\\.")
+    void aStartWaitsForAnotherStartOfTheSameServiceToEnd() throws InterruptedException {
+        ServiceManager sm = new ServiceManager(createTestConfig(true));
+        CountDownLatch firstConstructing = new CountDownLatch(1);
+        CountDownLatch firstMayFail = new CountDownLatch(1);
+        AtomicInteger creations = new AtomicInteger();
+        sm.registerCustomFactory("producer", () -> {
+            if (creations.incrementAndGet() == 1) {
+                firstConstructing.countDown();
+                try {
+                    firstMayFail.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new IllegalStateException("test-induced defect");
+            }
+            return new IdleService("producer");
+        });
+        Thread first = new Thread(() -> sm.startService("producer"), "first-start");
+        Thread second = new Thread(() -> sm.startService("producer"), "second-start");
+        try {
+            first.start();
+            assertTrue(firstConstructing.await(5, TimeUnit.SECONDS), "the first start is constructing");
+            second.start();
+            // Waiting for the first start, or, without the lock, already through
+            await().atMost(5, TimeUnit.SECONDS).until(() ->
+                    second.getState() == Thread.State.BLOCKED || second.getState() == Thread.State.TERMINATED);
+            firstMayFail.countDown();
+            first.join(5000);
+            second.join(5000);
+
+            assertEquals(2, creations.get());
+            ServiceStatus producer = sm.getServiceStatus("producer");
+            assertEquals(IService.State.RUNNING, producer.state());
+            assertTrue(producer.errors().isEmpty(), "the failed first start is cleared by the second: " + producer.errors());
+        } finally {
+            firstMayFail.countDown();
+            sm.shutdown();
+        }
     }
 
     @Test

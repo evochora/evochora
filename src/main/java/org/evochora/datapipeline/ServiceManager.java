@@ -70,9 +70,11 @@ import com.typesafe.config.ConfigValueType;
  * <p>
  * <strong>Threading.</strong> The registries are concurrent maps and the reporting methods take
  * their snapshots without locking, so they may be called from any thread while services run. The
- * life-cycle methods hold no lock either: two threads starting or stopping the same service at the
- * same time race, and serialising them is the caller's job. {@link #stopAll()} makes deliberate use
- * of this by stopping distinct services in parallel.
+ * life-cycle methods — starting, stopping, pausing, resuming and restarting one service or all of
+ * them, and {@link #shutdown()} — hold the manager's lock, so each one sees the state the previous
+ * one left: a start asked for while a stop runs waits for the stop to end. Within the lock,
+ * {@link #stopAll()} still stops distinct services in parallel. Should its wait for them be
+ * interrupted, it releases the lock while those stops may still run.
  */
 public class ServiceManager implements IMonitorable {
 
@@ -465,7 +467,7 @@ public class ServiceManager implements IMonitorable {
      * a start is the one described for {@link #startService(String)}, including a failure that is
      * passed on and then leaves the rest of the sequence unstarted.
      */
-    public void startAll() {
+    public synchronized void startAll() {
         log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
         startAllInternal();
     }
@@ -490,7 +492,7 @@ public class ServiceManager implements IMonitorable {
      * The services stay registered with the state they ended in, so they can still be inspected and
      * started again. Resources are left open; closing them is {@link #shutdown()}'s job.
      */
-    public void stopAll() {
+    public synchronized void stopAll() {
         log.info("\u001B[34m========== Stopping Services ==========\u001B[0m");
         // Reversed only to decide which stop is triggered first. The stops themselves run at the
         // same time (see below), so this order does not sequence them: a service later in the list
@@ -516,7 +518,7 @@ public class ServiceManager implements IMonitorable {
         for (String name : actuallyStoppable) {
             Thread t = new Thread(() -> {
                 try {
-                    stopService(name);
+                    stopInstance(name);
                 } catch (Exception e) {
                     // A one-shot service can finish between the selection above and this stop
                     if (services.get(name).getCurrentState() == IService.State.STOPPED) {
@@ -549,7 +551,7 @@ public class ServiceManager implements IMonitorable {
      * <p>
      * Once resources are closed, they cannot be reopened, making restart impossible.
      */
-    public void shutdown() {
+    public synchronized void shutdown() {
         stopAll();
         closeAllResources();
     }
@@ -594,7 +596,7 @@ public class ServiceManager implements IMonitorable {
      * to pause. Only a service whose state changes between this decision and the call refuses, and
      * that one is logged and skipped while the remaining ones are still asked.
      */
-    public void pauseAll() {
+    public synchronized void pauseAll() {
         List<String> running = servicesInState(IService.State.RUNNING);
         log.info("Pausing {} running service(s)...", running.size());
         applyToAllServices(this::pauseService, running);
@@ -609,7 +611,7 @@ public class ServiceManager implements IMonitorable {
      * service whose state changes between this decision and the call refuses, and that one is logged
      * and skipped while the remaining ones are still asked.
      */
-    public void resumeAll() {
+    public synchronized void resumeAll() {
         List<String> paused = servicesInState(IService.State.PAUSED);
         log.info("Resuming {} paused service(s)...", paused.size());
         applyToAllServices(this::resumeService, paused);
@@ -644,7 +646,7 @@ public class ServiceManager implements IMonitorable {
      * discards the stopped one — a service that was paused therefore returns running. The resources
      * themselves are neither closed nor reopened.
      */
-    public void restartAll() {
+    public synchronized void restartAll() {
         log.info("Restarting all services...");
         // Taken before the stop, because stopping is what makes this information unavailable.
         // Starting the startup sequence instead would drop every service that was switched on
@@ -721,7 +723,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalArgumentException if no service of that name is defined
      * @throws IllegalStateException if an instance of that name is still running or paused
      */
-    public void startService(String name) {
+    public synchronized void startService(String name) {
         // VALIDATION: Check if the service already exists and its state
         IService existing = services.get(name);
         if (existing != null) {
@@ -947,7 +949,15 @@ public class ServiceManager implements IMonitorable {
      *
      * @param name the configured name of the service
      */
-    public void stopService(String name) {
+    public synchronized void stopService(String name) {
+        stopInstance(name);
+    }
+
+    /**
+     * {@link #stopService(String)} without the manager's lock, for the threads on which
+     * {@link #stopAll()} stops services in parallel while it holds the lock.
+     */
+    private void stopInstance(String name) {
         IService service = services.get(name);
         if (service == null) {
             log.warn("Attempted to stop service '{}', but it was not found among services.", name);
@@ -981,7 +991,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalArgumentException if no instance of that name is registered, which is also the
      *                                  case for a configured service that has never been started
      */
-    public void pauseService(String serviceName) {
+    public synchronized void pauseService(String serviceName) {
         getServiceOrFail(serviceName).pause();
     }
 
@@ -995,7 +1005,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalArgumentException if no instance of that name is registered, which is also the
      *                                  case for a configured service that has never been started
      */
-    public void resumeService(String serviceName) {
+    public synchronized void resumeService(String serviceName) {
         getServiceOrFail(serviceName).resume();
     }
 
@@ -1013,7 +1023,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalStateException if the service did not come to a halt and is still running or
      *                               paused when the start is attempted
      */
-    public void restartService(String serviceName) {
+    public synchronized void restartService(String serviceName) {
         log.info("Restarting service '{}'...", serviceName);
         stopService(serviceName);
         startService(serviceName);
