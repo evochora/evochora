@@ -1,4 +1,10 @@
+import com.github.jk1.license.filter.DependencyFilter
+import com.github.jk1.license.filter.LicenseBundleNormalizer
+import com.github.jk1.license.render.JsonReportRenderer
+import com.github.jk1.license.render.ReportRenderer
+import com.github.jk1.license.render.TextReportRenderer
 import com.google.protobuf.gradle.*
+import groovy.json.JsonSlurper
 import java.io.ByteArrayOutputStream
 import java.util.Properties
 import javax.inject.Inject
@@ -22,6 +28,7 @@ plugins {
     id("me.champeau.jmh") version "0.7.3"
     id("pmd")
     id("com.github.node-gradle.node") version "7.1.0"
+    id("com.github.jk1.dependency-license-report") version "3.1.5"
 }
 
 java {
@@ -311,15 +318,19 @@ node {
 val frontendModules = layout.projectDirectory.dir("node_modules")
 
 // DuckDB-WASM imports apache-arrow, whose browser module in turn imports packages published only
-// as CommonJS; esbuild joins them into the one module the analyzer loads.
+// as CommonJS; esbuild joins them into the one module the analyzer loads. The metafile beside it
+// names every source file that went into the bundle, and with it every package.
+val duckDbBundleMeta = layout.buildDirectory.file("generated/duckdb-bundle-meta/meta.json")
 val bundleDuckDb = tasks.register<com.github.gradle.node.npm.task.NpxTask>("bundleDuckDb") {
     dependsOn(tasks.named("npmInstall"))
     val out = layout.buildDirectory.file("generated/duckdb-bundle/duckdb-browser.mjs")
     command = "esbuild"
     args = listOf("@duckdb/duckdb-wasm", "--bundle", "--format=esm", "--minify",
-        "--outfile=" + out.get().asFile.absolutePath)
+        "--outfile=" + out.get().asFile.absolutePath,
+        "--metafile=" + duckDbBundleMeta.get().asFile.absolutePath)
     inputs.file("package-lock.json")
     outputs.file(out)
+    outputs.file(duckDbBundleMeta)
 }
 
 // The DuckDB extensions the analyzer loads, served from the node like the rest of the frontend.
@@ -335,39 +346,118 @@ dependencies {
     duckdbExtensions("org.duckdb.extensions:parquet:$duckdbCore:$duckdbPlatform@wasm")
 }
 
+// The weights the pages use of each font
+val servedFonts = mapOf(
+    "doto" to listOf("900"),
+    "ibm-plex-sans" to listOf("400", "500", "600"),
+    "roboto-mono" to listOf("400", "500"),
+)
+
+// The npm packages the frontend serves, each with the directory under web/shared/vendor that
+// serves it. webVendor copies a package's files into that directory and frontendLicenses its
+// license files; the duckdb directory serves in addition every package the DuckDB bundle holds.
+val servedPackages: Map<String, String> = linkedMapOf(
+    "chart.js" to "chart.js",
+    "pixi.js" to "pixi.js",
+    "protobufjs" to "protobufjs",
+    "redoc" to "redoc",
+    "@duckdb/duckdb-wasm" to "duckdb",
+    "@fontsource-variable/source-serif-4" to "fonts/source-serif-4",
+) + servedFonts.keys.associate { "@fontsource/$it" to "fonts/$it" }
+
+fun servedDirectory(npmPackage: String): String = servedPackages.getValue(npmPackage)
+
+// The license and notice files of the packages the frontend serves, laid out as under
+// web/shared/vendor: next to a library in its directory, or under licenses/<package> where one
+// directory serves several packages. The node serves a package's files to every browser, so its
+// license goes along with them. A package whose own directory holds no such file takes it from
+// src/licenses/frontend/<package>, and one with neither stops the build. Beside them the task
+// writes the overview of those packages that the distribution carries.
+val frontendLicenseFileName = Regex("(?i)(licen[cs]e|notice|copying|copyrightnotice)(\\..+)?")
+val frontendLicenses = tasks.register("frontendLicenses") {
+    group = "build"
+    description = "Collects the license files of the frontend's npm packages and lists the packages"
+    dependsOn(bundleDuckDb)
+    val modules = frontendModules.asFile
+    val kept = layout.projectDirectory.dir("src/licenses/frontend").asFile
+    val bundleMeta = duckDbBundleMeta
+    val packages = servedPackages
+    val extensionCore = duckdbCore
+    val out = layout.buildDirectory.dir("generated/frontend-licenses")
+    inputs.file("package-lock.json")
+    inputs.file(bundleMeta)
+    inputs.dir(kept)
+    inputs.property("servedPackages", packages)
+    outputs.dir(out)
+    doLast {
+        val root = out.get().asFile
+        root.deleteRecursively()
+        @Suppress("UNCHECKED_CAST")
+        val bundleInputs = (JsonSlurper().parse(bundleMeta.get().asFile) as Map<String, Map<String, Any>>)
+            .getValue("inputs").keys
+        val bundled = bundleInputs.filter { "node_modules/" in it }.map { input ->
+            val segments = input.substringAfterLast("node_modules/").split("/")
+            if (segments[0].startsWith("@")) "${segments[0]}/${segments[1]}" else segments[0]
+        }.toSet()
+        val byDirectory = packages.entries.groupBy({ it.value }, { it.key }).mapValues { (directory, names) ->
+            if (directory == packages.getValue("@duckdb/duckdb-wasm")) (names + bundled).distinct() else names
+        }
+        val overview = StringBuilder("Libraries the web frontend serves under web/shared/vendor/\n\n")
+        byDirectory.forEach { (directory, names) ->
+            names.forEach { name ->
+                val own = modules.resolve(name).listFiles { file -> file.isFile && frontendLicenseFileName.matches(file.name) }
+                val files = own.orEmpty().ifEmpty { kept.resolve(name).listFiles().orEmpty() }
+                if (files.isEmpty()) {
+                    throw GradleException("The npm package $name carries no license file, and $kept/$name holds none")
+                }
+                val target = if (names.size == 1) root.resolve("frontend/$directory") else root.resolve("frontend/$directory/licenses/$name")
+                files.forEach { it.copyTo(target.resolve(it.name)) }
+                val manifest = JsonSlurper().parse(modules.resolve("$name/package.json")) as Map<*, *>
+                val repository = manifest["repository"].let { if (it is Map<*, *>) it["url"] else it }
+                overview.append("${manifest["name"]} ${manifest["version"]}  ${manifest["license"]}  ")
+                    .append("${manifest["homepage"] ?: repository}  -> $directory/\n")
+            }
+        }
+        kept.resolve("duckdb-extensions").listFiles().orEmpty()
+            .forEach { it.copyTo(root.resolve("frontend/duckdb/extensions/${it.name}")) }
+        overview.append("DuckDB parquet extension $extensionCore  MIT  https://duckdb.org  -> duckdb/extensions/\n")
+        root.resolve("frontend-libraries.txt").writeText(overview.toString())
+    }
+}
+
 val webVendor = tasks.register<Sync>("webVendor") {
     dependsOn(tasks.named("npmInstall"))
     into(layout.buildDirectory.dir("generated/web-vendor"))
     into("web/shared/vendor") {
-        from(bundleDuckDb) { into("duckdb") }
-        from(frontendModules.dir("chart.js/dist")) { include("chart.umd.min.js"); into("chart.js") }
-        from(frontendModules.dir("pixi.js/dist")) { include("pixi.min.js"); into("pixi.js") }
-        from(frontendModules.dir("protobufjs/dist")) { include("protobuf.min.js"); into("protobufjs") }
-        from(frontendModules.dir("redoc/bundles")) { include("redoc.standalone.js"); into("redoc") }
+        from(frontendLicenses) {
+            include("frontend/**")
+            eachFile { path = path.replaceFirst("vendor/frontend/", "vendor/") }
+            includeEmptyDirs = false
+        }
+        from(bundleDuckDb) { include("*.mjs"); into(servedDirectory("@duckdb/duckdb-wasm")) }
+        from(frontendModules.dir("chart.js/dist")) { include("chart.umd.min.js"); into(servedDirectory("chart.js")) }
+        from(frontendModules.dir("pixi.js/dist")) { include("pixi.min.js"); into(servedDirectory("pixi.js")) }
+        from(frontendModules.dir("protobufjs/dist")) { include("protobuf.min.js"); into(servedDirectory("protobufjs")) }
+        from(frontendModules.dir("redoc/bundles")) { include("redoc.standalone.js"); into(servedDirectory("redoc")) }
         from(frontendModules.dir("@duckdb/duckdb-wasm/dist")) {
             include("duckdb-mvp.wasm", "duckdb-browser-mvp.worker.js")
-            into("duckdb")
+            into(servedDirectory("@duckdb/duckdb-wasm"))
         }
         // DuckDB asks its extension repository for <version>/<platform>/<name>.duckdb_extension.wasm
         from(duckdbExtensions) {
             rename { "parquet.duckdb_extension.wasm" }
             into("duckdb/extensions/$duckdbCore/$duckdbPlatform")
         }
-        // The weights the pages use, each with its stylesheet and the woff2 files it names
-        mapOf(
-            "doto" to listOf("900"),
-            "ibm-plex-sans" to listOf("400", "500", "600"),
-            "roboto-mono" to listOf("400", "500"),
-        ).forEach { (font, weights) ->
+        // Each font's stylesheet for the weights the pages use and the woff2 files it names
+        servedFonts.forEach { (font, weights) ->
             from(frontendModules.dir("@fontsource/$font")) {
-                include("LICENSE")
                 weights.forEach { include("$it.css", "files/*-$it-normal.woff2") }
-                into("fonts/$font")
+                into(servedDirectory("@fontsource/$font"))
             }
         }
         from(frontendModules.dir("@fontsource-variable/source-serif-4")) {
-            include("LICENSE", "opsz.css", "opsz-italic.css", "files/*-opsz-normal.woff2", "files/*-opsz-italic.woff2")
-            into("fonts/source-serif-4")
+            include("opsz.css", "opsz-italic.css", "files/*-opsz-normal.woff2", "files/*-opsz-italic.woff2")
+            into(servedDirectory("@fontsource-variable/source-serif-4"))
         }
     }
 }
@@ -431,6 +521,64 @@ tasks.named<Tar>("distTar") {
     archiveVersion.set(project.version.toString())
 }
 
+// The licenses of the Java libraries the distribution ships. The plugin reports every library on
+// the runtime classpath with all the licenses it declares, and extracts the license and notice
+// files its jar carries. checkLicense stops the build at a library none of whose licenses is in
+// gradle/licenses/allowed-licenses.json. A license taken into that list brings its text to
+// src/licenses/texts/, unless its text names the copyright holder, as BSD and MIT do: such a
+// library ships the file its jar carries, or the one in src/licenses/java/<group>/, which
+// checkLicenseFiles requires.
+licenseReport {
+    excludeBoms = true
+    // A parent POM speaks for the organisation that publishes it, not for each library under it:
+    // OW2's names Apache-2.0 for ASM, which is BSD-3. Only a library's own POM is taken.
+    unionParentPomLicenses = false
+    renderers = arrayOf<ReportRenderer>(
+        TextReportRenderer("java-libraries.txt"),
+        JsonReportRenderer("index.json", false),
+    )
+    filters = arrayOf<DependencyFilter>(LicenseBundleNormalizer())
+    allowedLicensesFile = layout.projectDirectory.file("gradle/licenses/allowed-licenses.json").asFile
+}
+
+val javaLicenseReport = tasks.named("generateLicenseReport")
+
+val checkLicenseFiles = tasks.register("checkLicenseFiles") {
+    group = "verification"
+    description = "Checks that every library under BSD or MIT ships its license file and that none is left over"
+    dependsOn(javaLicenseReport)
+    val report = layout.buildDirectory.dir("reports/dependency-license")
+    val kept = layout.projectDirectory.dir("src/licenses/java").asFile
+    inputs.dir(kept)
+    doLast {
+        val reportDir = report.get().asFile
+        @Suppress("UNCHECKED_CAST")
+        val libraries = (JsonSlurper().parse(reportDir.resolve("index.json")) as Map<String, Any>)
+            .getValue("dependencies") as List<Map<String, Any?>>
+        val keptGroups = kept.listFiles().orEmpty().map { it.name }.toSet()
+        val namingTheHolder = Regex(".*\\b(BSD|MIT)\\b.*")
+        val withoutFile = libraries.filter { library ->
+            @Suppress("UNCHECKED_CAST")
+            val licenses = (library["moduleLicenses"] as List<Map<String, Any?>>).mapNotNull { it["moduleLicense"] as String? }
+            val (group, name) = (library["moduleName"] as String).split(":")
+            val embedded = reportDir.listFiles().orEmpty()
+                .any { it.isDirectory && it.name.startsWith("$name-${library["moduleVersion"]}") }
+            licenses.isNotEmpty() && licenses.all { namingTheHolder.matches(it) } && !embedded && group !in keptGroups
+        }.map { it["moduleName"] }
+        val leftOver = keptGroups - libraries.map { (it["moduleName"] as String).substringBefore(":") }.toSet()
+        if (withoutFile.isNotEmpty() || leftOver.isNotEmpty()) {
+            throw GradleException(
+                "Libraries under BSD or MIT whose jar carries no license file and that have none in $kept: " +
+                    "$withoutFile. Directories in $kept that no library on the runtime classpath belongs to: $leftOver"
+            )
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
+}
+
 distributions {
     main {
         contents {
@@ -444,6 +592,13 @@ distributions {
                 into("config")
             }
             from("README.md")
+            from("LICENSE")
+            into("licenses") {
+                from("src/licenses") { exclude("frontend/**") }
+                from(javaLicenseReport) { include("java-libraries.txt") }
+                from(javaLicenseReport) { include("*.jar/**"); into("java") }
+                from(frontendLicenses)
+            }
         }
     }
 }

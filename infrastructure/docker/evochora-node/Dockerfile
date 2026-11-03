@@ -24,9 +24,10 @@ COPY gradlew .
 COPY gradle ./gradle
 COPY package.json package-lock.json .npmrc ./
 
-# 2. Copy the rest of the source code
+# 2. Copy the rest of the source code, and Evochora's license, which the distribution carries
 COPY src ./src
 COPY assembly ./assembly
+COPY LICENSE ./
 
 # 3. Build the installable distribution (unpacked) instead of a zip archive.
 #    This is cleaner for the COPY step in the next stage. The Gradle cache and the npm cache of
@@ -65,6 +66,20 @@ WORKDIR /home/appuser/app
 # The build stage created a clean distribution in build/install/evochora
 # Copy the pre-built application directly from the known path
 COPY --from=builder /app/build/install/evochora/ .
+
+# The distribution's licenses/ lists what the distribution ships; the image adds the operating
+# system packages and the Java runtime, and this file says where their licenses and sources are.
+# The packages come from the archive snapshot they are pinned to, the runtime from the commit of
+# Adoptium's sources that its release file names.
+RUN . /opt/java/openjdk/release && \
+    { echo "Operating system packages: Ubuntu, from the archive snapshot $UBUNTU_SNAPSHOT"; \
+      echo "  licenses: /usr/share/doc/<package>/copyright"; \
+      echo "  sources:  the source packages of the apt archive https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT/"; \
+      echo ""; \
+      echo "Java runtime: $IMPLEMENTOR $IMPLEMENTOR_VERSION, in /opt/java/openjdk"; \
+      echo "  licenses: /opt/java/openjdk/legal/"; \
+      echo "  sources:  ${SOURCE_REPO%.git}/tree/${SOURCE##*git:}"; \
+    } > licenses/docker-image.txt
 
 # Create directories for data volumes that will be mounted
 RUN mkdir -p data/storage data/database config
