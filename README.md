@@ -69,13 +69,11 @@ The platform is extensible at every layer: the compiler pipeline, the VM instruc
 
 ## Quick Start
 
-**Requirements:** Java 25 (JRE or JDK)
-
-Download and unpack the latest distribution from the [GitHub Releases page](https://github.com/evochora/evochora/releases).
+Download the archive for your platform (Windows, macOS, Linux) from the [GitHub Releases page](https://github.com/evochora/evochora/releases), unpack it, and start the node from the unpacked directory:
 
 ```bash
-cd evochora-<version>
-bin/evochora node run
+cd evochora-<version>-<platform>
+bin/evochora node run          # Windows: bin\evochora.bat node run
 ```
 
 Open the visualizer in your browser: `http://localhost:8081/visualizer/`

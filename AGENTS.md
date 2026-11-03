@@ -40,7 +40,9 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew webTest            # Web frontend tests (vitest, src/test/web)
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
-./gradlew distZip distTar    # Create distribution archives
+./gradlew installDist        # Distribution for development under build/install/evochora, run on JAVA_HOME
+./gradlew installRuntimeDist # This platform's published distribution, with its Java runtime, under build/install
+./gradlew linuxX64DistTar    # A published archive; likewise linuxAarch64DistTar, macosAarch64DistTar, windowsX64DistZip
 ./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
 ./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```
