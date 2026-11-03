@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""Starts a platform distribution of Evochora the way a user does and checks that it works.
+
+Unpacks the archive into a temporary directory and, from its top directory, checks three things:
+
+1. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
+2. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
+3. ``bin/evochora node run`` on the standard configuration, unchanged, runs until every service
+   that counts processed ticks has processed some, so that data has passed through the whole
+   pipeline; the HTTP API reports no service in ERROR; and nothing is logged at WARN or ERROR, and
+   the JVM prints no warning of its own.
+
+The node is stopped and the directory removed afterwards. Uses the standard library only, so that
+it runs on every runner as it is. Exits with 0 when every check passes, 1 otherwise.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+import zipfile
+from pathlib import Path
+
+WINDOWS = os.name == "nt"
+STATUS_URL = "http://localhost:8081/pipeline/api/status"
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+LOG_PROBLEM = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (WARN|ERROR)\b")
+
+
+def unpack(archive: Path, into: Path) -> Path:
+    """Unpacks the archive and returns its single top directory."""
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(into)
+    else:
+        with tarfile.open(archive) as t:
+            t.extractall(into, filter="tar")
+    tops = [p for p in into.iterdir() if p.is_dir()]
+    if len(tops) != 1:
+        raise RuntimeError(f"expected one top directory in {archive.name}, found {[p.name for p in tops]}")
+    return tops[0]
+
+
+def start_script(root: Path) -> list:
+    return [str(root / "bin" / "evochora.bat")] if WINDOWS else [str(root / "bin" / "evochora")]
+
+
+def environment(**overrides) -> dict:
+    env = {k: v for k, v in os.environ.items() if k != "EVOCHORA_JAVA_HOME"}
+    env.update(overrides)
+    return env
+
+
+def check_help(root: Path) -> list:
+    result = subprocess.run(start_script(root) + ["--help"], cwd=root, env=environment(),
+                            capture_output=True, text=True, timeout=120)
+    if result.returncode != 0 or "Usage: evochora" not in result.stdout:
+        return [f"--help exited {result.returncode}: {result.stdout}{result.stderr}"]
+    return []
+
+
+def check_refusal(root: Path, old_java: str) -> list:
+    result = subprocess.run(start_script(root) + ["--help"], cwd=root,
+                            env=environment(EVOCHORA_JAVA_HOME=old_java),
+                            capture_output=True, text=True, timeout=120)
+    output = result.stdout + result.stderr
+    if result.returncode != 1 or "Evochora needs Java" not in output:
+        return [f"with EVOCHORA_JAVA_HOME={old_java}: exited {result.returncode}, expected 1 and the guard's message: {output}"]
+    return []
+
+
+def pipeline_status():
+    try:
+        with urllib.request.urlopen(STATUS_URL, timeout=5) as response:
+            return json.load(response)
+    except (urllib.error.URLError, ConnectionError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def stop(process: subprocess.Popen) -> None:
+    """Ends the node and every process the start script started for it."""
+    if process.poll() is not None:
+        return
+    if WINDOWS:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+    else:
+        os.killpg(process.pid, signal.SIGINT)
+        try:
+            process.wait(timeout=60)
+            return
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+    process.wait(timeout=60)
+
+
+def waiting_services(status) -> list:
+    """The services that count processed ticks and have processed none yet, or None while none counts."""
+    counting = [s for s in (status or {}).get("services", []) if "ticks_processed" in (s.get("metrics") or {})]
+    if not counting:
+        return None
+    return [s["name"] for s in counting if s["metrics"]["ticks_processed"] <= 0]
+
+
+def check_node_run(root: Path, timeout: float) -> list:
+    log = root / "node.log"
+    problems = []
+    with open(log, "w", encoding="utf-8", errors="replace") as out:
+        process = subprocess.Popen(
+            start_script(root) + ["node", "run"], cwd=root, env=environment(),
+            stdout=out, stderr=subprocess.STDOUT,
+            start_new_session=not WINDOWS,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0)
+        try:
+            started = time.monotonic()
+            deadline = started + timeout
+            status = None
+            waiting = None
+            while time.monotonic() < deadline and process.poll() is None:
+                time.sleep(5)
+                status = pipeline_status() or status
+                waiting = waiting_services(status)
+                if waiting == []:
+                    counted = [s["name"] for s in status["services"] if "ticks_processed" in (s.get("metrics") or {})]
+                    print(f"node run: {counted} processed ticks after {time.monotonic() - started:.0f} s", flush=True)
+                    break
+            if process.poll() is not None:
+                problems.append(f"the node ended on its own with exit code {process.returncode}")
+            if status is None:
+                problems.append(f"the HTTP API never answered at {STATUS_URL}")
+            elif waiting is None:
+                problems.append("no service reports processed ticks")
+            elif waiting:
+                problems.append(f"within {timeout:.0f} s these services processed no tick: {waiting}")
+            for service in (status or {}).get("services", []):
+                if service["state"] == "ERROR":
+                    problems.append(f"service {service['name']} is in ERROR: {service.get('errors')}")
+            text = log.read_text(encoding="utf-8", errors="replace")
+        finally:
+            stop(process)
+    for line in ANSI.sub("", text).splitlines():
+        if LOG_PROBLEM.match(line) or line.startswith("WARNING:"):
+            problems.append(f"logged: {line}")
+    if problems:
+        problems.append("log of the node run:\n" + text)
+    return problems
+
+
+def remove(directory: Path) -> None:
+    # Windows may hold the files of a process just killed a moment longer
+    for _ in range(10):
+        try:
+            shutil.rmtree(directory)
+            return
+        except OSError:
+            time.sleep(2)
+    shutil.rmtree(directory, ignore_errors=True)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("archive", type=Path, help="the platform distribution to start")
+    parser.add_argument("--old-java", required=True, help="installation directory of a Java older than Evochora needs")
+    parser.add_argument("--timeout", type=float, default=600, help="seconds the node run may take")
+    args = parser.parse_args()
+
+    work = Path(tempfile.mkdtemp(prefix="evochora-start-test-"))
+    problems = []
+    try:
+        root = unpack(args.archive.resolve(), work)
+        for name, check in [("help", lambda: check_help(root)),
+                            ("refusal", lambda: check_refusal(root, args.old_java)),
+                            ("node run", lambda: check_node_run(root, args.timeout))]:
+            found = check()
+            print(f"{name}: {'ok' if not found else 'FAILED'}", flush=True)
+            problems += [f"[{name}] {p}" for p in found]
+    finally:
+        remove(work)
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
