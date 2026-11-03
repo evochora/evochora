@@ -86,6 +86,22 @@ public class ServiceManagerTest {
         }
     }
 
+    /** A service that starts its thread and then fails, as a defect after the start would. */
+    public static class StartAnnouncementFailingService extends org.evochora.datapipeline.services.AbstractService {
+        public StartAnnouncementFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() {
+        }
+
+        @Override
+        protected void logStarted() {
+            throw new LinkageError("test-induced defect");
+        }
+    }
+
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
     void aServiceFailingToStartIsReportedAsErrorAndTheOthersStartAllTheSame() {
@@ -107,6 +123,36 @@ public class ServiceManagerTest {
             ServiceStatus broken = sm.getServiceStatus("broken");
             assertEquals(IService.State.ERROR, broken.state());
             assertFalse(broken.healthy());
+            // The failure is recorded with its reason, and every view of the manager counts it
+            assertEquals(1, broken.errors().size());
+            assertEquals("START_FAILED", broken.errors().get(0).errorType());
+            assertTrue(broken.errors().get(0).message().contains("test-induced defect"));
+            assertEquals(1L, sm.getMetrics().get("services_error"));
+            assertFalse(sm.isHealthy());
+            assertTrue(sm.getErrors().contains(broken.errors().get(0)));
+            assertEquals(broken.errors(), sm.getServiceErrors().get("broken"));
+            assertEquals(broken.errors(), sm.getServiceErrors("broken"));
+        } finally {
+            sm.shutdown();
+        }
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
+    void anErrorDuringAStartIsReportedLikeAnExceptionAndTheOthersStartAllTheSame() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = true
+              startupSequence = ["broken", "producer"]
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$StartAnnouncementFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state()));
+            assertEquals(IService.State.ERROR, sm.getServiceStatus("broken").state());
         } finally {
             sm.shutdown();
         }

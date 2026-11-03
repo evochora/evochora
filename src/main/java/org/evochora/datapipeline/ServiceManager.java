@@ -1,6 +1,7 @@
 package org.evochora.datapipeline;
 
 import java.lang.reflect.Constructor;
+import java.time.Instant;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,11 +12,11 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.datapipeline.resume.ResumeException;
@@ -84,8 +85,9 @@ public class ServiceManager implements IMonitorable {
     private final Map<String, IService> services = new ConcurrentHashMap<>();
     private final Map<String, IResource> resources = new ConcurrentHashMap<>();
     private final Map<String, List<ResourceBinding>> serviceResourceBindings = new ConcurrentHashMap<>();
-    // Services whose last start failed, which left them without an instance; reported as ERROR
-    private final Set<String> failedToStart = ConcurrentHashMap.newKeySet();
+    // Services whose last start failed, which left them without an instance, with the reason; each
+    // is reported as ERROR with that reason until a later start of it succeeds
+    private final Map<String, OperationalError> failedToStart = new ConcurrentHashMap<>();
     private final List<String> startupSequence;
     private final Map<String, List<PendingBinding>> pendingBindingsMap = new ConcurrentHashMap<>();
     // Stores the wrapped resources currently being created for a service (used to coordinate between factory and bindings)
@@ -708,11 +710,12 @@ public class ServiceManager implements IMonitorable {
      * A service that identifies itself as the source of the simulation run becomes the one the
      * manager reports through {@link #getActiveRunId()}.
      * <p>
-     * A failure to start is not passed on. Insufficient memory, a program that does not compile, a
-     * checkpoint that cannot be resumed from, a rejected configuration and a world too large for a
-     * Java array are logged with an explanation, and any other failure with its stack trace; in
-     * each case the service is left without an instance and is reported as
-     * {@link IService.State#ERROR} until a later start of it succeeds.
+     * A failure to start is not passed on, whether it is an exception or an {@link Error}.
+     * Insufficient memory, a program that does not compile, a checkpoint that cannot be resumed
+     * from, a rejected configuration and a world too large for a Java array are logged with an
+     * explanation, and any other failure with its stack trace; in each case the service is left
+     * without an instance, and is reported as {@link IService.State#ERROR} with the failure as its
+     * error until a later start of it succeeds.
      *
      * @param name the configured name of the service
      * @throws IllegalArgumentException if no service of that name is defined
@@ -788,7 +791,6 @@ public class ServiceManager implements IMonitorable {
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
-            failedToStart.add(name);
 
             // Provide friendly, actionable error message with memory calculation
             String errorMsg = "Failed to start service '" + name + "': Insufficient memory.";
@@ -807,16 +809,16 @@ public class ServiceManager implements IMonitorable {
                 errorMsg += " Increase heap size with -Xmx16g";
             }
 
-            log.error(errorMsg);
-            // Don't throw - just log and return. The service is reported as failed.
+            startFailed(name, "INSUFFICIENT_MEMORY", errorMsg, null);
             return;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
+            // An Error other than running out of memory, such as a class failing to load, ends a
+            // start like an exception: it is this service that failed, not the start of the others
             // Clean up maps in case of a startup failure.
             clearSimulationSourceIfMatch(services.get(name));
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
-            failedToStart.add(name);
 
             // Unwrap reflection exceptions to find root cause
             Throwable cause = e;
@@ -837,18 +839,18 @@ public class ServiceManager implements IMonitorable {
                     long estimatedMemoryGB = ((totalCells * 8) / (1024 * 1024 * 1024)) + 4; // 8 bytes per cell + 4GB overhead
                     String errorMsg = "Failed to start service '" + name + "': Insufficient memory. World size " + shape +
                         " requires ~" + estimatedMemoryGB + " GB. Increase heap with -Xmx" + estimatedMemoryGB + "g or reduce world size.";
-                    log.error(errorMsg);
+                    startFailed(name, "INSUFFICIENT_MEMORY", errorMsg, null);
                     return;
                 } catch (Exception ex) {
-                    log.error("Failed to start service '{}': Insufficient memory. Increase heap size with -Xmx16g or reduce world size.", name);
+                    startFailed(name, "INSUFFICIENT_MEMORY", "Failed to start service '" + name
+                        + "': Insufficient memory. Increase heap size with -Xmx16g or reduce world size.", null);
                     return;
                 }
             }
 
             // Check if this is a compilation error (CompilationException contains formatted error messages)
             if (cause instanceof CompilationException) {
-                log.error("Compilation failed for service '{}':\n{}", name, cause.getMessage());
-                // Don't throw - just log and return. The service is reported as failed.
+                startFailed(name, "COMPILATION_FAILED", "Compilation failed for service '" + name + "':\n" + cause.getMessage(), null);
                 return;
             }
 
@@ -857,18 +859,14 @@ public class ServiceManager implements IMonitorable {
             // IllegalArgumentException. Left in the other order, that cause would be read as a
             // configuration error and send the operator to the configuration file.
             if (resumeFailure != null) {
-                String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
-                log.error(errorMsg);
-                // Don't throw - just log and return. The service is reported as failed.
+                startFailed(name, "RESUME_FAILED", "Resume failed for service '" + name + "': " + resumeFailure.getMessage(), null);
                 return;
             }
 
             // Check if this is a configuration error (IllegalArgumentException, ConfigException, or
             // NegativeArraySizeException)
             if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
-                String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
-                log.error(errorMsg);
-                // Don't throw - just log and return. The service is reported as failed.
+                startFailed(name, "CONFIGURATION_ERROR", "Configuration error for service '" + name + "': " + cause.getMessage(), null);
                 return;
             }
 
@@ -879,18 +877,57 @@ public class ServiceManager implements IMonitorable {
                     String errorMsg = "Configuration error for service '" + name + "': World size " + shape +
                         " is too large (" + String.format("%,d", totalCells) + " cells). Java arrays are limited to " +
                         String.format("%,d", Integer.MAX_VALUE) + " elements. Reduce world dimensions.";
-                    log.error(errorMsg);
+                    startFailed(name, "CONFIGURATION_ERROR", errorMsg, null);
                     return;
                 } catch (Exception ex) {
-                    log.error("Configuration error for service '{}': World dimensions cause integer overflow. Reduce world size.", name);
+                    startFailed(name, "CONFIGURATION_ERROR", "Configuration error for service '" + name
+                        + "': World dimensions cause integer overflow. Reduce world size.", null);
                     return;
                 }
             }
 
             // Any other cause is unknown to the manager: a defect, logged with the trace that finds
-            // it, which stops this service but not the start of the others
-            log.error("Failed to create and start a new instance for service '{}'.", name, e);
+            // it, which stops this service but not the start of the others. The recorded error
+            // names the innermost cause; the trace stays in the log.
+            startFailed(name, "START_FAILED", "Failed to create and start a new instance for service '" + name + "': "
+                + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()), e,
+                cause.getClass().getName());
         }
+    }
+
+    private void startFailed(String name, String errorType, String message, Throwable trace) {
+        startFailed(name, errorType, message, trace, null);
+    }
+
+    /**
+     * Logs that a service failed to start and records the failure as the error it reports.
+     *
+     * @param name the service
+     * @param errorType the kind of failure, as the recorded error names it
+     * @param message what is logged and recorded
+     * @param trace the throwable to log with its stack trace when the cause is unknown, or null
+     * @param details further context for the recorded error, or null
+     */
+    private void startFailed(String name, String errorType, String message, Throwable trace, String details) {
+        if (trace != null) {
+            log.error("Failed to create and start a new instance for service '{}'.", name, trace);
+        } else {
+            log.error(message);
+        }
+        failedToStart.put(name, new OperationalError(Instant.now(), errorType, message, details));
+    }
+
+    /**
+     * The state of a configured service, determined in this one place for every view of it: the
+     * state of its instance, ERROR when its last start failed and left none, STOPPED when it has
+     * never been started.
+     */
+    private IService.State stateOf(String serviceName) {
+        IService service = services.get(serviceName);
+        if (service != null) {
+            return service.getCurrentState();
+        }
+        return failedToStart.containsKey(serviceName) ? IService.State.ERROR : IService.State.STOPPED;
     }
 
     /**
@@ -1008,15 +1045,13 @@ public class ServiceManager implements IMonitorable {
     @Override
     public Map<String, Number> getMetrics() {
         Map<String, Number> metrics = new HashMap<>();
-        Map<IService.State, Long> serviceStates = services.values().stream()
-                .collect(Collectors.groupingBy(IService::getCurrentState, Collectors.counting()));
-
-        long stoppedCount = serviceFactories.size() - services.size();
+        Map<IService.State, Long> serviceStates = serviceFactories.keySet().stream()
+                .collect(Collectors.groupingBy(this::stateOf, Collectors.counting()));
 
         metrics.put("services_total", (long) serviceFactories.size());
         metrics.put("services_running", serviceStates.getOrDefault(IService.State.RUNNING, 0L));
         metrics.put("services_paused", serviceStates.getOrDefault(IService.State.PAUSED, 0L));
-        metrics.put("services_stopped", serviceStates.getOrDefault(IService.State.STOPPED, 0L) + stoppedCount);
+        metrics.put("services_stopped", serviceStates.getOrDefault(IService.State.STOPPED, 0L));
         metrics.put("services_error", serviceStates.getOrDefault(IService.State.ERROR, 0L));
 
         Map<IResource.UsageState, Long> resourceStates = serviceResourceBindings.values().stream()
@@ -1034,9 +1069,11 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public List<OperationalError> getErrors() {
-        return services.values().stream()
-                .filter(s -> s instanceof IMonitorable)
-                .flatMap(s -> ((IMonitorable) s).getErrors().stream())
+        return Stream.concat(
+                        services.values().stream()
+                                .filter(s -> s instanceof IMonitorable)
+                                .flatMap(s -> ((IMonitorable) s).getErrors().stream()),
+                        failedToStart.values().stream())
                 .collect(Collectors.toList());
     }
 
@@ -1050,7 +1087,7 @@ public class ServiceManager implements IMonitorable {
 
     @Override
     public boolean isHealthy() {
-        boolean servicesOk = services.values().stream().noneMatch(s -> s.getCurrentState() == IService.State.ERROR);
+        boolean servicesOk = serviceFactories.keySet().stream().noneMatch(name -> stateOf(name) == IService.State.ERROR);
         boolean resourcesOk = serviceResourceBindings.values().stream()
                 .flatMap(List::stream)
                 .noneMatch(b -> b.resource().getUsageState(b.context().usageType()) == IResource.UsageState.FAILED);
@@ -1061,18 +1098,21 @@ public class ServiceManager implements IMonitorable {
      * The operational errors reported by the registered services, keyed by service name.
      * <p>
      * Only services that can be monitored and that actually have errors appear: a service with an
-     * empty error list is left out, as is one that has never been started. The errors are the ones
+     * empty error list is left out, as is one that has never been started. A service whose last
+     * start failed appears with that failure. The errors are the ones
      * accumulated since the service last had them cleared, which {@link #clearErrors()} does for
      * all of them at once.
      *
      * @return a map from service name to that service's errors, holding no empty lists
      */
     public Map<String, List<OperationalError>> getServiceErrors() {
-        return services.entrySet().stream()
+        Map<String, List<OperationalError>> errors = services.entrySet().stream()
                 .filter(e -> e.getValue() instanceof IMonitorable)
                 .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), ((IMonitorable) e.getValue()).getErrors()))
                 .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        failedToStart.forEach((name, failure) -> errors.put(name, List.of(failure)));
+        return errors;
     }
 
     /**
@@ -1082,11 +1122,17 @@ public class ServiceManager implements IMonitorable {
      * one that reports none.
      *
      * @param serviceName the configured name of the service
-     * @return that service's errors, or an empty list if it has none or cannot be monitored
-     * @throws IllegalArgumentException if no instance of that name is registered, which is also the
-     *                                  case for a configured service that has never been started
+     * @return that service's errors, the failure of its last start if that failed, or an empty
+     *         list if it has none or cannot be monitored
+     * @throws IllegalArgumentException if no instance of that name is registered and its last start
+     *                                  did not fail, which is the case for a configured service
+     *                                  that has never been started
      */
     public List<OperationalError> getServiceErrors(String serviceName) {
+        OperationalError failure = failedToStart.get(serviceName);
+        if (failure != null) {
+            return List.of(failure);
+        }
         IService service = getServiceOrFail(serviceName);
         if (service instanceof IMonitorable) {
             return ((IMonitorable) service).getErrors();
@@ -1097,9 +1143,8 @@ public class ServiceManager implements IMonitorable {
     /**
      * A status for every configured service, whether or not it is running.
      * <p>
-     * A service without an instance — never started, or discarded after a failed start — is reported
-     * as {@link IService.State#STOPPED} with no metrics, errors or resource bindings. The statuses
-     * are taken one after another, so they need not describe the same instant.
+     * Each status is the one {@link #getServiceStatus(String)} reports for that service. The
+     * statuses are taken one after another, so they need not describe the same instant.
      *
      * @return a map from service name to that service's current status
      */
@@ -1176,9 +1221,9 @@ public class ServiceManager implements IMonitorable {
 
         IService service = services.get(serviceName);
         if (service == null) {
-            boolean failed = failedToStart.contains(serviceName);
-            return new ServiceStatus(failed ? IService.State.ERROR : IService.State.STOPPED, !failed,
-                    Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
+            OperationalError failure = failedToStart.get(serviceName);
+            return new ServiceStatus(stateOf(serviceName), failure == null, Collections.emptyMap(),
+                    failure == null ? Collections.emptyList() : List.of(failure), Collections.emptyList());
         }
 
         List<ResourceBinding> resourceBindings = serviceResourceBindings.getOrDefault(serviceName, Collections.emptyList());
