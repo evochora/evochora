@@ -63,7 +63,9 @@ def environment(**overrides) -> dict:
 def check_help(root: Path) -> list:
     result = subprocess.run(start_script(root) + ["--help"], cwd=root, env=environment(),
                             capture_output=True, text=True, timeout=120)
-    if result.returncode != 0 or "Usage: evochora" not in result.stdout:
+    # picocli colours the help wherever it takes the output for a terminal, which on Windows
+    # includes a pipe in Git Bash or Cygwin; the colours are presentation, the text is the check
+    if result.returncode != 0 or "Usage: evochora" not in ANSI.sub("", result.stdout):
         return [f"--help exited {result.returncode}: {result.stdout}{result.stderr}"]
     return []
 
