@@ -127,6 +127,43 @@ public class AbstractServiceTest {
         }
     }
 
+    /** A service whose thread runs until stopped and whose start announcement fails. */
+    private static class AnnouncementFailingService extends AbstractService {
+        private final CountDownLatch runEnded = new CountDownLatch(1);
+        private final RuntimeException announcementFailure = new IllegalStateException("test-induced defect");
+
+        protected AnnouncementFailingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            try {
+                while (!isStopRequested()) {
+                    Thread.sleep(10);
+                }
+            } finally {
+                runEnded.countDown();
+            }
+        }
+
+        @Override
+        protected void logStarted() {
+            throw announcementFailure;
+        }
+    }
+
+    @Test
+    void aStartThatFailsAfterItsThreadStartedLeavesNoThreadRunning() throws InterruptedException {
+        AnnouncementFailingService service = new AnnouncementFailingService("announcement-failing", config, resources);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class, service::start);
+
+        assertSame(service.announcementFailure, thrown, "the failure is passed on unchanged");
+        assertTrue(service.runEnded.await(5, TimeUnit.SECONDS), "the thread the start had started has ended");
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
     @Test
     void anExceptionFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
         assertTheDefectIsLoggedAndStopsTheServiceWithError(new IllegalStateException("test-induced defect"));

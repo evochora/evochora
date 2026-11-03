@@ -127,7 +127,22 @@ public abstract class AbstractService implements IService, IMonitorable {
         serviceThread = new Thread(this::runService);
         serviceThread.setName(serviceName);
         serviceThread.start();
-        logStarted();
+        try {
+            logStarted();
+        } catch (RuntimeException | Error e) {
+            // The thread already runs, and a start that fails must not leave it running behind the
+            // failure: it is stopped again before the failure is passed on. A thread that has ended
+            // meanwhile needs no stop; a stop that fails travels with the failure it followed.
+            State state = getCurrentState();
+            if (state == State.RUNNING || state == State.PAUSED) {
+                try {
+                    stop();
+                } catch (RuntimeException stopFailure) {
+                    e.addSuppressed(stopFailure);
+                }
+            }
+            throw e;
+        }
     }
 
     /**
