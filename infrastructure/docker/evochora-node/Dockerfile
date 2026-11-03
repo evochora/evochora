@@ -64,8 +64,9 @@ RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /home/appuser/app
 
 # The build stage created a clean distribution in build/install/evochora
-# Copy the pre-built application directly from the known path
-COPY --from=builder /app/build/install/evochora/ .
+# Copy the pre-built application directly from the known path, owned by the non-root user as it
+# lands: changing the owner in a later step would store every file a second time in its own layer.
+COPY --from=builder --chown=appuser:appuser /app/build/install/evochora/ .
 
 # The distribution's licenses/ lists what the distribution ships; the image adds the operating
 # system packages and the Java runtime, and this file says where their licenses and sources are.
@@ -81,11 +82,11 @@ RUN . /opt/java/openjdk/release && \
       echo "  sources:  ${SOURCE_REPO%.git}/tree/${SOURCE##*git:}"; \
     } > licenses/docker-image.txt
 
-# Create directories for data volumes that will be mounted
-RUN mkdir -p data/storage data/database config
-
-# Change ownership of all application files to the non-root user
-RUN chown -R appuser:appuser /home/appuser/app
+# Create directories for data volumes that will be mounted. They, the application directory
+# itself and the file written above are owned by the non-root user like the copied files.
+RUN mkdir -p data/storage data/database config && \
+    chown appuser:appuser . licenses/docker-image.txt && \
+    chown -R appuser:appuser data config
 
 # --- NEW: Add the runtime entrypoint script ---
 # Copy the entrypoint script and make it executable.
