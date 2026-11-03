@@ -321,9 +321,7 @@ jobs:
       - name: Build the platform distributions
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: >-
-          ./gradlew linuxX64DistTar linuxAarch64DistTar macosAarch64DistTar windowsX64DistZip
-          --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
+        run: ./gradlew platformDistributions --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
 
       - name: Upload the distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -405,15 +403,6 @@ jobs:
           name: evochora-distributions
           path: distributions
 
-      # The same layout the Gradle task dockerContext makes, from the archives the start tests ran
-      - name: Lay out the build context
-        run: |
-          set -euo pipefail
-          mkdir -p build/docker
-          cp distributions/evochora-*-linux-x64.tar.gz build/docker/amd64.tar.gz
-          cp distributions/evochora-*-linux-aarch64.tar.gz build/docker/arm64.tar.gz
-          cp infrastructure/docker/evochora-node/entrypoint.sh build/docker/
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
@@ -423,8 +412,9 @@ jobs:
       - name: Build the amd64 image to start it
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: build/docker
+          context: distributions
           file: ./infrastructure/docker/evochora-node/Dockerfile
+          build-contexts: entrypoint=infrastructure/docker/evochora-node
           platforms: linux/amd64
           load: true
           tags: evochora-start-test
@@ -437,8 +427,9 @@ jobs:
       - name: Build the image for both architectures
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: build/docker
+          context: distributions
           file: ./infrastructure/docker/evochora-node/Dockerfile
+          build-contexts: entrypoint=infrastructure/docker/evochora-node
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -477,15 +468,6 @@ jobs:
           name: evochora-distributions
           path: distributions
 
-      # The same layout the Gradle task dockerContext makes, from the archives the start tests ran
-      - name: Lay out the build context
-        run: |
-          set -euo pipefail
-          mkdir -p build/docker
-          cp distributions/evochora-*-linux-x64.tar.gz build/docker/amd64.tar.gz
-          cp distributions/evochora-*-linux-aarch64.tar.gz build/docker/arm64.tar.gz
-          cp infrastructure/docker/evochora-node/entrypoint.sh build/docker/
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
@@ -502,8 +484,9 @@ jobs:
       - name: Build and push the image for both architectures
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: build/docker
+          context: distributions
           file: ./infrastructure/docker/evochora-node/Dockerfile
+          build-contexts: entrypoint=infrastructure/docker/evochora-node
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ needs.package.outputs.tag }}

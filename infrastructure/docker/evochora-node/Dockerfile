@@ -6,10 +6,10 @@
 ARG UBUNTU_IMAGE=ubuntu:resolute@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 ARG UBUNTU_SNAPSHOT=20261024T000000Z
 
-# The build context holds the Linux platform distributions, each named by the architecture Docker
-# builds for (amd64.tar.gz, arm64.tar.gz), and entrypoint.sh. The Gradle task dockerContext lays it
-# out under build/docker; the CI fills it with the archives its start tests have run, so that the
-# image carries exactly those.
+# The build context is the directory that holds the Linux platform distributions as the build names
+# them: build/distributions locally, the archives its start tests have run in the CI, so that the
+# image carries exactly those. entrypoint.sh comes from a second, named context, "entrypoint", the
+# directory of this file.
 
 # ====================================================================================
 # STAGE 1: Unpack the distribution of the target architecture
@@ -17,9 +17,17 @@ ARG UBUNTU_SNAPSHOT=20261024T000000Z
 # Unpacking does not depend on the target, so it runs on the platform of the building machine.
 FROM --platform=$BUILDPLATFORM ${UBUNTU_IMAGE} AS unpack
 ARG TARGETARCH
-ADD ${TARGETARCH}.tar.gz /unpack/
-# The Java runtime apart from the rest, so that the image carries it in a layer of its own
-RUN mv /unpack/evochora-*/jre /jre && mv /unpack/evochora-* /app
+COPY evochora-*-linux-*.tar.gz /dist/
+# Docker names the architecture it builds for amd64 or arm64, the distributions name their
+# platform. The Java runtime is set apart from the rest, so that the image carries it in a layer of
+# its own.
+RUN case "$TARGETARCH" in \
+      amd64) platform=linux-x64 ;; \
+      arm64) platform=linux-aarch64 ;; \
+      *) echo "No Linux distribution for the architecture $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    mkdir /unpack && tar -xzf /dist/evochora-*-"$platform".tar.gz -C /unpack && \
+    mv /unpack/evochora-*/jre /jre && mv /unpack/evochora-* /app
 
 # ====================================================================================
 # STAGE 2: Create the final, lean runtime image
@@ -70,7 +78,7 @@ RUN mkdir -p data/storage data/database config && \
     chown -R appuser:appuser data config
 
 # Copy the entrypoint script and make it executable.
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --from=entrypoint entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to the non-root user. This is a security best practice,
