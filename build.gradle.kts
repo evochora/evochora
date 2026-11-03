@@ -155,19 +155,50 @@ application {
     applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
-// Fix for Windows "Input line is too long" error
-tasks.named<CreateStartScripts>("startScripts") {
+// The start scripts Gradle generates find Java through JAVA_HOME or the PATH. Ahead of that they
+// choose the Java to run on: the one EVOCHORA_JAVA_HOME names, or else the runtime an archive
+// brings in jre/ - on macOS a bundle whose Java is in Contents/Home - and they hand it on as
+// JAVA_HOME. A JAVA_HOME set for other purposes does not override the runtime an archive brings.
+// The lines go in before the place where Gradle's template begins its own search; a template
+// without that place stops the build rather than leave the choice out.
+val unixJavaChoice = """
+    |# The Java to run on: EVOCHORA_JAVA_HOME if set, else the runtime the archive brings in jre/
+    |if [ -n "${'$'}EVOCHORA_JAVA_HOME" ] ; then
+    |    JAVA_HOME=${'$'}EVOCHORA_JAVA_HOME
+    |elif [ -x "${'$'}APP_HOME/jre/Contents/Home/bin/java" ] ; then
+    |    JAVA_HOME=${'$'}APP_HOME/jre/Contents/Home
+    |elif [ -x "${'$'}APP_HOME/jre/bin/java" ] ; then
+    |    JAVA_HOME=${'$'}APP_HOME/jre
+    |fi
+    |
+    |""".trimMargin()
+val windowsJavaChoice = """
+    |@rem The Java to run on: EVOCHORA_JAVA_HOME if set, else the runtime the archive brings in jre\
+    |if defined EVOCHORA_JAVA_HOME (
+    |    set "JAVA_HOME=%EVOCHORA_JAVA_HOME%"
+    |) else if exist "%APP_HOME%\jre\bin\java.exe" (
+    |    set "JAVA_HOME=%APP_HOME%\jre"
+    |)
+    |
+    |""".trimMargin().replace("\n", "\r\n")
+
+fun insertBefore(script: File, anchor: String, lines: String) {
+    val content = script.readText()
+    if (anchor !in content) {
+        throw GradleException("The start script template has no '$anchor' to put the choice of Java before: $script")
+    }
+    script.writeText(content.replaceFirst(anchor, lines + anchor))
+}
+
+tasks.withType<CreateStartScripts>().configureEach {
     doLast {
-        val windowsScriptFile = windowsScript
-        if (windowsScriptFile.exists()) {
-            val content = windowsScriptFile.readText()
-            // Replace the long classpath with a wildcard classpath
-            val newContent = content.replace(
-                Regex("set CLASSPATH=.*"),
-                "set CLASSPATH=%APP_HOME%\\\\lib\\\\*"
-            )
-            windowsScriptFile.writeText(newContent)
-        }
+        insertBefore(unixScript, "# Determine the Java command to use to start the JVM.", unixJavaChoice)
+        insertBefore(windowsScript, "@rem Find java.exe", windowsJavaChoice)
+        // Fix for Windows "Input line is too long" error: the long classpath becomes a wildcard
+        windowsScript.writeText(windowsScript.readText().replace(
+            Regex("set CLASSPATH=.*"),
+            "set CLASSPATH=%APP_HOME%\\\\lib\\\\*"
+        ))
     }
 }
 

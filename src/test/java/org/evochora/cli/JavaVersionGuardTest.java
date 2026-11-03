@@ -29,7 +29,8 @@ class JavaVersionGuardTest {
     void refusal_OlderJava_NamesTheRequiredAndTheRunningJava() {
         String refusal = JavaVersionGuard.refusal(requiring("25"), "21", JAVA_HOME);
 
-        assertThat(refusal).contains("needs Java 25 or newer", "started with Java 21", JAVA_HOME);
+        assertThat(refusal).contains("needs Java 25 or newer", "started with Java 21", JAVA_HOME,
+                "Set EVOCHORA_JAVA_HOME");
     }
 
     @Test

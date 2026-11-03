@@ -77,7 +77,7 @@ public final class JavaVersionGuard {
         }
         if (running < required) {
             return "Evochora needs Java " + required + " or newer, but was started with Java " + running
-                    + " from " + javaHome + ". Set JAVA_HOME to a Java " + required + " installation.";
+                    + " from " + javaHome + ". Set EVOCHORA_JAVA_HOME to a Java " + required + " installation.";
         }
         return null;
     }
