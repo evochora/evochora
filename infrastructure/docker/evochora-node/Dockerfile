@@ -13,8 +13,10 @@ ARG UBUNTU_SNAPSHOT=20261024T000000Z
 # ====================================================================================
 # STAGE 0: The list of certificate authorities apt reaches the snapshot with
 # ====================================================================================
+# Readable by all: apt fetches as its own unprivileged user, and a file ADD takes from a URL is
+# readable by root alone
 FROM --platform=$BUILDPLATFORM ${UBUNTU_IMAGE} AS bootstrap-ca
-ADD --checksum=sha256:796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe \
+ADD --chmod=644 --checksum=sha256:796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe \
     https://curl.se/ca/cacert-2026-10-20.pem /bootstrap-ca.pem
 
 # The build context is the directory that holds the Linux platform distributions as the build names
