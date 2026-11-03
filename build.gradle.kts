@@ -734,7 +734,13 @@ targetPlatforms.forEach { platform ->
             val archive = elements.single().asFile
             if (platform.zip) zipTree(archive) else tarTree(archive)
         })
-        eachFile { relativePath = RelativePath(true, *relativePath.segments.drop(1).toTypedArray()) }
+        // The JRE carries read-only files, which a later run could not overwrite: every file keeps
+        // the permissions the archive gives it, with write for its owner added
+        eachFile {
+            relativePath = RelativePath(true, *relativePath.segments.drop(1).toTypedArray())
+            val fromArchive = permissions.toUnixNumeric()
+            permissions { unix(fromArchive or "200".toInt(8)) }
+        }
         includeEmptyDirs = false
         into(layout.buildDirectory.dir("jre/${platform.classifier}"))
     }
