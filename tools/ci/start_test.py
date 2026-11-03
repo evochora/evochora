@@ -8,9 +8,9 @@ Unpacks the archive into a temporary directory and, from its top directory, chec
 3. ``bin/evochora node run`` on the standard configuration, unchanged, runs until every service
    that counts processed ticks has processed some, so that data has passed through the whole
    pipeline; the HTTP API reports no service in ERROR; and nothing is logged at WARN or ERROR, and
-   the JVM prints no warning of its own.
+   the JVM prints no warning of its own, up to and including the node's shutdown.
 
-The node is stopped and the directory removed afterwards. Uses the standard library only, so that
+The node is stopped the way a user stops it, with Ctrl+C, and the directory is removed afterwards. Uses the standard library only, so that
 it runs on every runner as it is. Exits with 0 when every check passes, 1 otherwise.
 """
 
@@ -77,6 +77,9 @@ def check_refusal(root: Path, old_java: str) -> list:
     output = result.stdout + result.stderr
     if result.returncode != 1 or "Evochora needs Java" not in output:
         return [f"with EVOCHORA_JAVA_HOME={old_java}: exited {result.returncode}, expected 1 and the guard's message: {output}"]
+    # The guard names the Java it runs on: the one EVOCHORA_JAVA_HOME names, not the archive's
+    if old_java not in output and os.path.realpath(old_java) not in output:
+        return [f"the refusal does not name the Java EVOCHORA_JAVA_HOME names ({old_java}): {output}"]
     return []
 
 
@@ -88,20 +91,51 @@ def pipeline_status():
         return None
 
 
-def stop(process: subprocess.Popen) -> None:
-    """Ends the node and every process the start script started for it."""
+# Sends Ctrl+C to the console of the process whose id it is given, and to that console only: it
+# leaves its own, attaches to that one and ignores Ctrl+C itself while it sends it to every process
+# there. Run as a process of its own, so that this script keeps its console.
+WINDOWS_CTRL_C = r"""
+import ctypes, sys
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+kernel32.FreeConsole()
+if not kernel32.AttachConsole(int(sys.argv[1])):
+    sys.exit(f"AttachConsole failed: {ctypes.get_last_error()}")
+kernel32.SetConsoleCtrlHandler(None, True)
+if not kernel32.GenerateConsoleCtrlEvent(0, 0):
+    sys.exit(f"GenerateConsoleCtrlEvent failed: {ctypes.get_last_error()}")
+"""
+
+
+def stop(process: subprocess.Popen) -> list:
+    """Stops the node with Ctrl+C, as a user does, and returns what went wrong doing so.
+
+    On Linux and macOS the node runs in a process group of its own, which gets SIGINT. Windows has
+    no such signal: Ctrl+C reaches the processes of a console, so the node runs in a console of its
+    own, and Ctrl+C is sent there alone. A node that does not end on Ctrl+C is a failure of the test;
+    it is then ended hard so that nothing stays behind.
+    """
     if process.poll() is not None:
-        return
+        return []
     if WINDOWS:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
-    else:
-        os.killpg(process.pid, signal.SIGINT)
+        sent = subprocess.run([sys.executable, "-I", "-c", WINDOWS_CTRL_C, str(process.pid)],
+                              capture_output=True, text=True, timeout=60)
         try:
             process.wait(timeout=60)
-            return
+            if sent.returncode != 0:
+                return [f"sending Ctrl+C failed: {sent.stderr.strip()}"]
+            return []
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-    process.wait(timeout=60)
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+            process.wait(timeout=60)
+            return [f"the node did not stop within 60 s of Ctrl+C ({sent.stderr.strip() or 'sent'})"]
+    os.killpg(process.pid, signal.SIGINT)
+    try:
+        process.wait(timeout=60)
+        return []
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=60)
+        return ["the node did not stop within 60 s of SIGINT"]
 
 
 def waiting_services(status) -> list:
@@ -116,11 +150,13 @@ def check_node_run(root: Path, timeout: float) -> list:
     log = root / "node.log"
     problems = []
     with open(log, "w", encoding="utf-8", errors="replace") as out:
+        # On Windows the node gets a console of its own, so that Ctrl+C can be sent to it alone, and
+        # no input, so that cmd answers its "Terminate batch job?" question with nothing to wait for
         process = subprocess.Popen(
             start_script(root) + ["node", "run"], cwd=root, env=environment(),
-            stdout=out, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
             start_new_session=not WINDOWS,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0)
+            creationflags=subprocess.CREATE_NEW_CONSOLE if WINDOWS else 0)
         try:
             started = time.monotonic()
             deadline = started + timeout
@@ -145,9 +181,10 @@ def check_node_run(root: Path, timeout: float) -> list:
             for service in (status or {}).get("services", []):
                 if service["state"] == "ERROR":
                     problems.append(f"service {service['name']} is in ERROR: {service.get('errors')}")
-            text = log.read_text(encoding="utf-8", errors="replace")
         finally:
-            stop(process)
+            problems += stop(process)
+    # Read once the node has ended, so that what it logs while it shuts down is checked as well
+    text = log.read_text(encoding="utf-8", errors="replace")
     for line in ANSI.sub("", text).splitlines():
         if LOG_PROBLEM.match(line) or line.startswith("WARNING:"):
             problems.append(f"logged: {line}")
