@@ -415,6 +415,7 @@ jobs:
           context: distributions
           file: ./infrastructure/docker/evochora-node/Dockerfile
           build-contexts: entrypoint=infrastructure/docker/evochora-node
+          build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64
           load: true
           tags: evochora-start-test
@@ -430,6 +431,7 @@ jobs:
           context: distributions
           file: ./infrastructure/docker/evochora-node/Dockerfile
           build-contexts: entrypoint=infrastructure/docker/evochora-node
+          build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -487,6 +489,7 @@ jobs:
           context: distributions
           file: ./infrastructure/docker/evochora-node/Dockerfile
           build-contexts: entrypoint=infrastructure/docker/evochora-node
+          build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ needs.package.outputs.tag }}

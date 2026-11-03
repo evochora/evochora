@@ -23,6 +23,10 @@ ADD --chmod=644 --checksum=sha256:796f1389bfea13c0ed78f663b765baaff54a508e548378
 # them: build/distributions locally, the archives its start tests have run in the CI, so that the
 # image carries exactly those. entrypoint.sh comes from a second, named context, "entrypoint", the
 # directory of this file.
+#
+# EVOCHORA_VERSION is the version the archives name, the RELEASE_TAG they were built with; without
+# one the build names them "latest". Archives of another version beside them are not taken.
+ARG EVOCHORA_VERSION=latest
 
 # ====================================================================================
 # STAGE 1: Unpack the distribution of the target architecture
@@ -30,7 +34,8 @@ ADD --chmod=644 --checksum=sha256:796f1389bfea13c0ed78f663b765baaff54a508e548378
 # Unpacking does not depend on the target, so it runs on the platform of the building machine.
 FROM --platform=$BUILDPLATFORM ${UBUNTU_IMAGE} AS unpack
 ARG TARGETARCH
-COPY evochora-*-linux-*.tar.gz /dist/
+ARG EVOCHORA_VERSION
+COPY evochora-${EVOCHORA_VERSION}-linux-*.tar.gz /dist/
 # Docker names the architecture it builds for amd64 or arm64, the distributions name their
 # platform. The Java runtime is set apart from the rest, so that the image carries it in a layer of
 # its own.
@@ -39,7 +44,7 @@ RUN case "$TARGETARCH" in \
       arm64) platform=linux-aarch64 ;; \
       *) echo "No Linux distribution for the architecture $TARGETARCH" >&2; exit 1 ;; \
     esac && \
-    mkdir /unpack && tar -xzf /dist/evochora-*-"$platform".tar.gz -C /unpack && \
+    mkdir /unpack && tar -xzf /dist/evochora-"$EVOCHORA_VERSION"-"$platform".tar.gz -C /unpack && \
     mv /unpack/evochora-*/jre /jre && mv /unpack/evochora-* /app
 
 # ====================================================================================
