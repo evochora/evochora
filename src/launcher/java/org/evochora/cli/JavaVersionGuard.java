@@ -21,6 +21,10 @@ import java.util.Properties;
  * The Java version the code needs is the one the build compiles it for. The build records it in
  * {@value #BUILD_INFO} under {@value #REQUIRED_JAVA}; a classpath whose file lacks that entry was
  * not made by the build, and the guard refuses it rather than start without the check.
+ * <p>
+ * The refusal goes to {@code System.err}, not through SLF4J: the guard runs before Evochora sets up
+ * its logging, and loading Logback here would start it with a configuration of its own before
+ * {@code CommandLineInterface} configures it.
  */
 public final class JavaVersionGuard {
 
