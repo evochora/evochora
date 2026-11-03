@@ -282,7 +282,7 @@ runtime      →  (nothing)
 
 ## CLI (`src/main/java/org/evochora/cli/`)
 
-- **Entry Point**: `CommandLineInterface.main()`
+- **Entry Point**: `JavaVersionGuard.main()` (source set `launcher`, compiled for an older Java) checks the running Java, then hands over to `CommandLineInterface.main()`
 - **PicoCLI**: Use PicoCLI annotations for commands and options
 - **Command Pattern**: Each command implements `Callable<Integer>` with exit codes (0=success, 1=error, 2=system error)
 - **Subcommands**: `node run`, `node resume`, `node fork`, `node show`, `compile`, `inspect`, `video`, `cleanup`

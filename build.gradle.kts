@@ -30,6 +30,16 @@ java {
     }
 }
 
+// The entry point of the distribution, JavaVersionGuard, checks the running Java before any class
+// compiled for the toolchain is loaded, so that an older Java stops with a message naming the Java
+// Evochora needs. An older Java can load the guard only when it is compiled for that older Java:
+// the guard has a source set of its own, compiled for the oldest Java whose launcher accepts the
+// options of the start scripts. A Java older than that stops at the options before loading any class.
+val launcher: SourceSet by sourceSets.creating
+tasks.named<JavaCompile>(launcher.compileJavaTaskName) {
+    options.release = 17
+}
+
 group = "org.evochora"
 version = project.findProperty("RELEASE_TAG")?.toString() ?: "latest"
 
@@ -70,6 +80,7 @@ dependencies {
     testImplementation("io.javalin:javalin-testtools:7.2.3")
     testImplementation("com.tngtech.archunit:archunit:1.5.1") // Package dependency rules
     testImplementation("com.tngtech.archunit:archunit-junit6:1.5.1") // Runs the rule classes, sharing one import
+    testImplementation(launcher.output)
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
@@ -127,11 +138,13 @@ val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
 // Netty 4.1, which ActiveMQ Artemis brings along, allocates memory through sun.misc.Unsafe, which
 // the JVM warns about and a future release denies. The permission is owed to that Netty alone:
 // NettyUnsafeRulesTest fails once Artemis brings another line, and then this flag is checked.
-// The flag exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
-val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
+// It is given as the system property that the launcher option --sun-misc-unsafe-memory-access
+// sets, not as that option: a Java that does not know the option rejects it and stops before
+// loading any class, while it accepts any system property and so reaches JavaVersionGuard.
+val allowUnsafeMemoryAccess = "-Dsun.misc.unsafe.memory.access=allow"
 
 application {
-    mainClass.set("org.evochora.cli.CommandLineInterface")
+    mainClass.set("org.evochora.cli.JavaVersionGuard")
     applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
@@ -157,6 +170,7 @@ tasks.named<JavaExec>("run") {
     group = "application"
     description = "Run the Evochora server CLI with interactive input"
     standardInput = System.`in`
+    classpath += launcher.output
 }
 
 // The web frontend is a source tree of its own, src/main/web, and goes into the jar under web/:
@@ -261,15 +275,18 @@ val writeBuildInfo = tasks.register("writeBuildInfo") {
 
     val revision = buildRevision
     val buildVersion = project.version.toString()
+    // The Java the code is compiled for, which JavaVersionGuard requires of the Java it runs on
+    val requiredJava = java.toolchain.languageVersion.get().asInt()
     val propertiesFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
     inputs.property("revision", revision)
     inputs.property("version", buildVersion)
+    inputs.property("requiredJava", requiredJava)
     outputs.file(propertiesFile)
 
     doLast {
         val target = propertiesFile.get().asFile
         target.parentFile.mkdirs()
-        target.writeText("revision=$revision\nversion=$buildVersion\n")
+        target.writeText("revision=$revision\nversion=$buildVersion\nrequiredJava=$requiredJava\n")
     }
 }
 
@@ -390,8 +407,9 @@ tasks.named<ProcessResources>("processResources") {
 tasks.named<Jar>("jar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
+        attributes["Main-Class"] = "org.evochora.cli.JavaVersionGuard"
     }
+    from(launcher.output)
     // Dependencies werden über lib/ und den Classpath im Start-Skript geladen (installDist)
 }
 
@@ -536,11 +554,12 @@ tasks.register<Test>("integration") {
     testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
-// The classes the coverage report and the coverage gate look at. Taken from the source set
-// output so that the collection carries the tasks producing it: both JaCoCo tasks then depend on
-// compilation directly, not only through the test task's execution data, and a build that skips
-// the tests (-x test) still resolves its task graph.
-val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree
+// The classes the coverage report and the coverage gate look at: those of the main source set and
+// the entry point's. Taken from the source set outputs so that the collection carries the tasks
+// producing it: both JaCoCo tasks then depend on compilation directly, not only through the test
+// task's execution data, and a build that skips the tests (-x test) still resolves its task graph.
+val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree +
+    launcher.output.classesDirs.asFileTree
 
 jacoco {
     toolVersion = "0.8.15"
