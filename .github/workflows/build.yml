@@ -542,31 +542,6 @@ jobs:
           name: evochora-distributions
           path: distributions
 
-      # The action replaces files of the same name and adds new ones but removes none, so a file
-      # the current state no longer has, such as an archive renamed or a platform dropped, would
-      # stay at latest without ever being updated again. A release with a version number is
-      # created once and keeps its files.
-      - name: Remove the files of latest that this run does not upload
-        if: needs.package.outputs.tag == 'latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # The listing fails on any error other than an absent release, which it reports as empty
-          releases=$(gh release list --repo "$REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')
-          if ! printf '%s\n' "$releases" | grep -qxF latest; then
-            echo "No release latest yet; nothing to remove."
-            exit 0
-          fi
-          gh release view latest --repo "$REPOSITORY" --json assets --jq '.assets[].name' |
-            while read -r asset; do
-              if [ ! -f "distributions/$asset" ]; then
-                echo "Removing $asset"
-                gh release delete-asset latest "$asset" --repo "$REPOSITORY" --yes
-              fi
-            done
-
       - name: Update the pre-release latest
         if: needs.package.outputs.tag == 'latest'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -577,6 +552,26 @@ jobs:
           files: |
             distributions/*.tar.gz
             distributions/*.zip
+
+      # The action replaces files of the same name and adds new ones but removes none, so a file
+      # the current state no longer has, such as an archive renamed or a platform dropped, would
+      # stay at latest without ever being updated again. Removed after the upload, which leaves
+      # latest existing in any case. A release with a version number is created once and keeps
+      # its files.
+      - name: Remove the files of latest that this run did not upload
+        if: needs.package.outputs.tag == 'latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view latest --repo "$REPOSITORY" --json assets --jq '.assets[].name' |
+            while read -r asset; do
+              if [ ! -f "distributions/$asset" ]; then
+                echo "Removing $asset"
+                gh release delete-asset latest "$asset" --repo "$REPOSITORY" --yes
+              fi
+            done
 
       - name: Create or update the release
         if: needs.package.outputs.tag != 'latest'
