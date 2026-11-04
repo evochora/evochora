@@ -597,7 +597,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      */
     private void streamingCommitAndAck() throws Exception {
         setShutdownPhase(ShutdownPhase.PROCESSING);
-        Thread.interrupted();
         try {
             commitProcessedChunks();
             streamingTracker.onCommit();

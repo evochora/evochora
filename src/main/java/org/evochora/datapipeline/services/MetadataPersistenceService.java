@@ -184,7 +184,6 @@ public class MetadataPersistenceService extends AbstractService {
 
                 // Write metadata with retry logic, then commit
                 setShutdownPhase(ShutdownPhase.PROCESSING);
-                Thread.interrupted();
                 try {
                     writeMetadataWithRetry(key, metadata);
                     batch.commit();

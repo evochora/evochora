@@ -96,7 +96,6 @@ public class DummyReaderService extends AbstractService {
                         }
 
                         setShutdownPhase(ShutdownPhase.PROCESSING);
-                        Thread.interrupted();
                         try {
                             long[] state = {-1, 0}; // [expectedFirstTick, chunksInBatch]
                             storage.forEachChunk(path, chunk -> {

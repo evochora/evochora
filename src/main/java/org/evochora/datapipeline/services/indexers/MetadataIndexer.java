@@ -86,7 +86,6 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         
         // Index metadata to database
         setShutdownPhase(ShutdownPhase.PROCESSING);
-        Thread.interrupted();
         try (IResourceSchemaAwareMetadataWriter db = database) {
             db.insertMetadata(metadata);
             metadataIndexed.incrementAndGet();

@@ -85,7 +85,6 @@ public class DummyWriterService extends AbstractService {
             }
             
             setShutdownPhase(ShutdownPhase.PROCESSING);
-            Thread.interrupted();
             try {
                 StreamingWriteResult result = storage.writeChunkBatchStreaming(batch.iterator());
                 totalChunksWritten.addAndGet(result.chunkCount());

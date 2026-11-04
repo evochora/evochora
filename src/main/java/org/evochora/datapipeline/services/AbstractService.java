@@ -80,6 +80,13 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Default is WAITING — services that never set this get immediate interrupt on shutdown.
      */
     private volatile ShutdownPhase currentShutdownPhase = ShutdownPhase.WAITING;
+
+    /**
+     * Makes the switch to {@link ShutdownPhase#PROCESSING} and the interrupt {@link #stop()} sends
+     * to a service in {@link ShutdownPhase#WAITING} exclusive of each other: a stop that has seen
+     * WAITING delivers its interrupt before the service can switch, and the switch clears it.
+     */
+    private final Object shutdownPhaseLock = new Object();
     
     /**
      * Collection of operational errors that occurred during service execution: the transient
@@ -188,8 +195,10 @@ public abstract class AbstractService implements IService, IMonitorable {
                     // receive/poll calls that respond to interrupt without data corruption.
                     // PROCESSING services are mid-write to storage/database — interrupt would
                     // corrupt NIO FileChannels via ClosedByInterruptException.
-                    if (getShutdownPhase() == ShutdownPhase.WAITING) {
-                        serviceThread.interrupt();
+                    synchronized (shutdownPhaseLock) {
+                        if (currentShutdownPhase == ShutdownPhase.WAITING) {
+                            serviceThread.interrupt();
+                        }
                     }
 
                     // Wait for thread termination (full timeout as grace period for PROCESSING)
@@ -365,7 +374,6 @@ public abstract class AbstractService implements IService, IMonitorable {
      *             if (batch.size() == 0) continue;
      *
      *             setShutdownPhase(ShutdownPhase.PROCESSING);
-     *             Thread.interrupted(); // Clear interrupt flag from WAITING→PROCESSING race
      *
      *             storage.write(batch);
      *             batch.commit();
@@ -481,17 +489,23 @@ public abstract class AbstractService implements IService, IMonitorable {
     }
 
     /**
-     * Sets the current shutdown phase. Subclasses call this to mark IO-critical sections.
+     * Sets the current shutdown phase. Subclasses call this from the service's own thread to mark
+     * IO-critical sections.
      * <p>
-     * Set to PROCESSING before storage/database writes and back to WAITING after commit.
-     * When transitioning to PROCESSING, callers should also clear any pending interrupt
-     * flag via {@code Thread.interrupted()} to prevent a race where stop() interrupted
-     * the thread while it was still in WAITING but has since entered PROCESSING.
+     * Set to PROCESSING before storage/database writes and back to WAITING after commit. The
+     * switch to PROCESSING clears an interrupt that {@link #stop()} sent while the service was
+     * still WAITING, and it cannot fall between the moment a stop sees WAITING and the moment its
+     * interrupt arrives: an interrupt meant to end a wait never reaches the write that follows it.
      *
      * @param phase the new shutdown phase
      */
     protected void setShutdownPhase(ShutdownPhase phase) {
-        this.currentShutdownPhase = phase;
+        synchronized (shutdownPhaseLock) {
+            this.currentShutdownPhase = phase;
+            if (phase == ShutdownPhase.PROCESSING) {
+                Thread.interrupted();
+            }
+        }
     }
 
     /**

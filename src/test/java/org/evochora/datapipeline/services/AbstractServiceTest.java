@@ -370,7 +370,6 @@ public class AbstractServiceTest {
             runningLatch.countDown();
             setShutdownPhase(ShutdownPhase.PROCESSING);
             processingLatch.countDown();
-            Thread.interrupted();
 
             // Hold the phase until a stop is requested, so that a test observes it without having
             // to catch a window of its own duration.
@@ -432,6 +431,38 @@ public class AbstractServiceTest {
         // Service should NOT have been interrupted while in PROCESSING
         assertFalse(service.wasInterruptedDuringProcessing(),
             "Service should not be interrupted during PROCESSING phase");
+    }
+
+    /**
+     * A service that receives an interrupt while still WAITING and then switches to PROCESSING,
+     * as a stop's interrupt can arrive just after the service has taken its batch.
+     */
+    private static class InterruptedBeforeProcessingService extends AbstractService {
+        private final CountDownLatch done = new CountDownLatch(1);
+        private final AtomicBoolean interruptedWhileProcessing = new AtomicBoolean(true);
+
+        protected InterruptedBeforeProcessingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() {
+            Thread.currentThread().interrupt();
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            interruptedWhileProcessing.set(Thread.currentThread().isInterrupted());
+            setShutdownPhase(ShutdownPhase.WAITING);
+            done.countDown();
+        }
+    }
+
+    @Test
+    void anInterruptMeantForWaitingDoesNotReachProcessing() throws InterruptedException {
+        InterruptedBeforeProcessingService service = new InterruptedBeforeProcessingService("switching-svc", config, resources);
+        service.start();
+        assertTrue(service.done.await(2, TimeUnit.SECONDS), "Service should have switched phases");
+
+        assertFalse(service.interruptedWhileProcessing.get(),
+            "the switch to PROCESSING clears an interrupt sent while the service was WAITING");
     }
 
     @Test
