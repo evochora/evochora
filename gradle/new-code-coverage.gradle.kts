@@ -1,5 +1,6 @@
 import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.w3c.dom.Element
 
 // Line coverage restricted to the lines a change actually touches.
@@ -123,19 +124,26 @@ tasks.register("newCodeCoverage") {
 
     // The report is only as good as the run that produced it: measuring against execution data
     // from before the last edit gives line numbers that no longer match the source, and a figure
-    // that is wrong without looking wrong. Gradle decides from file contents whether the tests
-    // have to run again, so an unchanged tree costs nothing here. The task is named rather than
-    // referenced: a script applied with apply(from = ...) has no type-safe task accessors.
-    dependsOn("test")
+    // that is wrong without looking wrong. The task therefore depends on the tests and on the
+    // report: the report only follows the tests as their finalizer, so with the tests alone this
+    // task could read the report of the run before, and with the report alone the tests would not
+    // run at all. Gradle decides from file contents whether the tests have to run again, so an
+    // unchanged tree costs nothing here. The tasks are looked up by name: a script applied with
+    // apply(from = ...) has no type-safe task accessors.
+    val jacocoReport = tasks.named<JacocoReport>("jacocoTestReport")
+    dependsOn("test", jacocoReport)
 
     val report = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml")
     // Enough for the whole list in an ordinary change, far enough from GitHub's 65536-character
     // limit for a comment that even long paths cannot reach it.
     val maxListedLines = 50
-    val sourceRoot = "src/main/java/"
+    // The sources the report covers, those of the source sets the coverage gate measures, relative
+    // to the repository root as git names paths
+    val sourceRoots = jacocoReport.get().sourceDirectories.files
+        .map { it.relativeTo(rootDir).invariantSeparatorsPath + "/" }
     // The prefix carries a trailing slash so that removePrefix cuts cleanly; in a sentence the
     // path reads better without it.
-    val sourceRootName = sourceRoot.trimEnd('/')
+    val sourceRootName = sourceRoots.joinToString(", ") { it.trimEnd('/') }
     val baseRef = (findProperty("newCodeCoverage.baseRef") ?: "origin/main").toString()
     // A share, not a percentage. Written as 80 it would ask for 8000% and fail every branch,
     // with a figure in the comment that says nothing about what went wrong.
@@ -169,7 +177,7 @@ tasks.register("newCodeCoverage") {
         val misses = sortedMapOf<String, List<Int>>()
 
         for ((path, lines) in changed) {
-            if (!path.startsWith(sourceRoot)) continue
+            val sourceRoot = sourceRoots.firstOrNull { path.startsWith(it) } ?: continue
             val classPath = path.removePrefix(sourceRoot)
             // Files absent from the report contain no lines the coverage analysis knows about.
             // This is also what keeps the two gates over the same code: the report is built from

@@ -953,12 +953,14 @@ tasks.register<Test>("integration") {
     testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
-// The classes the coverage report and the coverage gate look at: those of the main source set and
-// the entry point's. Taken from the source set outputs so that the collection carries the tasks
-// producing it: both JaCoCo tasks then depend on compilation directly, not only through the test
-// task's execution data, and a build that skips the tests (-x test) still resolves its task graph.
-val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree +
-    launcher.output.classesDirs.asFileTree
+// The source sets whose code coverage is measured, here alone: the coverage report and the
+// coverage gate take their classes, the report also their sources, which newCodeCoverage reads
+// from it. The classes are taken from the source set outputs so that the collection carries the
+// tasks producing it: both JaCoCo tasks then depend on compilation directly, not only through the
+// test task's execution data, and a build that skips the tests (-x test) still resolves its task
+// graph.
+val coveredSourceSets = listOf(sourceSets.main.get(), launcher)
+val coveredClasses = files(coveredSourceSets.map { it.output.classesDirs }).asFileTree
 
 jacoco {
     toolVersion = "0.8.15"
@@ -970,6 +972,7 @@ tasks.jacocoTestReport {
         html.required.set(true)
     }
     classDirectories.setFrom(coveredClasses)
+    sourceDirectories.setFrom(coveredSourceSets.map { it.java.srcDirs })
 }
 
 // Coverage may not erode unnoticed: the build fails below this share of covered lines. The bound
