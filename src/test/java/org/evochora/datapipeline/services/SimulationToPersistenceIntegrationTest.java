@@ -40,6 +40,8 @@ import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
 @ExtendWith(LogWatchExtension.class)
 class SimulationToPersistenceIntegrationTest {
 
+    private static final int SAMPLING_INTERVAL = 10;
+
     @TempDir
     Path tempDir;
 
@@ -114,29 +116,62 @@ class SimulationToPersistenceIntegrationTest {
             });
     }
 
+    /**
+     * A restart of the persistence service while the simulation keeps producing loses no tick and
+     * stores none twice.
+     * <p>
+     * The restart happens while data flows, which is where a stop could lose what the service has
+     * taken from the queue but not yet written. The check needs a fixed state, so the simulation is
+     * paused afterwards and the stored ticks are compared with the ticks it sent, from the first to
+     * the last: a loss at the end would pass unnoticed by a check for gaps alone.
+     */
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
+               messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!",
+               occurrences = 2)
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
         serviceManager.startAll();
-        
-        // Wait until we can verifiably read at least one tick before proceeding.
+
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
-        
-        // Stop, wait, and restart the service
+
+        // Restart the persistence service while the simulation keeps producing
         serviceManager.stopService("persistence-1");
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> serviceManager.getServiceStatus("persistence-1").state() == State.STOPPED);
+        long sentBeforeRestart = sentTicks();
         serviceManager.startService("persistence-1");
-        
-        // After restart, wait for the final verification to succeed to handle
-        // potential filesystem inconsistencies on CI runners.
+
+        // Data has to pass the restart: the new instance stores ticks sent after it began
+        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> readAllTicksFromBatches(tempStorageDir).stream()
+                .anyMatch(tick -> tick.getTickNumber() > sentBeforeRestart * SAMPLING_INTERVAL));
+
+        serviceManager.pauseService("simulation-engine");
+
+        // A tick on its way when the pause came may still be sent, so the count is read anew in
+        // every attempt; once everything sent is stored, the two agree
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
             .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-            .untilAsserted(this::verifyAllTicksPersisted);
+            .untilAsserted(() -> {
+                long sent = sentTicks();
+                List<Long> stored = readAllTicksFromBatches(tempStorageDir).stream()
+                    .map(TickData::getTickNumber)
+                    .sorted()
+                    .collect(Collectors.toList());
+                List<Long> expected = java.util.stream.LongStream.range(0, sent)
+                    .map(i -> i * SAMPLING_INTERVAL)
+                    .boxed()
+                    .collect(Collectors.toList());
+                assertEquals(expected, stored, "the stored ticks are not exactly the " + sent + " ticks sent");
+            });
+    }
+
+    /** The number of sampled ticks the simulation has sent to the queue. */
+    private long sentTicks() {
+        return serviceManager.getServiceStatus("simulation-engine").metrics().get("messages_sent").longValue();
     }
 
     private Config createIntegrationConfig() {
@@ -200,7 +235,7 @@ class SimulationToPersistenceIntegrationTest {
                                 )
                             ),
                             "maxTicks", 100,
-                            "samplingInterval", 10,
+                            "samplingInterval", SAMPLING_INTERVAL,
                             // Delta compression: 1 sample = 1 chunk for testing
                             "accumulatedDeltaInterval", 1,
                             "snapshotInterval", 1,
