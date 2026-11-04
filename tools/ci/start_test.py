@@ -120,10 +120,11 @@ def stop(process: subprocess.Popen) -> list:
     On Linux and macOS the node runs in a process group of its own, which gets SIGINT. Windows has
     no such signal: Ctrl+C reaches the processes of a console, so the node runs in a console of its
     own, and Ctrl+C is sent there alone. A node that does not end on Ctrl+C is a failure of the test;
-    it is then ended hard so that nothing stays behind.
+    it is then ended hard so that nothing stays behind. A node that has already ended on its own
+    is a failure as well, whenever it ended.
     """
     if process.poll() is not None:
-        return []
+        return [f"the node ended on its own with exit code {process.returncode}"]
     if WINDOWS:
         try:
             sent = subprocess.run([sys.executable, "-I", "-c", WINDOWS_CTRL_C, str(process.pid)],
@@ -234,8 +235,6 @@ def check_node_run(root: Path, timeout: float) -> list:
                     counted = [s["name"] for s in status["services"] if "ticks_processed" in (s.get("metrics") or {})]
                     print(f"node run: {counted} processed ticks after {time.monotonic() - started:.0f} s", flush=True)
                     break
-            if process.poll() is not None:
-                problems.append(f"the node ended on its own with exit code {process.returncode}")
             # Ticks that did not come after a logged problem are its consequence; the problem itself
             # is reported with the log below
             if status is None:
