@@ -14,7 +14,6 @@ import java.util.Set;
 
 import org.evochora.node.spi.IProcess;
 import org.evochora.node.spi.IServiceProvider;
-import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,12 +98,10 @@ public final class Node {
                 managedProcesses.get(name).stop();
                 LOGGER.debug("Process '{}' stopped successfully.", name);
             } catch (final Exception e) {
-                // Use safe logging during shutdown - avoid passing exception object
-                // which requires ThrowableProxy class that may be unloaded during JVM shutdown
-                safeLogError("Error while stopping process '" + name + "': " + e.getMessage());
+                LOGGER.error("Error while stopping process '{}': {}", name, e.getMessage());
             }
         }
-        safeLogInfo("All processes stopped. Goodbye.");
+        LOGGER.info("All processes stopped. Goodbye.");
         
         // Ensure all logs are flushed before JVM exits (only during actual JVM shutdown)
         if (isJvmShutdown) {
@@ -129,17 +126,11 @@ public final class Node {
      *   <li>Waits for async appenders to complete</li>
      *   <li>Closes all resources</li>
      * </ul>
+     * A failure to stop is not caught: in the shutdown hook the JVM reports it with its stack trace.
      */
     private void flushAndStopLogger() {
-        try {
-            ILoggerFactory loggerFactory = LoggerFactory.getILoggerFactory();
-            if (loggerFactory instanceof LoggerContext) {
-                LoggerContext context = (LoggerContext) loggerFactory;
-                context.stop();
-            }
-        } catch (Exception e) {
-            // Fallback to stderr if logging framework is already closed
-            System.err.println("[shutdown] Failed to flush logger: " + e.getMessage());
+        if (LoggerFactory.getILoggerFactory() instanceof LoggerContext context) {
+            context.stop();
         }
     }
 
@@ -367,30 +358,6 @@ public final class Node {
             this.className = className;
             this.options = options;
             this.requires = requires;
-        }
-    }
-
-    /**
-     * Logs an error message safely during shutdown.
-     * Falls back to System.err if the logging framework is unavailable.
-     */
-    private void safeLogError(String message) {
-        try {
-            LOGGER.error(message);
-        } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
-            System.err.println("[ERROR] " + message);
-        }
-    }
-
-    /**
-     * Logs an info message safely during shutdown.
-     * Falls back to System.out if the logging framework is unavailable.
-     */
-    private void safeLogInfo(String message) {
-        try {
-            LOGGER.info(message);
-        } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
-            System.out.println("[INFO] " + message);
         }
     }
 }

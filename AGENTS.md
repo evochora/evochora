@@ -373,7 +373,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 **Framework:**
 - Use SLF4J + Logback: `LoggerFactory.getLogger(this.getClass())`
 - Code that runs inside the node (`node`, `datapipeline`, `runtime`, `compiler`) NEVER writes to `System.out` or `System.err`: a running node's console is watched by nobody, and only its log is read. `ConsoleOutputRulesTest` enforces this
-- The console is for the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version), which write their results, progress and errors there; for the launcher's Java check, which runs before logging exists; for a report that the logging framework itself is unavailable; and for the welcome banner, shown only with `PLAIN` logging
+- The console is for the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version), which write their results, progress and errors there; for the launcher's Java check, which runs before logging exists; and for the welcome banner, shown only with `PLAIN` logging
 
 **Log Levels by Component:**
 
