@@ -551,19 +551,17 @@ tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// The distribution archives (distZip, distTar) carry the project version, which comes from
-// RELEASE_TAG. The jars inside them do not: an archive names its version once, and the jars are
-// never published on their own, so they keep the fixed names the documentation and the
-// benchmark tooling refer to.
+// The platform distribution archives carry the project version, which comes from RELEASE_TAG.
+// The jars inside them do not: an archive names its version once, and the jars are never published
+// on their own, so they keep the fixed names the documentation and the benchmark tooling refer to.
 tasks.withType<Jar> {
     archiveVersion.set("")
 }
-tasks.named<Zip>("distZip") {
-    archiveVersion.set(project.version.toString())
-}
-tasks.named<Tar>("distTar") {
-    archiveVersion.set(project.version.toString())
-}
+
+// The main distribution, without a Java runtime, is installed for development by installDist and
+// not published, so its archives are not built
+tasks.named<Zip>("distZip") { enabled = false }
+tasks.named<Tar>("distTar") { enabled = false }
 
 // The licenses of the Java libraries the distribution ships. The plugin reports every library on
 // the runtime classpath with all the licenses it declares, and extracts the license and notice

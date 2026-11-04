@@ -95,8 +95,10 @@ jobs:
       - name: Make gradlew executable
         if: runner.os != 'Windows'
         run: chmod +x gradlew
+      # check, not build: the archives that assemble would add are built and started by the
+      # package and start-test jobs
       - name: Build and run tests with Gradle
-        run: ./gradlew build --info --stacktrace
+        run: ./gradlew check --info --stacktrace
       # Coverage of the lines this branch changes, as a counterpart to the project-wide gate the
       # build applies. It reads the JaCoCo report the previous step produced and therefore has to
       # follow it. One pull request gets one comment, so only the Linux leg of the matrix runs it.
