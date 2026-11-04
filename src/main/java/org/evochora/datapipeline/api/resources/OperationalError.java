@@ -19,4 +19,12 @@ public record OperationalError(
     String message,
     String details
 ) {
+
+    /**
+     * The type of an error that is a defect of Evochora itself rather than anything a user can
+     * change, such as an exception no component knows how to handle. It is recorded for a service
+     * that such a defect ended, so that the service reports why it is in error; its message says
+     * so and names the innermost cause, and the stack trace is in the log.
+     */
+    public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 }

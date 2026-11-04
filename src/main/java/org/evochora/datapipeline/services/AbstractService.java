@@ -24,6 +24,9 @@ import com.typesafe.config.Config;
  * <p>
  * Error Tracking: Services can use {@link #recordError(String, String, String)} to
  * track transient errors that affect data quality but don't require service termination.
+ * A defect that ends the service is recorded by this class itself, as
+ * {@link OperationalError#INTERNAL_ERROR}, so that a service in {@link IService.State#ERROR}
+ * reports why.
  */
 public abstract class AbstractService implements IService, IMonitorable {
 
@@ -79,9 +82,9 @@ public abstract class AbstractService implements IService, IMonitorable {
     private volatile ShutdownPhase currentShutdownPhase = ShutdownPhase.WAITING;
     
     /**
-     * Collection of operational errors that occurred during service execution.
-     * These are transient errors that don't stop the service but may affect data quality.
-     * Limited to MAX_ERRORS to prevent unbounded memory growth.
+     * Collection of operational errors that occurred during service execution: the transient
+     * errors that don't stop the service but may affect data quality, and the defect that ended
+     * it, if one did. Limited to MAX_ERRORS to prevent unbounded memory growth.
      * <p>
      * Private to enforce use of {@link #recordError(String, String, String)} method.
      * Subclasses must not access this directly.
@@ -306,7 +309,16 @@ public abstract class AbstractService implements IService, IMonitorable {
             } else {
                 // The service's own loop let the exception or error through, so its cause is not
                 // one the service knows how to handle: a defect, and the trace is what finds it.
+                // It is recorded before the state changes, so that whoever sees ERROR finds why.
                 log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
+                Throwable cause = e;
+                while (cause.getCause() != null && cause.getCause() != cause) {
+                    cause = cause.getCause();
+                }
+                addError(new OperationalError(Instant.now(), OperationalError.INTERNAL_ERROR,
+                        "Internal error in " + this.getClass().getSimpleName() + ", stack trace in the log: "
+                                + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()),
+                        cause.getClass().getName()));
                 currentState.set(State.ERROR);
             }
         } finally {
@@ -596,15 +608,21 @@ public abstract class AbstractService implements IService, IMonitorable {
      * </ul>
      * <p>
      * <strong>NOT for:</strong> Fatal errors, InterruptedException, or any error that causes
-     * an exception to be thrown. See {@link #run()} for complete error handling guidelines.
+     * an exception to be thrown: a defect that ends the service is recorded by this class
+     * itself, as {@link OperationalError#INTERNAL_ERROR}. See {@link #run()} for complete error
+     * handling guidelines.
      *
      * @param code    Error code for categorization (e.g., "SEND_ERROR", "TICK_FAILED")
      * @param message Human-readable error message
      * @param details Additional context about the error
      */
     protected void recordError(String code, String message, String details) {
-        errors.add(new OperationalError(Instant.now(), code, message, details));
-        
+        addError(new OperationalError(Instant.now(), code, message, details));
+    }
+
+    private void addError(OperationalError error) {
+        errors.add(error);
+
         // Prevent unbounded memory growth
         int maxErrors = getMaxErrors();
         while (errors.size() > maxErrors) {

@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -127,7 +128,7 @@ public class ServiceManagerTest {
             assertFalse(broken.healthy());
             // The failure is recorded with its reason, and every view of the manager counts it
             assertEquals(1, broken.errors().size());
-            assertEquals("START_FAILED", broken.errors().get(0).errorType());
+            assertEquals(OperationalError.INTERNAL_ERROR, broken.errors().get(0).errorType());
             assertTrue(broken.errors().get(0).message().contains("test-induced defect"));
             assertEquals(1L, sm.getMetrics().get("services_error"));
             assertFalse(sm.isHealthy());

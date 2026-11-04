@@ -57,11 +57,13 @@ import com.typesafe.config.ConfigValueType;
  * stop/start cycle possible while the process keeps running, and it is also why a manager cannot be
  * used again after a shutdown: closed resources are not reopened.
  * <p>
- * <strong>Failure to start.</strong> A start that fails for a recognised reason — insufficient
- * memory, a program that does not compile, a checkpoint that cannot be resumed from, a rejected
- * configuration, a world too large for a Java array — is logged with an explanation and swallowed,
- * leaving the service without an instance and therefore reported as
- * {@link IService.State#STOPPED}. Any other runtime failure is logged and rethrown.
+ * <strong>Failure to start.</strong> A start that fails leaves the service without an instance,
+ * reported as {@link IService.State#ERROR} with the failure as its one error, and the services
+ * after it in the startup sequence are started all the same. A recognised reason a user can
+ * change — insufficient memory, a program that does not compile, a checkpoint that cannot be
+ * resumed from, a rejected configuration, a world too large for a Java array — is logged and
+ * recorded with an explanation; any other failure is a defect of Evochora, logged with its stack
+ * trace and recorded as {@link OperationalError#INTERNAL_ERROR}.
  * <p>
  * <strong>Failure while running.</strong> The manager does not watch its services. One that ends in
  * {@link IService.State#ERROR} stays registered in that state: it is skipped by
@@ -715,7 +717,8 @@ public class ServiceManager implements IMonitorable {
      * A failure to start is not passed on, whether it is an exception or an {@link Error}.
      * Insufficient memory, a program that does not compile, a checkpoint that cannot be resumed
      * from, a rejected configuration and a world too large for a Java array are logged with an
-     * explanation, and any other failure with its stack trace; in each case the service is left
+     * explanation; any other failure is a defect of Evochora, logged with its stack trace and
+     * recorded as {@link OperationalError#INTERNAL_ERROR}. In each case the service is left
      * without an instance, and is reported as {@link IService.State#ERROR} with the failure as its
      * error until a later start of it succeeds.
      *
@@ -891,7 +894,8 @@ public class ServiceManager implements IMonitorable {
             // Any other cause is unknown to the manager: a defect, logged with the trace that finds
             // it, which stops this service but not the start of the others. The recorded error
             // names the innermost cause; the trace stays in the log.
-            startFailed(name, "START_FAILED", "Failed to create and start a new instance for service '" + name + "': "
+            startFailed(name, OperationalError.INTERNAL_ERROR, "Internal error starting service '" + name
+                + "', stack trace in the log: "
                 + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()), e,
                 cause.getClass().getName());
         }

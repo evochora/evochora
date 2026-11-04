@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
@@ -191,6 +192,13 @@ public class AbstractServiceTest {
             assertEquals("{} stopped with ERROR", recorder.message);
             assertNotNull(recorder.throwable, "the stack trace is part of the ERROR line");
             assertSame(defect, recorder.throwable, "the ERROR line carries the trace of the defect itself");
+
+            // A service in ERROR reports why: the defect, named as internal
+            assertEquals(1, service.getErrors().size());
+            OperationalError failure = service.getErrors().get(0);
+            assertEquals(OperationalError.INTERNAL_ERROR, failure.errorType());
+            assertTrue(failure.message().contains("test-induced defect"), failure.message());
+            assertEquals(defect.getClass().getName(), failure.details());
         } finally {
             loggerContext.getTurboFilterList().remove(recorder);
         }
