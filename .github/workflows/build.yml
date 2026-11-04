@@ -16,13 +16,15 @@ on:
     # This creates a tag, but doesn't fire 'push' event
     types: [ published ]
 
-# Pull requests share one group per pull request, so a quick second push discards the run its own
-# predecessor started — on this matrix that is two runs per superseded push. Everything else has no
-# pull request number and falls back to the run id, which is unique per run and therefore groups
-# with nothing: a push to main, a tag and a published release each run to the end, because the
-# release job publishes images and creates releases and must never be cut short.
+# Each pull request has one group, and so has every other ref: main, and each tag on its own. A
+# newer run cancels the older run of its group, so only the newest state of a pull request is
+# checked and only the newest state of main is published. A run of main cancelled while it
+# publishes can leave the pre-release latest half updated until the next run of main that passes;
+# latest is a development build, and that run writes all of it anew. Runs of different tags never
+# meet in a group, so a release with a version number is only cancelled by a newer run of its own
+# tag, which publishes the same release.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
