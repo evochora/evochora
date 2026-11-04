@@ -14,9 +14,10 @@ import com.tngtech.archunit.junit.ArchTest;
  * A node runs where nobody watches its console: what it writes to {@code System.out} or
  * {@code System.err} carries no time, level or logger, does not reach the JSON log and cannot be
  * filtered. Everything that runs inside the node therefore reports through SLF4J, without
- * exception. The commands that run once for a user, in {@code cli}, may write their results to
- * the console, and so may the launcher's check, which runs before there is any logging; neither
- * lies in the packages checked here.
+ * exception. The command line interface, in {@code cli}, writes to the console before a node runs
+ * or instead of one: the commands that run once for a user their results, the node commands an
+ * error in their arguments or checkpoint before the node starts. So does the launcher's check,
+ * which runs before there is any logging. Neither lies in the packages checked here.
  * <p>
  * The import options are those of {@link PackageDependencyRulesTest}, so that the classes are
  * imported once for both.
