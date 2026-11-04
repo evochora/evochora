@@ -125,17 +125,19 @@ def stop(process: subprocess.Popen) -> list:
     if process.poll() is not None:
         return []
     if WINDOWS:
-        sent = subprocess.run([sys.executable, "-I", "-c", WINDOWS_CTRL_C, str(process.pid)],
-                              capture_output=True, text=True, timeout=60)
+        try:
+            sent = subprocess.run([sys.executable, "-I", "-c", WINDOWS_CTRL_C, str(process.pid)],
+                                  capture_output=True, text=True, timeout=60)
+            failure = sent.stderr.strip() if sent.returncode != 0 else None
+        except subprocess.TimeoutExpired:
+            failure = "the sender did not finish within 60 s"
         try:
             process.wait(timeout=60)
-            if sent.returncode != 0:
-                return [f"sending Ctrl+C failed: {sent.stderr.strip()}"]
-            return []
+            return [f"sending Ctrl+C failed: {failure}"] if failure else []
         except subprocess.TimeoutExpired:
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
             process.wait(timeout=60)
-            return [f"the node did not stop within 60 s of Ctrl+C ({sent.stderr.strip() or 'sent'})"]
+            return [f"the node did not stop within 60 s of Ctrl+C ({failure or 'sent'})"]
     os.killpg(process.pid, signal.SIGINT)
     try:
         process.wait(timeout=60)
