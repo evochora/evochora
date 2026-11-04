@@ -55,12 +55,12 @@ import com.typesafe.config.ConfigValueType;
  * stop/start cycle possible while the process keeps running, and it is also why a manager cannot be
  * used again after a shutdown: closed resources are not reopened.
  * <p>
- * <strong>Failure to start.</strong> A start that fails is logged and swallowed, leaving the
- * service without an instance and therefore reported as {@link IService.State#STOPPED}, and the
- * services after it in the startup sequence are started all the same. A recognised reason —
- * insufficient memory, a program that does not compile, a checkpoint that cannot be resumed from,
- * a rejected configuration, a world too large for a Java array — is logged with an explanation;
- * any other failure, exception or {@link Error}, is a defect and logged with its stack trace.
+ * <strong>Failure to start.</strong> A start that fails leaves the service without an instance,
+ * reported as {@link IService.State#STOPPED}. A recognised reason — insufficient memory, a program
+ * that does not compile, a checkpoint that cannot be resumed from, a rejected configuration, a
+ * world too large for a Java array — is logged with an explanation. Any other failure, exception
+ * or {@link Error}, is a defect and passed on as a {@link ServiceStartException}; the start of all
+ * services logs it with its stack trace and starts the ones after it all the same.
  * <p>
  * <strong>Failure while running.</strong> The manager does not watch its services. One that ends in
  * {@link IService.State#ERROR} stays registered in that state: it is skipped by
@@ -113,8 +113,7 @@ public class ServiceManager implements IMonitorable {
      * If {@code autoStart} is absent or true and a non-empty {@code startupSequence} is configured,
      * the services it names are started in that order before the constructor returns, and a memory
      * estimate for the running pipeline is logged afterwards. A service that fails to start is
-     * logged as {@link #startService(String)} describes, and the services after it are started all
-     * the same. Otherwise nothing is started and the services wait for {@link #startAll()} or
+     * logged, and the services after it are started all the same. Otherwise nothing is started and the services wait for {@link #startAll()} or
      * {@link #startService(String)}.
      *
      * @param rootConfig configuration holding a {@code pipeline} section; nothing outside that
@@ -450,6 +449,9 @@ public class ServiceManager implements IMonitorable {
                 action.accept(serviceName);
             } catch (IllegalStateException | IllegalArgumentException e) {
                 log.warn("Could not perform action on service '{}': {}", serviceName, e.getMessage());
+            } catch (ServiceStartException e) {
+                // A defect in the start of one service, which stops that service but not the rest
+                log.error(e.getMessage(), e.getCause());
             }
         }
     }
@@ -709,15 +711,16 @@ public class ServiceManager implements IMonitorable {
      * A service that identifies itself as the source of the simulation run becomes the one the
      * manager reports through {@link #getActiveRunId()}.
      * <p>
-     * A failure to start is not passed on, whether it is an exception or an {@link Error}.
      * Insufficient memory, a program that does not compile, a checkpoint that cannot be resumed
      * from, a rejected configuration and a world too large for a Java array are logged with an
-     * explanation, and any other failure, a defect, with its stack trace; in each case the service
-     * is left without an instance and is reported as {@link IService.State#STOPPED} afterwards.
+     * explanation and not passed on. Any other failure, exception or {@link Error}, is a defect and
+     * passed on, unlogged, to whoever handles it. In each case the service is left without an
+     * instance and is reported as {@link IService.State#STOPPED} afterwards.
      *
      * @param name the configured name of the service
      * @throws IllegalArgumentException if no service of that name is defined
      * @throws IllegalStateException if an instance of that name is still running or paused
+     * @throws ServiceStartException if the start failed for a cause the manager does not recognise
      */
     public synchronized void startService(String name) {
         // VALIDATION: Check if the service already exists and its state
@@ -887,9 +890,9 @@ public class ServiceManager implements IMonitorable {
                 }
             }
 
-            // Any other cause is unknown to the manager: a defect, logged with the trace that finds
-            // it, which stops this service but not the start of the others
-            log.error("Failed to create and start a new instance for service '{}'.", name, e);
+            // Any other cause is unknown to the manager: a defect, passed on for whoever handles it
+            // to log with the trace that finds it
+            throw new ServiceStartException(name, e);
         }
     }
 

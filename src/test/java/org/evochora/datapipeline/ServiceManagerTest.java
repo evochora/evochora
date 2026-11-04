@@ -129,6 +129,30 @@ public class ServiceManagerTest {
         }
     }
 
+    /**
+     * A single start, as the HTTP API makes it, passes the defect on to its caller, unlogged: the
+     * caller handles it and logs it, and no other service is involved.
+     */
+    @Test
+    void aSingleStartPassesADefectOnWithoutLoggingIt() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$ConstructionFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            ServiceStartException thrown = assertThrows(ServiceStartException.class, () -> sm.startService("broken"));
+            assertTrue(thrown.getMessage().contains("'broken'"), thrown.getMessage());
+            assertNotNull(thrown.getCause());
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
     void anErrorDuringAStartIsHandledLikeAnExceptionAndTheOthersStartAllTheSame() {
@@ -515,7 +539,6 @@ public class ServiceManagerTest {
      * runs.
      */
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'producer'\\.")
     void aStartWaitsForAnotherStartOfTheSameServiceToEnd() throws InterruptedException {
         ServiceManager sm = new ServiceManager(createTestConfig(true));
         CountDownLatch firstConstructing = new CountDownLatch(1);
@@ -533,7 +556,14 @@ public class ServiceManagerTest {
             }
             return new IdleService("producer");
         });
-        Thread first = new Thread(() -> sm.startService("producer"), "first-start");
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread first = new Thread(() -> {
+            try {
+                sm.startService("producer");
+            } catch (ServiceStartException e) {
+                firstFailure.set(e);
+            }
+        }, "first-start");
         Thread second = new Thread(() -> sm.startService("producer"), "second-start");
         try {
             first.start();
@@ -547,6 +577,7 @@ public class ServiceManagerTest {
             second.join(5000);
 
             assertEquals(2, creations.get());
+            assertNotNull(firstFailure.get(), "the first start passes its failure on");
             ServiceStatus producer = sm.getServiceStatus("producer");
             assertEquals(IService.State.RUNNING, producer.state());
         } finally {
