@@ -6,9 +6,11 @@ import com.github.jk1.license.render.TextReportRenderer
 import com.google.protobuf.gradle.*
 import groovy.json.JsonSlurper
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.Properties
 import javax.inject.Inject
+import org.gradle.jvm.application.scripts.TemplateBasedScriptGenerator
 import org.gradle.jvm.application.tasks.CreateStartScripts
 import org.gradle.process.ExecOperations
 
@@ -178,50 +180,42 @@ application {
     applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
-// The start scripts Gradle generates find Java through JAVA_HOME or the PATH. Ahead of that they
-// choose the Java to run on: the one EVOCHORA_JAVA_HOME names, or else the runtime an archive
-// brings in jre/ - on macOS a bundle whose Java is in Contents/Home - and they hand it on as
-// JAVA_HOME. A JAVA_HOME set for other purposes does not override the runtime an archive brings.
-// The lines go in before the place where Gradle's template begins its own search; a template
-// without that place stops the build rather than leave the choice out.
-val unixJavaChoice = """
-    |# The Java to run on: EVOCHORA_JAVA_HOME if set, else the runtime the archive brings in jre/
-    |if [ -n "${'$'}EVOCHORA_JAVA_HOME" ] ; then
-    |    JAVA_HOME=${'$'}EVOCHORA_JAVA_HOME
-    |elif [ -x "${'$'}APP_HOME/jre/Contents/Home/bin/java" ] ; then
-    |    JAVA_HOME=${'$'}APP_HOME/jre/Contents/Home
-    |elif [ -x "${'$'}APP_HOME/jre/bin/java" ] ; then
-    |    JAVA_HOME=${'$'}APP_HOME/jre
-    |fi
-    |
-    |""".trimMargin()
-val windowsJavaChoice = """
-    |@rem The Java to run on: EVOCHORA_JAVA_HOME if set, else the runtime the archive brings in jre\
-    |if defined EVOCHORA_JAVA_HOME (
-    |    set "JAVA_HOME=%EVOCHORA_JAVA_HOME%"
-    |) else if exist "%APP_HOME%\jre\bin\java.exe" (
-    |    set "JAVA_HOME=%APP_HOME%\jre"
-    |)
-    |
-    |""".trimMargin().replace("\n", "\r\n")
+// The start scripts are made from templates of our own in gradle/start-scripts: copies of Gradle's,
+// with the choice of the Java to run on added - EVOCHORA_JAVA_HOME, else the runtime an archive
+// brings in jre/, else JAVA_HOME - and, on Windows, every jar in lib as the classpath, whose list
+// would make the command line too long. What a copy adds or replaces stands between the comments
+// "Evochora: begin" and "Evochora: end"; the rest is Gradle's. Each copy is held to the checksum of the
+// template of Gradle's it was made from: a Gradle whose template differs stops the build until the
+// copy has been made anew from that template, with the marked parts set in again, and the checksum
+// renewed.
+val startScriptTemplates = layout.projectDirectory.dir("gradle/start-scripts")
+val startScriptTemplateOrigins = mapOf(
+    "unixStartScript.txt" to "81a2c1ec4cad61c1991e5a86329f928e406bc0f98bc98852be1b72ba9e81c6c0",
+    "windowsStartScript.txt" to "c91840406db3b7efa91b66121f6e883c62533212a849f19de1ca794766168d9d",
+)
 
-fun insertBefore(script: File, anchor: String, lines: String) {
-    val content = script.readText()
-    if (anchor !in content) {
-        throw GradleException("The start script template has no '$anchor' to put the choice of Java before: $script")
-    }
-    script.writeText(content.replaceFirst(anchor, lines + anchor))
-}
+fun sha256(text: String): String =
+    MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
 tasks.withType<CreateStartScripts>().configureEach {
-    doLast {
-        insertBefore(unixScript, "# Determine the Java command to use to start the JVM.", unixJavaChoice)
-        insertBefore(windowsScript, "@rem Find java.exe", windowsJavaChoice)
-        // Fix for Windows "Input line is too long" error: the long classpath becomes a wildcard
-        windowsScript.writeText(windowsScript.readText().replace(
-            Regex("set CLASSPATH=.*"),
-            "set CLASSPATH=%APP_HOME%\\\\lib\\\\*"
-        ))
+    val generators = mapOf(
+        "unixStartScript.txt" to unixStartScriptGenerator as TemplateBasedScriptGenerator,
+        "windowsStartScript.txt" to windowsStartScriptGenerator as TemplateBasedScriptGenerator,
+    )
+    val gradleTemplates = generators.mapValues { (_, generator) -> generator.template }
+    generators.forEach { (name, generator) ->
+        generator.template = resources.text.fromFile(startScriptTemplates.file(name))
+    }
+    inputs.dir(startScriptTemplates)
+    doFirst {
+        gradleTemplates.forEach { (name, template) ->
+            if (sha256(template.asString()) != startScriptTemplateOrigins.getValue(name)) {
+                throw GradleException(
+                    "Gradle's start script template $name differs from the one $startScriptTemplates/$name " +
+                        "was copied from: compare the copy with it and renew its checksum in build.gradle.kts"
+                )
+            }
+        }
     }
 }
 
