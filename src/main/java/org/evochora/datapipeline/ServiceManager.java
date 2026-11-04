@@ -460,8 +460,9 @@ public class ServiceManager implements IMonitorable {
      * Nothing else is started: a configured service the sequence does not name stays untouched. A
      * service that is not defined, or that is already running and would have to be restarted
      * explicitly, is logged and skipped so the remaining ones still come up. Every other outcome of
-     * a start is the one described for {@link #startService(String)}, including a failure that is
-     * passed on and then leaves the rest of the sequence unstarted.
+     * a start is the one described for {@link #startService(String)}: a service that fails to
+     * start is logged and left without an instance, and the rest of the sequence is started all
+     * the same.
      */
     public synchronized void startAll() {
         log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
