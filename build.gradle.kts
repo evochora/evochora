@@ -649,8 +649,40 @@ tasks.named("check") {
     dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
 }
 
+// The sources of the commit a distribution is built from, which every distribution carries under
+// src/: the installation directory holds the runs made with it, and with the sources beside them
+// runs, application and the code that made them are published as one. GIT_REVISION among them
+// names the revision, so that a build made from them records it, as BuildRevisionSource reads it.
+// They are the sources of the last commit; a build with changes not yet committed leaves those
+// out, and its revision says "-dirty". Archiving needs a git checkout, and without one git stops
+// the task.
+val sourceArchive = tasks.register<Exec>("sourceArchive") {
+    group = "distribution"
+    description = "Packs the sources of the commit HEAD for the src/ directory of the distributions"
+    val archive = layout.buildDirectory.file("sources/evochora-sources.tar").get().asFile
+    inputs.property("revision", buildRevision)
+    outputs.file(archive)
+    workingDir = rootProject.projectDir
+    commandLine("git", "archive", "--format=tar", "--add-virtual-file=GIT_REVISION:$buildRevision",
+        "--output=$archive", "HEAD")
+    doFirst { archive.parentFile.mkdirs() }
+}
+
+// Unpacked once, as the JRE is, so that the archives take files that keep the permissions git
+// gives them
+val unpackSources = tasks.register<Sync>("unpackSources") {
+    from(tarTree(sourceArchive.map { it.outputs.files.singleFile }))
+    into(layout.buildDirectory.dir("sources/src"))
+}
+
 // What every distribution carries beside its start scripts and its libraries
 val distributionContents = copySpec {
+    into("src") {
+        from(unpackSources)
+        // Archives get fixed permissions; a file git keeps executable, gradlew among them, stays
+        // executable in the archive
+        eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+    }
     from("assembly") {
         into("assembly")
     }

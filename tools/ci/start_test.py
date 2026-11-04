@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Starts a platform distribution of Evochora the way a user does and checks that it works.
 
-Unpacks the archive into a temporary directory and, from its top directory, checks three things:
+Unpacks the archive into a temporary directory and, from its top directory, checks four things:
 
-1. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
-2. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
-3. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
+1. ``src/`` holds the sources the archive was built from and the GIT_REVISION that names them.
+2. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
+3. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
+4. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
    every service that counts processed ticks has processed some, so that data has passed through
    the whole pipeline; the HTTP API reports no service in ERROR; nothing is logged at WARN or
    ERROR, and the JVM prints no warning of its own, up to and including the node's shutdown; and
@@ -66,6 +67,11 @@ def environment(**overrides) -> dict:
     env = {k: v for k, v in os.environ.items() if k != "EVOCHORA_JAVA_HOME"}
     env.update(overrides)
     return env
+
+
+def check_sources(root: Path) -> list:
+    missing = [name for name in ("build.gradle.kts", "GIT_REVISION") if not (root / "src" / name).is_file()]
+    return [f"src/ lacks {', '.join(missing)}"] if missing else []
 
 
 def check_help(root: Path) -> list:
@@ -295,7 +301,8 @@ def main() -> int:
     problems = []
     try:
         root = unpack(args.archive.resolve(), work)
-        for name, check in [("help", lambda: check_help(root)),
+        for name, check in [("sources", lambda: check_sources(root)),
+                            ("help", lambda: check_help(root)),
                             ("refusal", lambda: check_refusal(root, args.old_java)),
                             ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),
                             ("node run", lambda: check_node_run(root, args.timeout))]:
