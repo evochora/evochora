@@ -566,10 +566,11 @@ tasks.named<Tar>("distTar") { enabled = false }
 // The licenses of the Java libraries the distribution ships. The plugin reports every library on
 // the runtime classpath with all the licenses it declares, and extracts the license and notice
 // files its jar carries. checkLicense stops the build at a library none of whose licenses is in
-// gradle/licenses/allowed-licenses.json. A license taken into that list brings its text to
-// src/licenses/texts/, unless its text names the copyright holder, as BSD and MIT do: such a
-// library ships the file its jar carries, or the one in src/licenses/java/<group>/, which
-// checkLicenseFiles requires.
+// gradle/licenses/allowed-licenses.json. A license taken into that list names its text in
+// src/licenses/texts/ as "text", unless its text names the copyright holder, as BSD and MIT do:
+// such a library ships the file its jar carries, or the one in src/licenses/java/<group>/.
+// checkLicenseFiles requires one or the other for every library, and reports a text or a
+// directory no library needs.
 licenseReport {
     excludeBoms = true
     // A parent POM speaks for the organisation that publishes it, not for each library under it:
@@ -587,35 +588,56 @@ val javaLicenseReport = tasks.named("generateLicenseReport")
 
 val checkLicenseFiles = tasks.register("checkLicenseFiles") {
     group = "verification"
-    description = "Checks that every library under BSD or MIT ships its license file and that none is left over"
+    description = "Checks that every library ships the text of a license it is allowed under, and that none is left over"
     dependsOn(javaLicenseReport)
     val report = layout.buildDirectory.dir("reports/dependency-license")
+    val allowedLicenses = layout.projectDirectory.file("gradle/licenses/allowed-licenses.json").asFile
     val kept = layout.projectDirectory.dir("src/licenses/java").asFile
+    val texts = layout.projectDirectory.dir("src/licenses/texts").asFile
+    inputs.file(allowedLicenses)
     inputs.dir(kept)
+    inputs.dir(texts)
     doLast {
         val reportDir = report.get().asFile
         @Suppress("UNCHECKED_CAST")
         val libraries = (JsonSlurper().parse(reportDir.resolve("index.json")) as Map<String, Any>)
             .getValue("dependencies") as List<Map<String, Any?>>
+        @Suppress("UNCHECKED_CAST")
+        val textOf = ((JsonSlurper().parse(allowedLicenses) as Map<String, Any>)
+            .getValue("allowedLicenses") as List<Map<String, Any?>>)
+            .associate { it.getValue("moduleLicense") as String to it["text"] as String? }
         val keptGroups = kept.listFiles().orEmpty().map { it.name }.toSet()
         val licenseFileName = Regex("(?i)(LICENSE|COPYING|NOTICE).*")
         val withoutLicenseFile = kept.listFiles().orEmpty()
             .filter { group -> group.listFiles().orEmpty().none { it.isFile && licenseFileName.matches(it.name) } }
             .map { it.name }
         val namingTheHolder = Regex(".*\\b(BSD|MIT)\\b.*")
-        val withoutFile = libraries.filter { library ->
+        val neededTexts = mutableSetOf<String>()
+        // A library may name several licenses; it ships under one it is allowed under, so one of
+        // those needs its text: the library's own file for a license naming the holder, else the
+        // text the allowed list names. A library allowed under none is checkLicense's to report.
+        val withoutText = libraries.filter { library ->
             @Suppress("UNCHECKED_CAST")
-            val licenses = (library["moduleLicenses"] as List<Map<String, Any?>>).mapNotNull { it["moduleLicense"] as String? }
+            val allowedHere = (library["moduleLicenses"] as List<Map<String, Any?>>)
+                .mapNotNull { it["moduleLicense"] as String? }.filter { it in textOf }
             val (group, name) = (library["moduleName"] as String).split(":")
             val embedded = reportDir.listFiles().orEmpty()
                 .any { it.isDirectory && it.name.startsWith("$name-${library["moduleVersion"]}") }
-            licenses.isNotEmpty() && licenses.all { namingTheHolder.matches(it) } && !embedded && group !in keptGroups
+            val holderFile = allowedHere.any { namingTheHolder.matches(it) } && (embedded || group in keptGroups)
+            val withText = allowedHere.mapNotNull { textOf[it] }.filter { texts.resolve(it).isFile }
+            neededTexts += withText
+            allowedHere.isNotEmpty() && !holderFile && withText.isEmpty()
         }.map { it["moduleName"] }
+        val missingTexts = textOf.values.filterNotNull().filter { !texts.resolve(it).isFile }
+        val unusedTexts = texts.listFiles().orEmpty().map { it.name } - neededTexts
         val leftOver = keptGroups - libraries.map { (it["moduleName"] as String).substringBefore(":") }.toSet()
-        if (withoutFile.isNotEmpty() || leftOver.isNotEmpty() || withoutLicenseFile.isNotEmpty()) {
+        if (withoutText.isNotEmpty() || missingTexts.isNotEmpty() || unusedTexts.isNotEmpty() ||
+            leftOver.isNotEmpty() || withoutLicenseFile.isNotEmpty()) {
             throw GradleException(
-                "Libraries under BSD or MIT whose jar carries no license file and that have none in $kept: " +
-                    "$withoutFile. Directories in $kept that no library on the runtime classpath belongs to: " +
+                "Libraries without the text of a license they are allowed under, neither a license file in " +
+                    "their jar or in $kept nor a text in $texts: $withoutText. Texts the allowed licenses name " +
+                    "that are missing from $texts: $missingTexts. Texts in $texts that no library needs: " +
+                    "$unusedTexts. Directories in $kept that no library on the runtime classpath belongs to: " +
                     "$leftOver. Directories in $kept without a file named LICENSE, COPYING or NOTICE: " +
                     "$withoutLicenseFile"
             )
