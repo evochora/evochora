@@ -1,23 +1,8 @@
-# The base image is pinned by digest and the packages by a snapshot of the Ubuntu archive, so
-# that building the same commit again yields the same image. Updating the digest or the snapshot
-# is a change of its own.
-#
-# The snapshot is served over HTTPS only, which apt can use only with a list of certificate
-# authorities, and the base image has none. A dated list from curl.se, pinned by its checksum,
-# serves apt for installing the image's packages, ca-certificates among them, and is not kept in
-# the image. The authenticity of the packages rests on the archive's signatures either way. The
-# list needs replacing only once it no longer holds the authority of snapshot.ubuntu.com.
+# The base image is pinned by digest and the packages the node uses by a snapshot of the Ubuntu
+# archive, so that building the same commit again yields the same image. Updating the digest or the
+# snapshot is a change of its own.
 ARG UBUNTU_IMAGE=ubuntu:resolute@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 ARG UBUNTU_SNAPSHOT=20261024T000000Z
-
-# ====================================================================================
-# STAGE 0: The list of certificate authorities apt reaches the snapshot with
-# ====================================================================================
-# Readable by all: apt fetches as its own unprivileged user, and a file ADD takes from a URL is
-# readable by root alone
-FROM --platform=$BUILDPLATFORM ${UBUNTU_IMAGE} AS bootstrap-ca
-ADD --chmod=644 --checksum=sha256:796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe \
-    https://curl.se/ca/cacert-2026-10-20.pem /bootstrap-ca.pem
 
 # The build context is the directory that holds the Linux platform distributions as the build names
 # them: build/distributions locally, the archives its start tests have run in the CI, so that the
@@ -56,16 +41,18 @@ ARG UBUNTU_SNAPSHOT
 
 # Install runtime dependencies and gosu for privilege dropping.
 # gosu is a lightweight su/sudo alternative ideal for containers.
-# apt reaches the snapshot with the list of stage 0, mounted for this step only, as the comment at
-# the top says; ca-certificates from the snapshot then gives the image its own list.
+# The snapshot is served over HTTPS only, which apt can use only with the list of certificate
+# authorities that ca-certificates brings, and the base image has none: that list comes from the
+# current archive, which the base image reaches over HTTP, and is kept current rather than pinned,
+# as a list of trusted authorities should be. The packages are signed by the archive either way.
 # apt knows the snapshot server of archive.ubuntu.com, which serves amd64, but not of
 # ports.ubuntu.com, which serves arm64; the snapshot of the archive carries both.
-RUN --mount=type=bind,from=bootstrap-ca,source=/bootstrap-ca.pem,target=/tmp/bootstrap-ca.pem \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
     echo 'Acquire::Snapshots::URI::Host::ports.ubuntu.com "https://snapshot.ubuntu.com/ubuntu/@SNAPSHOTID@/";' \
         > /etc/apt/apt.conf.d/50snapshot-ports && \
-    apt-get -o Acquire::https::CaInfo=/tmp/bootstrap-ca.pem update --snapshot "$UBUNTU_SNAPSHOT" && \
-    apt-get -o Acquire::https::CaInfo=/tmp/bootstrap-ca.pem install -y --no-install-recommends \
-        --snapshot "$UBUNTU_SNAPSHOT" ca-certificates ffmpeg gosu && \
+    apt-get update --snapshot "$UBUNTU_SNAPSHOT" && \
+    apt-get install -y --no-install-recommends --snapshot "$UBUNTU_SNAPSHOT" ffmpeg gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group with a default ID.
@@ -83,10 +70,12 @@ COPY --from=unpack --chown=appuser:appuser /app/ .
 
 # The distribution's licenses/ lists what the distribution ships, java-runtime.txt among it; the
 # image adds the operating system packages, and this file says where their licenses and sources
-# are. The packages come from the archive snapshot they are pinned to.
-RUN { echo "Operating system packages: Ubuntu, from the archive snapshot $UBUNTU_SNAPSHOT"; \
+# are. The packages come from the archive snapshot they are pinned to, ca-certificates from the
+# archive as it was when the image was built.
+RUN { echo "Operating system packages: Ubuntu, from the archive snapshot $UBUNTU_SNAPSHOT;"; \
+      echo "  ca-certificates from the archive as it was when the image was built"; \
       echo "  licenses: /usr/share/doc/<package>/copyright"; \
-      echo "  sources:  the source packages of the apt archive https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT/"; \
+      echo "  sources:  the source packages of the Ubuntu archive, as of the snapshot at https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT/"; \
     } > licenses/docker-image.txt
 
 # Create directories for data volumes that will be mounted. They, the application directory
