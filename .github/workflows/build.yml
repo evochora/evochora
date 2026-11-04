@@ -523,9 +523,10 @@ jobs:
 
   # Publishes the distributions as the release of their tag, or as the pre-release "latest" for the
   # current state of main, once everything before it has passed, the push of the image included, so
-  # that a release never names an image that is missing or old. The pre-release carries the fixed
-  # text of .github/release-notes-latest.md; a release with a version number keeps the text it was
-  # published with.
+  # that a release never names an image that is missing or old. The pre-release carries the text
+  # of .github/release-notes-latest.md with the commit it was built from; a release with a version
+  # number keeps the text it was published with, and one whose version has a suffix is a
+  # pre-release.
   publish:
     name: Publish Release
     needs: [test, fingerprint, compare-fingerprints, package, start-test, docker, docker-push]
@@ -552,13 +553,39 @@ jobs:
           name: evochora-distributions
           path: distributions
 
+      # A tag stays on the commit it was first set to: latest is moved to the commit this run
+      # built, so that the release names what it carries. A first run creates it.
+      - name: Point the tag latest at the commit this run built
+        if: needs.package.outputs.tag == 'latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPOSITORY/git/ref/tags/latest" --silent; then
+            gh api -X PATCH "repos/$REPOSITORY/git/refs/tags/latest" -f sha="$SHA" -F force=true --silent
+          else
+            gh api -X POST "repos/$REPOSITORY/git/refs" -f ref=refs/tags/latest -f sha="$SHA" --silent
+          fi
+
+      - name: Write the text of latest for the commit this run built
+        if: needs.package.outputs.tag == 'latest'
+        env:
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          sed -e "s|@COMMIT@|${SHA:0:8}|g" -e "s|@COMMIT_URL@|$COMMIT_URL|g" \
+            .github/release-notes-latest.md > release-notes-latest.md
+
       - name: Update the pre-release latest
         if: needs.package.outputs.tag == 'latest'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: latest
           prerelease: true
-          body_path: .github/release-notes-latest.md
+          body_path: release-notes-latest.md
           files: |
             distributions/*.tar.gz
             distributions/*.zip
@@ -588,7 +615,8 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.package.outputs.tag }}
-          prerelease: false
+          # A version with a suffix, v1.3.0-dev.1 or v1.3.0-rc.1, is a pre-release, as SemVer has it
+          prerelease: ${{ contains(needs.package.outputs.tag, '-') }}
           files: |
             distributions/*.tar.gz
             distributions/*.zip
