@@ -794,6 +794,8 @@ targetPlatforms.forEach { platform ->
         distributionClassifier = platform.classifier
         contents {
             with(distributionContents)
+            // What Gradle takes into the main distribution by convention, plugins/ among it
+            from("src/main/dist")
             into("bin") {
                 from(startScripts)
                 filePermissions { unix("rwxr-xr-x") }

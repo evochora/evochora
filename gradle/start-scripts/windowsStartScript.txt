@@ -88,8 +88,9 @@ goto exitWithErrorLevel
 <% if ( classpath ) {%>\
 @rem Evochora: begin
 @rem Every jar in lib as a wildcard, in place of Gradle's list of them, which would make the command
-@rem line too long
-set CLASSPATH=%APP_HOME%\\lib\\*
+@rem line too long; then the jars a user puts into plugins, after Evochora's own, so that a plugin
+@rem adds classes and replaces none
+set CLASSPATH=%APP_HOME%\\lib\\*;%APP_HOME%\\plugins\\*
 @rem Evochora: end
 <% } %>\
 <% if ( mainClassName.startsWith('--module ') ) { %>set MODULE_PATH=$modulePath<% } %>

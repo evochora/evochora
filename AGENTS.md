@@ -520,7 +520,7 @@ void send(T message) throws InterruptedException;
 
 ## CI & PR Expectations
 
-- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: the standard configuration must run until every indexer has processed ticks and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
+- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: the standard configuration, with a plugin added that the start test builds against the archive's `lib/` and puts into its `plugins/`, must run until every indexer has processed ticks and the plugin has run, and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
 - PR must include: a summary of what changed and why, the verification that was performed, green CI.
 - Branch naming: short and purpose-describing, e.g. `feature/<topic>`.
 

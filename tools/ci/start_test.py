@@ -5,10 +5,12 @@ Unpacks the archive into a temporary directory and, from its top directory, chec
 
 1. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
 2. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
-3. ``bin/evochora node run`` on the standard configuration, unchanged, runs until every service
-   that counts processed ticks has processed some, so that data has passed through the whole
-   pipeline; the HTTP API reports no service in ERROR; and nothing is logged at WARN or ERROR, and
-   the JVM prints no warning of its own, up to and including the node's shutdown.
+3. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
+   every service that counts processed ticks has processed some, so that data has passed through
+   the whole pipeline; the HTTP API reports no service in ERROR; nothing is logged at WARN or
+   ERROR, and the JVM prints no warning of its own, up to and including the node's shutdown; and
+   the plugin has run. The plugin, start-test-plugin/StartTestPlugin.java, is built the way a user
+   builds one, against the archive's lib/, and put into its plugins/.
 
 The node is stopped the way a user stops it, with Ctrl+C, and the directory is removed afterwards. Uses the standard library only, so that
 it runs on every runner as it is. Exits with 0 when every check passes, 1 otherwise.
@@ -163,6 +165,31 @@ def take_ctrl_c() -> None:
         raise OSError(f"SetConsoleCtrlHandler failed: {ctypes.get_last_error()}")
 
 
+PLUGIN_SOURCE = Path(__file__).resolve().parent / "start-test-plugin" / "StartTestPlugin.java"
+PLUGIN_CLASS = "starttest.StartTestPlugin"
+PLUGIN_RAN = re.compile(r"Start test plugin ran at tick \d+")
+
+
+def install_plugin(root: Path, jdk: Path, classes: Path) -> list:
+    """Builds the start test's plugin against the archive's jars and puts it into its plugins/,
+    writes a configuration that is the standard one with the plugin added, and returns what went
+    wrong doing so."""
+    exe = ".exe" if WINDOWS else ""
+    (root / "plugins").mkdir(exist_ok=True)
+    for command in ([str(jdk / "bin" / f"javac{exe}"), "-cp", str(root / "lib" / "*"), "-d", str(classes),
+                     str(PLUGIN_SOURCE)],
+                    [str(jdk / "bin" / f"jar{exe}"), "--create", "--file",
+                     str(root / "plugins" / "start-test-plugin.jar"), "-C", str(classes), "."]):
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            return [f"{Path(command[0]).name} exited {result.returncode}: {result.stdout}{result.stderr}"]
+    (root / "config" / "start-test.conf").write_text(
+        'include "evochora.conf"\n'
+        "pipeline.services.simulation-engine.options.plugins += "
+        f'{{ className = "{PLUGIN_CLASS}", options {{}} }}\n', encoding="utf-8")
+    return []
+
+
 def check_node_run(root: Path, timeout: float) -> list:
     log = root / "node.log"
     problems = []
@@ -170,7 +197,7 @@ def check_node_run(root: Path, timeout: float) -> list:
         # On Windows the node gets a console of its own, so that Ctrl+C can be sent to it alone, and
         # no input, so that cmd answers its "Terminate batch job?" question with nothing to wait for
         process = subprocess.Popen(
-            start_script(root) + ["node", "run"], cwd=root, env=environment(),
+            start_script(root) + ["--config", "config/start-test.conf", "node", "run"], cwd=root, env=environment(),
             stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
             start_new_session=not WINDOWS,
             creationflags=subprocess.CREATE_NEW_CONSOLE if WINDOWS else 0)
@@ -205,6 +232,8 @@ def check_node_run(root: Path, timeout: float) -> list:
     for line in ANSI.sub("", text).splitlines():
         if LOG_PROBLEM.match(line) or JVM_WARNING.match(line):
             problems.append(f"logged: {line}")
+    if not PLUGIN_RAN.search(text):
+        problems.append("the plugin in plugins/ did not run")
     if problems:
         problems.append("log of the node run:\n" + text)
     return problems
@@ -237,6 +266,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("archive", type=Path, help="the platform distribution to start")
     parser.add_argument("--old-java", required=True, help="installation directory of a Java older than Evochora needs")
+    parser.add_argument("--jdk", required=True, type=Path, help="installation directory of the JDK the plugin is built with")
     parser.add_argument("--timeout", type=float, default=600, help="seconds the node run may take")
     args = parser.parse_args()
     if WINDOWS:
@@ -248,6 +278,7 @@ def main() -> int:
         root = unpack(args.archive.resolve(), work)
         for name, check in [("help", lambda: check_help(root)),
                             ("refusal", lambda: check_refusal(root, args.old_java)),
+                            ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),
                             ("node run", lambda: check_node_run(root, args.timeout))]:
             found = check()
             print(f"{name}: {'ok' if not found else 'FAILED'}", flush=True)

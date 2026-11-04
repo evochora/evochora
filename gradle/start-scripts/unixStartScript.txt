@@ -150,6 +150,11 @@ esac
 <% if ( classpath ) {%>\
 CLASSPATH=$classpath
 <% } %>\
+# Evochora: begin
+# The jars a user puts into plugins/, after Evochora's own, so that a plugin adds classes and
+# replaces none
+CLASSPATH=\$CLASSPATH:\$APP_HOME/plugins/*
+# Evochora: end
 <% if ( mainClassName.startsWith('--module ') ) { %>
 MODULE_PATH=$modulePath
 <% } %>

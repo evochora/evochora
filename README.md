@@ -208,6 +208,21 @@ Evochora is extensible at multiple levels through Java plugin interfaces:
 - **Compiler extensions** — Each compiler phase is extensible via handler registries (directives, IR converters, layout, linking, emission).
 - **VM instructions** — Add new instructions to the ISA via the instruction registry.
 
+A plugin is built against the jars of a distribution and put into its `plugins/` directory, whose
+jars the start scripts put on the classpath after Evochora's own; the configuration then names the
+plugin by its class name. For an environment plugin in `MyPlugin.java`, with the JDK of the Java
+version Evochora needs:
+
+```bash
+javac -cp "lib/*" -d classes MyPlugin.java
+jar --create --file plugins/my-plugin.jar -C classes .
+```
+
+and, in the configuration, an entry in `pipeline.services.simulation-engine.options.plugins` with
+`className` set to the plugin's class. In the Docker image the directory is
+`/home/appuser/app/plugins`, for a volume to be mounted on. A plugin that brings a library
+Evochora also has gets Evochora's version of it.
+
 <br>
 
 ## How It Works
