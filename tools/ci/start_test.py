@@ -210,15 +210,27 @@ def check_node_run(root: Path, timeout: float) -> list:
     return problems
 
 
-def remove(directory: Path) -> None:
-    # Windows may hold the files of a process just killed a moment longer
-    for _ in range(10):
+def remove(directory: Path) -> list:
+    """Removes the directory and returns what went wrong doing so.
+
+    On Windows a file cannot be removed while any process holds it open, and a virus scanner or the
+    index service may still be reading the files just unpacked. A lock there is waited out for a
+    while, with a growing pause, as Python's own test support does; a lock that holds on longer, or
+    any other failure, is reported. Elsewhere an open file can be removed, and one attempt is made.
+    """
+    deadline = time.monotonic() + 60
+    pause = 0.1
+    while True:
         try:
             shutil.rmtree(directory)
-            return
-        except OSError:
-            time.sleep(2)
-    shutil.rmtree(directory, ignore_errors=True)
+            return []
+        except PermissionError as e:
+            if not WINDOWS or time.monotonic() + pause > deadline:
+                return [f"could not remove {directory}: {e}"]
+            time.sleep(pause)
+            pause = min(pause * 2, 5)
+        except OSError as e:
+            return [f"could not remove {directory}: {e}"]
 
 
 def main() -> int:
@@ -241,7 +253,7 @@ def main() -> int:
             print(f"{name}: {'ok' if not found else 'FAILED'}", flush=True)
             problems += [f"[{name}] {p}" for p in found]
     finally:
-        remove(work)
+        problems += [f"[cleanup] {p}" for p in remove(work)]
     for problem in problems:
         print(problem, file=sys.stderr)
     return 1 if problems else 0
