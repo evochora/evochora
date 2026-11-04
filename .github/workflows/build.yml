@@ -258,7 +258,9 @@ jobs:
   # Builds the platform distributions every event publishes or tests. It starts with the tests,
   # not after them, so that packaging, start tests and the image add no time to a pull request as
   # long as they are shorter than the tests and the reviews. The version comes from the release tag
-  # for a release and is "latest" for anything else.
+  # for a release and is "latest" for anything else. Whether the run publishes is decided here as
+  # well, once for every job that publishes: a push to main, a v* tag, or a published release with
+  # a v* tag.
   package:
     name: Package
     runs-on: ubuntu-latest
@@ -267,6 +269,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       is_release: ${{ steps.version.outputs.is_release }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
       - name: Determine version tag
         id: version
@@ -281,15 +284,23 @@ jobs:
             # Release event: tag comes from the release object
             echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
             echo "is_release=true" >> "$GITHUB_OUTPUT"
+            if [[ "$RELEASE_TAG" == v* ]]; then publish=true; else publish=false; fi
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             # Tag push: extract tag name from ref
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
             echo "is_release=true" >> "$GITHUB_OUTPUT"
+            publish=true
           else
             # Main branch push, pull request or manual run: use 'latest'
             echo "tag=latest" >> "$GITHUB_OUTPUT"
             echo "is_release=false" >> "$GITHUB_OUTPUT"
+            if [ "$EVENT_NAME" != "pull_request" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+              publish=true
+            else
+              publish=false
+            fi
           fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -384,14 +395,19 @@ jobs:
           "$python" -I tools/ci/start_test.py distributions/evochora-*-"$PLATFORM".* --old-java "$OLD_JAVA"
 
   # Builds the node image for both architectures from the Linux distributions the start tests run,
-  # and starts the amd64 image once. It runs alongside the tests and pushes nothing: docker-push
-  # pushes the image once every check has passed.
+  # and starts the amd64 image once. It runs alongside the tests. On a run that publishes it pushes
+  # the image by its digest alone, without a tag, and hands the digest on: docker-push tags exactly
+  # that image once every check has passed, so that what is published is what was built and
+  # started here. A pull request pushes nothing.
   docker:
     name: Docker Image
     needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.both.outputs.digest }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -418,6 +434,10 @@ jobs:
           build-contexts: entrypoint=infrastructure/docker/evochora-node
           build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.package.outputs.tag }}
           load: true
           tags: evochora-start-test
           cache-from: type=gha
@@ -426,7 +446,18 @@ jobs:
       - name: Start the image
         run: docker run --rm evochora-start-test bin/evochora --help
 
+      - name: Log in to GitHub Container Registry
+        if: needs.package.outputs.publish == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The same build for both architectures; its amd64 half is the image started above, taken
+      # from the builder's cache. On a run that publishes it is pushed by its digest alone.
       - name: Build the image for both architectures
+        id: both
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: distributions
@@ -434,12 +465,16 @@ jobs:
           build-contexts: entrypoint=infrastructure/docker/evochora-node
           build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64,linux/arm64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.package.outputs.tag }}
+          outputs: ${{ needs.package.outputs.publish == 'true' && format('type=image,name=ghcr.io/{0},push-by-digest=true,name-canonical=true,push=true', github.repository) || 'type=cacheonly' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Pushes the image the docker job built, once every check has passed, for the refs the publish
-  # job releases from: main, a v* tag or a published release. It builds the image again from the
-  # same archives; the cache the docker job filled makes that a matter of reading its layers.
+  # Tags the image the docker job built, started and pushed by its digest, once every check has
+  # passed, on a run that publishes. It builds nothing: the tag is set on exactly that digest.
   docker-push:
     name: Push Docker Image
     needs: [test, fingerprint, compare-fingerprints, package, start-test, docker]
@@ -450,30 +485,10 @@ jobs:
       needs.compare-fingerprints.result == 'success' &&
       needs.package.result == 'success' && needs.start-test.result == 'success' &&
       needs.docker.result == 'success' &&
-      github.event_name != 'pull_request' &&
-      (
-        github.ref == 'refs/heads/main' ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
-      )
+      needs.package.outputs.publish == 'true'
     permissions:
-      contents: read
       packages: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.package.outputs.is_release == 'true' && needs.package.outputs.tag || github.sha }}
-
-      - name: Download the distributions
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: evochora-distributions
-          path: distributions
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -484,21 +499,15 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push the image for both architectures
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: distributions
-          file: ./infrastructure/docker/evochora-node/Dockerfile
-          build-contexts: entrypoint=infrastructure/docker/evochora-node
-          build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/${{ github.repository }}:${{ needs.package.outputs.tag }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.package.outputs.tag }}
-          cache-from: type=gha
+      - name: Tag the image the docker job built
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ needs.package.outputs.tag }}
+          DIGEST: ${{ needs.docker.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
+          docker buildx imagetools inspect "$IMAGE:$TAG"
 
   # Publishes the distributions as the release of their tag, or as the pre-release "latest" for the
   # current state of main, once everything before it has passed, the push of the image included, so
@@ -509,19 +518,13 @@ jobs:
     name: Publish Release
     needs: [test, fingerprint, compare-fingerprints, package, start-test, docker, docker-push]
     runs-on: ubuntu-latest
-    # Run on: push to main, push of v* tag, OR release published (with v* tag)
     if: |
       always() &&
       needs.test.result == 'success' && needs.fingerprint.result == 'success' &&
       needs.compare-fingerprints.result == 'success' &&
       needs.package.result == 'success' && needs.start-test.result == 'success' &&
       needs.docker.result == 'success' && needs.docker-push.result == 'success' &&
-      github.event_name != 'pull_request' &&
-      (
-        github.ref == 'refs/heads/main' ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
-      )
+      needs.package.outputs.publish == 'true'
     permissions:
       contents: write
     steps:
