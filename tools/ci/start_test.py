@@ -146,6 +146,17 @@ def stop(process: subprocess.Popen) -> list:
         return ["the node did not stop within 60 s of SIGINT"]
 
 
+def problem_lines(text: str) -> list:
+    """The lines of the node's log at WARN or ERROR and the JVM's own warnings."""
+    return [line for line in ANSI.sub("", text).splitlines() if LOG_PROBLEM.match(line) or JVM_WARNING.match(line)]
+
+
+def first_problem(text: str):
+    """The first problem line of the log, or None while there is none."""
+    lines = problem_lines(text)
+    return lines[0] if lines else None
+
+
 def waiting_services(status) -> list:
     """The services that count processed ticks and have processed none yet, or None while none counts."""
     counting = [s for s in (status or {}).get("services", []) if "ticks_processed" in (s.get("metrics") or {})]
@@ -206,17 +217,16 @@ def check_node_run(root: Path, timeout: float) -> list:
             deadline = started + timeout
             status = None
             waiting = None
-            in_error = []
+            logged_problem = None
             while time.monotonic() < deadline and process.poll() is None:
                 time.sleep(5)
                 status = pipeline_status() or status
                 waiting = waiting_services(status)
-                # A service leaves ERROR only through a new start, which nothing here asks for: the
-                # outcome is settled, and waiting for ticks after it would only take the time out
-                in_error = [s for s in (status or {}).get("services", []) if s["state"] == "ERROR"]
-                if in_error:
-                    print(f"node run: {[s['name'] for s in in_error]} in ERROR after "
-                          f"{time.monotonic() - started:.0f} s", flush=True)
+                # A line at WARN or ERROR, or a warning of the JVM, fails the run whatever follows:
+                # the outcome is settled, and waiting for ticks after it would only take the time out
+                logged_problem = first_problem(log.read_text(encoding="utf-8", errors="replace"))
+                if logged_problem:
+                    print(f"node run: logged a problem after {time.monotonic() - started:.0f} s", flush=True)
                     break
                 if waiting == []:
                     counted = [s["name"] for s in status["services"] if "ticks_processed" in (s.get("metrics") or {})]
@@ -224,21 +234,22 @@ def check_node_run(root: Path, timeout: float) -> list:
                     break
             if process.poll() is not None:
                 problems.append(f"the node ended on its own with exit code {process.returncode}")
+            # Ticks that did not come after a logged problem are its consequence; the problem itself
+            # is reported with the log below
             if status is None:
                 problems.append(f"the HTTP API never answered at {STATUS_URL}")
-            elif in_error:
-                problems += [f"service {s['name']} is in ERROR: {s.get('errors')}" for s in in_error]
-            elif waiting is None:
+            elif not logged_problem and waiting is None:
                 problems.append("no service reports processed ticks")
-            elif waiting:
+            elif not logged_problem and waiting:
                 problems.append(f"within {timeout:.0f} s these services processed no tick: {waiting}")
+            for service in (status or {}).get("services", []):
+                if service["state"] == "ERROR":
+                    problems.append(f"service {service['name']} is in ERROR: {service.get('errors')}")
         finally:
             problems += stop(process)
     # Read once the node has ended, so that what it logs while it shuts down is checked as well
     text = log.read_text(encoding="utf-8", errors="replace")
-    for line in ANSI.sub("", text).splitlines():
-        if LOG_PROBLEM.match(line) or JVM_WARNING.match(line):
-            problems.append(f"logged: {line}")
+    problems += [f"logged: {line}" for line in problem_lines(text)]
     if not PLUGIN_RAN.search(text):
         problems.append("the plugin in plugins/ did not run")
     if problems:

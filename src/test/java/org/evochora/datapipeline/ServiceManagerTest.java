@@ -4,7 +4,6 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -107,7 +106,7 @@ public class ServiceManagerTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
-    void aServiceFailingToStartIsReportedAsErrorAndTheOthersStartAllTheSame() {
+    void aServiceFailingToStartIsLoggedLeftWithoutAnInstanceAndTheOthersStartAllTheSame() {
         Config config = ConfigFactory.parseString("""
             pipeline {
               autoStart = true
@@ -123,18 +122,8 @@ public class ServiceManagerTest {
                 assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state(),
                         "a service after the failed one in the startup sequence is started all the same");
             });
-            ServiceStatus broken = sm.getServiceStatus("broken");
-            assertEquals(IService.State.ERROR, broken.state());
-            assertFalse(broken.healthy());
-            // The failure is recorded with its reason, and every view of the manager counts it
-            assertEquals(1, broken.errors().size());
-            assertEquals(OperationalError.INTERNAL_ERROR, broken.errors().get(0).errorType());
-            assertTrue(broken.errors().get(0).message().contains("test-induced defect"));
-            assertEquals(1L, sm.getMetrics().get("services_error"));
-            assertFalse(sm.isHealthy());
-            assertTrue(sm.getErrors().contains(broken.errors().get(0)));
-            assertEquals(broken.errors(), sm.getServiceErrors().get("broken"));
-            assertEquals(broken.errors(), sm.getServiceErrors("broken"));
+            // It never ran, so it has no instance: it is reported as stopped, its reason is in the log
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
         } finally {
             sm.shutdown();
         }
@@ -142,7 +131,7 @@ public class ServiceManagerTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
-    void anErrorDuringAStartIsReportedLikeAnExceptionAndTheOthersStartAllTheSame() {
+    void anErrorDuringAStartIsHandledLikeAnExceptionAndTheOthersStartAllTheSame() {
         Config config = ConfigFactory.parseString("""
             pipeline {
               autoStart = true
@@ -155,7 +144,7 @@ public class ServiceManagerTest {
         try {
             await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
                 assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state()));
-            assertEquals(IService.State.ERROR, sm.getServiceStatus("broken").state());
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
         } finally {
             sm.shutdown();
         }
@@ -522,7 +511,8 @@ public class ServiceManagerTest {
      * A start that fails while a second start of the same service waits must leave the second one
      * to come up on its own: without the manager's lock the second would register a running
      * instance during the first one's construction, and the first one's failure would then remove
-     * that instance from the registry and report the service as failed beside it.
+     * that running instance from the registry, so that the service is reported as stopped while it
+     * runs.
      */
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'producer'\\.")
@@ -559,7 +549,6 @@ public class ServiceManagerTest {
             assertEquals(2, creations.get());
             ServiceStatus producer = sm.getServiceStatus("producer");
             assertEquals(IService.State.RUNNING, producer.state());
-            assertTrue(producer.errors().isEmpty(), "the failed first start is cleared by the second: " + producer.errors());
         } finally {
             firstMayFail.countDown();
             sm.shutdown();
