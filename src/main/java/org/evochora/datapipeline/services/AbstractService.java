@@ -24,8 +24,8 @@ import com.typesafe.config.Config;
  * <p>
  * Error Tracking: Services can use {@link #recordError(String, String, String)} to
  * track transient errors that affect data quality but don't require service termination.
- * A defect that ends the service is recorded by this class itself, as
- * {@link OperationalError#INTERNAL_ERROR}, so that a service in {@link IService.State#ERROR}
+ * The failure that ends the service is recorded by this class itself, as
+ * {@link OperationalError#SERVICE_FAILED}, so that a service in {@link IService.State#ERROR}
  * reports why.
  */
 public abstract class AbstractService implements IService, IMonitorable {
@@ -307,16 +307,16 @@ public abstract class AbstractService implements IService, IMonitorable {
                 log.debug("Service thread interrupted, shutting down.");
                 Thread.currentThread().interrupt();
             } else {
-                // The service's own loop let the exception or error through, so its cause is not
-                // one the service knows how to handle: a defect, and the trace is what finds it.
-                // It is recorded before the state changes, so that whoever sees ERROR finds why.
+                // The service's own loop let the exception or error through: a defect, or a failure
+                // it ends on, and the trace is what tells them apart. It is recorded before the
+                // state changes, so that whoever sees ERROR finds why.
                 log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
                 Throwable cause = e;
                 while (cause.getCause() != null && cause.getCause() != cause) {
                     cause = cause.getCause();
                 }
-                addError(new OperationalError(Instant.now(), OperationalError.INTERNAL_ERROR,
-                        "Internal error in " + this.getClass().getSimpleName() + ", stack trace in the log: "
+                addError(new OperationalError(Instant.now(), OperationalError.SERVICE_FAILED,
+                        this.getClass().getSimpleName() + " stopped with ERROR, stack trace in the log: "
                                 + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()),
                         cause.getClass().getName()));
                 currentState.set(State.ERROR);
@@ -608,8 +608,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * </ul>
      * <p>
      * <strong>NOT for:</strong> Fatal errors, InterruptedException, or any error that causes
-     * an exception to be thrown: a defect that ends the service is recorded by this class
-     * itself, as {@link OperationalError#INTERNAL_ERROR}. See {@link #run()} for complete error
+     * an exception to be thrown: the failure that ends the service is recorded by this class
+     * itself, as {@link OperationalError#SERVICE_FAILED}. See {@link #run()} for complete error
      * handling guidelines.
      *
      * @param code    Error code for categorization (e.g., "SEND_ERROR", "TICK_FAILED")

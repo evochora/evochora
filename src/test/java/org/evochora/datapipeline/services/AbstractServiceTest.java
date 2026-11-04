@@ -219,10 +219,10 @@ public class AbstractServiceTest {
             assertNotNull(recorder.throwable, "the stack trace is part of the ERROR line");
             assertSame(defect, recorder.throwable, "the ERROR line carries the trace of the defect itself");
 
-            // A service in ERROR reports why: the defect, named as internal
+            // A service in ERROR reports why: the failure that ended it
             assertEquals(1, service.getErrors().size());
             OperationalError failure = service.getErrors().get(0);
-            assertEquals(OperationalError.INTERNAL_ERROR, failure.errorType());
+            assertEquals(OperationalError.SERVICE_FAILED, failure.errorType());
             assertTrue(failure.message().contains("test-induced defect"), failure.message());
             assertEquals(defect.getClass().getName(), failure.details());
         } finally {

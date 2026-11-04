@@ -21,10 +21,10 @@ public record OperationalError(
 ) {
 
     /**
-     * The type of an error that is a defect of Evochora itself rather than anything a user can
-     * change, such as an exception no component knows how to handle. It is recorded for a service
-     * that such a defect ended, so that the service reports why it is in error; its message says
-     * so and names the innermost cause, and the stack trace is in the log.
+     * The type of the error that ended a running service: an exception or {@link Error} its own
+     * work let through, whether a defect or a failure of its surroundings such as data that never
+     * arrived. It is recorded so that a service in error reports why; its message names the
+     * innermost cause, and the stack trace in the log tells which of the two it was.
      */
-    public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+    public static final String SERVICE_FAILED = "SERVICE_FAILED";
 }

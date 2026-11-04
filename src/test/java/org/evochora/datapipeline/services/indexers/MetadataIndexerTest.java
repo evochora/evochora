@@ -219,9 +219,9 @@ class MetadataIndexerTest {
         assertEquals(0L, indexer.getMetrics().get("metadata_indexed"));
         assertEquals(1L, indexer.getMetrics().get("metadata_failed"));
         
-        // A fatal error does not go through recordError(); the base class records the defect that
-        // ended the service, once, as internal
+        // A fatal error does not go through recordError(); the base class records the failure that
+        // ended the service, once
         assertEquals(1, indexer.getErrors().size());
-        assertEquals(OperationalError.INTERNAL_ERROR, indexer.getErrors().get(0).errorType());
+        assertEquals(OperationalError.SERVICE_FAILED, indexer.getErrors().get(0).errorType());
     }
 }
