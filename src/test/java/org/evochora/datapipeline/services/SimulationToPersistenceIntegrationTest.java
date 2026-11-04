@@ -22,10 +22,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
@@ -81,13 +79,10 @@ class SimulationToPersistenceIntegrationTest {
         serviceManager = new ServiceManager(config);
         serviceManager.startAll();
 
-        // Use untilAsserted to create a robust, end-to-end wait condition.
-        // This repeatedly attempts the final verification until it succeeds.
-        // This is necessary to handle potential filesystem inconsistencies on CI runners,
-        // where a successful file count check can be immediately followed by a failed read.
-        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-            .untilAsserted(this::verifyAllTicksPersisted);
+        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> !readAllTicksFromBatches(tempStorageDir).isEmpty());
+
+        assertStoredExactlySentOncePaused();
     }
 
     @Test
@@ -98,22 +93,11 @@ class SimulationToPersistenceIntegrationTest {
         serviceManager = new ServiceManager(config);
         serviceManager.startAll();
 
-        // Use untilAsserted to wait for the final state to be consistent.
-        // This is more robust than separate wait/assert steps, especially on CI runners
-        // with potential filesystem inconsistencies.
-        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-            .untilAsserted(() -> {
-                List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
-                assertTrue(allTicks.size() >= 10, "Fewer than 10 ticks found in persisted batch files");
+        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> readAllTicksFromBatches(tempStorageDir).size() >= 10);
 
-                // Verify each tick appears exactly once
-                Set<Long> tickNumbers = new HashSet<>();
-                for (TickData tick : allTicks) {
-                    boolean isNew = tickNumbers.add(tick.getTickNumber());
-                    assertTrue(isNew, "Duplicate tick number found with competing consumers: " + tick.getTickNumber());
-                }
-            });
+        // Competing consumers share the ticks between them: none may be lost or stored twice
+        assertStoredExactlySentOncePaused();
     }
 
     /**
@@ -121,9 +105,7 @@ class SimulationToPersistenceIntegrationTest {
      * stores none twice.
      * <p>
      * The restart happens while data flows, which is where a stop could lose what the service has
-     * taken from the queue but not yet written. The check needs a fixed state, so the simulation is
-     * paused afterwards and the stored ticks are compared with the ticks it sent, from the first to
-     * the last: a loss at the end would pass unnoticed by a check for gaps alone.
+     * taken from the queue but not yet written.
      */
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
@@ -149,15 +131,26 @@ class SimulationToPersistenceIntegrationTest {
             .until(() -> readAllTicksFromBatches(tempStorageDir).stream()
                 .anyMatch(tick -> tick.getTickNumber() > sentBeforeRestart * SAMPLING_INTERVAL));
 
-        serviceManager.pauseService("simulation-engine");
+        assertStoredExactlySentOncePaused();
+    }
 
-        // A tick on its way when the pause came may still be sent, so the count is read anew in
-        // every attempt; once everything sent is stored, the two agree
+    /**
+     * Pauses the simulation and waits until the stored ticks are exactly the ticks it sent, each
+     * once, all of one run.
+     * <p>
+     * The comparison needs a fixed state: storage read while it is being written may list a file
+     * and miss an older one. A check for gaps alone would also pass a loss at the end. A tick on
+     * its way when the pause came may still be sent, so the count is read anew in every attempt;
+     * once everything sent is stored, the two agree.
+     */
+    private void assertStoredExactlySentOncePaused() {
+        serviceManager.pauseService("simulation-engine");
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS)
             .pollInterval(200, java.util.concurrent.TimeUnit.MILLISECONDS)
             .untilAsserted(() -> {
                 long sent = sentTicks();
-                List<Long> stored = readAllTicksFromBatches(tempStorageDir).stream()
+                List<TickData> ticks = readAllTicksFromBatches(tempStorageDir);
+                List<Long> stored = ticks.stream()
                     .map(TickData::getTickNumber)
                     .sorted()
                     .collect(Collectors.toList());
@@ -166,6 +159,8 @@ class SimulationToPersistenceIntegrationTest {
                     .boxed()
                     .collect(Collectors.toList());
                 assertEquals(expected, stored, "the stored ticks are not exactly the " + sent + " ticks sent");
+                assertEquals(1, ticks.stream().map(TickData::getSimulationRunId).distinct().count(),
+                    "the stored ticks belong to more than one run");
             });
     }
 
@@ -234,7 +229,6 @@ class SimulationToPersistenceIntegrationTest {
                                     )
                                 )
                             ),
-                            "maxTicks", 100,
                             "samplingInterval", SAMPLING_INTERVAL,
                             // Delta compression: 1 sample = 1 chunk for testing
                             "accumulatedDeltaInterval", 1,
@@ -294,40 +288,5 @@ class SimulationToPersistenceIntegrationTest {
         ).withValue("pipeline.startupSequence",
             ConfigFactory.parseString("pipeline.startupSequence=[\"simulation-engine\", \"persistence-1\", \"persistence-2\"]").getValue("pipeline.startupSequence")
         );
-    }
-
-    private void verifyAllTicksPersisted() {
-        // Read all batch files from storage using the robust central utility
-        List<TickData> allTicks = readAllTicksFromBatches(tempStorageDir);
-
-        assertTrue(allTicks.size() > 0, "No ticks found in persisted batch files");
-
-        // Verify all ticks have the same simulationRunId
-        String firstRunId = allTicks.get(0).getSimulationRunId();
-        for (TickData tick : allTicks) {
-            assertEquals(firstRunId, tick.getSimulationRunId(),
-                "All ticks should have the same simulationRunId");
-        }
-
-        // Verify no duplicate tick numbers
-        Set<Long> tickNumbers = new HashSet<>();
-        for (TickData tick : allTicks) {
-            boolean isNew = tickNumbers.add(tick.getTickNumber());
-            assertTrue(isNew, "Duplicate tick number found: " + tick.getTickNumber());
-        }
-
-        // Verify tick sequence is complete (all ticks between min and max exist)
-        List<Long> sortedTicks = allTicks.stream()
-            .map(TickData::getTickNumber)
-            .sorted()
-            .collect(Collectors.toList());
-
-        // With samplingInterval=10, we expect ticks: 0, 10, 20, ..., up to maxTicks
-        long minTick = sortedTicks.get(0);
-        long maxTick = sortedTicks.get(sortedTicks.size() - 1);
-        int expectedCount = (int)((maxTick - minTick) / 10) + 1;
-
-        assertEquals(expectedCount, sortedTicks.size(),
-            String.format("Expected %d ticks from %d to %d with interval 10", expectedCount, minTick, maxTick));
     }
 }

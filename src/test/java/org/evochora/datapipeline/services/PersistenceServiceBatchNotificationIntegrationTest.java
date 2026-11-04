@@ -242,7 +242,6 @@ class PersistenceServiceBatchNotificationIntegrationTest {
                     }
                     samplingInterval = 10
                     seed = 42
-                    maxTicks = 50
                     environment {
                       shape = [64, 32]
                       topology = "TORUS"
