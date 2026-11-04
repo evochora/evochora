@@ -206,10 +206,18 @@ def check_node_run(root: Path, timeout: float) -> list:
             deadline = started + timeout
             status = None
             waiting = None
+            in_error = []
             while time.monotonic() < deadline and process.poll() is None:
                 time.sleep(5)
                 status = pipeline_status() or status
                 waiting = waiting_services(status)
+                # A service leaves ERROR only through a new start, which nothing here asks for: the
+                # outcome is settled, and waiting for ticks after it would only take the time out
+                in_error = [s for s in (status or {}).get("services", []) if s["state"] == "ERROR"]
+                if in_error:
+                    print(f"node run: {[s['name'] for s in in_error]} in ERROR after "
+                          f"{time.monotonic() - started:.0f} s", flush=True)
+                    break
                 if waiting == []:
                     counted = [s["name"] for s in status["services"] if "ticks_processed" in (s.get("metrics") or {})]
                     print(f"node run: {counted} processed ticks after {time.monotonic() - started:.0f} s", flush=True)
@@ -218,13 +226,12 @@ def check_node_run(root: Path, timeout: float) -> list:
                 problems.append(f"the node ended on its own with exit code {process.returncode}")
             if status is None:
                 problems.append(f"the HTTP API never answered at {STATUS_URL}")
+            elif in_error:
+                problems += [f"service {s['name']} is in ERROR: {s.get('errors')}" for s in in_error]
             elif waiting is None:
                 problems.append("no service reports processed ticks")
             elif waiting:
                 problems.append(f"within {timeout:.0f} s these services processed no tick: {waiting}")
-            for service in (status or {}).get("services", []):
-                if service["state"] == "ERROR":
-                    problems.append(f"service {service['name']} is in ERROR: {service.get('errors')}")
         finally:
             problems += stop(process)
     # Read once the node has ended, so that what it logs while it shuts down is checked as well
