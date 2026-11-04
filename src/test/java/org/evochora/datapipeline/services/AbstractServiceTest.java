@@ -154,6 +154,32 @@ public class AbstractServiceTest {
         }
     }
 
+    /** The same service, with a start announcement that fails with an Error. */
+    private static class AnnouncementErrorFailingService extends AnnouncementFailingService {
+        private final LinkageError linkageFailure = new LinkageError("test-induced defect");
+
+        protected AnnouncementErrorFailingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void logStarted() {
+            throw linkageFailure;
+        }
+    }
+
+    @Test
+    void aStartThatFailsWithAnErrorAfterItsThreadStartedLeavesNoThreadRunning() throws InterruptedException {
+        AnnouncementErrorFailingService service = new AnnouncementErrorFailingService("announcement-error-failing", config, resources);
+
+        LinkageError thrown = assertThrows(LinkageError.class, service::start);
+
+        assertSame(service.linkageFailure, thrown, "the failure is passed on unchanged");
+        AnnouncementFailingService worker = service;
+        assertTrue(worker.runEnded.await(5, TimeUnit.SECONDS), "the thread the start had started has ended");
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
     @Test
     void aStartThatFailsAfterItsThreadStartedLeavesNoThreadRunning() throws InterruptedException {
         AnnouncementFailingService service = new AnnouncementFailingService("announcement-failing", config, resources);

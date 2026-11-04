@@ -140,7 +140,7 @@ public abstract class AbstractService implements IService, IMonitorable {
             if (state == State.RUNNING || state == State.PAUSED) {
                 try {
                     stop();
-                } catch (RuntimeException stopFailure) {
+                } catch (RuntimeException | Error stopFailure) {
                     e.addSuppressed(stopFailure);
                 }
             }
