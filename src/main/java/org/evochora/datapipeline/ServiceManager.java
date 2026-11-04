@@ -286,10 +286,7 @@ public class ServiceManager implements IMonitorable {
                 log.info("Instantiated resource '{}' of type {}", resourceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = rootCause(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 log.error("Failed to instantiate resource '{}': {}. Skipping this resource.", resourceName, errorMsg);
             }
@@ -354,10 +351,7 @@ public class ServiceManager implements IMonitorable {
                 log.info("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = rootCause(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, errorMsg);
             }
@@ -411,6 +405,23 @@ public class ServiceManager implements IMonitorable {
             }
         }
         return null;
+    }
+
+    /**
+     * The innermost cause along a chain of causes, or the failure itself if it has none.
+     * <p>
+     * Bounded like {@link #findInChain}, and for the same reason: a ring of causes ends the walk
+     * at {@link #MAX_CAUSE_DEPTH} instead of holding the start forever.
+     *
+     * @param thrown the failure as it arrived
+     * @return the last link reached
+     */
+    static Throwable rootCause(Throwable thrown) {
+        Throwable cause = thrown;
+        for (int depth = 0; cause.getCause() != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     private ResourceContext parseResourceUri(String uri, String serviceName, String portName) {
@@ -822,10 +833,7 @@ public class ServiceManager implements IMonitorable {
             activeWrappedResources.remove(name);
 
             // Unwrap reflection exceptions to find root cause
-            Throwable cause = e;
-            while (cause.getCause() != null && cause.getCause() != cause) {
-                cause = cause.getCause();
-            }
+            Throwable cause = rootCause(e);
 
             // Sought along the chain rather than taken from its end: a resume failure explains what
             // about the checkpoint is unusable, and explaining it is what gives it a cause of its

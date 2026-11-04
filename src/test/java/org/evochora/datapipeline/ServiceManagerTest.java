@@ -457,6 +457,27 @@ public class ServiceManagerTest {
                 "a type that occurs is still found");
     }
 
+    /**
+     * The innermost cause of a chain is what a failed start reports, and a chain that leads back
+     * into itself is walked to an end rather than forever, as in
+     * {@link #findInChain_ReturnsOnACauseThatLeadsBackIntoItself}.
+     */
+    @Test
+    // In its own thread: a walk that does not end would otherwise hang the suite rather than fail it,
+    // because the default timeout is only read once the test returns.
+    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void rootCause_FindsTheInnermostCauseAndReturnsOnARing() {
+        Exception innermost = new Exception("innermost");
+        Exception wrapped = new RuntimeException("wrapped", new Exception("middle", innermost));
+        assertSame(innermost, ServiceManager.rootCause(wrapped), "the end of the chain");
+        assertSame(innermost, ServiceManager.rootCause(innermost), "a failure without a cause is its own");
+
+        Exception first = new Exception("A");
+        Exception second = new Exception("B", first);
+        first.initCause(second);
+        assertNotNull(ServiceManager.rootCause(first), "the walk has to end on its own");
+    }
+
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to build factory for service 'test': Service 'test' references unknown resource 'non-existent-queue' for port 'input'\\. Skipping this service\\.")
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to build factory for service 'test': com\\.example\\.NonExistent\\. Skipping this service\\.")
