@@ -333,8 +333,9 @@ jobs:
           if-no-files-found: error
 
   # Starts each distribution on its platform the way a user does: see tools/ci/start_test.py. The
-  # older Java the guard must refuse is installed beside it; setup-java points JAVA_HOME at it as
-  # well, which the start script must not follow while the archive brings its own runtime.
+  # older Java the guard must refuse is installed beside it: the oldest Java the guard is built
+  # to run on, from Zulu, which publishes it for every platform here. setup-java points JAVA_HOME
+  # at it as well, which the start script must not follow while the archive brings its own runtime.
   start-test:
     name: Start Test (${{ matrix.platform }})
     needs: package
@@ -369,8 +370,8 @@ jobs:
         id: old-java
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: '8'
+          distribution: 'zulu'
 
       - name: Start the distribution
         shell: bash

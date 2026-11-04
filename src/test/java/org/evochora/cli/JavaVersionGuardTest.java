@@ -4,16 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.util.Properties;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * When the entry point lets Evochora start, what it says when it does not, and that the build
- * gives it what it checks against.
+ * When the check lets Evochora start, what it says when it does not, and that the build gives it
+ * what it checks against.
  */
 @Tag("unit")
 class JavaVersionGuardTest {
@@ -44,9 +42,18 @@ class JavaVersionGuardTest {
                 .contains(JavaVersionGuard.REQUIRED_JAVA);
     }
 
+    /** Java 8 and older report their version as 1. followed by it. */
+    @Test
+    void refusal_JavaEightOrOlder_NamesItsVersion() {
+        assertThat(JavaVersionGuard.refusal(requiring("25"), "1.8", JAVA_HOME))
+                .contains("needs Java 25 or newer", "started with Java 8", JAVA_HOME);
+        assertThat(JavaVersionGuard.refusal(requiring("25"), "1.7", JAVA_HOME)).contains("started with Java 7");
+    }
+
     @Test
     void refusal_UnreadableRunningVersion_Refuses() {
-        assertThat(JavaVersionGuard.refusal(requiring("25"), "1.8", JAVA_HOME)).contains("'1.8'", JAVA_HOME);
+        assertThat(JavaVersionGuard.refusal(requiring("25"), "eight", JAVA_HOME)).contains("'eight'", JAVA_HOME);
+        assertThat(JavaVersionGuard.refusal(requiring("25"), "1.x", JAVA_HOME)).contains("'1.x'", JAVA_HOME);
         assertThat(JavaVersionGuard.refusal(requiring("25"), null, JAVA_HOME)).isNotNull();
     }
 
@@ -64,14 +71,6 @@ class JavaVersionGuardTest {
 
         assertThat(buildInfo.getProperty(JavaVersionGuard.REQUIRED_JAVA))
                 .isEqualTo(String.valueOf(Runtime.version().feature()));
-    }
-
-    @Test
-    void entryPoint_IsTheMainMethodOfTheCommandLineInterface() throws ReflectiveOperationException {
-        assertThat(JavaVersionGuard.entryPoint().type())
-                .isEqualTo(MethodType.methodType(void.class, String[].class));
-        assertThat(MethodHandles.lookup().revealDirect(JavaVersionGuard.entryPoint()).getDeclaringClass())
-                .isEqualTo(CommandLineInterface.class);
     }
 
     private static Properties requiring(String requiredJava) {

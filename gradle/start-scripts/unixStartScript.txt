@@ -157,12 +157,15 @@ MODULE_PATH=$modulePath
 # Evochora: begin
 # The Java to run on: EVOCHORA_JAVA_HOME if set, else the runtime the archive brings in jre/ (on
 # macOS a bundle whose Java is in Contents/Home), else the JAVA_HOME of the environment
+bundled_java=false
 if [ -n "\$EVOCHORA_JAVA_HOME" ] ; then
     JAVA_HOME=\$EVOCHORA_JAVA_HOME
 elif [ -x "\$APP_HOME/jre/Contents/Home/bin/java" ] ; then
     JAVA_HOME=\$APP_HOME/jre/Contents/Home
+    bundled_java=true
 elif [ -x "\$APP_HOME/jre/bin/java" ] ; then
     JAVA_HOME=\$APP_HOME/jre
+    bundled_java=true
 fi
 # Evochora: end
 
@@ -250,6 +253,15 @@ if "\$cygwin" || "\$msys" ; then
         set -- "\$@" "\$arg"      # push replacement arg
     done
 fi
+
+# Evochora: begin
+# A Java other than the runtime the archive brings is checked before Evochora starts on it, by
+# JavaVersionGuard in a JVM of its own and without Evochora's options: an older Java would stop at
+# an option or a class it does not know, without naming the Java Evochora needs
+if ! "\$bundled_java" ; then
+    "\$JAVACMD" -cp "\$APP_HOME/lib/*" org.evochora.cli.JavaVersionGuard || exit
+fi
+# Evochora: end
 
 <% /*
 # The DEFAULT_JVM_OPTS variable is intentionally defined here to allow using cygwin-processed APP_HOME.

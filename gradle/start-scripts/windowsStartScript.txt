@@ -42,10 +42,12 @@ set DEFAULT_JVM_OPTS=${defaultJvmOpts}
 @rem Evochora: begin
 @rem The Java to run on: EVOCHORA_JAVA_HOME if set, else the runtime the archive brings in jre,
 @rem else the JAVA_HOME of the environment
+set BUNDLED_JAVA=
 if defined EVOCHORA_JAVA_HOME (
     set "JAVA_HOME=%EVOCHORA_JAVA_HOME%"
 ) else if exist "%APP_HOME%\\jre\\bin\\java.exe" (
     set "JAVA_HOME=%APP_HOME%\\jre"
+    set BUNDLED_JAVA=1
 )
 @rem Evochora: end
 
@@ -91,6 +93,16 @@ set CLASSPATH=%APP_HOME%\\lib\\*
 @rem Evochora: end
 <% } %>\
 <% if ( mainClassName.startsWith('--module ') ) { %>set MODULE_PATH=$modulePath<% } %>
+
+@rem Evochora: begin
+@rem A Java other than the runtime the archive brings is checked before Evochora starts on it, by
+@rem JavaVersionGuard in a JVM of its own and without Evochora's options: an older Java would stop
+@rem at an option or a class it does not know, without naming the Java Evochora needs
+if not defined BUNDLED_JAVA (
+    "%JAVA_EXE%" -cp "%APP_HOME%\\lib\\*" org.evochora.cli.JavaVersionGuard
+    if errorlevel 1 goto exitWithErrorLevel
+)
+@rem Evochora: end
 
 @rem Execute ${applicationName}
 @rem endlocal doesn't take effect until after the line is parsed and variables are expanded

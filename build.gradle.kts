@@ -40,14 +40,15 @@ java {
     }
 }
 
-// The entry point of the distribution, JavaVersionGuard, checks the running Java before any class
-// compiled for the toolchain is loaded, so that an older Java stops with a message naming the Java
-// Evochora needs. An older Java can load the guard only when it is compiled for that older Java:
-// the guard has a source set of its own, compiled for the oldest Java whose launcher accepts the
-// options of the start scripts. A Java older than that stops at the options before loading any class.
-val launcher: SourceSet by sourceSets.creating
+// JavaVersionGuard, which the start scripts run on a Java other than the runtime a distribution
+// brings before they start Evochora on it, so that an older Java stops with a message naming the
+// Java Evochora needs. An older Java can load the guard only when it is compiled for that older
+// Java: the guard has a source set of its own, compiled for the oldest Java the compiler targets.
+// That the compiler calls this target obsolete is known and not reported.
+val launcher: SourceSet = sourceSets.create("launcher")
 tasks.named<JavaCompile>(launcher.compileJavaTaskName) {
-    options.release = 17
+    options.release = 8
+    options.compilerArgs.add("-Xlint:-options")
 }
 
 group = "org.evochora"
@@ -170,13 +171,13 @@ val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
 // Netty 4.1, which ActiveMQ Artemis brings along, allocates memory through sun.misc.Unsafe, which
 // the JVM warns about and a future release denies. The permission is owed to that Netty alone:
 // NettyUnsafeRulesTest fails once Artemis brings another line, and then this flag is checked.
-// It is given as the system property that the launcher option --sun-misc-unsafe-memory-access
-// sets, not as that option: a Java that does not know the option rejects it and stops before
-// loading any class, while it accepts any system property and so reaches JavaVersionGuard.
-val allowUnsafeMemoryAccess = "-Dsun.misc.unsafe.memory.access=allow"
+// A Java that does not know the option rejects it before loading any class; the start scripts
+// therefore check the Java with JavaVersionGuard, without this option, before they pass it. The
+// option exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
+val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
 
 application {
-    mainClass.set("org.evochora.cli.JavaVersionGuard")
+    mainClass.set("org.evochora.cli.CommandLineInterface")
     applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
@@ -225,7 +226,6 @@ tasks.named<JavaExec>("run") {
     group = "application"
     description = "Run the Evochora server CLI with interactive input"
     standardInput = System.`in`
-    classpath += launcher.output
 }
 
 // The web frontend is a source tree of its own, src/main/web, and goes into the jar under web/:
@@ -541,7 +541,7 @@ tasks.named<ProcessResources>("processResources") {
 tasks.named<Jar>("jar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes["Main-Class"] = "org.evochora.cli.JavaVersionGuard"
+        attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
     }
     from(launcher.output)
     // Dependencies werden über lib/ und den Classpath im Start-Skript geladen (installDist)

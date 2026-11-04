@@ -284,7 +284,7 @@ runtime      →  (nothing)
 
 ## CLI (`src/main/java/org/evochora/cli/`)
 
-- **Entry Point**: `JavaVersionGuard.main()` (source set `launcher`, compiled for an older Java) checks the running Java, then hands over to `CommandLineInterface.main()`
+- **Entry Point**: `CommandLineInterface.main()`. Before it, the start scripts run `JavaVersionGuard` (source set `launcher`, compiled for the oldest Java the compiler targets) on any Java other than the runtime a distribution brings, so that an older Java stops with a message naming the Java Evochora needs
 - **PicoCLI**: Use PicoCLI annotations for commands and options
 - **Command Pattern**: Each command implements `Callable<Integer>` with exit codes (0=success, 1=error, 2=system error)
 - **Subcommands**: `node run`, `node resume`, `node fork`, `node show`, `compile`, `inspect`, `video`, `cleanup`

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
  * <p>
  * Netty 4.1, which ActiveMQ Artemis brings along, allocates memory through the memory-access methods
  * of sun.misc.Unsafe, which the JVM warns about and a future release denies. The build therefore
- * starts every JVM with {@code -Dsun.misc.unsafe.memory.access=allow}. That permission is owed to
+ * starts every JVM with {@code --sun-misc-unsafe-memory-access=allow}. That permission is owed to
  * Netty 4.1 alone, and nothing else would report the day an update of Artemis brings a Netty that
  * no longer needs it.
  * <p>
@@ -30,7 +30,7 @@ class NettyUnsafeRulesTest {
 
         assertThat(version)
                 .as("Netty %s is on the classpath: check whether it still needs "
-                        + "-Dsun.misc.unsafe.memory.access=allow in build.gradle.kts", version)
+                        + "--sun-misc-unsafe-memory-access=allow in build.gradle.kts", version)
                 .startsWith(LINE_THAT_NEEDS_UNSAFE);
     }
 }

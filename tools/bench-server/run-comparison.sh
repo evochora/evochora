@@ -37,8 +37,7 @@ for v in "$@"; do
     docker image inspect "$image" > /dev/null 2>&1 || docker pull -q "$image" > /dev/null \
         || { echo "$v FAILED image not available: $image" >> "$CMP/progress.txt"; continue; }
     docker run --rm -u "$(id -u):$(id -g)" -v "$CMP:/cmp" -w "/cmp/trees/$v" --name benchcmp "$image" \
-        java -Xms4g -Xmx4g -XX:+AlwaysPreTouch --enable-native-access=ALL-UNNAMED \
-        -Dsun.misc.unsafe.memory.access=allow -cp "/cmp/consumer-classes:lib/*" \
+        java -Xms4g -Xmx4g -XX:+AlwaysPreTouch --enable-native-access=ALL-UNNAMED -cp "/cmp/consumer-classes:lib/*" \
         org.evochora.cli.CommandLineInterface --config "$conf" node run > "$log" 2>&1 &
     for i in $(seq 1 720); do
         sleep 10
