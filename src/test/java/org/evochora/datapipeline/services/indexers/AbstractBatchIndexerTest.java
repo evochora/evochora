@@ -441,50 +441,6 @@ class AbstractBatchIndexerTest {
     // ========== readAndProcessChunks Override Test ==========
 
     @Test
-    void aStopDoesNotInterruptTheIndexerWhileItPreparesItsTables() throws Exception {
-        Config config = ConfigFactory.parseString("runId = \"test-run-tables\"");
-        Map<String, List<IResource>> resources = new HashMap<>();
-        resources.put("storage", List.of((IResource) mockStorage));
-        resources.put("topic", List.of((IResource) mockTopic));
-        resources.put("metadata", List.of((IResource) mockMetadataReader));
-        CountDownLatch tablesEntered = new CountDownLatch(1);
-        CountDownLatch tablesReleased = new CountDownLatch(1);
-        AtomicReference<String> duringTables = new AtomicReference<>();
-        streamingIndexer = new StreamingTestBatchIndexer("test-tables-indexer", config, resources, false, false) {
-            @Override
-            protected Set<ComponentType> getRequiredComponents() {
-                return EnumSet.noneOf(ComponentType.class);
-            }
-
-            @Override
-            protected void prepareTables(String runId) {
-                tablesEntered.countDown();
-                try {
-                    tablesReleased.await(5, TimeUnit.SECONDS);
-                    duringTables.set(Thread.currentThread().isInterrupted() ? "interrupt flag set" : "not interrupted");
-                } catch (InterruptedException e) {
-                    duringTables.set("interrupted");
-                }
-            }
-        };
-
-        streamingIndexer.start();
-        assertTrue(tablesEntered.await(5, TimeUnit.SECONDS), "the indexer prepares its tables");
-        Thread stopper = new Thread(streamingIndexer::stop, "stopper");
-        stopper.start();
-        // Once the stopper waits for the service thread, or has already finished with it, it has
-        // made its decision whether to interrupt
-        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
-            .atMost(5, TimeUnit.SECONDS).until(() -> stopper.getState() == Thread.State.TIMED_WAITING
-                || stopper.getState() == Thread.State.TERMINATED);
-        tablesReleased.countDown();
-        stopper.join(5000);
-
-        assertEquals("not interrupted", duringTables.get());
-        assertEquals(org.evochora.datapipeline.api.services.IService.State.STOPPED, streamingIndexer.getCurrentState());
-    }
-
-    @Test
     void testStreamingReadAndProcessChunks_OverrideDispatchesToSubclass() throws Exception {
         // Verify that a subclass can override readAndProcessChunks to bypass
         // the default forEachChunk path (e.g., EnvironmentIndexer's raw-byte path).
@@ -543,6 +499,52 @@ class AbstractBatchIndexerTest {
 
         // forEachChunk was NOT called (override bypassed it)
         verify(mockStorage, never()).forEachChunk(any(), any(), any());
+    }
+
+    // ========== Shutdown Tests ==========
+
+    @Test
+    void aStopDoesNotInterruptTheIndexerWhileItPreparesItsTables() throws Exception {
+        Config config = ConfigFactory.parseString("runId = \"test-run-tables\"");
+        Map<String, List<IResource>> resources = new HashMap<>();
+        resources.put("storage", List.of((IResource) mockStorage));
+        resources.put("topic", List.of((IResource) mockTopic));
+        resources.put("metadata", List.of((IResource) mockMetadataReader));
+        CountDownLatch tablesEntered = new CountDownLatch(1);
+        CountDownLatch tablesReleased = new CountDownLatch(1);
+        AtomicReference<String> duringTables = new AtomicReference<>();
+        streamingIndexer = new StreamingTestBatchIndexer("test-tables-indexer", config, resources, false, false) {
+            @Override
+            protected Set<ComponentType> getRequiredComponents() {
+                return EnumSet.noneOf(ComponentType.class);
+            }
+
+            @Override
+            protected void prepareTables(String runId) {
+                tablesEntered.countDown();
+                try {
+                    tablesReleased.await(5, TimeUnit.SECONDS);
+                    duringTables.set(Thread.currentThread().isInterrupted() ? "interrupt flag set" : "not interrupted");
+                } catch (InterruptedException e) {
+                    duringTables.set("interrupted");
+                }
+            }
+        };
+
+        streamingIndexer.start();
+        assertTrue(tablesEntered.await(5, TimeUnit.SECONDS), "the indexer prepares its tables");
+        Thread stopper = new Thread(streamingIndexer::stop, "stopper");
+        stopper.start();
+        // Once the stopper waits for the service thread, or has already finished with it, it has
+        // made its decision whether to interrupt
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+            .atMost(5, TimeUnit.SECONDS).until(() -> stopper.getState() == Thread.State.TIMED_WAITING
+                || stopper.getState() == Thread.State.TERMINATED);
+        tablesReleased.countDown();
+        stopper.join(5000);
+
+        assertEquals("not interrupted", duringTables.get());
+        assertEquals(org.evochora.datapipeline.api.services.IService.State.STOPPED, streamingIndexer.getCurrentState());
     }
 
     // ========== Helper Methods ==========
