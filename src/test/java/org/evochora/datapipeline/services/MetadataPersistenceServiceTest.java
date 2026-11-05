@@ -17,6 +17,7 @@ import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -124,7 +125,7 @@ class MetadataPersistenceServiceTest {
     void testConstructorWithMissingInputResource() {
         resources.remove("input");
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        OperationalException exception = assertThrows(OperationalException.class, () -> {
             new MetadataPersistenceService("test-metadata-persistence", config, resources);
         });
 
@@ -135,7 +136,7 @@ class MetadataPersistenceServiceTest {
     void testConstructorWithMissingStorageResource() {
         resources.remove("storage");
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        OperationalException exception = assertThrows(OperationalException.class, () -> {
             new MetadataPersistenceService("test-metadata-persistence", config, resources);
         });
 

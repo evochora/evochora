@@ -334,7 +334,7 @@ public class AbstractServiceTest {
     @Test
     void getRequiredResourceThrowsWhenPortNotConfigured() {
         TestService service = new TestService("test-service", config, resources);
-        assertThrows(IllegalStateException.class, () -> {
+        assertThrows(OperationalException.class, () -> {
             service.getRequiredResource("nonExistent", IResource.class);
         });
     }
@@ -343,7 +343,7 @@ public class AbstractServiceTest {
     void getRequiredResourceThrowsWhenNoResources() {
         resources.put("emptyPort", Collections.emptyList());
         TestService service = new TestService("test-service", config, resources);
-        assertThrows(IllegalStateException.class, () -> {
+        assertThrows(OperationalException.class, () -> {
             service.getRequiredResource("emptyPort", IResource.class);
         });
     }
@@ -352,7 +352,7 @@ public class AbstractServiceTest {
     void getRequiredResourceThrowsWhenMultipleResources() {
         resources.put("multiPort", List.of(mock(IResource.class), mock(IResource.class)));
         TestService service = new TestService("test-service", config, resources);
-        assertThrows(IllegalStateException.class, () -> {
+        assertThrows(OperationalException.class, () -> {
             service.getRequiredResource("multiPort", IResource.class);
         });
     }
@@ -361,7 +361,7 @@ public class AbstractServiceTest {
     void getRequiredResourceThrowsWhenWrongType() {
         resources.put("wrongTypePort", Collections.singletonList(mock(IResource.class)));
         TestService service = new TestService("test-service", config, resources);
-        assertThrows(IllegalStateException.class, () -> {
+        assertThrows(OperationalException.class, () -> {
             service.getRequiredResource("wrongTypePort", TestResource.class);
         });
     }

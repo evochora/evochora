@@ -86,6 +86,18 @@ public class ServiceManagerTest {
         }
     }
 
+    /** A service that needs a resource on a port its configuration does not bind. */
+    public static class PortRequiringService extends org.evochora.datapipeline.services.AbstractService {
+        public PortRequiringService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
+            super(name, options, resources);
+            getRequiredResource("input", IResource.class);
+        }
+
+        @Override
+        protected void run() {
+        }
+    }
+
     /** A service whose construction fails for a cause it knows and names. */
     public static class KnownCauseFailingService extends org.evochora.datapipeline.services.AbstractService {
         public KnownCauseFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
@@ -135,6 +147,26 @@ public class ServiceManagerTest {
             });
             // It never ran, so it has no instance: it is reported as stopped, its reason is in the log
             assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
+    /** A port the configuration leaves unbound is a configuration error, reported on one line. */
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to start service 'unbound': Resource port 'input' is not configured\\.")
+    void aServiceMissingARequiredPortFailsToStartOnOneLine() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              services.unbound.className = "org.evochora.datapipeline.ServiceManagerTest$PortRequiringService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            assertDoesNotThrow(() -> sm.startService("unbound"));
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("unbound").state());
         } finally {
             sm.shutdown();
         }

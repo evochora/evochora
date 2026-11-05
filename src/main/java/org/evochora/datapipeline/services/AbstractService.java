@@ -514,23 +514,24 @@ public abstract class AbstractService implements IService, IMonitorable {
      * @param expectedType The class of the expected resource type.
      * @param <T>          The expected type of the resource.
      * @return The single resource instance.
-     * @throws IllegalStateException if the port is not configured, has no resources,
-     *                               has more than one resource, or if the resource is of the wrong type.
+     * @throws OperationalException if the port is not configured, has no resources, has more than
+     *                              one resource, or if the resource is of the wrong type: the
+     *                              configuration does not fit the service
      */
     protected <T> T getRequiredResource(String portName, Class<T> expectedType) {
         List<IResource> resourceList = resources.get(portName);
         if (resourceList == null) {
-            throw new IllegalStateException("Resource port '" + portName + "' is not configured.");
+            throw new OperationalException("Resource port '" + portName + "' is not configured.");
         }
         if (resourceList.isEmpty()) {
-            throw new IllegalStateException("Resource port '" + portName + "' has no configured resources, but exactly one is required.");
+            throw new OperationalException("Resource port '" + portName + "' has no configured resources, but exactly one is required.");
         }
         if (resourceList.size() > 1) {
-            throw new IllegalStateException("Resource port '" + portName + "' has " + resourceList.size() + " resources, but exactly one is required.");
+            throw new OperationalException("Resource port '" + portName + "' has " + resourceList.size() + " resources, but exactly one is required.");
         }
         IResource resource = resourceList.get(0);
         if (!expectedType.isInstance(resource)) {
-            throw new IllegalStateException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
+            throw new OperationalException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
         }
         return expectedType.cast(resource);
     }
@@ -542,14 +543,14 @@ public abstract class AbstractService implements IService, IMonitorable {
      * @param expectedType The class of the expected resource type.
      * @param <T>          The expected type of the resources.
      * @return A list of resource instances, which may be empty if the port is not configured.
-     * @throws IllegalStateException if any resource is not of the expected type.
+     * @throws OperationalException if any resource is not of the expected type.
      */
     protected <T> List<T> getResources(String portName, Class<T> expectedType) {
         List<IResource> resourceList = resources.getOrDefault(portName, java.util.Collections.emptyList());
         return resourceList.stream()
                 .map(resource -> {
                     if (!expectedType.isInstance(resource)) {
-                        throw new IllegalStateException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
+                        throw new OperationalException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
                     }
                     return expectedType.cast(resource);
                 })
@@ -567,7 +568,7 @@ public abstract class AbstractService implements IService, IMonitorable {
      * @param expectedType The class of the expected resource type.
      * @param <T>          The expected type of the resource.
      * @return An Optional containing the single resource instance, or empty if not configured.
-     * @throws IllegalStateException if the port has more than one resource or if the resource is of the wrong type.
+     * @throws OperationalException if the port has more than one resource or if the resource is of the wrong type.
      */
     protected <T> java.util.Optional<T> getOptionalResource(String portName, Class<T> expectedType) {
         List<IResource> resourceList = resources.get(portName);
@@ -575,11 +576,11 @@ public abstract class AbstractService implements IService, IMonitorable {
             return java.util.Optional.empty();
         }
         if (resourceList.size() > 1) {
-            throw new IllegalStateException("Resource port '" + portName + "' has " + resourceList.size() + " resources, but exactly one is required for optional resources.");
+            throw new OperationalException("Resource port '" + portName + "' has " + resourceList.size() + " resources, but exactly one is required for optional resources.");
         }
         IResource resource = resourceList.get(0);
         if (!expectedType.isInstance(resource)) {
-            throw new IllegalStateException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
+            throw new OperationalException("Resource at port '" + portName + "' is of type " + resource.getClass().getName() + ", but expected type is " + expectedType.getName());
         }
         return java.util.Optional.of(expectedType.cast(resource));
     }

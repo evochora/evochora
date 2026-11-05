@@ -67,6 +67,7 @@ import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Topology;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -226,7 +227,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Math.multiplyExact(Math.multiplyExact(Math.multiplyExact(samplingInterval, accumulatedDeltaInterval),
                     snapshotInterval), chunkInterval);
         } catch (ArithmeticException overflow) {
-            throw new IllegalArgumentException("samplingInterval × accumulatedDeltaInterval × snapshotInterval"
+            throw new OperationalException("samplingInterval × accumulatedDeltaInterval × snapshotInterval"
                     + " × chunkInterval must not exceed " + Integer.MAX_VALUE + " ticks per chunk, got "
                     + samplingInterval + " × " + accumulatedDeltaInterval + " × " + snapshotInterval + " × " + chunkInterval,
                     overflow);
@@ -307,9 +308,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param resources A map of resource ports to lists of resources; {@code tickData} and
      *                  {@code metadataOutput} are required, {@code resumeStorage} additionally
      *                  in resume mode.
-     * @throws IllegalStateException if a required resource port is missing or carries a resource
-     *                               of the wrong type, or if the configured environment has more
-     *                               cells than an {@code int} can address.
+     * @throws OperationalException if a required resource port is missing or carries a resource
+     *                              of the wrong type, if a program file or the checkpoint to
+     *                              resume from cannot be read, or if a configured plugin class
+     *                              does not exist.
+     * @throws IllegalStateException if the configured environment has more cells than an
+     *                               {@code int} can address.
      * @throws IllegalArgumentException if the configuration is invalid, for example no configured
      *                                  organism, an unknown environment topology, a shape
      *                                  component below one, a placement whose coordinate count
@@ -552,7 +556,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 forkOrigin
             );
         } catch (IOException e) {
-            throw new IllegalArgumentException("Failed to load checkpoint: " + e.getMessage(), e);
+            throw new OperationalException("Failed to load checkpoint: " + e.getMessage(), e);
         }
     }
 
@@ -591,7 +595,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param fork the recording options of the fork
      * @return the parent and the rounded window
      * @throws IllegalArgumentException if the fork's chunk length does not divide the parent's
-     * @throws IllegalStateException if the window's first tick is not one the fork samples
+     * @throws OperationalException if the window's first tick is not one the fork samples
      */
     private static ForkOrigin forkWindow(String parentRunId, ForkRequest request, long checkpointTick,
                                          RunOptions parent, RunOptions fork) {
@@ -608,7 +612,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         long firstTick = checkpointTick
             + (request.fromTick() - checkpointTick) / forkTicksPerChunk * forkTicksPerChunk;
         if (firstTick % fork.samplingInterval() != 0) {
-            throw new IllegalStateException(String.format(
+            throw new OperationalException(String.format(
                 "A fork's first recorded tick must be one it samples: tick %d is not a multiple of "
                     + "samplingInterval %d (checkpoint tick %d, %d ticks per chunk)",
                 firstTick, fork.samplingInterval(), checkpointTick, forkTicksPerChunk));
@@ -693,7 +697,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 } catch (CompilationException e) {
                     throw new IllegalArgumentException("Failed to compile program: " + programPath, e);
                 } catch (IOException e) {
-                    throw new IllegalArgumentException("Failed to read program file: " + programPath, e);
+                    throw new OperationalException("Failed to read program file: " + programPath, e);
                 }
                 artifactsByVariant.put(variant, artifact);
             }
@@ -1197,6 +1201,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         && !(plugin instanceof IDeathHandler) && !(plugin instanceof IBirthHandler)) {
                     log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, IDeathHandler, or IBirthHandler", className);
                 }
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                // The configuration names a class that is not there or cannot be constructed so
+                throw new OperationalException(
+                    "Failed to instantiate plugin: " + config.getString("className"), e);
             } catch (ReflectiveOperationException e) {
                 throw new IllegalArgumentException(
                     "Failed to instantiate plugin: " + config.getString("className"), e);

@@ -41,6 +41,7 @@ import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.ITickRelevance;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -314,6 +315,9 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 log.debug("Loaded analytics plugin: {} (metricId={}, columns={})", 
                     className, plugin.getMetricId(), schema.getColumnCount());
                 
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                // The configuration names a class that is not there or cannot be constructed so
+                throw new OperationalException("Failed to load plugin: " + className, e);
             } catch (Exception e) {
                 // A plugin that cannot be loaded is misconfigured: the cause is named, not traced
                 log.error("Failed to load analytics plugin {}: {}", className, e.getMessage());

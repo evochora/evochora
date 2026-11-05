@@ -38,6 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 
@@ -144,7 +145,7 @@ class SimulationEngineTest {
                 ConfigValueFactory.fromAnyRef("nonexistent/path/to/program.evo")
         );
         assertThrows(
-                IllegalArgumentException.class,
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
     }
@@ -208,8 +209,8 @@ class SimulationEngineTest {
     void constructor_shouldThrowException_whenRequiredResourceIsMissing() {
         resources.remove("tickData");
         Config config = createValidConfig();
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
         assertEquals("Resource port 'tickData' is not configured.", exception.getMessage());
@@ -219,8 +220,8 @@ class SimulationEngineTest {
     void constructor_shouldThrowException_whenMetadataOutputIsMissing() {
         resources.remove("metadataOutput");
         Config config = createValidConfig();
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
         assertEquals("Resource port 'metadataOutput' is not configured.", exception.getMessage());
@@ -320,7 +321,7 @@ class SimulationEngineTest {
         Config overflowing = createValidConfig()
                 .withValue("accumulatedDeltaInterval", ConfigValueFactory.fromAnyRef(Integer.MAX_VALUE))
                 .withValue("snapshotInterval", ConfigValueFactory.fromAnyRef(2));
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", overflowing, resources));
         assertTrue(exception.getMessage().startsWith("samplingInterval × accumulatedDeltaInterval"), exception.getMessage());
     }
