@@ -260,7 +260,7 @@ util         →  (nothing)
 
 **Error Handling & Logging**:
 - **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - throw only if the caller must handle the failed operation
-- **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
+- **Fatal Errors** (service/resource cannot serve any caller): a resource: `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded. A service only throws: the failure ends it, and `AbstractService` logs it once and records it as `SERVICE_FAILED`
 - **Normal Shutdown** (InterruptedException): `log.debug("msg", args)` - re-throw exception - NO recordError()
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
 - **Stack Traces**: pass the exception ONLY when the cause is a bug or unknown (see below) - never when the message can say what went wrong
@@ -391,7 +391,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
   - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
   - Explicit runId configuration
 - `WARN`: Transient errors (always with `recordError()` call) - duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings
-- `ERROR`: Fatal initialization/runtime errors (schema setup failed, discovery timeout, indexing failed)
+- `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
 - `DEBUG`: All operational details (batch processing, retries, interrupts, shutdown sequences, drain operations)
 
 **AbstractService (automatic lifecycle logs):**
