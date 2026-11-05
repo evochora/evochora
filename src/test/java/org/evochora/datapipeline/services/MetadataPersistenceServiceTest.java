@@ -315,7 +315,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
-               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata .* after .* retries; caused by: .*")
+               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata .* after \\d+ retries; it is kept in the dead letter queue; caused by: .*")
     void testAllRetriesExhausted() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
@@ -342,10 +342,10 @@ class MetadataPersistenceServiceTest {
         // Verify all retry attempts made (maxRetries=2 means 3 total attempts)
         verify(mockStorage, times(3)).writeMessage("sim-123/raw/metadata.pb", metadata);
 
-        // The service ends in ERROR and leaves the message unacknowledged, for a restart to retry
+        // The DLQ took the metadata: the message is acknowledged, and the service ends in ERROR
         await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> service.getCurrentState() == IService.State.ERROR);
-        assertFalse(committed.get(), "the metadata is not acknowledged");
+        assertTrue(committed.get(), "metadata set aside in the DLQ is acknowledged");
 
         // Verify failure recorded
         assertEquals(0, service.getMetrics().get("metadata_written").longValue());
@@ -359,7 +359,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
-               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata .* after .* retries; caused by: .*")
+               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata .* after \\d+ retries; it is kept in the dead letter queue; caused by: .*")
     void testDLQWithConfiguredQueue() throws Exception {
         resources.put("dlq", Collections.singletonList(mockDLQ));
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
@@ -388,7 +388,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
-               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata sim-789/raw/metadata\\.pb after 2 retries; caused by: .*")
+               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata sim-789/raw/metadata\\.pb after 2 retries; it stays unacknowledged in the queue; caused by: .*")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*Failed metadata has no DLQ configured.*")
     void testDLQNotConfigured() throws Exception {
@@ -411,7 +411,7 @@ class MetadataPersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*MetadataPersistenceService.*",
-               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata sim-full/raw/metadata\\.pb after 2 retries; caused by: .*")
+               messagePattern = "MetadataPersistenceService stopped with ERROR: Failed to write metadata sim-full/raw/metadata\\.pb after 2 retries; it stays unacknowledged in the queue; caused by: .*")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*DLQ is full.*")
     void testDLQFull() throws Exception {
@@ -419,8 +419,15 @@ class MetadataPersistenceServiceTest {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
         SimulationMetadata metadata = createTestMetadata("sim-full");
+        java.util.concurrent.atomic.AtomicBoolean committed = new java.util.concurrent.atomic.AtomicBoolean();
+        StreamingBatch<SimulationMetadata> batch = new StreamingBatch<>() {
+            @Override public int size() { return 1; }
+            @Override public Iterator<SimulationMetadata> iterator() { return List.of(metadata).iterator(); }
+            @Override public void commit() { committed.set(true); }
+            @Override public void close() {}
+        };
 
-        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batch);
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(false); // DLQ full
@@ -433,6 +440,11 @@ class MetadataPersistenceServiceTest {
         // Verify error recorded for DLQ full
         assertTrue(service.getErrors().stream()
             .anyMatch(e -> e.errorType().equals("DLQ_FULL")));
+
+        // The DLQ did not take the metadata: the message stays unacknowledged for a restart to retry
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.ERROR);
+        assertFalse(committed.get(), "metadata the DLQ did not take stays unacknowledged");
     }
 
     // ========== Shutdown Tests ==========

@@ -179,10 +179,23 @@ public class MetadataPersistenceService extends AbstractService {
                 String simulationRunId = metadata.getSimulationRunId();
                 String key = simulationRunId + "/raw/metadata.pb";
 
-                // Write metadata with retry logic, then commit
+                // Write metadata with retry logic, then commit. Metadata that cannot be written ends
+                // the service in ERROR, because a run without it can neither be read nor resumed.
+                // It is either set aside in the DLQ and acknowledged, or, where the DLQ does not
+                // take it, left unacknowledged for a restart to try again - never both
                 setShutdownPhase(ShutdownPhase.PROCESSING);
                 try {
-                    writeMetadataWithRetry(key, metadata);
+                    IOException failure = writeMetadataWithRetry(key, metadata);
+                    if (failure != null) {
+                        metadataFailed.incrementAndGet();
+                        boolean setAside = sendToDLQ(metadata, failure.getMessage(), failure);
+                        if (setAside) {
+                            batch.commit();
+                        }
+                        throw new OperationalException("Failed to write metadata " + key + " after " + maxRetries
+                            + " retries; " + (setAside ? "it is kept in the dead letter queue"
+                                : "it stays unacknowledged in the queue"), failure);
+                    }
                     batch.commit();
                 } finally {
                     setShutdownPhase(ShutdownPhase.WAITING);
@@ -201,16 +214,15 @@ public class MetadataPersistenceService extends AbstractService {
      *
      * @param key storage key for the metadata file
      * @param metadata the simulation metadata to persist
+     * @return {@code null} once the metadata is written, or the failure of the last attempt when
+     *         every attempt failed
      * @throws InterruptedException if interrupted while sending topic notification or between two
      *                              attempts, which is a shutdown
-     * @throws OperationalException if every attempt failed: the metadata is set aside in the DLQ,
-     *                              and the message is left unacknowledged, so that a restart
-     *                              tries again where the queue delivers it again
      */
-    private void writeMetadataWithRetry(String key, SimulationMetadata metadata) throws InterruptedException {
+    private IOException writeMetadataWithRetry(String key, SimulationMetadata metadata) throws InterruptedException {
         int attempt = 0;
         int backoff = retryBackoffMs;
-        Exception lastException = null;
+        IOException lastException = null;
 
         while (attempt <= maxRetries) {
             try {
@@ -232,7 +244,7 @@ public class MetadataPersistenceService extends AbstractService {
                     }
                 }
                 
-                return;
+                return null;
 
             } catch (IOException e) {
                 lastException = e;
@@ -255,12 +267,7 @@ public class MetadataPersistenceService extends AbstractService {
             }
         }
 
-        // All retries exhausted: the metadata is kept in the DLQ, and the service ends in ERROR,
-        // because a run whose metadata is not stored can neither be read nor resumed
-        sendToDLQ(metadata, lastException != null ? lastException.getMessage() : "Unknown error", lastException);
-        metadataFailed.incrementAndGet();
-        throw new OperationalException("Failed to write metadata " + key + " after " + maxRetries + " retries",
-            lastException);
+        return lastException;
     }
 
     /**
@@ -310,8 +317,10 @@ public class MetadataPersistenceService extends AbstractService {
      * @param metadata the metadata that failed to persist
      * @param errorMessage description of the failure
      * @param exception the exception that caused the failure
+     * @return {@code true} if the DLQ took the metadata, {@code false} if there is none, it is full
+     *         or sending failed
      */
-    private void sendToDLQ(SimulationMetadata metadata, String errorMessage, Exception exception) {
+    private boolean sendToDLQ(SimulationMetadata metadata, String errorMessage, Exception exception) {
         if (dlq == null) {
             log.warn("Failed metadata has no DLQ configured, data will be lost: simulation {}",
                 metadata.getSimulationRunId());
@@ -320,7 +329,7 @@ public class MetadataPersistenceService extends AbstractService {
                 "Failed metadata lost - no DLQ configured",
                 String.format("SimulationRunId: %s", metadata.getSimulationRunId())
             );
-            return;
+            return false;
         }
 
         try {
@@ -359,6 +368,7 @@ public class MetadataPersistenceService extends AbstractService {
 
             if (dlq.offer(dlqMessage)) {
                 log.info("Sent failed metadata to DLQ for simulation {}", simulationRunId);
+                return true;
             } else {
                 log.warn("DLQ is full, failed metadata lost for simulation {}", simulationRunId);
                 recordError(
@@ -366,6 +376,7 @@ public class MetadataPersistenceService extends AbstractService {
                     "Dead letter queue is full, failed metadata lost",
                     String.format("SimulationRunId: %s", simulationRunId)
                 );
+                return false;
             }
 
         } catch (Exception e) {
@@ -376,6 +387,7 @@ public class MetadataPersistenceService extends AbstractService {
                 String.format("SimulationRunId: %s, Exception: %s",
                     metadata.getSimulationRunId(), e.getMessage())
             );
+            return false;
         }
     }
 
