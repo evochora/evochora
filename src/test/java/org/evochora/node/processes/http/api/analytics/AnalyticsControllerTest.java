@@ -26,6 +26,39 @@ import static org.mockito.Mockito.*;
 @Tag("unit")
 class AnalyticsControllerTest {
 
+    /**
+     * A manifest file that is no valid JSON is a fault of the data: it is left out on one line and
+     * the rest is served. A defect while reading one fails the request instead, with its trace.
+     */
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to read/parse metadata file: bad/metadata\\.json: .*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to aggregate manifest for run run2")
+    void manifestLeavesOutUnreadableDataButFailsOnADefect() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(eq("run1"), eq(""))).thenReturn(List.of("bad/metadata.json", "pop/metadata.json"));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("bad/metadata.json")))
+            .thenReturn(new ByteArrayInputStream("{not json".getBytes()));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("pop/metadata.json")))
+            .thenReturn(new ByteArrayInputStream("{\"id\":\"pop\",\"name\":\"Population\"}".getBytes()));
+        when(storage.listAnalyticsFiles(eq("run2"), eq(""))).thenReturn(List.of("pop/metadata.json"));
+        when(storage.openAnalyticsInputStream(eq("run2"), eq("pop/metadata.json")))
+            .thenThrow(new NullPointerException("defect"));
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+        AnalyticsController controller = new AnalyticsController(
+            registry, ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 1)));
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
+
+        JavalinTest.test(app, (server, client) -> {
+            var served = client.get("/api/manifest?runId=run1");
+            assertThat(served.code()).isEqualTo(200);
+            assertThat(served.body().string()).contains("\"id\":\"pop\"");
+
+            assertThat(client.get("/api/manifest?runId=run2").code()).isEqualTo(500);
+        });
+    }
+
     @Test
     void testManifestAggregation() throws Exception {
         // 1. Mock Storage

@@ -1064,8 +1064,9 @@ public class AnalyticsController implements IController {
                         String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                         ManifestEntry manifestEntry = gson.fromJson(json, ManifestEntry.class);
                         entries.add(manifestEntry);
-                    } catch (Exception e) {
-                        // A manifest file that cannot be read or parsed is a fault of the data, told on one line
+                    } catch (IOException | com.google.gson.JsonParseException e) {
+                        // A manifest file that cannot be read or parsed is a fault of the data, told on
+                        // one line and left out; any other failure fails the request with its trace
                         log.warn("Failed to read/parse metadata file: {}: {}", file, CauseChain.messages(e));
                     }
                 }
