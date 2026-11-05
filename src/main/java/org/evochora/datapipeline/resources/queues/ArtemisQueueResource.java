@@ -491,7 +491,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("put() interrupted");
             }
-            log.error("Failed to put message to queue '{}'", queueName);
+            log.error("Failed to put message to queue '{}': {}", queueName, CauseChain.messages(e));
+            recordError("PUT_FAILED", "Failed to put message", e.getMessage());
             throw new OperationalException("Failed to put message to queue: " + queueName, e);
         }
     }
