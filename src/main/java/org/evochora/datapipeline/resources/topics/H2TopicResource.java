@@ -465,9 +465,11 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                     recordError("DATABASE_CLOSED_BY_FAILURE", "Database closed by a failure of its store",
                         "Topic: " + getResourceName() + ", Error: " + e.getMessage());
                 } else {
-                    // Unexpected error - log warning but continue with pool close
+                    // Unexpected error - log warning, record it, and continue with pool close
                     log.warn("H2 topic '{}' shutdown command failed: {}",
                         getResourceName(), e.getMessage());
+                    recordError("SHUTDOWN_FAILED", "SHUTDOWN failed",
+                        "Topic: " + getResourceName() + ", Error: " + e.getMessage());
                 }
             }
 
