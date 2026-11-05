@@ -599,7 +599,9 @@ class ArtemisQueueResourceTest {
     /**
      * Runs the call on a thread of its own, interrupts that thread once it waits inside the given
      * Artemis class, and returns what the call ended with. Waiting for the frame, not for a fixed
-     * time, makes sure the interrupt reaches the wait it is meant for.
+     * time, makes sure the interrupt reaches the wait it is meant for. The non-waiting drain of
+     * {@code receiveBatch} waits briefly in the consumer as well, for the broker's answer, so a
+     * wait inside it does not count.
      */
     private static Throwable interruptOnceWaitingIn(String artemisClass, QueueCall call) throws InterruptedException {
         AtomicReference<Throwable> outcome = new AtomicReference<>();
@@ -621,8 +623,11 @@ class ArtemisQueueResourceTest {
 
     private static boolean isWaitingIn(Thread thread, String className) {
         Thread.State state = thread.getState();
+        StackTraceElement[] stack = thread.getStackTrace();
         return (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING)
-            && Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals(className));
+            && Arrays.stream(stack).anyMatch(frame -> frame.getClassName().equals(className))
+            && Arrays.stream(stack).noneMatch(frame -> frame.getClassName().equals(ArtemisQueueResource.class.getName())
+                && frame.getMethodName().equals("receiveAvailable"));
     }
 
     private static final String CONSUMER = "org.apache.activemq.artemis.core.client.impl.ClientConsumerImpl";
