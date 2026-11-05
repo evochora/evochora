@@ -144,8 +144,15 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         }
         
         // Set schema for all database resources of this indexer
-        // This creates the schema if it doesn't exist and switches to it
-        setSchemaForAllDatabaseResources(runId);
+        // This creates the schema if it doesn't exist and switches to it. It writes to the
+        // database, so a stop must not interrupt it: H2 writes its file through an interruptible
+        // channel, which an interrupt closes for every thread
+        setShutdownPhase(ShutdownPhase.PROCESSING);
+        try {
+            setSchemaForAllDatabaseResources(runId);
+        } finally {
+            setShutdownPhase(ShutdownPhase.WAITING);
+        }
         
         return runId;
     }

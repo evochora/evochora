@@ -5,6 +5,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.services.IService;
@@ -24,13 +25,20 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.withSettings;
 import static org.mockito.Mockito.when;
 
 @Tag("unit")
@@ -160,5 +168,46 @@ class AbstractIndexerTest {
                 .until(() -> indexer.getCurrentState() == IService.State.STOPPED));
 
         assertEquals("test-run-configured", indexer.indexedRunId);
+    }
+
+    @Test
+    void aStopDoesNotInterruptTheIndexerWhileItSetsItsSchema() throws Exception {
+        when(mockStorage.findMetadataPath("test-run-configured"))
+            .thenReturn(Optional.of(StoragePath.of("test-run-configured/raw/metadata.pb")));
+        CountDownLatch schemaEntered = new CountDownLatch(1);
+        CountDownLatch schemaReleased = new CountDownLatch(1);
+        AtomicReference<String> duringSchema = new AtomicReference<>();
+        IResource database = mock(IResource.class, withSettings().extraInterfaces(ISchemaAwareDatabase.class));
+        doAnswer(invocation -> {
+            schemaEntered.countDown();
+            try {
+                schemaReleased.await(5, TimeUnit.SECONDS);
+                duringSchema.set(Thread.currentThread().isInterrupted() ? "interrupt flag set" : "not interrupted");
+            } catch (InterruptedException e) {
+                duringSchema.set("interrupted");
+            }
+            return null;
+        }).when((ISchemaAwareDatabase) database).setSimulationRun(anyString());
+        Map<String, List<IResource>> withDatabase = Map.of(
+            "storage", List.of(mockStorage),
+            "topic", List.of(mockTopic),
+            "database", List.of(database));
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test",
+            ConfigFactory.parseString("runId = \"test-run-configured\""), withDatabase);
+
+        indexer.start();
+        assertTrue(schemaEntered.await(5, TimeUnit.SECONDS), "the indexer sets its schema");
+        Thread stopper = new Thread(indexer::stop, "stopper");
+        stopper.start();
+        // Once the stopper waits for the service thread, or has already finished with it, it has
+        // made its decision whether to interrupt
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+            .atMost(5, TimeUnit.SECONDS).until(() -> stopper.getState() == Thread.State.TIMED_WAITING
+                || stopper.getState() == Thread.State.TERMINATED);
+        schemaReleased.countDown();
+        stopper.join(5000);
+
+        assertEquals("not interrupted", duringSchema.get());
+        assertEquals(IService.State.STOPPED, indexer.getCurrentState());
     }
 }
