@@ -32,6 +32,7 @@ import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.IServiceFactory;
 import org.evochora.datapipeline.api.services.ResourceBinding;
 import org.evochora.datapipeline.api.services.ServiceStatus;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -286,7 +287,7 @@ public class ServiceManager implements IMonitorable {
                 log.info("Instantiated resource '{}' of type {}", resourceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
-                Throwable cause = rootCause(e);
+                Throwable cause = CauseChain.root(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 log.error("Failed to instantiate resource '{}': {}. Skipping this resource.", resourceName, errorMsg);
             }
@@ -351,7 +352,7 @@ public class ServiceManager implements IMonitorable {
                 log.info("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
-                Throwable cause = rootCause(e);
+                Throwable cause = CauseChain.root(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, errorMsg);
             }
@@ -369,59 +370,6 @@ public class ServiceManager implements IMonitorable {
      */
     private static boolean isSetToNull(Config object, String key) {
         return object.root().get(key).valueType() == ConfigValueType.NULL;
-    }
-
-    /**
-     * How far a chain of causes is followed. Far beyond any chain this code produces — the bound is
-     * there so that a ring ends the walk, not to cut a real chain short.
-     */
-    private static final int MAX_CAUSE_DEPTH = 100;
-
-    /**
-     * The outermost failure of the given type along a chain of causes, or {@code null} if none is of
-     * that type.
-     * <p>
-     * A failure raised during startup reaches this class wrapped in whatever reflection put around
-     * it, so its type has to be sought rather than read off. Sought from the outside in, because a
-     * failure that was given a reason on its way out carries the technical exception it replaced as
-     * its own cause: taking the innermost link would find that technical exception again and lose
-     * the reason.
-     *
-     * The walk is bounded. Java rejects a throwable given itself as its cause but not a ring of two,
-     * which the public API can build — and every startup failure passes through here, including ones
-     * raised inside libraries. A ring would not produce a wrong message but a node that neither
-     * starts nor stops.
-     *
-     * @param <T> the type of failure looked for
-     * @param thrown the failure as it arrived
-     * @param type the type of failure looked for
-     * @return the outermost link of that type, or {@code null}
-     */
-    static <T extends Throwable> T findInChain(Throwable thrown, Class<T> type) {
-        Throwable link = thrown;
-        for (int depth = 0; link != null && depth < MAX_CAUSE_DEPTH; depth++, link = link.getCause()) {
-            if (type.isInstance(link)) {
-                return type.cast(link);
-            }
-        }
-        return null;
-    }
-
-    /**
-     * The innermost cause along a chain of causes, or the failure itself if it has none.
-     * <p>
-     * Bounded like {@link #findInChain}, and for the same reason: a ring of causes ends the walk
-     * at {@link #MAX_CAUSE_DEPTH} instead of holding the start forever.
-     *
-     * @param thrown the failure as it arrived
-     * @return the last link reached
-     */
-    static Throwable rootCause(Throwable thrown) {
-        Throwable cause = thrown;
-        for (int depth = 0; cause.getCause() != null && depth < MAX_CAUSE_DEPTH; depth++) {
-            cause = cause.getCause();
-        }
-        return cause;
     }
 
     private ResourceContext parseResourceUri(String uri, String serviceName, String portName) {
@@ -833,12 +781,12 @@ public class ServiceManager implements IMonitorable {
             activeWrappedResources.remove(name);
 
             // Unwrap reflection exceptions to find root cause
-            Throwable cause = rootCause(e);
+            Throwable cause = CauseChain.root(e);
 
             // Sought along the chain rather than taken from its end: a resume failure explains what
             // about the checkpoint is unusable, and explaining it is what gives it a cause of its
             // own — which the unwrapping above would then run past.
-            ResumeException resumeFailure = findInChain(e, ResumeException.class);
+            ResumeException resumeFailure = CauseChain.find(e, ResumeException.class);
 
             // Check if this is an OutOfMemoryError wrapped in RuntimeException (from reflection)
             if (cause instanceof OutOfMemoryError && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {

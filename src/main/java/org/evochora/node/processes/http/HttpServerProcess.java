@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.node.processes.AbstractProcess;
 import org.evochora.node.spi.IController;
 import org.evochora.node.spi.ServiceRegistry;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -329,10 +330,7 @@ public class HttpServerProcess extends AbstractProcess {
                     registerController(def, routes);
                 } catch (final Exception e) {
                     // Extract root cause message for clean error output (no stack trace)
-                    Throwable cause = e;
-                    while (cause.getCause() != null && cause.getCause() != cause) {
-                        cause = cause.getCause();
-                    }
+                    Throwable cause = CauseChain.root(e);
                     String causeMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                     LOGGER.error("Failed to register controller at path '{}': {}", def.basePath, causeMsg);
                 }

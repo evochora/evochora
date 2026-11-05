@@ -44,6 +44,7 @@ import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapp
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -815,16 +816,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Walks the cause chain looking for typical Artemis shutdown indicators.
      */
     private static boolean isSessionClosing(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException) {
-                return true;
-            }
-            String msg = current.getMessage();
-            if (msg != null && (msg.contains("closed") || msg.contains("destroyed"))) {
-                return true;
-            }
-        }
-        return false;
+        return CauseChain.links(t).stream().anyMatch(link ->
+                link instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException
+                        || link.getMessage() != null
+                                && (link.getMessage().contains("closed") || link.getMessage().contains("destroyed")));
     }
 
     // =========================================================================

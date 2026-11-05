@@ -14,7 +14,7 @@ import org.apache.activemq.artemis.api.jms.ActiveMQJMSConstants;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.JmsUtils;
-import org.evochora.datapipeline.utils.CauseChain;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

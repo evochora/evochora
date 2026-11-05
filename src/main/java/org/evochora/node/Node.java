@@ -14,6 +14,7 @@ import java.util.Set;
 
 import org.evochora.node.spi.IProcess;
 import org.evochora.node.spi.IServiceProvider;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -178,10 +179,7 @@ public final class Node {
                     processName, className, requires.isEmpty() ? "none" : requires.values());
 
             } catch (final Exception e) {
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = CauseChain.root(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 LOGGER.error("Failed to parse process '{}': {}. Skipping this process.", processName, errorMsg);
             }
@@ -262,10 +260,7 @@ public final class Node {
                 LOGGER.debug("Successfully initialized process '{}'.", processName);
 
             } catch (final Exception e) {
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = CauseChain.root(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 LOGGER.error("Failed to initialize process '{}': {}. Skipping this process.", processName, errorMsg);
             }

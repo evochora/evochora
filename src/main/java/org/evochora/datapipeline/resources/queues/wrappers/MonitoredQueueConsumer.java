@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,13 +125,8 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
     }
 
     private static boolean isInterruptInduced(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof InterruptedException
-                    || current instanceof ClosedByInterruptException) {
-                return true;
-            }
-        }
-        return false;
+        return CauseChain.links(t).stream().anyMatch(link -> link instanceof InterruptedException
+                || link instanceof ClosedByInterruptException);
     }
 
     /**

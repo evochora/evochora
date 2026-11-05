@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -320,10 +321,7 @@ public abstract class AbstractService implements IService, IMonitorable {
                 // it ends on, and the trace is what tells them apart. It is recorded before the
                 // state changes, so that whoever sees ERROR finds why.
                 log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = CauseChain.root(e);
                 addError(new OperationalError(Instant.now(), OperationalError.SERVICE_FAILED,
                         this.getClass().getSimpleName() + " stopped with ERROR, stack trace in the log: "
                                 + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()),
@@ -346,13 +344,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * and NIO throws ClosedByInterruptException when a channel is interrupted mid-IO.
      */
     private static boolean isInterruptInduced(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof InterruptedException
-                    || current instanceof java.nio.channels.ClosedByInterruptException) {
-                return true;
-            }
-        }
-        return false;
+        return CauseChain.links(t).stream().anyMatch(link -> link instanceof InterruptedException
+                || link instanceof java.nio.channels.ClosedByInterruptException);
     }
 
     /**

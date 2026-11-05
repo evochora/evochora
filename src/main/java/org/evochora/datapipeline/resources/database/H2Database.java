@@ -27,6 +27,7 @@ import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,10 +113,7 @@ public class H2Database extends AbstractDatabaseResource
                 name, hikariConfig.getMaximumPoolSize(), hikariConfig.getMinimumIdle());
         } catch (Exception e) {
             // Unwrap to find root cause
-            Throwable cause = e;
-            while (cause.getCause() != null && cause.getCause() != cause) {
-                cause = cause.getCause();
-            }
+            Throwable cause = CauseChain.root(e);
             
             String causeMsg = cause.getMessage() != null ? cause.getMessage() : "";
             
