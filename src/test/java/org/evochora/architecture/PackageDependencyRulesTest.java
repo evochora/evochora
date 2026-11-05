@@ -22,8 +22,8 @@ import com.tngtech.archunit.junit.ArchTest;
  * runtime      -&gt;  (nothing)
  * util         -&gt;  (nothing)
  * </pre>
- * Every package may reference {@code util}, which holds the helpers that belong to no part of
- * Evochora and therefore sits below all of them.
+ * Every package but {@code runtime} may reference {@code util}, which holds the helpers that
+ * belong to no part of Evochora and therefore sits below all of them.
  * <p>
  * This class is the authoritative statement of that graph. An import creating an edge the graph does
  * not permit fails a test here, naming the source class, the target class and the rule it violates.
@@ -57,19 +57,19 @@ class PackageDependencyRulesTest {
     private static final String ROOT = "org.evochora";
 
     /**
-     * {@code runtime} is the base of the graph and references no other top-level package.
-     * <p>
-     * The simulation core carries nothing outward: every type it borrowed from another package
-     * would be a type a reimplementation in another language has to carry along.
+     * {@code runtime} is the base of the graph and references no other package of the project, so
+     * that every part around the simulation core can be replaced without touching it.
      */
     @ArchTest
     static void runtimeDependsOnNoOtherTopLevelPackage(JavaClasses classes) {
         noClasses().that().resideInAPackage(ROOT + ".runtime..")
                 .should().dependOnClassesThat().resideInAnyPackage(
+                        ROOT,
                         ROOT + ".compiler..",
                         ROOT + ".datapipeline..",
                         ROOT + ".node..",
-                        ROOT + ".cli..")
+                        ROOT + ".cli..",
+                        ROOT + ".util..")
                 .check(classes);
     }
 

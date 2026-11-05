@@ -192,8 +192,8 @@ util         →  (nothing)
 ```
 
 - **Authority**: `PackageDependencyRulesTest` enforces this graph and is the single source of truth. The graph is repeated here for orientation only — when the two disagree, the test is right.
-- **Every package may use `util`**: it holds the helpers that belong to no part of Evochora, such as walking the causes of an exception, and depends on nothing. A helper that knows about runs, organisms, the pipeline or the node belongs to that part instead.
-- **`runtime` depends on nothing**: the simulation core carries no outward surface. Every type it borrowed from another package would have to be carried along by a reimplementation in another language.
+- **Every package but `runtime` may use `util`**: it holds the helpers that belong to no part of Evochora, such as walking the causes of an exception, and depends on nothing. A helper that knows about runs, organisms, the pipeline or the node belongs to that part instead.
+- **`runtime` depends on nothing**: every part around the simulation core can be replaced without touching it.
 - **`compiler → runtime` is intended**: the instruction set is what the compiler targets. The compiler sees it through `IInstructionSet`; only the adapter in `compiler.isa` reads the runtime's declarations, and `EnvironmentProperties`, the world a program is laid out for, is the one other runtime type the compiler takes.
 - **Process wrappers belong to `node`, domain logic to `datapipeline`**: node owns process lifecycles, not what runs inside them. An adapter joining the two lives on node's side, which is the permitted direction.
 - **Adding an edge**: a new dependency the graph does not permit fails the test, which names the classes involved. Withdraw the import, or change the rule and let the change be reviewed. Editing the rule is legitimate — doing it by reflex is what destroys its value.
