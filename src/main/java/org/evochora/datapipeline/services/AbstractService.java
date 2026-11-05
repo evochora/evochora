@@ -382,7 +382,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * <strong>2. Fatal Errors</strong> (service must stop):
      * <ul>
      *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
-     *   <li>Do NOT use recordError() - service stops anyway</li>
+     *   <li>Do NOT use recordError() - AbstractService records the failure as
+     *       {@link OperationalError#SERVICE_FAILED}</li>
      *   <li>Throw exception - AbstractService will set ERROR state</li>
      *   <li>Example: Database connection lost, cannot compile program, resource unavailable</li>
      * </ul>
@@ -402,8 +403,9 @@ public abstract class AbstractService implements IService, IMonitorable {
      *   <li>Example: {@code catch(IOException e) { log.debug("Retry {}/{}", attempt, max); }}</li>
      * </ul>
      * 
-     * <strong>Stack Traces:</strong> Exception stack traces are always logged at DEBUG level
-     * by AbstractService. Services should never log exceptions with {@code log.error(..., e)}.
+     * <strong>Stack Traces:</strong> AbstractService logs the exception or error that ends the
+     * service at ERROR level with its stack trace. Services should never log it again with
+     * {@code log.error(..., e)}.
      *
      * @throws InterruptedException if the service thread is interrupted.
      */
