@@ -392,7 +392,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
   - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
   - Explicit runId configuration
 - `WARN`: Transient errors (always with `recordError()` call) - duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings
-- `ERROR`: Fatal initialization/runtime errors (schema setup failed, discovery timeout, indexing failed)
+- `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
 - `DEBUG`: All operational details (batch processing, retries, interrupts, shutdown sequences, drain operations)
 
 **AbstractService (automatic lifecycle logs):**
@@ -447,6 +447,7 @@ recordError("SEND_FAILED", "Queue full", "Queue: " + queueName);
 
 // Good - Fatal error of a resource (ERROR) - known cause, no stack trace
 log.error("Cannot initialize database connection pool for '{}'", dbName);
+recordError("POOL_INIT_FAILED", "Cannot initialize database connection pool", "Database: " + dbName);
 throw new OperationalException("Cannot initialize database connection pool for '" + dbName + "'", e);
 
 // Good - Bug detection (ERROR) - unexpected, WITH stack trace
