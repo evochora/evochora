@@ -173,7 +173,15 @@ public class DlqComponent<T extends Message, ACK> {
         } catch (InterruptedException e) {
             // Propagate interruption
             throw e;
+        } catch (OperationalException e) {
+            // The DLQ said what is known: it is full or its broker fails
+            throw new OperationalException("Failed to move batch " + storageKey + " to the dead letter queue", e);
+        } catch (RuntimeException e) {
+            // A failure of this code is a defect and passes on as it is
+            throw e;
         } catch (Exception e) {
+            // The retry tracker declares checked exceptions: a failure of the store it keeps its
+            // counts in, which is a known cause like any failure of the surroundings
             throw new OperationalException("Failed to move batch " + storageKey + " to the dead letter queue", e);
         }
     }

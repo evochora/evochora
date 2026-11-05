@@ -184,7 +184,7 @@ class DlqComponentTest {
         IRetryTracker tracker = mock(IRetryTracker.class);
         @SuppressWarnings("unchecked")
         IDeadLetterQueueResource<BatchInfo> dlq = mock(IDeadLetterQueueResource.class);
-        IllegalStateException full = new IllegalStateException("Queue may be full");
+        OperationalException full = new OperationalException("Queue may be full");
         doThrow(full).when(dlq).put(any());
         DlqComponent<BatchInfo, String> component = new DlqComponent<>(tracker, dlq, 3, "DummyIndexer");
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
@@ -195,6 +195,23 @@ class DlqComponentTest {
             .isInstanceOf(OperationalException.class)
             .hasMessageContaining("batch-001")
             .hasCause(full);
+    }
+
+    /** A failure of the component's own code is a defect and passes on as it is. */
+    @Test
+    void testMoveToDlq_DefectIsNotTakenForAKnownCause() throws Exception {
+        IRetryTracker tracker = mock(IRetryTracker.class);
+        IllegalStateException defect = new IllegalStateException("defect");
+        when(tracker.getRetryCount("batch-001")).thenThrow(defect);
+        @SuppressWarnings("unchecked")
+        IDeadLetterQueueResource<BatchInfo> dlq = mock(IDeadLetterQueueResource.class);
+        DlqComponent<BatchInfo, String> component = new DlqComponent<>(tracker, dlq, 3, "DummyIndexer");
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            BatchInfo.newBuilder().setSimulationRunId("test-run").setStoragePath("batch-001").build(),
+            System.currentTimeMillis(), "msg-001", "test-consumer", "ack-001");
+
+        assertThatThrownBy(() -> component.moveToDlq(message, new RuntimeException("Test error"), "batch-001"))
+            .isSameAs(defect);
     }
 
     @Test

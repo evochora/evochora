@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,7 +137,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
             totalReceived.incrementAndGet();
         } else {
             droppedMessageCount.incrementAndGet();
-            throw new IllegalStateException("Failed to add message to Dead Letter Queue '" +
+            throw new OperationalException("Failed to add message to Dead Letter Queue '" +
                     getResourceName() + "' within timeout. Queue may be full. " +
                     "Total dropped: " + droppedMessageCount.get());
         }
@@ -175,7 +176,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
         }
         if (dropped > 0) {
             droppedMessageCount.addAndGet(dropped);
-            throw new IllegalStateException("Failed to add " + dropped + " messages to Dead Letter Queue '" +
+            throw new OperationalException("Failed to add " + dropped + " messages to Dead Letter Queue '" +
                     getResourceName() + "'. Total dropped: " + droppedMessageCount.get());
         }
     }
