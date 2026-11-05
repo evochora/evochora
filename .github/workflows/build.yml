@@ -443,8 +443,9 @@ jobs:
             org.opencontainers.image.version=${{ needs.package.outputs.tag }}
           load: true
           tags: evochora-start-test
+          # Read only: an export replaces the whole cache entry, and one of amd64 alone would leave
+          # the build for both architectures below without arm64's layers. That build writes it.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Start the image
         run: docker run --rm evochora-start-test bin/evochora --help
