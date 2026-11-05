@@ -826,12 +826,7 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     protected void closeConnectionPool() {
         if (dataSource != null && !dataSource.isClosed()) {
-            try {
-                dataSource.close();
-            } catch (RuntimeException e) {
-                log.warn("H2 database '{}' connection pool close failed: {}", getResourceName(), e.getMessage());
-                throw e;
-            }
+            dataSource.close();
             log.debug("H2 database '{}' connection pool closed", getResourceName());
         }
     }
