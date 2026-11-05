@@ -191,6 +191,48 @@ public class AbstractServiceTest {
         assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 
+    /**
+     * Makes the stop of one service fail: throws when that stop announces its end, the last thing
+     * {@code stop()} does once the service's thread has ended.
+     */
+    private static class StopFailureInjector extends TurboFilter {
+        final LinkageError stopFailure = new LinkageError("test-induced stop failure");
+        private final String serviceClass;
+
+        StopFailureInjector(String serviceClass) {
+            this.serviceClass = serviceClass;
+        }
+
+        @Override
+        public FilterReply decide(Marker marker, Logger logger, Level level, String format,
+                                  Object[] params, Throwable t) {
+            if ("{} stopped".equals(format) && params != null && params.length == 1
+                    && serviceClass.equals(params[0])) {
+                throw stopFailure;
+            }
+            return FilterReply.NEUTRAL;
+        }
+    }
+
+    @Test
+    void aStopThatFailsAfterAFailedStartTravelsWithTheFailureOfTheStart() throws InterruptedException {
+        AnnouncementFailingService service = new AnnouncementFailingService("announcement-and-stop-failing", config, resources);
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        StopFailureInjector injector = new StopFailureInjector(AnnouncementFailingService.class.getSimpleName());
+        injector.start();
+        loggerContext.getTurboFilterList().add(0, injector);
+        try {
+            RuntimeException thrown = assertThrows(RuntimeException.class, service::start);
+
+            assertSame(service.announcementFailure, thrown, "the failure of the start is the one passed on");
+            assertArrayEquals(new Throwable[] {injector.stopFailure}, thrown.getSuppressed(),
+                    "the failure of the stop that followed travels with it");
+            assertTrue(service.runEnded.await(5, TimeUnit.SECONDS), "the thread the start had started has ended");
+        } finally {
+            loggerContext.getTurboFilterList().remove(injector);
+        }
+    }
+
     @Test
     void anExceptionFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
         assertTheDefectIsLoggedAndStopsTheServiceWithError(new IllegalStateException("test-induced defect"));

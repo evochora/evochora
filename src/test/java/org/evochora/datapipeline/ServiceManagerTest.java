@@ -172,6 +172,29 @@ public class ServiceManagerTest {
         }
     }
 
+    /** A resource whose construction fails with a cause wrapped in a failure of its own. */
+    public static class ConstructionFailingResource {
+        public ConstructionFailingResource(String name, Config options) {
+            throw new IllegalStateException("cannot build " + name,
+                    new java.io.IOException("test-induced root cause"));
+        }
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to instantiate resource 'broken': test-induced root cause\\. Skipping this resource\\.")
+    void aResourceThatCannotBeBuiltIsSkippedWithItsRootCauseAndTheOthersAreBuilt() {
+        Config config = ConfigFactory.parseString("""
+            pipeline.resources.broken.className = "org.evochora.datapipeline.ServiceManagerTest$ConstructionFailingResource"
+        """).withFallback(createTestConfig(false));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            assertEquals(3, sm.getMetrics().get("resources_total"), "the three resources that can be built are there");
+        } finally {
+            sm.shutdown();
+        }
+    }
+
     @Test
     void testInitialization() {
         ServiceManager serviceManager = new ServiceManager(createTestConfig(false));
