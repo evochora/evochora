@@ -649,23 +649,33 @@ tasks.named("check") {
     dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
 }
 
-// The sources of the commit a distribution is built from, which every distribution carries under
-// src/: the installation directory holds the runs made with it, and with the sources beside them
-// runs, application and the code that made them are published as one. GIT_REVISION among them
-// names the revision, so that a build made from them records it, as BuildRevisionSource reads it.
-// They are the sources of the last commit; a build with changes not yet committed leaves those
-// out, and its revision says "-dirty". Archiving needs a git checkout, and without one git stops
-// the task.
+// The sources of the commit a platform distribution is built from, which it carries under src/:
+// the installation directory holds the runs made with it, and with the sources beside them runs,
+// application and the code that made them are published as one. GIT_REVISION among them names
+// the revision, so that a build made from them records it, as BuildRevisionSource reads it. They
+// are the sources of the last commit; a build with changes not yet committed leaves those out,
+// and its revision says "-dirty".
+// Archiving needs the project to be a git checkout of its own. In a directory without one, git
+// would take the repository of an enclosing directory, such as an installation directory kept
+// under git, and pack its sources under Evochora's revision; the task stops there instead.
 val sourceArchive = tasks.register<Exec>("sourceArchive") {
     group = "distribution"
-    description = "Packs the sources of the commit HEAD for the src/ directory of the distributions"
+    description = "Packs the sources of the commit HEAD for the src/ directory of the platform distributions"
     val archive = layout.buildDirectory.file("sources/evochora-sources.tar").get().asFile
+    // In a worktree .git is a file, in a clone a directory
+    val checkout = rootProject.layout.projectDirectory.file(".git").asFile
     inputs.property("revision", buildRevision)
     outputs.file(archive)
     workingDir = rootProject.projectDir
     commandLine("git", "archive", "--format=tar", "--add-virtual-file=GIT_REVISION:$buildRevision",
         "--output=$archive", "HEAD")
-    doFirst { archive.parentFile.mkdirs() }
+    doFirst {
+        if (!checkout.exists()) {
+            throw GradleException("Platform distributions carry the sources of the git commit they are built " +
+                "from, and ${checkout.parentFile} is no git checkout of its own. Build them from a clone of Evochora.")
+        }
+        archive.parentFile.mkdirs()
+    }
 }
 
 // Unpacked once, as the JRE is, so that the archives take files that keep the permissions git
@@ -677,12 +687,6 @@ val unpackSources = tasks.register<Sync>("unpackSources") {
 
 // What every distribution carries beside its start scripts and its libraries
 val distributionContents = copySpec {
-    into("src") {
-        from(unpackSources)
-        // Archives get fixed permissions; a file git keeps executable, gradlew among them, stays
-        // executable in the archive
-        eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
-    }
     from("assembly") {
         into("assembly")
     }
@@ -821,32 +825,55 @@ targetPlatforms.forEach { platform ->
         outputDir = layout.buildDirectory.dir("platform-scripts/${platform.classifier}").get().asFile
     }
 
-    distributions.create(platform.distributionName) {
-        distributionBaseName = "evochora"
-        distributionClassifier = platform.classifier
-        contents {
-            with(distributionContents)
-            // What Gradle takes into the main distribution by convention, plugins/ among it
-            from("src/main/dist")
-            into("bin") {
-                from(startScripts)
-                filePermissions { unix("rwxr-xr-x") }
-            }
-            into("lib") {
-                from(tasks.jar)
-                from(platformLibraries)
-            }
-            into("jre") {
-                from(unpackJre)
-                // Archives get fixed permissions, which would leave the JRE's programs unable to
-                // run; a file the unpacked JRE can execute is executable in the archive as well
-                eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
-            }
-            into("licenses") { from(javaRuntimeNotice) }
+    // What the platform's distribution holds. It is built as an archive of its own rather than as
+    // a distribution of the plugin, whose archives assemble and with it build would take along: an
+    // archive needs the runtime of its platform downloaded and a git checkout for its sources, and
+    // building the code needs neither.
+    val contents = copySpec {
+        with(distributionContents)
+        into("src") {
+            from(unpackSources)
+            // Archives get fixed permissions; a file git keeps executable, gradlew among them,
+            // stays executable in the archive
+            eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
         }
+        // What Gradle takes into the main distribution by convention, plugins/ among it
+        from("src/main/dist")
+        into("bin") {
+            from(startScripts)
+            filePermissions { unix("rwxr-xr-x") }
+        }
+        into("lib") {
+            from(tasks.jar)
+            from(platformLibraries)
+        }
+        into("jre") {
+            from(unpackJre)
+            // Archives get fixed permissions, which would leave the JRE's programs unable to
+            // run; a file the unpacked JRE can execute is executable in the archive as well
+            eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+        }
+        into("licenses") { from(javaRuntimeNotice) }
     }
-    tasks.named<Zip>("${platform.distributionName}DistZip") { enabled = platform.zip }
-    tasks.named<Tar>("${platform.distributionName}DistTar") { enabled = !platform.zip }
+    val configureArchive: AbstractArchiveTask.() -> Unit = {
+        group = "distribution"
+        description = "Builds the platform distribution for ${platform.classifier} under build/distributions"
+        archiveBaseName = "evochora"
+        archiveClassifier = platform.classifier
+        destinationDirectory = layout.buildDirectory.dir("distributions")
+        into("evochora-${project.version}-${platform.classifier}") { with(contents) }
+    }
+    if (platform.zip) {
+        tasks.register<Zip>("${platform.distributionName}DistZip", configureArchive)
+    } else {
+        tasks.register<Tar>("${platform.distributionName}DistTar", configureArchive)
+    }
+    tasks.register<Sync>("install${platform.taskSuffix}Dist") {
+        group = "distribution"
+        description = "Installs the platform distribution for ${platform.classifier} under build/install"
+        with(contents)
+        into(layout.buildDirectory.dir("install/evochora-${platform.classifier}"))
+    }
 }
 
 // Builds the archive of every platform distribution, the ones the CI starts, the image is built
