@@ -85,7 +85,8 @@ public abstract class AbstractService implements IService, IMonitorable {
     /**
      * Makes the switch to {@link ShutdownPhase#PROCESSING} and the interrupt {@link #stop()} sends
      * to a service in {@link ShutdownPhase#WAITING} exclusive of each other: a stop that has seen
-     * WAITING delivers its interrupt before the service can switch, and the switch clears it.
+     * WAITING delivers its interrupt before the service can switch, and the switch clears it. A
+     * stop that has seen PROCESSING sends none; the switch back to WAITING delivers it instead.
      */
     private final Object shutdownPhaseLock = new Object();
     
@@ -172,7 +173,8 @@ public abstract class AbstractService implements IService, IMonitorable {
             // PHASE-AWARE GRACEFUL SHUTDOWN
             // ============================================================
             // 1. Signal stop request + wake paused threads
-            // 2. If WAITING → immediate interrupt (breaks blocking receive/poll)
+            // 2. If WAITING → immediate interrupt (breaks blocking receive/poll); if PROCESSING,
+            //    the service's switch back to WAITING delivers the interrupt (setShutdownPhase)
             // 3. Wait for thread termination (full timeout as grace period)
             // 4. If still alive → force interrupt + WARN (regardless of phase)
             // 5. If still alive → ERROR state
@@ -195,7 +197,8 @@ public abstract class AbstractService implements IService, IMonitorable {
                     // WAITING services can be interrupted immediately — they are blocked on
                     // receive/poll calls that respond to interrupt without data corruption.
                     // PROCESSING services are mid-write to storage/database — interrupt would
-                    // corrupt NIO FileChannels via ClosedByInterruptException.
+                    // corrupt NIO FileChannels via ClosedByInterruptException. They get the
+                    // interrupt when they switch back to WAITING, in setShutdownPhase.
                     synchronized (shutdownPhaseLock) {
                         if (currentShutdownPhase == ShutdownPhase.WAITING) {
                             serviceThread.interrupt();
