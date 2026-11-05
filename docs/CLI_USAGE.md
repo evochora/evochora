@@ -15,6 +15,19 @@ For day-to-day usage (including production deployments and release archives), th
 - On Linux/macOS: `bin/evochora`
 - On Windows: `bin\evochora.bat`
 
+### Environment Variables
+
+The start script reads two environment variables:
+
+- **`EVOCHORA_OPTS`**: options for the Java virtual machine, such as the maximum heap. The default heap is 8 GB:
+  ```bash
+  EVOCHORA_OPTS="-Xmx16g" bin/evochora node run
+  ```
+- **`EVOCHORA_JAVA_HOME`**: the installation directory of a Java 25 or newer to run Evochora on, instead of the Java the archive brings:
+  ```bash
+  EVOCHORA_JAVA_HOME=/opt/jdk-25 bin/evochora node run
+  ```
+
 ---
 
 ## Getting Help

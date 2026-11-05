@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
+import org.h2.api.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -454,15 +455,21 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 stmt.execute("SHUTDOWN");
                 log.debug("H2 topic '{}' shutdown command executed", getResourceName());
             } catch (SQLException e) {
-                // H2 error code 90121 = "Database is already closed"
-                // This is expected for in-memory databases without DB_CLOSE_ON_EXIT=FALSE
-                // or when all connections have been released, triggering auto-close
-                if (e.getErrorCode() == 90121) {
-                    log.debug("H2 topic '{}' already closed (in-memory or auto-closed)", getResourceName());
+                // A database already shut down takes no further statement; one closed by a failure
+                // of its store is reported, as H2Database does
+                if (e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN) {
+                    log.debug("H2 topic '{}' already closed", getResourceName());
+                } else if (e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED) {
+                    log.warn("H2 topic '{}' was closed by a failure of its store: {}",
+                        getResourceName(), e.getMessage());
+                    recordError("DATABASE_CLOSED_BY_FAILURE", "Database closed by a failure of its store",
+                        "Topic: " + getResourceName() + ", Error: " + e.getMessage());
                 } else {
-                    // Unexpected error - log warning but continue with pool close
+                    // Unexpected error - log warning, record it, and continue with pool close
                     log.warn("H2 topic '{}' shutdown command failed: {}",
                         getResourceName(), e.getMessage());
+                    recordError("SHUTDOWN_FAILED", "SHUTDOWN failed",
+                        "Topic: " + getResourceName() + ", Error: " + e.getMessage());
                 }
             }
 

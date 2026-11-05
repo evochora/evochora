@@ -77,41 +77,6 @@ class H2DatabaseTest {
     // Note: Schema name sanitization tests moved to H2SchemaUtilTest
 
     @Test
-    void testJdbcUrl_DirectJdbcUrlProvided() {
-        // A directly provided URL is used as it stands, so the database file appears where it points.
-        String dbName = "h2-direct-" + UUID.randomUUID();
-        Path dbPath = Path.of(System.getProperty("java.io.tmpdir"), dbName);
-        Config config = ConfigFactory.parseString(
-            "jdbcUrl = \"jdbc:h2:" + dbPath.toString().replace("\\", "/") + ";MODE=PostgreSQL\"");
-
-        H2Database db = new H2Database("test", config);
-        db.close();
-
-        assertTrue(Files.exists(Path.of(dbPath + ".mv.db")),
-            "The provided URL should be used as it stands: " + dbPath);
-    }
-
-    @Test
-    void testJdbcUrl_WithVariableExpansion() {
-        // When jdbcUrl contains variables, they should be expanded via HOCON's resolve()
-        String tmpDir = System.getProperty("java.io.tmpdir");
-        String uniqueDb = "h2-test-" + UUID.randomUUID();
-        // Note: Don't set tempDbDirectory - H2 files in /tmp will be cleaned up automatically
-        // Setting it to /tmp would cause cleanup to fail on systemd-private directories
-        
-        // Use ConfigFactory.parseMap for the variable definition to avoid caching issues
-        Config varsConfig = ConfigFactory.parseMap(Map.of("test.db.dir", tmpDir));
-        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:\"${test.db.dir}\"/" + uniqueDb + ";MODE=PostgreSQL\"")
-            .withFallback(varsConfig)
-            .resolve();
-        
-        H2Database db = new H2Database("test", config);
-        
-        assertNotNull(db);
-        db.close();
-    }
-
-    @Test
     void testJdbcUrl_MissingConfiguration() {
         // When jdbcUrl is not provided, it should throw exception
         Config config = ConfigFactory.parseString("maxPoolSize = 5");

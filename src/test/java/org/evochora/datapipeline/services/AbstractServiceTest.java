@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
@@ -80,15 +81,21 @@ public class AbstractServiceTest {
     /** A service whose loop throws, as a defect in a service would. */
     private static class FailingService extends AbstractService {
         private final CountDownLatch terminated = new CountDownLatch(1);
+        private final Throwable defect;
 
-        protected FailingService(String name, Config options, Map<String, List<IResource>> resources) {
+        protected FailingService(String name, Config options, Map<String, List<IResource>> resources,
+                                 Throwable defect) {
             super(name, options, resources);
+            this.defect = defect;
         }
 
         @Override
         protected void run() {
             try {
-                throw new IllegalStateException("test-induced defect");
+                if (defect instanceof Error error) {
+                    throw error;
+                }
+                throw (RuntimeException) defect;
             } finally {
                 terminated.countDown();
             }
@@ -121,9 +128,123 @@ public class AbstractServiceTest {
         }
     }
 
+    /** A service whose thread runs until stopped and whose start announcement fails. */
+    private static class AnnouncementFailingService extends AbstractService {
+        private final CountDownLatch runEnded = new CountDownLatch(1);
+        private final RuntimeException announcementFailure = new IllegalStateException("test-induced defect");
+
+        protected AnnouncementFailingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            try {
+                while (!isStopRequested()) {
+                    Thread.sleep(10);
+                }
+            } finally {
+                runEnded.countDown();
+            }
+        }
+
+        @Override
+        protected void logStarted() {
+            throw announcementFailure;
+        }
+    }
+
+    /** The same service, with a start announcement that fails with an Error. */
+    private static class AnnouncementErrorFailingService extends AnnouncementFailingService {
+        private final LinkageError linkageFailure = new LinkageError("test-induced defect");
+
+        protected AnnouncementErrorFailingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void logStarted() {
+            throw linkageFailure;
+        }
+    }
+
+    @Test
+    void aStartThatFailsWithAnErrorAfterItsThreadStartedLeavesNoThreadRunning() throws InterruptedException {
+        AnnouncementErrorFailingService service = new AnnouncementErrorFailingService("announcement-error-failing", config, resources);
+
+        LinkageError thrown = assertThrows(LinkageError.class, service::start);
+
+        assertSame(service.linkageFailure, thrown, "the failure is passed on unchanged");
+        AnnouncementFailingService worker = service;
+        assertTrue(worker.runEnded.await(5, TimeUnit.SECONDS), "the thread the start had started has ended");
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
+    @Test
+    void aStartThatFailsAfterItsThreadStartedLeavesNoThreadRunning() throws InterruptedException {
+        AnnouncementFailingService service = new AnnouncementFailingService("announcement-failing", config, resources);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class, service::start);
+
+        assertSame(service.announcementFailure, thrown, "the failure is passed on unchanged");
+        assertTrue(service.runEnded.await(5, TimeUnit.SECONDS), "the thread the start had started has ended");
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
+    /**
+     * Makes the stop of one service fail: throws when that stop announces its end, the last thing
+     * {@code stop()} does once the service's thread has ended.
+     */
+    private static class StopFailureInjector extends TurboFilter {
+        final LinkageError stopFailure = new LinkageError("test-induced stop failure");
+        private final String serviceClass;
+
+        StopFailureInjector(String serviceClass) {
+            this.serviceClass = serviceClass;
+        }
+
+        @Override
+        public FilterReply decide(Marker marker, Logger logger, Level level, String format,
+                                  Object[] params, Throwable t) {
+            if ("{} stopped".equals(format) && params != null && params.length == 1
+                    && serviceClass.equals(params[0])) {
+                throw stopFailure;
+            }
+            return FilterReply.NEUTRAL;
+        }
+    }
+
+    @Test
+    void aStopThatFailsAfterAFailedStartTravelsWithTheFailureOfTheStart() throws InterruptedException {
+        AnnouncementFailingService service = new AnnouncementFailingService("announcement-and-stop-failing", config, resources);
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        StopFailureInjector injector = new StopFailureInjector(AnnouncementFailingService.class.getSimpleName());
+        injector.start();
+        loggerContext.getTurboFilterList().add(0, injector);
+        try {
+            RuntimeException thrown = assertThrows(RuntimeException.class, service::start);
+
+            assertSame(service.announcementFailure, thrown, "the failure of the start is the one passed on");
+            assertArrayEquals(new Throwable[] {injector.stopFailure}, thrown.getSuppressed(),
+                    "the failure of the stop that followed travels with it");
+            assertTrue(service.runEnded.await(5, TimeUnit.SECONDS), "the thread the start had started has ended");
+        } finally {
+            loggerContext.getTurboFilterList().remove(injector);
+        }
+    }
+
     @Test
     void anExceptionFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
-        FailingService service = new FailingService("failing-service", config, resources);
+        assertTheDefectIsLoggedAndStopsTheServiceWithError(new IllegalStateException("test-induced defect"));
+    }
+
+    @Test
+    void anErrorFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
+        assertTheDefectIsLoggedAndStopsTheServiceWithError(new LinkageError("test-induced defect"));
+    }
+
+    private void assertTheDefectIsLoggedAndStopsTheServiceWithError(Throwable defect) throws InterruptedException {
+        FailingService service = new FailingService("failing-service", config, resources, defect);
         LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
         ErrorCallRecorder recorder = new ErrorCallRecorder();
         recorder.start();
@@ -138,7 +259,14 @@ public class AbstractServiceTest {
             // line carries the trace that finds it - at ERROR, where a production run sees it.
             assertEquals("{} stopped with ERROR", recorder.message);
             assertNotNull(recorder.throwable, "the stack trace is part of the ERROR line");
-            assertEquals("test-induced defect", recorder.throwable.getMessage());
+            assertSame(defect, recorder.throwable, "the ERROR line carries the trace of the defect itself");
+
+            // A service in ERROR reports why: the failure that ended it
+            assertEquals(1, service.getErrors().size());
+            OperationalError failure = service.getErrors().get(0);
+            assertEquals(OperationalError.SERVICE_FAILED, failure.errorType());
+            assertTrue(failure.message().contains("test-induced defect"), failure.message());
+            assertEquals(defect.getClass().getName(), failure.details());
         } finally {
             loggerContext.getTurboFilterList().remove(recorder);
         }
@@ -284,7 +412,6 @@ public class AbstractServiceTest {
             runningLatch.countDown();
             setShutdownPhase(ShutdownPhase.PROCESSING);
             processingLatch.countDown();
-            Thread.interrupted();
 
             // Hold the phase until a stop is requested, so that a test observes it without having
             // to catch a window of its own duration.
@@ -331,6 +458,45 @@ public class AbstractServiceTest {
         assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 
+    /**
+     * A service that stays in PROCESSING until a stop is requested, then switches back to WAITING
+     * and waits in a way that checks no stop request, as a wait for data that never comes does.
+     */
+    private static class StopDuringProcessingService extends AbstractService {
+        final CountDownLatch processingLatch = new CountDownLatch(1);
+
+        StopDuringProcessingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            processingLatch.countDown();
+            while (!isStopRequested()) {
+                Thread.sleep(5);
+            }
+            setShutdownPhase(ShutdownPhase.WAITING);
+            new CountDownLatch(1).await();
+        }
+    }
+
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aStopRequestedWhileProcessingInterruptsTheServiceWhenItWaitsAgain() throws InterruptedException {
+        // The stop finds the service processing and leaves it alone; afterwards the service waits
+        // for ever and its shutdown timeout is an hour. Only the interrupt that the switch back to
+        // WAITING delivers can end it: that stop() returns at all is the proof.
+        Config longTimeout = config.withValue("shutdownTimeout", ConfigValueFactory.fromAnyRef(3600));
+        StopDuringProcessingService service = new StopDuringProcessingService("stop-during-processing", longTimeout, resources);
+        service.start();
+        assertTrue(service.processingLatch.await(2, TimeUnit.SECONDS), "Service should be processing");
+
+        service.stop();
+
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
     @Test
     void processingPhaseServiceGetsGracePeriod() throws InterruptedException {
         // The service enters PROCESSING, stays there until the stop request, and then writes for
@@ -346,6 +512,38 @@ public class AbstractServiceTest {
         // Service should NOT have been interrupted while in PROCESSING
         assertFalse(service.wasInterruptedDuringProcessing(),
             "Service should not be interrupted during PROCESSING phase");
+    }
+
+    /**
+     * A service that receives an interrupt while still WAITING and then switches to PROCESSING,
+     * as a stop's interrupt can arrive just after the service has taken its batch.
+     */
+    private static class InterruptedBeforeProcessingService extends AbstractService {
+        private final CountDownLatch done = new CountDownLatch(1);
+        private final AtomicBoolean interruptedWhileProcessing = new AtomicBoolean(true);
+
+        protected InterruptedBeforeProcessingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() {
+            Thread.currentThread().interrupt();
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            interruptedWhileProcessing.set(Thread.currentThread().isInterrupted());
+            setShutdownPhase(ShutdownPhase.WAITING);
+            done.countDown();
+        }
+    }
+
+    @Test
+    void anInterruptMeantForWaitingDoesNotReachProcessing() throws InterruptedException {
+        InterruptedBeforeProcessingService service = new InterruptedBeforeProcessingService("switching-svc", config, resources);
+        service.start();
+        assertTrue(service.done.await(2, TimeUnit.SECONDS), "Service should have switched phases");
+
+        assertFalse(service.interruptedWhileProcessing.get(),
+            "the switch to PROCESSING clears an interrupt sent while the service was WAITING");
     }
 
     @Test

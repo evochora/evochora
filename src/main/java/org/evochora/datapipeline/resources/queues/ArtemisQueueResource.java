@@ -37,13 +37,13 @@ import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
-import org.evochora.datapipeline.utils.JmsUtils;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -487,7 +487,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             sendMessage(data);
             throughputCounter.recordCount();
         } catch (JMSException e) {
-            if (JmsUtils.isInterruptedException(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("put() interrupted");
             }
             log.error("Failed to put message to queue '{}'", queueName);
@@ -508,7 +508,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             throughputCounter.recordCount();
             return true;
         } catch (JMSException e) {
-            if (JmsUtils.isInterruptedException(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("offer() interrupted");
             }
             return false;
@@ -656,7 +656,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     return new ArtemisStreamingBatch(Collections.emptyList()); // Timeout
                 }
             } catch (JMSException e) {
-                if (JmsUtils.isInterruptedException(e)) {
+                if (CauseChain.isInterruptInduced(e)) {
                     throw new InterruptedException("receiveBatch() interrupted acquiring token");
                 }
                 log.warn("Failed to acquire drain token on queue '{}'", queueName);
@@ -690,7 +690,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     }
                     messages.add(first);
                 } catch (JMSException e) {
-                    if (JmsUtils.isInterruptedException(e)) {
+                    if (CauseChain.isInterruptInduced(e)) {
                         throw new InterruptedException("receiveBatch() interrupted waiting for data");
                     }
                     log.warn("Failed to receive from queue '{}'", queueName);
@@ -743,7 +743,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 messages.add(msg);
             }
         } catch (JMSException e) {
-            if (JmsUtils.isInterruptedException(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("receiveAvailable() interrupted draining the queue");
             }
             log.warn("Failed during non-blocking receive on queue '{}' (received {} before error): {}",
@@ -815,16 +815,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Walks the cause chain looking for typical Artemis shutdown indicators.
      */
     private static boolean isSessionClosing(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException) {
-                return true;
-            }
-            String msg = current.getMessage();
-            if (msg != null && (msg.contains("closed") || msg.contains("destroyed"))) {
-                return true;
-            }
-        }
-        return false;
+        return CauseChain.links(t).stream().anyMatch(link ->
+                link instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException
+                        || link.getMessage() != null
+                                && (link.getMessage().contains("closed") || link.getMessage().contains("destroyed")));
     }
 
     // =========================================================================

@@ -240,12 +240,16 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      * <strong>Note:</strong> InMemoryBlockingQueue holds all items on heap regardless,
      * so no streaming heap benefit applies here. The streaming benefit is specific to
      * off-heap brokers like Artemis.
+     * <p>
+     * An interrupt during the coalescing delay ends only the delay: the elements already taken
+     * are returned, since this queue cannot deliver them again, and the interrupt flag is set
+     * again for the caller.
      *
      * @param maxSize maximum number of elements to receive
      * @param timeout maximum time to wait for at least one element
      * @param unit    time unit for the timeout parameter
      * @return a {@link StreamingBatch} containing 0 to {@code maxSize} elements (never null)
-     * @throws InterruptedException if interrupted while waiting
+     * @throws InterruptedException if interrupted while waiting for the first element
      */
     @Override
     public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
@@ -271,7 +275,11 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             // ADAPTIVE COALESCING: Only wait if queue is STILL empty (producer is slow)
             boolean queueStillEmpty = queue.isEmpty();
             if (coalescingDelayMs > 0 && queueStillEmpty) {
-                Thread.sleep(coalescingDelayMs);
+                try {
+                    Thread.sleep(coalescingDelayMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
             // Drain remaining available items

@@ -15,7 +15,9 @@ import org.slf4j.LoggerFactory;
  * {@code revision}, the commit hash suffixed with {@link #DIRTY_SUFFIX} when the working tree
  * carried uncommitted changes. A build made outside a git checkout, from a source archive for instance,
  * writes {@link #UNKNOWN}; so does a classpath without the file. The key {@code version} holds the
- * release tag the build was made for, or {@code latest} for any other build.
+ * release tag the build was made for, or {@code latest} for any other build. The key
+ * {@code requiredJava} holds the Java version the code is compiled for; the entry point
+ * {@code JavaVersionGuard} checks it against the running Java, and this class does not read it.
  * <p>
  * The revision is written into the metadata of every run, because a run is reproduced exactly
  * only by the build that wrote it. Two revisions that are equal and not {@link #UNKNOWN} name

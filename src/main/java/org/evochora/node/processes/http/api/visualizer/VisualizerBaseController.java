@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.resources.database.OrganismNotFoundExceptio
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.node.processes.http.AbstractController;
 import org.evochora.node.spi.ServiceRegistry;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -146,9 +147,7 @@ public abstract class VisualizerBaseController extends AbstractController {
      */
     protected static String describeCauses(final Throwable throwable) {
         final StringBuilder description = new StringBuilder();
-        final java.util.Set<Throwable> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-
-        for (Throwable current = throwable; current != null && seen.add(current); current = current.getCause()) {
+        for (final Throwable current : CauseChain.links(throwable)) {
             if (description.length() > 0) {
                 description.append(" <- ");
             }

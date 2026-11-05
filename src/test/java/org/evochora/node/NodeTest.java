@@ -107,6 +107,25 @@ class NodeTest {
     }
 
     @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to parse process 'no-class': .*className.*\\. Skipping this process\\.")
+    @DisplayName("Should skip a process whose definition cannot be read")
+    void constructor_shouldSkipAProcessWhoseDefinitionCannotBeRead() {
+        Config config = ConfigFactory.parseString("""
+            node {
+              processes {
+                no-class {
+                  options {}
+                }
+              }
+            }
+            """);
+
+        testNode = new Node(config);
+
+        assertThat(testNode).isNotNull();
+    }
+
+    @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process': .*. Skipping this process.")
     @DisplayName("Should handle invalid process class name")
     void constructor_shouldHandleInvalidProcessClassName() {

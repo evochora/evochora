@@ -69,13 +69,11 @@ The platform is extensible at every layer: the compiler pipeline, the VM instruc
 
 ## Quick Start
 
-**Requirements:** Java 25 (JRE or JDK)
-
-Download and unpack the latest distribution from the [GitHub Releases page](https://github.com/evochora/evochora/releases).
+Download the archive for your platform (Windows, macOS, Linux) from the [GitHub Releases page](https://github.com/evochora/evochora/releases), unpack it, and start the node from the unpacked directory:
 
 ```bash
-cd evochora-<version>
-bin/evochora node run
+cd evochora-<version>-<platform>
+bin/evochora node run          # Windows: bin\evochora.bat node run
 ```
 
 Open the visualizer in your browser: `http://localhost:8081/visualizer/`
@@ -209,6 +207,21 @@ Evochora is extensible at multiple levels through Java plugin interfaces:
 - **Analytics plugins** — Extend `AbstractAnalyticsPlugin` to define custom metrics exported as Parquet. Built-in plugins cover population and demography, genomes and lineage, mutation, instruction usage, and environment composition.
 - **Compiler extensions** — Each compiler phase is extensible via handler registries (directives, IR converters, layout, linking, emission).
 - **VM instructions** — Add new instructions to the ISA via the instruction registry.
+
+A plugin is built against the jars of a distribution and put into its `plugins/` directory, whose
+jars the start scripts put on the classpath after Evochora's own; the configuration then names the
+plugin by its class name. For an environment plugin in `MyPlugin.java`, with the JDK of the Java
+version Evochora needs:
+
+```bash
+javac -cp "lib/*" -d classes MyPlugin.java
+jar --create --file plugins/my-plugin.jar -C classes .
+```
+
+and, in the configuration, an entry in `pipeline.services.simulation-engine.options.plugins` with
+`className` set to the plugin's class. In the Docker image the directory is
+`/home/appuser/app/plugins`, for a volume to be mounted on. A plugin that brings a library
+Evochora also has gets Evochora's version of it.
 
 <br>
 

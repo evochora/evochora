@@ -14,6 +14,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
 @Tag("unit")
@@ -47,23 +48,22 @@ class ZstdCodecTest {
         }
 
         @Test
-        @DisplayName("Constructor clamps level to valid range (too low)")
-        void constructorClampsLevelTooLow() {
-            // Act
-            ZstdCodec codec = new ZstdCodec(0);
-
-            // Assert: Level clamped to minimum (1)
-            assertThat(codec.getLevel()).isEqualTo(1);
+        @DisplayName("Constructor rejects a level outside the valid range")
+        void constructorRejectsLevelOutsideRange() {
+            assertThatThrownBy(() -> new ZstdCodec(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("level 0");
+            assertThatThrownBy(() -> new ZstdCodec(25))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("level 25");
         }
 
         @Test
-        @DisplayName("Constructor clamps level to valid range (too high)")
-        void constructorClampsLevelTooHigh() {
-            // Act
-            ZstdCodec codec = new ZstdCodec(25);
-
-            // Assert: Level clamped to maximum (22)
-            assertThat(codec.getLevel()).isEqualTo(22);
+        @DisplayName("Config constructor rejects a configured level outside the valid range")
+        void configConstructorRejectsLevelOutsideRange() {
+            assertThatThrownBy(() -> new ZstdCodec(ConfigFactory.parseString("level = 30")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("level 30");
         }
 
         @Test

@@ -13,9 +13,12 @@ import static org.hamcrest.Matchers.isA;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -23,6 +26,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
@@ -57,6 +61,7 @@ class OrganismControllerDescentTest {
     private static final String BASE = "/visualizer/api/organisms";
 
     private H2Database database;
+    private HeldCatchUps catchUps;
     private OrganismController controller;
     private Javalin app;
     private int port;
@@ -100,11 +105,13 @@ class OrganismControllerDescentTest {
     /** Starts a server with a controller configured as given, replacing a running one. */
     private void serve(final com.typesafe.config.Config options) {
         if (app != null) {
+            catchUps.release();
             app.stop();
             controller.close();
         }
+        catchUps = new HeldCatchUps(database);
         final ServiceRegistry registry = new ServiceRegistry();
-        registry.register(IDatabaseReaderProvider.class, database);
+        registry.register(IDatabaseReaderProvider.class, catchUps);
         controller = new OrganismController(registry, options);
         app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, BASE)).start(0);
         port = app.port();
@@ -112,6 +119,10 @@ class OrganismControllerDescentTest {
 
     @AfterEach
     void tearDown() throws Exception {
+        // A held catch-up would keep the controller's close waiting for it
+        if (catchUps != null) {
+            catchUps.release();
+        }
         if (app != null) {
             app.stop();
         }
@@ -120,6 +131,58 @@ class OrganismControllerDescentTest {
         }
         if (database != null) {
             database.close();
+        }
+    }
+
+    /**
+     * Passes the database's readers on and, while it holds, keeps back every reader that a thread
+     * other than the first request's asks for, until it is released.
+     * <p>
+     * The first request with a root takes a reader of its own and sets a catch-up of the ancestry
+     * index going on the index's thread. Holding that thread's reader lets the request answer
+     * before the catch-up has read anything, whatever the scheduler does. Should the catch-up ever
+     * run in the request itself, nothing is held, and the expectations of the first answer fail.
+     */
+    private static final class HeldCatchUps implements IDatabaseReaderProvider {
+
+        private final IDatabaseReaderProvider database;
+        private final CountDownLatch released = new CountDownLatch(1);
+        private final AtomicReference<Thread> firstRequest = new AtomicReference<>();
+        private volatile boolean holding;
+
+        HeldCatchUps(final IDatabaseReaderProvider database) {
+            this.database = database;
+        }
+
+        /** Holds the catch-ups from the next request on; called before that request. */
+        void hold() {
+            holding = true;
+        }
+
+        /** Lets every held and every later catch-up read. */
+        void release() {
+            released.countDown();
+        }
+
+        @Override
+        public IDatabaseReader createReader(final String runId) throws SQLException {
+            if (holding) {
+                firstRequest.compareAndSet(null, Thread.currentThread());
+                if (firstRequest.get() != Thread.currentThread()) {
+                    try {
+                        released.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new SQLException("Interrupted while the catch-up was held", e);
+                    }
+                }
+            }
+            return database.createReader(runId);
+        }
+
+        @Override
+        public String findLatestRunId() throws SQLException {
+            return database.findLatestRunId();
         }
     }
 
@@ -177,12 +240,14 @@ class OrganismControllerDescentTest {
 
     @Test
     void autoIsLoadingAtFirstAndThenResolvesToTheCommonAncestorOfTheLiving() {
+        catchUps.hold();
         tick(20, "auto").then()
             .statusCode(200)
             .body("descent.state", equalTo("loading"))
             .body("descent.organismsInRun", equalTo(0))
             .body("descent.root", nullValue())
             .body("descent.lines", empty());
+        catchUps.release();
 
         awaitReady(20, "auto").then()
             .statusCode(200)
@@ -221,8 +286,10 @@ class OrganismControllerDescentTest {
         serve(ConfigFactory.parseString("http-cache.organisms { enabled = true, maxAge = 60, useETag = true }"));
 
         // Root as requested, state, version, cursor and newest total of the index, root's death tick
+        catchUps.hold();
         tick(20, "auto").then().statusCode(200)
             .header("ETag", equalTo("\"" + runId + "_20_auto_loading_0_0_0_-\""));
+        catchUps.release();
         final String ready = awaitReady(20, "all").header("ETag");
         assertThat(ready).startsWith("\"" + runId + "_20_all_ready_").endsWith("_5_5_-\"");
         tick(20, "1").then().statusCode(200).header("ETag", endsWith("_5_5_-1\""));

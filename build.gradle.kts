@@ -1,7 +1,16 @@
+import com.github.jk1.license.filter.DependencyFilter
+import com.github.jk1.license.filter.LicenseBundleNormalizer
+import com.github.jk1.license.render.JsonReportRenderer
+import com.github.jk1.license.render.ReportRenderer
+import com.github.jk1.license.render.TextReportRenderer
 import com.google.protobuf.gradle.*
+import groovy.json.JsonSlurper
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
+import java.util.Locale
 import java.util.Properties
 import javax.inject.Inject
+import org.gradle.jvm.application.scripts.TemplateBasedScriptGenerator
 import org.gradle.jvm.application.tasks.CreateStartScripts
 import org.gradle.process.ExecOperations
 
@@ -22,12 +31,24 @@ plugins {
     id("me.champeau.jmh") version "0.7.3"
     id("pmd")
     id("com.github.node-gradle.node") version "7.1.0"
+    id("com.github.jk1.dependency-license-report") version "3.1.5"
 }
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
+}
+
+// JavaVersionGuard, which the start scripts run on a Java other than the runtime a distribution
+// brings before they start Evochora on it, so that an older Java stops with a message naming the
+// Java Evochora needs. An older Java can load the guard only when it is compiled for that older
+// Java: the guard has a source set of its own, compiled for the oldest Java the compiler targets.
+// That the compiler calls this target obsolete is known and not reported.
+val launcher: SourceSet = sourceSets.create("launcher")
+tasks.named<JavaCompile>(launcher.compileJavaTaskName) {
+    options.release = 8
+    options.compilerArgs.add("-Xlint:-options")
 }
 
 group = "org.evochora"
@@ -38,6 +59,19 @@ if (version.toString().endsWith("-SNAPSHOT")) {
     version = version.toString().removeSuffix("-SNAPSHOT")
 }
 
+// The Java runtime the platform distributions bring, as Adoptium names the Temurin release
+val temurinVersion = "25.0.5+8"
+val temurinFeature = temurinVersion.substringBefore('.')
+
+// The libraries with native code that publish, beside a main jar carrying the native library of
+// every platform they support, a jar per platform carrying that platform's alone. The platform
+// distributions take the latter in place of the main jar.
+data class NativeLibrary(val group: String, val module: String, val version: String) {
+    val mainJar: String = "$module-$version.jar"
+}
+val duckdbJdbc = NativeLibrary("org.duckdb", "duckdb_jdbc", "2.0.0.0")
+val zstdJni = NativeLibrary("com.github.luben", "zstd-jni", "1.5.7-24")
+
 repositories {
     mavenCentral()
     // DuckDB's own extension repository, for the extensions the analyzer's DuckDB-WASM loads; see
@@ -47,6 +81,15 @@ repositories {
         patternLayout { artifact("[revision]/[classifier]/[module].duckdb_extension.[ext]") }
         metadataSources { artifact() }
         content { includeGroup("org.duckdb.extensions") }
+    }
+    // Adoptium's GitHub releases of Eclipse Temurin, for the Java runtime each platform's
+    // distribution brings; see temurinVersion below. A release is named by the version with "+",
+    // its files by the version with "_": the module carries the second, the revision the first.
+    ivy {
+        url = uri("https://github.com/adoptium/temurin${temurinFeature}-binaries/releases/download")
+        patternLayout { artifact("jdk-[revision]/OpenJDK${temurinFeature}U-jre_[classifier]_hotspot_[module].[ext]") }
+        metadataSources { artifact() }
+        content { includeGroup("net.adoptium") }
     }
 }
 
@@ -70,6 +113,7 @@ dependencies {
     testImplementation("io.javalin:javalin-testtools:7.2.3")
     testImplementation("com.tngtech.archunit:archunit:1.5.1") // Package dependency rules
     testImplementation("com.tngtech.archunit:archunit-junit6:1.5.1") // Runs the rule classes, sharing one import
+    testImplementation(launcher.output)
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
@@ -94,13 +138,13 @@ dependencies {
     implementation("org.apache.commons:commons-rng-simple:1.7")
 
     // Zstd compression library with bundled native binaries for cross-platform support
-    implementation("com.github.luben:zstd-jni:1.5.7-24")
+    implementation("${zstdJni.group}:${zstdJni.module}:${zstdJni.version}")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
     implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
 
     // DuckDB JDBC driver for analytics
-    implementation("org.duckdb:duckdb_jdbc:2.0.0.0")
+    implementation("${duckdbJdbc.group}:${duckdbJdbc.module}:${duckdbJdbc.version}")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
     implementation("org.apache.artemis:artemis-jakarta-server:2.57.0")
@@ -127,7 +171,9 @@ val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
 // Netty 4.1, which ActiveMQ Artemis brings along, allocates memory through sun.misc.Unsafe, which
 // the JVM warns about and a future release denies. The permission is owed to that Netty alone:
 // NettyUnsafeRulesTest fails once Artemis brings another line, and then this flag is checked.
-// The flag exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
+// A Java that does not know the option rejects it before loading any class; the start scripts
+// therefore check the Java with JavaVersionGuard, without this option, before they pass it. The
+// option exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
 val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
 
 application {
@@ -135,18 +181,41 @@ application {
     applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
-// Fix for Windows "Input line is too long" error
-tasks.named<CreateStartScripts>("startScripts") {
-    doLast {
-        val windowsScriptFile = windowsScript
-        if (windowsScriptFile.exists()) {
-            val content = windowsScriptFile.readText()
-            // Replace the long classpath with a wildcard classpath
-            val newContent = content.replace(
-                Regex("set CLASSPATH=.*"),
-                "set CLASSPATH=%APP_HOME%\\\\lib\\\\*"
-            )
-            windowsScriptFile.writeText(newContent)
+// The start scripts are made from templates of our own in gradle/start-scripts: copies of Gradle's,
+// with the choice of the Java to run on added - EVOCHORA_JAVA_HOME, else the runtime an archive
+// brings in jre/, else JAVA_HOME - and, on Windows, every jar in lib as the classpath, whose list
+// would make the command line too long. What a copy adds or replaces stands between the comments
+// "Evochora: begin" and "Evochora: end"; the rest is Gradle's. Each copy is held to the checksum of the
+// template of Gradle's it was made from: a Gradle whose template differs stops the build until the
+// copy has been made anew from that template, with the marked parts set in again, and the checksum
+// renewed.
+val startScriptTemplates = layout.projectDirectory.dir("gradle/start-scripts")
+val startScriptTemplateOrigins = mapOf(
+    "unixStartScript.txt" to "81a2c1ec4cad61c1991e5a86329f928e406bc0f98bc98852be1b72ba9e81c6c0",
+    "windowsStartScript.txt" to "c91840406db3b7efa91b66121f6e883c62533212a849f19de1ca794766168d9d",
+)
+
+fun sha256(text: String): String =
+    MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+tasks.withType<CreateStartScripts>().configureEach {
+    val generators = mapOf(
+        "unixStartScript.txt" to unixStartScriptGenerator as TemplateBasedScriptGenerator,
+        "windowsStartScript.txt" to windowsStartScriptGenerator as TemplateBasedScriptGenerator,
+    )
+    val gradleTemplates = generators.mapValues { (_, generator) -> generator.template }
+    generators.forEach { (name, generator) ->
+        generator.template = resources.text.fromFile(startScriptTemplates.file(name))
+    }
+    inputs.dir(startScriptTemplates)
+    doFirst {
+        gradleTemplates.forEach { (name, template) ->
+            if (sha256(template.asString()) != startScriptTemplateOrigins.getValue(name)) {
+                throw GradleException(
+                    "Gradle's start script template $name differs from the one $startScriptTemplates/$name " +
+                        "was copied from: compare the copy with it and renew its checksum in build.gradle.kts"
+                )
+            }
         }
     }
 }
@@ -255,22 +324,17 @@ val buildRevision: String = providers.of(BuildRevisionSource::class) {
     parameters.projectDir.set(rootProject.layout.projectDirectory)
 }.get()
 
-val writeBuildInfo = tasks.register("writeBuildInfo") {
+// Written as a properties file by Gradle's own task, which escapes every value as the format
+// requires and writes no timestamp: a release tag may hold any character a tag allows, and what
+// is read back is exactly what was written
+val writeBuildInfo = tasks.register<WriteProperties>("writeBuildInfo") {
     group = "build"
     description = "Records the revision of the sources and the version of the build on the classpath"
-
-    val revision = buildRevision
-    val buildVersion = project.version.toString()
-    val propertiesFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
-    inputs.property("revision", revision)
-    inputs.property("version", buildVersion)
-    outputs.file(propertiesFile)
-
-    doLast {
-        val target = propertiesFile.get().asFile
-        target.parentFile.mkdirs()
-        target.writeText("revision=$revision\nversion=$buildVersion\n")
-    }
+    destinationFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
+    property("revision", buildRevision)
+    property("version", project.version.toString())
+    // The Java the code is compiled for, which JavaVersionGuard requires of the Java it runs on
+    property("requiredJava", java.toolchain.languageVersion.get().asInt())
 }
 
 sourceSets.main {
@@ -294,15 +358,19 @@ node {
 val frontendModules = layout.projectDirectory.dir("node_modules")
 
 // DuckDB-WASM imports apache-arrow, whose browser module in turn imports packages published only
-// as CommonJS; esbuild joins them into the one module the analyzer loads.
+// as CommonJS; esbuild joins them into the one module the analyzer loads. The metafile beside it
+// names every source file that went into the bundle, and with it every package.
+val duckDbBundleMeta = layout.buildDirectory.file("generated/duckdb-bundle-meta/meta.json")
 val bundleDuckDb = tasks.register<com.github.gradle.node.npm.task.NpxTask>("bundleDuckDb") {
     dependsOn(tasks.named("npmInstall"))
     val out = layout.buildDirectory.file("generated/duckdb-bundle/duckdb-browser.mjs")
     command = "esbuild"
     args = listOf("@duckdb/duckdb-wasm", "--bundle", "--format=esm", "--minify",
-        "--outfile=" + out.get().asFile.absolutePath)
+        "--outfile=" + out.get().asFile.absolutePath,
+        "--metafile=" + duckDbBundleMeta.get().asFile.absolutePath)
     inputs.file("package-lock.json")
     outputs.file(out)
+    outputs.file(duckDbBundleMeta)
 }
 
 // The DuckDB extensions the analyzer loads, served from the node like the rest of the frontend.
@@ -318,39 +386,122 @@ dependencies {
     duckdbExtensions("org.duckdb.extensions:parquet:$duckdbCore:$duckdbPlatform@wasm")
 }
 
+// The weights the pages use of each font
+val servedFonts = mapOf(
+    "doto" to listOf("900"),
+    "ibm-plex-sans" to listOf("400", "500", "600"),
+    "roboto-mono" to listOf("400", "500"),
+)
+
+// The npm packages the frontend serves, each with the directory under web/shared/vendor that
+// serves it. webVendor copies a package's files into that directory and frontendLicenses its
+// license files; the duckdb directory serves in addition every package the DuckDB bundle holds.
+val servedPackages: Map<String, String> = linkedMapOf(
+    "chart.js" to "chart.js",
+    "pixi.js" to "pixi.js",
+    "protobufjs" to "protobufjs",
+    "redoc" to "redoc",
+    "@duckdb/duckdb-wasm" to "duckdb",
+    "@fontsource-variable/source-serif-4" to "fonts/source-serif-4",
+) + servedFonts.keys.associate { "@fontsource/$it" to "fonts/$it" }
+
+fun servedDirectory(npmPackage: String): String = servedPackages.getValue(npmPackage)
+
+// The license and notice files of the packages the frontend serves, laid out as under
+// web/shared/vendor: next to a library in its directory, or under licenses/<package> where one
+// directory serves several packages. The node serves a package's files to every browser, so its
+// license goes along with them. A package whose own directory holds no such file takes it from
+// src/licenses/frontend/<package>, and one with neither stops the build. Beside them the task
+// writes the overview of those packages that the distribution carries.
+val frontendLicenseFileName = Regex("(?i)(licen[cs]e|notice|copying|copyrightnotice)(\\..+)?")
+val frontendLicenses = tasks.register("frontendLicenses") {
+    group = "build"
+    description = "Collects the license files of the frontend's npm packages and lists the packages"
+    dependsOn(bundleDuckDb)
+    val modules = frontendModules.asFile
+    val kept = layout.projectDirectory.dir("src/licenses/frontend").asFile
+    val bundleMeta = duckDbBundleMeta
+    val packages = servedPackages
+    val extensionCore = duckdbCore
+    val out = layout.buildDirectory.dir("generated/frontend-licenses")
+    inputs.file("package-lock.json")
+    inputs.file(bundleMeta)
+    inputs.dir(kept)
+    inputs.property("servedPackages", packages)
+    outputs.dir(out)
+    doLast {
+        val root = out.get().asFile
+        root.deleteRecursively()
+        @Suppress("UNCHECKED_CAST")
+        val bundleInputs = (JsonSlurper().parse(bundleMeta.get().asFile) as Map<String, Map<String, Any>>)
+            .getValue("inputs").keys
+        val bundled = bundleInputs.filter { "node_modules/" in it }.map { input ->
+            val segments = input.substringAfterLast("node_modules/").split("/")
+            if (segments[0].startsWith("@")) "${segments[0]}/${segments[1]}" else segments[0]
+        }.toSet()
+        val byDirectory = packages.entries.groupBy({ it.value }, { it.key }).mapValues { (directory, names) ->
+            if (directory == packages.getValue("@duckdb/duckdb-wasm")) (names + bundled).distinct() else names
+        }
+        val overview = StringBuilder("Libraries the web frontend serves under web/shared/vendor/\n\n")
+        byDirectory.forEach { (directory, names) ->
+            names.forEach { name ->
+                val own = modules.resolve(name).listFiles { file -> file.isFile && frontendLicenseFileName.matches(file.name) }
+                val files = own.orEmpty().ifEmpty { kept.resolve(name).listFiles().orEmpty() }
+                if (files.isEmpty()) {
+                    throw GradleException("The npm package $name carries no license file, and $kept/$name holds none")
+                }
+                val target = if (names.size == 1) root.resolve("frontend/$directory") else root.resolve("frontend/$directory/licenses/$name")
+                files.forEach { it.copyTo(target.resolve(it.name)) }
+                val manifest = JsonSlurper().parse(modules.resolve("$name/package.json")) as Map<*, *>
+                val repository = manifest["repository"].let { if (it is Map<*, *>) it["url"] else it }
+                overview.append("${manifest["name"]} ${manifest["version"]}  ${manifest["license"]}  ")
+                    .append("${manifest["homepage"] ?: repository}  -> $directory/\n")
+            }
+        }
+        val extensionLicenses = kept.resolve("duckdb-extensions").listFiles().orEmpty()
+            .filter { frontendLicenseFileName.matches(it.name) }
+        if (extensionLicenses.isEmpty()) {
+            throw GradleException("The DuckDB parquet extension carries no license file, and $kept/duckdb-extensions holds none")
+        }
+        extensionLicenses.forEach { it.copyTo(root.resolve("frontend/duckdb/extensions/${it.name}")) }
+        overview.append("DuckDB parquet extension $extensionCore  MIT  https://duckdb.org  -> duckdb/extensions/\n")
+        root.resolve("frontend-libraries.txt").writeText(overview.toString())
+    }
+}
+
 val webVendor = tasks.register<Sync>("webVendor") {
     dependsOn(tasks.named("npmInstall"))
     into(layout.buildDirectory.dir("generated/web-vendor"))
     into("web/shared/vendor") {
-        from(bundleDuckDb) { into("duckdb") }
-        from(frontendModules.dir("chart.js/dist")) { include("chart.umd.min.js"); into("chart.js") }
-        from(frontendModules.dir("pixi.js/dist")) { include("pixi.min.js"); into("pixi.js") }
-        from(frontendModules.dir("protobufjs/dist")) { include("protobuf.min.js"); into("protobufjs") }
-        from(frontendModules.dir("redoc/bundles")) { include("redoc.standalone.js"); into("redoc") }
+        from(frontendLicenses) {
+            include("frontend/**")
+            eachFile { path = path.replaceFirst("vendor/frontend/", "vendor/") }
+            includeEmptyDirs = false
+        }
+        from(bundleDuckDb) { include("*.mjs"); into(servedDirectory("@duckdb/duckdb-wasm")) }
+        from(frontendModules.dir("chart.js/dist")) { include("chart.umd.min.js"); into(servedDirectory("chart.js")) }
+        from(frontendModules.dir("pixi.js/dist")) { include("pixi.min.js"); into(servedDirectory("pixi.js")) }
+        from(frontendModules.dir("protobufjs/dist")) { include("protobuf.min.js"); into(servedDirectory("protobufjs")) }
+        from(frontendModules.dir("redoc/bundles")) { include("redoc.standalone.js"); into(servedDirectory("redoc")) }
         from(frontendModules.dir("@duckdb/duckdb-wasm/dist")) {
             include("duckdb-mvp.wasm", "duckdb-browser-mvp.worker.js")
-            into("duckdb")
+            into(servedDirectory("@duckdb/duckdb-wasm"))
         }
         // DuckDB asks its extension repository for <version>/<platform>/<name>.duckdb_extension.wasm
         from(duckdbExtensions) {
             rename { "parquet.duckdb_extension.wasm" }
             into("duckdb/extensions/$duckdbCore/$duckdbPlatform")
         }
-        // The weights the pages use, each with its stylesheet and the woff2 files it names
-        mapOf(
-            "doto" to listOf("900"),
-            "ibm-plex-sans" to listOf("400", "500", "600"),
-            "roboto-mono" to listOf("400", "500"),
-        ).forEach { (font, weights) ->
+        // Each font's stylesheet for the weights the pages use and the woff2 files it names
+        servedFonts.forEach { (font, weights) ->
             from(frontendModules.dir("@fontsource/$font")) {
-                include("LICENSE")
                 weights.forEach { include("$it.css", "files/*-$it-normal.woff2") }
-                into("fonts/$font")
+                into(servedDirectory("@fontsource/$font"))
             }
         }
         from(frontendModules.dir("@fontsource-variable/source-serif-4")) {
-            include("LICENSE", "opsz.css", "opsz-italic.css", "files/*-opsz-normal.woff2", "files/*-opsz-italic.woff2")
-            into("fonts/source-serif-4")
+            include("opsz.css", "opsz-italic.css", "files/*-opsz-normal.woff2", "files/*-opsz-italic.woff2")
+            into(servedDirectory("@fontsource-variable/source-serif-4"))
         }
     }
 }
@@ -392,6 +543,7 @@ tasks.named<Jar>("jar") {
     manifest {
         attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
     }
+    from(launcher.output)
     // Dependencies werden über lib/ und den Classpath im Start-Skript geladen (installDist)
 }
 
@@ -399,33 +551,357 @@ tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// The distribution archives (distZip, distTar) carry the project version, which comes from
-// RELEASE_TAG. The jars inside them do not: an archive names its version once, and the jars are
-// never published on their own, so they keep the fixed names the documentation and the
-// benchmark tooling refer to.
+// The platform distribution archives carry the project version, which comes from RELEASE_TAG.
+// The jars inside them do not: an archive names its version once, and the jars are never published
+// on their own, so they keep the fixed names the documentation and the benchmark tooling refer to.
 tasks.withType<Jar> {
     archiveVersion.set("")
 }
-tasks.named<Zip>("distZip") {
-    archiveVersion.set(project.version.toString())
+
+// The main distribution, without a Java runtime, is installed for development by installDist and
+// not published, so its archives are not built
+tasks.named<Zip>("distZip") { enabled = false }
+tasks.named<Tar>("distTar") { enabled = false }
+
+// The licenses of the Java libraries the distribution ships. The plugin reports every library on
+// the runtime classpath with all the licenses it declares, and extracts the license and notice
+// files its jar carries. checkLicense stops the build at a library none of whose licenses is in
+// gradle/licenses/allowed-licenses.json. A license taken into that list names its text in
+// src/licenses/texts/ as "text", unless its text names the copyright holder, as BSD and MIT do:
+// such a library ships the file its jar carries, or the one in src/licenses/java/<group>/.
+// checkLicenseFiles requires one or the other for every library, and reports a text or a
+// directory no library needs.
+licenseReport {
+    excludeBoms = true
+    // A parent POM speaks for the organisation that publishes it, not for each library under it:
+    // OW2's names Apache-2.0 for ASM, which is BSD-3. Only a library's own POM is taken.
+    unionParentPomLicenses = false
+    renderers = arrayOf<ReportRenderer>(
+        TextReportRenderer("java-libraries.txt"),
+        JsonReportRenderer("index.json", false),
+    )
+    filters = arrayOf<DependencyFilter>(LicenseBundleNormalizer())
+    allowedLicensesFile = layout.projectDirectory.file("gradle/licenses/allowed-licenses.json").asFile
 }
-tasks.named<Tar>("distTar") {
-    archiveVersion.set(project.version.toString())
+
+val javaLicenseReport = tasks.named("generateLicenseReport")
+
+val checkLicenseFiles = tasks.register("checkLicenseFiles") {
+    group = "verification"
+    description = "Checks that every library ships the text of a license it is allowed under, and that none is left over"
+    dependsOn(javaLicenseReport)
+    val report = layout.buildDirectory.dir("reports/dependency-license")
+    val allowedLicenses = layout.projectDirectory.file("gradle/licenses/allowed-licenses.json").asFile
+    val kept = layout.projectDirectory.dir("src/licenses/java").asFile
+    val texts = layout.projectDirectory.dir("src/licenses/texts").asFile
+    inputs.file(allowedLicenses)
+    inputs.dir(kept)
+    inputs.dir(texts)
+    doLast {
+        val reportDir = report.get().asFile
+        @Suppress("UNCHECKED_CAST")
+        val libraries = (JsonSlurper().parse(reportDir.resolve("index.json")) as Map<String, Any>)
+            .getValue("dependencies") as List<Map<String, Any?>>
+        @Suppress("UNCHECKED_CAST")
+        val textOf = ((JsonSlurper().parse(allowedLicenses) as Map<String, Any>)
+            .getValue("allowedLicenses") as List<Map<String, Any?>>)
+            .associate { it.getValue("moduleLicense") as String to it["text"] as String? }
+        val keptGroups = kept.listFiles().orEmpty().map { it.name }.toSet()
+        val licenseFileName = Regex("(?i)(LICENSE|COPYING|NOTICE).*")
+        val withoutLicenseFile = kept.listFiles().orEmpty()
+            .filter { group -> group.listFiles().orEmpty().none { it.isFile && licenseFileName.matches(it.name) } }
+            .map { it.name }
+        val namingTheHolder = Regex(".*\\b(BSD|MIT)\\b.*")
+        val neededTexts = mutableSetOf<String>()
+        // A library may name several licenses; it ships under one it is allowed under, so one of
+        // those needs its text: the library's own file for a license naming the holder, else the
+        // text the allowed list names. A library allowed under none is checkLicense's to report.
+        val withoutText = libraries.filter { library ->
+            @Suppress("UNCHECKED_CAST")
+            val allowedHere = (library["moduleLicenses"] as List<Map<String, Any?>>)
+                .mapNotNull { it["moduleLicense"] as String? }.filter { it in textOf }
+            val (group, name) = (library["moduleName"] as String).split(":")
+            val embedded = reportDir.listFiles().orEmpty()
+                .any { it.isDirectory && it.name.startsWith("$name-${library["moduleVersion"]}") }
+            val holderFile = allowedHere.any { namingTheHolder.matches(it) } && (embedded || group in keptGroups)
+            val withText = allowedHere.mapNotNull { textOf[it] }.filter { texts.resolve(it).isFile }
+            neededTexts += withText
+            allowedHere.isNotEmpty() && !holderFile && withText.isEmpty()
+        }.map { it["moduleName"] }
+        val missingTexts = textOf.values.filterNotNull().filter { !texts.resolve(it).isFile }
+        val unusedTexts = texts.listFiles().orEmpty().map { it.name } - neededTexts
+        val leftOver = keptGroups - libraries.map { (it["moduleName"] as String).substringBefore(":") }.toSet()
+        if (withoutText.isNotEmpty() || missingTexts.isNotEmpty() || unusedTexts.isNotEmpty() ||
+            leftOver.isNotEmpty() || withoutLicenseFile.isNotEmpty()) {
+            throw GradleException(
+                "Libraries without the text of a license they are allowed under, neither a license file in " +
+                    "their jar or in $kept nor a text in $texts: $withoutText. Texts the allowed licenses name " +
+                    "that are missing from $texts: $missingTexts. Texts in $texts that no library needs: " +
+                    "$unusedTexts. Directories in $kept that no library on the runtime classpath belongs to: " +
+                    "$leftOver. Directories in $kept without a file named LICENSE, COPYING or NOTICE: " +
+                    "$withoutLicenseFile"
+            )
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
+}
+
+// The sources of the commit a platform distribution is built from, which it carries under src/:
+// the installation directory holds the runs made with it, and with the sources beside them runs,
+// application and the code that made them are published as one. GIT_REVISION among them names
+// the revision, so that a build made from them records it, as BuildRevisionSource reads it. They
+// are the sources of the last commit; a build with changes not yet committed leaves those out,
+// and its revision says "-dirty".
+// Archiving needs the project to be a git checkout of its own. In a directory without one, git
+// would take the repository of an enclosing directory, such as an installation directory kept
+// under git, and pack its sources under Evochora's revision; the task stops there instead.
+val sourceArchive = tasks.register<Exec>("sourceArchive") {
+    group = "distribution"
+    description = "Packs the sources of the commit HEAD for the src/ directory of the platform distributions"
+    val archive = layout.buildDirectory.file("sources/evochora-sources.tar").get().asFile
+    // In a worktree .git is a file, in a clone a directory
+    val checkout = rootProject.layout.projectDirectory.file(".git").asFile
+    inputs.property("revision", buildRevision)
+    outputs.file(archive)
+    workingDir = rootProject.projectDir
+    commandLine("git", "archive", "--format=tar", "--add-virtual-file=GIT_REVISION:$buildRevision",
+        "--output=$archive", "HEAD")
+    doFirst {
+        if (!checkout.exists()) {
+            throw GradleException("Platform distributions carry the sources of the git commit they are built " +
+                "from, and ${checkout.parentFile} is no git checkout of its own. Build them from a clone of Evochora.")
+        }
+        archive.parentFile.mkdirs()
+    }
+}
+
+// Unpacked once, as the JRE is, so that the archives take files that keep the permissions git
+// gives them
+val unpackSources = tasks.register<Sync>("unpackSources") {
+    from(tarTree(sourceArchive.map { it.outputs.files.singleFile }))
+    into(layout.buildDirectory.dir("sources/src"))
+}
+
+// What every distribution carries beside its start scripts and its libraries
+val distributionContents = copySpec {
+    from("assembly") {
+        into("assembly")
+    }
+    from("config") {
+        // config/ is where a machine keeps its own overrides; only the configuration
+        // meant for everyone belongs in the distribution
+        include("evochora.conf")
+        into("config")
+    }
+    from("README.md")
+    from("LICENSE")
+    into("licenses") {
+        from("src/licenses") { exclude("frontend/**") }
+        from(javaLicenseReport) { include("java-libraries.txt") }
+        from(javaLicenseReport) { include("*.jar/**"); into("java") }
+        from(frontendLicenses)
+    }
 }
 
 distributions {
     main {
         contents {
-            from("assembly") {
-                into("assembly")
-            }
-            from("config") {
-                // config/ is where a machine keeps its own overrides; only the configuration
-                // meant for everyone belongs in the distribution
-                include("evochora.conf")
-                into("config")
-            }
-            from("README.md")
+            with(distributionContents)
+        }
+    }
+}
+
+// The distributions that are published: one per supported platform, each bringing that
+// platform's Java runtime in jre/ and, for each native library, the jar for that platform in place
+// of the main jar. The main distribution, which brings neither, is what installDist builds for
+// development.
+data class TargetPlatform(
+    /** The platform as the archive's name carries it */
+    val classifier: String,
+    /** The platform as Temurin's file names carry it */
+    val temurin: String,
+    /** The archive type Temurin publishes for the platform */
+    val temurinExtension: String,
+    /** For each native library, the classifier of its jar for the platform */
+    val nativeJars: Map<NativeLibrary, String>,
+    /** The JVM's os.name and os.arch on the platform, to find the host's distribution */
+    val osName: String,
+    val osArch: String,
+) {
+    val taskSuffix: String = classifier.split("-").joinToString("") { it.replaceFirstChar(Char::uppercase) }
+    val distributionName: String = taskSuffix.replaceFirstChar(Char::lowercase)
+    val zip: Boolean = osName == "windows"
+}
+
+val targetPlatforms = listOf(
+    TargetPlatform("windows-x64", "x64_windows", "zip",
+        mapOf(duckdbJdbc to "windows_amd64", zstdJni to "win_amd64"), "windows", "amd64"),
+    TargetPlatform("macos-aarch64", "aarch64_mac", "tar.gz",
+        mapOf(duckdbJdbc to "macos_arm64", zstdJni to "darwin_aarch64"), "mac", "aarch64"),
+    TargetPlatform("linux-x64", "x64_linux", "tar.gz",
+        mapOf(duckdbJdbc to "linux_amd64", zstdJni to "linux_amd64"), "linux", "amd64"),
+    TargetPlatform("linux-aarch64", "aarch64_linux", "tar.gz",
+        mapOf(duckdbJdbc to "linux_arm64", zstdJni to "linux_aarch64"), "linux", "aarch64"),
+)
+
+targetPlatforms.forEach { platform ->
+    val jreArchive = configurations.create("jre${platform.taskSuffix}") {
+        isTransitive = false
+        isCanBeConsumed = false
+    }
+    val nativeJars = configurations.create("nativeJars${platform.taskSuffix}") {
+        isTransitive = false
+        isCanBeConsumed = false
+    }
+    dependencies {
+        jreArchive("net.adoptium:${temurinVersion.replace('+', '_')}:$temurinVersion:${platform.temurin}@${platform.temurinExtension}")
+        platform.nativeJars.forEach { (library, classifier) ->
+            nativeJars("${library.group}:${library.module}:${library.version}:$classifier")
+        }
+    }
+
+    // The runtime classpath with each native library's jar for the platform in place of its main
+    // jar. A classpath without a main jar would mean the dependency changed its name, and the
+    // platform's jar would land beside whatever replaced it.
+    val runtimeClasspath = configurations.runtimeClasspath.get()
+    val mainJars = platform.nativeJars.keys.map { it.mainJar }.toSet()
+    val platformLibraries = files(runtimeClasspath.filter { it.name !in mainJars }, nativeJars)
+    val checkMainJars = {
+        val missing = mainJars - runtimeClasspath.map { it.name }.toSet()
+        if (missing.isNotEmpty()) {
+            throw GradleException("The runtime classpath holds no $missing for ${platform.classifier}'s jars to replace")
+        }
+    }
+
+    // The JRE unpacked without its top directory: what the distribution carries as jre/
+    val unpackJre = tasks.register<Sync>("unpackJre${platform.taskSuffix}") {
+        from(jreArchive.elements.map { elements ->
+            val archive = elements.single().asFile
+            if (platform.zip) zipTree(archive) else tarTree(archive)
+        })
+        // The JRE carries read-only files, which a later run could not overwrite: every file keeps
+        // the permissions the archive gives it, with write for its owner added
+        eachFile {
+            relativePath = RelativePath(true, *relativePath.segments.drop(1).toTypedArray())
+            val fromArchive = permissions.toUnixNumeric()
+            permissions { unix(fromArchive or "200".toInt(8)) }
+        }
+        includeEmptyDirs = false
+        into(layout.buildDirectory.dir("jre/${platform.classifier}"))
+    }
+
+    // Where the sources and licenses of the JRE are, read from the release file it carries
+    val javaRuntimeNotice = tasks.register("javaRuntimeNotice${platform.taskSuffix}") {
+        dependsOn(unpackJre)
+        val jreDir = layout.buildDirectory.dir("jre/${platform.classifier}")
+        val home = if (platform.osName == "mac") "Contents/Home/" else ""
+        val out = layout.buildDirectory.file("java-runtime-notice/${platform.classifier}/java-runtime.txt")
+        // The release file is what the notice is written from, so a new JRE writes it anew
+        inputs.file(jreDir.map { it.file("${home}release") })
+        outputs.file(out)
+        doLast {
+            val release = Properties()
+            jreDir.get().file("${home}release").asFile.inputStream().use { release.load(it) }
+            fun field(key: String) = release.getProperty(key)?.trim('"')
+                ?: throw GradleException("The JRE's release file has no $key")
+            out.get().asFile.apply { parentFile.mkdirs() }.writeText(
+                "Java runtime: ${field("IMPLEMENTOR")} ${field("IMPLEMENTOR_VERSION")}, in jre/\n" +
+                    "  licenses: jre/${home}legal/\n" +
+                    "  sources:  ${field("SOURCE_REPO").removeSuffix(".git")}/tree/${field("SOURCE").substringAfterLast("git:")}\n"
+            )
+        }
+    }
+
+    val startScripts = tasks.register<CreateStartScripts>("startScripts${platform.taskSuffix}") {
+        doFirst { checkMainJars() }
+        applicationName = "evochora"
+        mainClass.set(application.mainClass)
+        defaultJvmOpts = application.applicationDefaultJvmArgs
+        classpath = files(tasks.jar) + platformLibraries
+        // Apart from build/scripts, which the main distribution takes into its bin/ as a whole
+        outputDir = layout.buildDirectory.dir("platform-scripts/${platform.classifier}").get().asFile
+    }
+
+    // What the platform's distribution holds. It is built as an archive of its own rather than as
+    // a distribution of the plugin, whose archives assemble and with it build would take along: an
+    // archive needs the runtime of its platform downloaded and a git checkout for its sources, and
+    // building the code needs neither.
+    val contents = copySpec {
+        with(distributionContents)
+        into("src") {
+            from(unpackSources)
+            // Archives get fixed permissions; a file git keeps executable, gradlew among them,
+            // stays executable in the archive
+            eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+        }
+        // What Gradle takes into the main distribution by convention, plugins/ among it
+        from("src/main/dist")
+        into("bin") {
+            from(startScripts)
+            filePermissions { unix("rwxr-xr-x") }
+        }
+        into("lib") {
+            from(tasks.jar)
+            from(platformLibraries)
+        }
+        into("jre") {
+            from(unpackJre)
+            // Archives get fixed permissions, which would leave the JRE's programs unable to
+            // run; a file the unpacked JRE can execute is executable in the archive as well
+            eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+        }
+        into("licenses") { from(javaRuntimeNotice) }
+    }
+    val configureArchive: AbstractArchiveTask.() -> Unit = {
+        group = "distribution"
+        description = "Builds the platform distribution for ${platform.classifier} under build/distributions"
+        archiveBaseName = "evochora"
+        archiveClassifier = platform.classifier
+        destinationDirectory = layout.buildDirectory.dir("distributions")
+        into("evochora-${project.version}-${platform.classifier}") { with(contents) }
+    }
+    if (platform.zip) {
+        tasks.register<Zip>("${platform.distributionName}DistZip", configureArchive)
+    } else {
+        tasks.register<Tar>("${platform.distributionName}DistTar", configureArchive)
+    }
+    tasks.register<Sync>("install${platform.taskSuffix}Dist") {
+        group = "distribution"
+        description = "Installs the platform distribution for ${platform.classifier} under build/install"
+        with(contents)
+        into(layout.buildDirectory.dir("install/evochora-${platform.classifier}"))
+    }
+}
+
+// Builds the archive of every platform distribution, the ones the CI starts, the image is built
+// from and a release publishes
+tasks.register("platformDistributions") {
+    group = "distribution"
+    description = "Builds the archive of every platform distribution under build/distributions"
+    targetPlatforms.forEach { platform ->
+        dependsOn(if (platform.zip) "${platform.distributionName}DistZip" else "${platform.distributionName}DistTar")
+    }
+}
+
+// Builds the platform distribution of the machine this build runs on and unpacks it under
+// build/install, to try out what a user of that machine downloads. A machine no platform
+// distribution covers fails only when the task runs, not while the build is configured, so that
+// the project still loads there, in an IDE or for a task list.
+tasks.register("installLocalPlatformDist") {
+    group = "distribution"
+    description = "Installs the platform distribution of this machine, with its Java runtime, under build/install"
+    val osName = System.getProperty("os.name").lowercase(Locale.ROOT)
+    val osArch = System.getProperty("os.arch").lowercase(Locale.ROOT).let { if (it == "x86_64") "amd64" else it }
+    val host = targetPlatforms.firstOrNull { osName.startsWith(it.osName) && osArch == it.osArch }
+    if (host != null) {
+        dependsOn("install${host.taskSuffix}Dist")
+    }
+    doFirst {
+        if (host == null) {
+            throw GradleException("No platform distribution for $osName/$osArch")
         }
     }
 }
@@ -536,11 +1012,14 @@ tasks.register<Test>("integration") {
     testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
-// The classes the coverage report and the coverage gate look at. Taken from the source set
-// output so that the collection carries the tasks producing it: both JaCoCo tasks then depend on
-// compilation directly, not only through the test task's execution data, and a build that skips
-// the tests (-x test) still resolves its task graph.
-val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree
+// The source sets whose code coverage is measured, here alone: the coverage report and the
+// coverage gate take their classes, the report also their sources, which newCodeCoverage reads
+// from it. The classes are taken from the source set outputs so that the collection carries the
+// tasks producing it: both JaCoCo tasks then depend on compilation directly, not only through the
+// test task's execution data, and a build that skips the tests (-x test) still resolves its task
+// graph.
+val coveredSourceSets = listOf(sourceSets.main.get(), launcher)
+val coveredClasses = files(coveredSourceSets.map { it.output.classesDirs }).asFileTree
 
 jacoco {
     toolVersion = "0.8.15"
@@ -552,6 +1031,7 @@ tasks.jacocoTestReport {
         html.required.set(true)
     }
     classDirectories.setFrom(coveredClasses)
+    sourceDirectories.setFrom(coveredSourceSets.map { it.java.srcDirs })
 }
 
 // Coverage may not erode unnoticed: the build fails below this share of covered lines. The bound

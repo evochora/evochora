@@ -21,6 +21,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -583,6 +584,130 @@ class ArtemisQueueResourceTest {
         // Now put should complete
         await().atMost(5, TimeUnit.SECONDS).untilTrue(putCompleted);
         putThread.join(5000);
+    }
+
+    // =========================================================================
+    // Interrupt Tests
+    // =========================================================================
+
+    /** A call into the queue that may throw, run on a thread of its own. */
+    @FunctionalInterface
+    private interface QueueCall {
+        void run() throws Exception;
+    }
+
+    /**
+     * Runs the call on a thread of its own, interrupts that thread once it waits inside the given
+     * Artemis class, and returns what the call ended with. Waiting for the frame, not for a fixed
+     * time, makes sure the interrupt reaches the wait it is meant for. The non-waiting drain of
+     * {@code receiveBatch} waits briefly in the consumer as well, for the broker's answer, so a
+     * wait inside it does not count.
+     */
+    private static Throwable interruptOnceWaitingIn(String artemisClass, QueueCall call) throws InterruptedException {
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread caller = new Thread(() -> {
+            try {
+                call.run();
+            } catch (Throwable t) {
+                outcome.set(t);
+            }
+        }, "interrupted-caller");
+        caller.start();
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+            .atMost(5, TimeUnit.SECONDS).until(() -> isWaitingIn(caller, artemisClass));
+        caller.interrupt();
+        caller.join(5000);
+        assertThat(caller.isAlive()).describedAs("the call has ended").isFalse();
+        return outcome.get();
+    }
+
+    private static boolean isWaitingIn(Thread thread, String className) {
+        Thread.State state = thread.getState();
+        StackTraceElement[] stack = thread.getStackTrace();
+        return (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING)
+            && Arrays.stream(stack).anyMatch(frame -> frame.getClassName().equals(className))
+            && Arrays.stream(stack).noneMatch(frame -> frame.getClassName().equals(ArtemisQueueResource.class.getName())
+                && frame.getMethodName().equals("receiveAvailable"));
+    }
+
+    private static final String CONSUMER = "org.apache.activemq.artemis.core.client.impl.ClientConsumerImpl";
+    private static final String PRODUCER_CREDITS = "org.apache.activemq.artemis.core.client.impl.ClientProducerCreditsImpl";
+
+    @Test
+    @DisplayName("A stop that interrupts a receive waiting for data ends it as an interrupt")
+    void anInterruptWhileWaitingForDataEndsTheReceiveAsAnInterrupt() throws Exception {
+        queue = new ArtemisQueueResource<>("test-interrupt-data", baseConfig);
+
+        Throwable outcome = interruptOnceWaitingIn(CONSUMER, () -> queue.receiveBatch(10, 30, TimeUnit.SECONDS));
+
+        assertThat(outcome).isInstanceOf(InterruptedException.class)
+            .hasMessage("receiveBatch() interrupted waiting for data");
+    }
+
+    @Test
+    @DisplayName("A stop that interrupts a receive waiting for the drain token ends it as an interrupt")
+    void anInterruptWhileWaitingForTheDrainTokenEndsTheReceiveAsAnInterrupt() throws Exception {
+        queue = new ArtemisQueueResource<>("test-interrupt-token", baseConfig);
+        ArtemisQueueResource<BatchInfo> competitor = new ArtemisQueueResource<>("test-interrupt-token", baseConfig);
+        try {
+            // The first consumer holds the token while it waits for data; the competitor then waits for the token
+            Thread holder = new Thread(() -> {
+                try {
+                    queue.receiveBatch(10, 30, TimeUnit.SECONDS).close();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "token-holder");
+            holder.start();
+            await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+            .atMost(5, TimeUnit.SECONDS).until(() -> isWaitingIn(holder, CONSUMER));
+
+            Throwable outcome = interruptOnceWaitingIn(CONSUMER, () -> competitor.receiveBatch(10, 30, TimeUnit.SECONDS));
+
+            assertThat(outcome).isInstanceOf(InterruptedException.class)
+                .hasMessage("receiveBatch() interrupted acquiring token");
+            holder.interrupt();
+            holder.join(5000);
+        } finally {
+            competitor.close();
+        }
+    }
+
+    @Test
+    @DisplayName("A stop that interrupts a put blocked by a full queue ends it as an interrupt")
+    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+    void anInterruptWhileAPutIsBlockedEndsItAsAnInterrupt() throws Exception {
+        queue = fullQueue("test-interrupt-put");
+
+        Throwable outcome = interruptOnceWaitingIn(PRODUCER_CREDITS,
+            () -> queue.put(BatchInfo.newBuilder().setTickStart(99).build()));
+
+        assertThat(outcome).isInstanceOf(InterruptedException.class).hasMessage("put() interrupted");
+    }
+
+    @Test
+    @DisplayName("A stop that interrupts an offer blocked by a full queue ends it as an interrupt")
+    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+    void anInterruptWhileAnOfferIsBlockedEndsItAsAnInterrupt() throws Exception {
+        queue = fullQueue("test-interrupt-offer");
+
+        Throwable outcome = interruptOnceWaitingIn(PRODUCER_CREDITS,
+            () -> queue.offer(BatchInfo.newBuilder().setTickStart(99).build(), 30, TimeUnit.SECONDS));
+
+        assertThat(outcome).isInstanceOf(InterruptedException.class).hasMessage("offer() interrupted");
+    }
+
+    /** A queue filled up to its byte limit, so that the next send waits for producer credits. */
+    private static ArtemisQueueResource<BatchInfo> fullQueue(String name) {
+        Config smallConfig = ConfigFactory.parseString("""
+            maxSizeBytes = 1500
+            producerWindowSize = 1
+            """).withFallback(baseConfig);
+        ArtemisQueueResource<BatchInfo> full = new ArtemisQueueResource<>(name, smallConfig);
+        while (full.offer(BatchInfo.newBuilder().setTickStart(0).build())) {
+            // keep filling
+        }
+        return full;
     }
 
     // =========================================================================

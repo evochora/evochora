@@ -385,7 +385,8 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         try {
             closeConnectionPool();
         } catch (Exception e) {
-            // Log error but don't throw - best effort cleanup
+            // Log and record but don't throw - best effort cleanup
+            log.warn("Database '{}' connection pool close failed: {}", getResourceName(), e.getMessage());
             recordError("POOL_CLOSE_FAILED", "Failed to close connection pool", 
                 "Database: " + getResourceName() + ", Error: " + e.getMessage());
         }
@@ -397,7 +398,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * Subclasses must implement this to properly shut down their connection pools
      * (e.g., HikariCP for H2Database).
      * <p>
-     * Any exceptions thrown will be caught by {@link #close()} and logged as errors.
+     * Any exception thrown is caught by {@link #close()}, logged as a warning and recorded.
      * 
      * @throws Exception if pool shutdown fails
      */

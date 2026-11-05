@@ -8,10 +8,10 @@ import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.channels.ClosedByInterruptException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -85,7 +85,7 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
                 context.serviceName(), delegate.getResourceName());
             throw e;
         } catch (Exception e) {
-            if (isInterruptInduced(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 log.debug("receiveBatch interrupted: service={}, queue={}",
                     context.serviceName(), delegate.getResourceName());
             } else {
@@ -121,16 +121,6 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         }
 
         return true;
-    }
-
-    private static boolean isInterruptInduced(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof InterruptedException
-                    || current instanceof ClosedByInterruptException) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

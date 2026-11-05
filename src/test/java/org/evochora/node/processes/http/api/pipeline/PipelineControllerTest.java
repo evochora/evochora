@@ -4,6 +4,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import io.javalin.http.Context;
 import org.evochora.datapipeline.ServiceManager;
+import org.evochora.datapipeline.ServiceStartException;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 import org.evochora.node.processes.http.api.pipeline.dto.PipelineStatusDto;
@@ -120,6 +121,19 @@ class PipelineControllerTest {
             assertThrows(IllegalArgumentException.class, () -> {
                 controller.getServiceStatus(ctx);
             });
+        }
+
+        @Test
+        @DisplayName("a failed start of a single service reaches the caller instead of being accepted")
+        void handleServiceStart_whenTheStartFails_doesNotAccept() {
+            final ServiceStartException failure = new ServiceStartException("broken", new IllegalStateException("test-induced defect"));
+            doThrow(failure).when(serviceManager).startService("broken");
+            when(ctx.pathParam("serviceName")).thenReturn("broken");
+
+            final ServiceStartException thrown = assertThrows(ServiceStartException.class, () -> controller.handleServiceStart(ctx));
+
+            assertThat(thrown).isSameAs(failure);
+            verify(ctx, never()).status(any());
         }
     }
 

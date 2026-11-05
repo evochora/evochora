@@ -182,7 +182,6 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                     }
 
                     setShutdownPhase(ShutdownPhase.PROCESSING);
-                    Thread.interrupted();
 
                     // Stream-write to storage (one chunk at a time on heap)
                     StreamingWriteResult result = storage.writeChunkBatchStreaming(chunks);
