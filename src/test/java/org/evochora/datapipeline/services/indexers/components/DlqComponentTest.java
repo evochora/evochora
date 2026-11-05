@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services.indexers.components;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -15,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -173,6 +175,28 @@ class DlqComponentTest {
         assertThat(dlqMsg.getStackTraceLinesList().size()).isLessThanOrEqualTo(10);
     }
     
+    /**
+     * A DLQ that does not take the batch is a failure the indexer ends on, visibly, and not the
+     * interruption of a shutdown, which would end it as stopped and without a word.
+     */
+    @Test
+    void testMoveToDlq_FailedWriteIsAnOperationalFailureNotAnInterrupt() throws Exception {
+        IRetryTracker tracker = mock(IRetryTracker.class);
+        @SuppressWarnings("unchecked")
+        IDeadLetterQueueResource<BatchInfo> dlq = mock(IDeadLetterQueueResource.class);
+        IllegalStateException full = new IllegalStateException("Queue may be full");
+        doThrow(full).when(dlq).put(any());
+        DlqComponent<BatchInfo, String> component = new DlqComponent<>(tracker, dlq, 3, "DummyIndexer");
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            BatchInfo.newBuilder().setSimulationRunId("test-run").setStoragePath("batch-001").build(),
+            System.currentTimeMillis(), "msg-001", "test-consumer", "ack-001");
+
+        assertThatThrownBy(() -> component.moveToDlq(message, new RuntimeException("Test error"), "batch-001"))
+            .isInstanceOf(OperationalException.class)
+            .hasMessageContaining("batch-001")
+            .hasCause(full);
+    }
+
     @Test
     void testResetRetryCount_Success() throws Exception {
         // Given: Valid setup

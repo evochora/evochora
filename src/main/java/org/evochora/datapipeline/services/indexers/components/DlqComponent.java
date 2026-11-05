@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,6 +120,9 @@ public class DlqComponent<T extends Message, ACK> {
      * @param error Exception that caused the failure (may be null)
      * @param storageKey Storage key for metadata (must not be null)
      * @throws InterruptedException if DLQ write is interrupted
+     * @throws OperationalException if the message cannot be written to the DLQ, which is full or
+     *                              unusable: the batch can then neither be indexed nor set aside,
+     *                              and the indexer has to end visibly, leaving it unacknowledged
      * @throws IllegalArgumentException if message or storageKey is null
      */
     public void moveToDlq(TopicMessage<T, ACK> message, 
@@ -170,8 +174,7 @@ public class DlqComponent<T extends Message, ACK> {
             // Propagate interruption
             throw e;
         } catch (Exception e) {
-            log.warn("Failed to move message to DLQ: {}", storageKey);
-            throw new InterruptedException("DLQ write failed: " + e.getMessage());
+            throw new OperationalException("Failed to move batch " + storageKey + " to the dead letter queue", e);
         }
     }
     

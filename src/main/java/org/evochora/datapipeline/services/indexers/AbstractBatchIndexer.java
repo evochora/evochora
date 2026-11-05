@@ -501,6 +501,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                         Thread.currentThread().interrupt();  // Restore interrupt status
                         return;  // Exit gracefully on shutdown
                     }
+                    // A batch the DLQ does not take either ends the indexer: it stays unacknowledged,
+                    // so the indexer picks it up again when it is restarted
                 }
             }
 
