@@ -458,6 +458,45 @@ public class AbstractServiceTest {
         assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 
+    /**
+     * A service that stays in PROCESSING until a stop is requested, then switches back to WAITING
+     * and waits in a way that checks no stop request, as a wait for data that never comes does.
+     */
+    private static class StopDuringProcessingService extends AbstractService {
+        final CountDownLatch processingLatch = new CountDownLatch(1);
+
+        StopDuringProcessingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            processingLatch.countDown();
+            while (!isStopRequested()) {
+                Thread.sleep(5);
+            }
+            setShutdownPhase(ShutdownPhase.WAITING);
+            new CountDownLatch(1).await();
+        }
+    }
+
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aStopRequestedWhileProcessingInterruptsTheServiceWhenItWaitsAgain() throws InterruptedException {
+        // The stop finds the service processing and leaves it alone; afterwards the service waits
+        // for ever and its shutdown timeout is an hour. Only the interrupt that the switch back to
+        // WAITING delivers can end it: that stop() returns at all is the proof.
+        Config longTimeout = config.withValue("shutdownTimeout", ConfigValueFactory.fromAnyRef(3600));
+        StopDuringProcessingService service = new StopDuringProcessingService("stop-during-processing", longTimeout, resources);
+        service.start();
+        assertTrue(service.processingLatch.await(2, TimeUnit.SECONDS), "Service should be processing");
+
+        service.stop();
+
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+    }
+
     @Test
     void processingPhaseServiceGetsGracePeriod() throws InterruptedException {
         // The service enters PROCESSING, stays there until the stop request, and then writes for

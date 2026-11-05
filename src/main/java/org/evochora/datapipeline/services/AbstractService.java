@@ -480,6 +480,11 @@ public abstract class AbstractService implements IService, IMonitorable {
      * switch to PROCESSING clears an interrupt that {@link #stop()} sent while the service was
      * still WAITING, and it cannot fall between the moment a stop sees WAITING and the moment its
      * interrupt arrives: an interrupt meant to end a wait never reaches the write that follows it.
+     * <p>
+     * The switch back to WAITING delivers the interrupt of a stop that was requested meanwhile,
+     * which a stop does not send to a service that is processing. A service may be interrupted
+     * at any time while it waits, so this is the interrupt the stop would have sent a moment
+     * later, and no stop is lost to the write it waited for.
      *
      * @param phase the new shutdown phase
      */
@@ -488,6 +493,8 @@ public abstract class AbstractService implements IService, IMonitorable {
             this.currentShutdownPhase = phase;
             if (phase == ShutdownPhase.PROCESSING) {
                 Thread.interrupted();
+            } else if (stopRequested.get()) {
+                Thread.currentThread().interrupt();
             }
         }
     }

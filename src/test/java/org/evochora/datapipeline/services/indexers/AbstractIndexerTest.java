@@ -15,6 +15,7 @@ import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -208,6 +209,52 @@ class AbstractIndexerTest {
         stopper.join(5000);
 
         assertEquals("not interrupted", duringSchema.get());
+        assertEquals(IService.State.STOPPED, indexer.getCurrentState());
+    }
+
+    /** An indexer whose indexing waits without checking for a stop, as waiting for metadata does. */
+    private static class WaitingIndexer extends AbstractIndexer<MetadataInfo, Object> {
+        WaitingIndexer(Config options, Map<String, List<IResource>> resources) {
+            super("waiting", options, resources);
+        }
+
+        @Override
+        protected void indexRun(String runId) throws InterruptedException {
+            new CountDownLatch(1).await();
+        }
+    }
+
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aStopDuringTheSchemaSetupEndsTheWaitThatFollows() throws Exception {
+        when(mockStorage.findMetadataPath("test-run-configured"))
+            .thenReturn(Optional.of(StoragePath.of("test-run-configured/raw/metadata.pb")));
+        CountDownLatch schemaEntered = new CountDownLatch(1);
+        CountDownLatch schemaReleased = new CountDownLatch(1);
+        IResource database = mock(IResource.class, withSettings().extraInterfaces(ISchemaAwareDatabase.class));
+        doAnswer(invocation -> {
+            schemaEntered.countDown();
+            schemaReleased.await(5, TimeUnit.SECONDS);
+            return null;
+        }).when((ISchemaAwareDatabase) database).setSimulationRun(anyString());
+        Map<String, List<IResource>> withDatabase = Map.of(
+            "storage", List.of(mockStorage),
+            "topic", List.of(mockTopic),
+            "database", List.of(database));
+        // The shutdown timeout is an hour, so only an interrupt can end the indexer's wait
+        WaitingIndexer indexer = new WaitingIndexer(
+            ConfigFactory.parseString("runId = \"test-run-configured\"\nshutdownTimeout = 3600"), withDatabase);
+
+        indexer.start();
+        assertTrue(schemaEntered.await(5, TimeUnit.SECONDS), "the indexer sets its schema");
+        Thread stopper = new Thread(indexer::stop, "stopper");
+        stopper.start();
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+            .atMost(5, TimeUnit.SECONDS).until(() -> stopper.getState() == Thread.State.TIMED_WAITING
+                || stopper.getState() == Thread.State.TERMINATED);
+        schemaReleased.countDown();
+        stopper.join();
+
         assertEquals(IService.State.STOPPED, indexer.getCurrentState());
     }
 }
