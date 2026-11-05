@@ -8,7 +8,8 @@ import java.util.Set;
 
 /**
  * Walks the chain of an exception and its causes, for every place that looks into it: for the
- * innermost cause, for a cause of a given type, or for the line a known failure is logged with.
+ * innermost cause, for a cause of a given type, for an interrupt behind a failure, or for the line
+ * a known failure is logged with.
  * <p>
  * Java rejects a throwable given itself as its cause, but not a ring of two or more, which the
  * public API can build and a library may hand on. A walk that stops only at the end of the chain
@@ -70,6 +71,20 @@ public final class CauseChain {
             }
         }
         return null;
+    }
+
+    /**
+     * Whether the throwable is the consequence of an interrupt of the thread it was thrown on: a
+     * link of its chain is an {@link InterruptedException}, which libraries wrap in exceptions of
+     * their own, or a {@link java.nio.channels.ClosedByInterruptException}, which a channel throws
+     * when the thread is interrupted in the middle of reading or writing.
+     *
+     * @param throwable the exception whose chain is walked
+     * @return {@code true} if a link of the chain is one of the two
+     */
+    public static boolean isInterruptInduced(Throwable throwable) {
+        return links(throwable).stream().anyMatch(link -> link instanceof InterruptedException
+                || link instanceof java.nio.channels.ClosedByInterruptException);
     }
 
     /**

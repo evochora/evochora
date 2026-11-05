@@ -313,7 +313,7 @@ public abstract class AbstractService implements IService, IMonitorable {
         } catch (Exception | Error e) {
             // An Error is caught as well: left to the JVM, it would end the thread on stderr, out
             // of the log, and the service would count as STOPPED rather than as failed.
-            if (isInterruptInduced(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 log.debug("Service thread interrupted, shutting down.");
                 Thread.currentThread().interrupt();
             } else {
@@ -335,17 +335,6 @@ public abstract class AbstractService implements IService, IMonitorable {
             }
             log.debug("Service thread for {} has terminated.", this.getClass().getSimpleName());
         }
-    }
-
-    /**
-     * Checks whether an exception was induced by a Thread.interrupt() call by walking
-     * the cause chain for interrupt-specific types. Libraries like Artemis wrap
-     * InterruptedException in RuntimeExceptions (e.g., ActiveMQInterruptedException),
-     * and NIO throws ClosedByInterruptException when a channel is interrupted mid-IO.
-     */
-    private static boolean isInterruptInduced(Throwable t) {
-        return CauseChain.links(t).stream().anyMatch(link -> link instanceof InterruptedException
-                || link instanceof java.nio.channels.ClosedByInterruptException);
     }
 
     /**

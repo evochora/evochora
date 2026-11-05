@@ -37,7 +37,6 @@ import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
-import org.evochora.datapipeline.utils.JmsUtils;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapper;
@@ -488,7 +487,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             sendMessage(data);
             throughputCounter.recordCount();
         } catch (JMSException e) {
-            if (JmsUtils.isInterruptedException(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("put() interrupted");
             }
             log.error("Failed to put message to queue '{}'", queueName);
@@ -509,7 +508,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             throughputCounter.recordCount();
             return true;
         } catch (JMSException e) {
-            if (JmsUtils.isInterruptedException(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("offer() interrupted");
             }
             return false;
@@ -657,7 +656,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     return new ArtemisStreamingBatch(Collections.emptyList()); // Timeout
                 }
             } catch (JMSException e) {
-                if (JmsUtils.isInterruptedException(e)) {
+                if (CauseChain.isInterruptInduced(e)) {
                     throw new InterruptedException("receiveBatch() interrupted acquiring token");
                 }
                 log.warn("Failed to acquire drain token on queue '{}'", queueName);
@@ -691,7 +690,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     }
                     messages.add(first);
                 } catch (JMSException e) {
-                    if (JmsUtils.isInterruptedException(e)) {
+                    if (CauseChain.isInterruptInduced(e)) {
                         throw new InterruptedException("receiveBatch() interrupted waiting for data");
                     }
                     log.warn("Failed to receive from queue '{}'", queueName);
@@ -744,7 +743,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 messages.add(msg);
             }
         } catch (JMSException e) {
-            if (JmsUtils.isInterruptedException(e)) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw new InterruptedException("receiveAvailable() interrupted draining the queue");
             }
             log.warn("Failed during non-blocking receive on queue '{}' (received {} before error): {}",

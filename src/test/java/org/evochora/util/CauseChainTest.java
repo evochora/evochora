@@ -90,4 +90,14 @@ class CauseChainTest {
         assertThat(CauseChain.find(first, IOException.class)).isNull();
         assertThat(CauseChain.messages(first)).isEqualTo("A; caused by: B");
     }
+
+    @Test
+    void anInterruptIsFoundInEitherFormAnywhereInTheChain() {
+        assertThat(CauseChain.isInterruptInduced(new RuntimeException("wrapped", new InterruptedException())))
+                .as("an interrupt a library wrapped").isTrue();
+        assertThat(CauseChain.isInterruptInduced(new IOException("write failed",
+                new java.nio.channels.ClosedByInterruptException())))
+                .as("a channel closed by an interrupt").isTrue();
+        assertThat(CauseChain.isInterruptInduced(new IOException("disk full"))).as("any other failure").isFalse();
+    }
 }
