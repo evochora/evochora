@@ -16,6 +16,7 @@ import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -164,18 +165,14 @@ public class MetadataPersistenceService extends AbstractService {
                 log.debug("Received metadata message for simulation {}", metadata.getSimulationRunId());
 
                 // Validate simulation run ID
+                // Metadata without a run id cannot be stored, and a redelivery would not change that:
+                // it is set aside in the DLQ and acknowledged, and the service ends in ERROR
                 if (metadata.getSimulationRunId() == null || metadata.getSimulationRunId().isEmpty()) {
-                    log.warn("Metadata contains empty or null simulationRunId, sending to DLQ");
-                    recordError(
-                        "INVALID_SIMULATION_RUN_ID",
-                        "Metadata contains empty or null simulationRunId",
-                        "Cannot persist metadata without valid simulation run ID"
-                    );
                     sendToDLQ(metadata, "Empty or null simulationRunId",
                         new IllegalStateException("Empty or null simulationRunId"));
                     metadataFailed.incrementAndGet();
                     batch.commit();
-                    return;
+                    throw new OperationalException("Metadata carries no simulationRunId and cannot be persisted");
                 }
 
                 // Generate storage key: {simulationRunId}/raw/metadata.pb
@@ -204,7 +201,11 @@ public class MetadataPersistenceService extends AbstractService {
      *
      * @param key storage key for the metadata file
      * @param metadata the simulation metadata to persist
-     * @throws InterruptedException if interrupted while sending topic notification
+     * @throws InterruptedException if interrupted while sending topic notification or between two
+     *                              attempts, which is a shutdown
+     * @throws OperationalException if every attempt failed: the metadata is set aside in the DLQ,
+     *                              and the message is left unacknowledged, so that a restart
+     *                              tries again where the queue delivers it again
      */
     private void writeMetadataWithRetry(String key, SimulationMetadata metadata) throws InterruptedException {
         int attempt = 0;
@@ -244,29 +245,22 @@ public class MetadataPersistenceService extends AbstractService {
                     try {
                         Thread.sleep(backoff);
                     } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
                         log.debug("Interrupted during retry backoff, aborting retries");
-                        break;
+                        throw ie;
                     }
 
                     // Exponential backoff with cap to prevent overflow
                     backoff = Math.min(backoff * 2, 60000); // Max 60 seconds
-                } else {
-                    log.warn("Failed to write metadata {} after {} retries, sending to DLQ", key, maxRetries);
                 }
             }
         }
 
-        // All retries exhausted - record error
-        String errorDetails = String.format("Key: %s, Retries: %d, Exception: %s",
-            key, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
-        recordError(
-            "METADATA_WRITE_FAILED",
-            "Failed to write metadata after all retries",
-            errorDetails
-        );
+        // All retries exhausted: the metadata is kept in the DLQ, and the service ends in ERROR,
+        // because a run whose metadata is not stored can neither be read nor resumed
         sendToDLQ(metadata, lastException != null ? lastException.getMessage() : "Unknown error", lastException);
         metadataFailed.incrementAndGet();
+        throw new OperationalException("Failed to write metadata " + key + " after " + maxRetries + " retries",
+            lastException);
     }
 
     /**
