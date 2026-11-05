@@ -281,6 +281,11 @@ class MetadataPersistenceServiceTest {
             .until(() -> service.getMetrics().get("metadata_failed").longValue() > 0);
 
         verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
+
+        // The ERROR line is logged by the service's thread as it ends: waiting for the state it
+        // sets afterwards keeps the test from ending before the line is there
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.ERROR);
     }
 
     // ========== Retry Logic Tests ==========
@@ -384,6 +389,11 @@ class MetadataPersistenceServiceTest {
             assertTrue(dlqMsg.getFailureReason().contains("Storage failure"));
             return true;
         }));
+
+        // The ERROR line is logged by the service's thread as it ends: waiting for the state it
+        // sets afterwards keeps the test from ending before the line is there
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.ERROR);
     }
 
     @Test
@@ -407,6 +417,11 @@ class MetadataPersistenceServiceTest {
 
         // Verify failure recorded but no DLQ call
         assertEquals(1, service.getMetrics().get("metadata_failed").longValue());
+
+        // The ERROR line is logged by the service's thread as it ends: waiting for the state it
+        // sets afterwards keeps the test from ending before the line is there
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.ERROR);
     }
 
     @Test
