@@ -381,10 +381,10 @@ public abstract class AbstractService implements IService, IMonitorable {
      * 
      * <strong>2. Fatal Errors</strong> (service must stop):
      * <ul>
-     *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
+     *   <li>Throw an exception whose message says what went wrong, with its context</li>
+     *   <li>Do NOT log it - AbstractService logs the failure once</li>
      *   <li>Do NOT use recordError() - AbstractService records the failure as
-     *       {@link OperationalError#SERVICE_FAILED}</li>
-     *   <li>Throw exception - AbstractService will set ERROR state</li>
+     *       {@link OperationalError#SERVICE_FAILED} and sets ERROR state</li>
      *   <li>Example: Database connection lost, cannot compile program, resource unavailable</li>
      * </ul>
      * 
@@ -587,8 +587,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Records an operational error for tracking and monitoring.
      * <p>
      * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the service
-     * continues running. For fatal errors that require stopping the service, use
-     * {@code log.error()} and throw an exception instead.
+     * continues running. A fatal error that requires stopping the service is thrown instead;
+     * {@code AbstractService} logs and records it.
      * <p>
      * Use this method to track transient errors that don't require service termination
      * but may affect data quality or indicate problems. These errors affect the service's
