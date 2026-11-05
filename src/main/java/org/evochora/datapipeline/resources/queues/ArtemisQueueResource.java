@@ -31,6 +31,7 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
@@ -491,7 +492,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 throw new InterruptedException("put() interrupted");
             }
             log.error("Failed to put message to queue '{}'", queueName);
-            throw new RuntimeException("Failed to put message to queue: " + queueName, e);
+            throw new OperationalException("Failed to put message to queue: " + queueName, e);
         }
     }
 
@@ -807,7 +808,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         recordError("TOKEN_RELEASE_FAILED", "Failed to release drain token after 3 attempts",
             lastException != null ? lastException.getMessage() : "unknown");
         log.error("Failed to release drain token on queue '{}' after 3 attempts — drain lock is now STUCK", queueName);
-        throw new RuntimeException("Failed to release drain token — lock stuck on queue: " + queueName, lastException);
+        throw new OperationalException("Failed to release drain token — lock stuck on queue: " + queueName, lastException);
     }
 
     /**
@@ -875,8 +876,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                         throughputCounter.recordCount();
                         return element;
                     } catch (Exception e) {
-                        throw new RuntimeException("Failed to deserialize message at index " + index
-                            + " from queue '" + queueName + "'", e);
+                        // A message the broker cannot hand over or whose payload cannot be read is a
+                        // known cause; any other failure of the conversion is a defect
+                        String message = "Failed to deserialize message at index " + index
+                            + " from queue '" + queueName + "'";
+                        throw e instanceof JMSException || e instanceof java.io.IOException
+                            ? new OperationalException(message, e)
+                            : new RuntimeException(message, e);
                     }
                 }
             };
@@ -889,7 +895,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     consumerSession.commit();
                     committed = true;
                 } catch (JMSException e) {
-                    throw new RuntimeException("Failed to commit batch of " + messages.size()
+                    throw new OperationalException("Failed to commit batch of " + messages.size()
                         + " messages on queue '" + queueName + "'", e);
                 }
             }

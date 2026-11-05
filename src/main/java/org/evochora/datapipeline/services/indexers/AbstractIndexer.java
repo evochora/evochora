@@ -196,9 +196,10 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
     protected void run() throws InterruptedException {
         String runId = null;
         
-        // A failure ends the service, and AbstractService logs it once: a wait that ran out has a
-        // known cause and is told on one line, anything else is passed on as it is, wrapped only
-        // because run() may throw no checked exception
+        // A failure ends the service, and AbstractService logs it once. A wait that ran out has a
+        // known cause, and so has a checked exception: it comes from storage or the database, from
+        // the surroundings the indexer works in. Both are told on one line; an unchecked exception
+        // is passed on as it is
         // Phase 1: Discover run ID
         try {
             runId = discoverRunId();
@@ -210,7 +211,7 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Run discovery failed", e);
+            throw new OperationalException("Run discovery failed", e);
         }
 
         // Phase 2: Index the run
@@ -224,7 +225,7 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Indexing failed for run: " + runId, e);
+            throw new OperationalException("Indexing failed for run: " + runId, e);
         }
     }
 }

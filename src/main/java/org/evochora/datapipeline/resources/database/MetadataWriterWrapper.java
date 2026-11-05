@@ -45,7 +45,7 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IR
             log.warn("Failed to insert metadata for run: {}", metadata.getSimulationRunId());
             recordError("INSERT_METADATA_FAILED", "Failed to insert metadata",
                        "RunId: " + metadata.getSimulationRunId() + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to insert metadata: " + metadata.getSimulationRunId(), e);
+            throw failure("Failed to insert metadata: " + metadata.getSimulationRunId(), e);
         }
     }
 
@@ -58,7 +58,7 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IR
             log.warn("Failed to check metadata existence for run: {}", simulationRunId);
             recordError("HAS_METADATA_FAILED", "Failed to check metadata existence",
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to check metadata existence: " + simulationRunId, e);
+            throw failure("Failed to check metadata existence: " + simulationRunId, e);
         }
     }
 

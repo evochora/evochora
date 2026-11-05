@@ -132,6 +132,24 @@ class MetadataReaderWrapperTest {
         assertEquals("GET_METADATA_FAILED", wrapper.getErrors().get(0).errorType());
     }
 
+    /**
+     * A failure of the database itself is a known cause, passed on so that it is logged on one
+     * line; a failure of anything else stays a defect.
+     */
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to read metadata.*", occurrences = 2)
+    void getMetadata_tellsAFailureOfTheDatabaseFromADefect() throws Exception {
+        when(mockDatabase.doGetMetadata(any(), eq("lost-run")))
+            .thenThrow(new java.sql.SQLException("Connection is closed"));
+        when(mockDatabase.doGetMetadata(any(), eq("defect-run")))
+            .thenThrow(new NullPointerException("defect"));
+
+        RuntimeException lost = assertThrows(RuntimeException.class, () -> wrapper.getMetadata("lost-run"));
+        assertInstanceOf(org.evochora.datapipeline.api.resources.OperationalException.class, lost);
+        RuntimeException defect = assertThrows(RuntimeException.class, () -> wrapper.getMetadata("defect-run"));
+        assertFalse(defect instanceof org.evochora.datapipeline.api.resources.OperationalException);
+    }
+
     @Test
     void metrics_containCountsAndLatencyPercentiles() throws Exception {
         // Given: Perform several operations

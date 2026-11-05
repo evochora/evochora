@@ -12,6 +12,7 @@ import jakarta.jms.Topic;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.util.CauseChain;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,7 +96,7 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
             // Transient error - log at WARN level (AGENTS.md: Resources use WARN for transient errors)
             log.warn("Failed to send message to Artemis topic '{}'", currentTopicName);
             recordError("SEND_FAILED", "JMS send failed", "Topic: " + currentTopicName + ", Cause: " + e.getMessage());
-            throw new RuntimeException("Failed to send JMS message", e);
+            throw new OperationalException("Failed to send JMS message to topic '" + currentTopicName + "'", e);
         }
     }
 

@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -192,7 +193,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             );
             log.error(msg);
             recordError("READER_SETUP_FAILED", msg, "SQLException: " + e.getMessage());
-            throw new RuntimeException(msg, e);
+            throw new OperationalException(msg, e);
         }
     }
     

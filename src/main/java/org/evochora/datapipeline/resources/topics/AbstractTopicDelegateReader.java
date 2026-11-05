@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -226,12 +227,12 @@ public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResourc
             log.warn("Failed to deserialize message from topic '{}'", parent.getResourceName());
             recordError("DESERIALIZATION_ERROR", "Protobuf deserialization failed", 
                 "Topic: " + parent.getResourceName() + ", MessageId: " + envelope.getMessageId());
-            throw new RuntimeException("Deserialization failed for messageId: " + envelope.getMessageId(), e);
+            throw new OperationalException("Deserialization failed for messageId: " + envelope.getMessageId(), e);
         } catch (ClassNotFoundException e) {
             log.error("Unknown message type in topic '{}'", parent.getResourceName());
             recordError("UNKNOWN_TYPE", "Message type not found", 
                 "Topic: " + parent.getResourceName() + ", TypeUrl: " + envelope.getPayload().getTypeUrl());
-            throw new RuntimeException("Unknown message type: " + envelope.getPayload().getTypeUrl(), e);
+            throw new OperationalException("Unknown message type: " + envelope.getPayload().getTypeUrl(), e);
         }
     }
     

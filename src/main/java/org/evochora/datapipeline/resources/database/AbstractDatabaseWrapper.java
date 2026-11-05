@@ -6,6 +6,8 @@ import org.evochora.datapipeline.api.resources.database.IConnectionManageable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.sql.SQLException;
 import java.util.Map;
 
 /**
@@ -87,7 +89,7 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
      * another thread, because those paths do not touch this state.
      *
      * @return Database connection (with schema set if cachedRunId is not null)
-     * @throws RuntimeException if connection acquisition fails
+     * @throws OperationalException if the database gives no connection or cannot set the schema
      */
     protected Object ensureConnection() {
         if (cachedConnection == null || isConnectionClosed(cachedConnection)) {
@@ -102,7 +104,7 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
                 }
                 
             } catch (Exception e) {
-                throw new RuntimeException("Failed to acquire database connection for service: " + 
+                throw failure("Failed to acquire database connection for service: " +
                                          context.serviceName(), e);
             }
         }
@@ -158,8 +160,23 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
             log.warn("Failed to set schema for run: {}", simulationRunId);
             recordError("SET_SCHEMA_FAILED", "Failed to set simulation run", 
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to set schema for run-id: " + simulationRunId, e);
+            throw failure("Failed to set schema for run-id: " + simulationRunId, e);
         }
+    }
+
+    /**
+     * The failure of a call to the database, to throw from a wrapper. An {@link SQLException} or
+     * an {@link IOException} comes from the database or the data it holds, a known cause, and is
+     * passed on as an {@link OperationalException}; anything else is passed on as a defect.
+     *
+     * @param message what failed, naming the operation and the run or service it was for
+     * @param cause the exception the call failed with
+     * @return the exception to throw
+     */
+    protected static RuntimeException failure(String message, Exception cause) {
+        return cause instanceof SQLException || cause instanceof IOException
+            ? new OperationalException(message, cause)
+            : new RuntimeException(message, cause);
     }
     
     /**

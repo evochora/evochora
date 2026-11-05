@@ -14,6 +14,7 @@ import org.apache.activemq.artemis.api.jms.ActiveMQJMSConstants;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.util.CauseChain;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -222,7 +223,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
                 recordError("REPLAY_FAILED",
                     "Historical message replay failed for new consumer group",
                     "ConsumerGroup: " + this.consumerGroup + ", Error: " + e.getMessage());
-                throw new RuntimeException(
+                throw new OperationalException(
                     "Failed to replay retained messages for new consumer group '"
                     + this.consumerGroup + "' on topic '" + targetTopicName
                     + "'. Refusing to consume only new messages, which would index the run"
@@ -311,7 +312,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
 
             // Transient error - log at WARN level (AGENTS.md: Resources use WARN for transient errors)
             log.warn("JMS receive failed on topic '{}'", activeTopicName);
-            throw new RuntimeException("JMS receive failed", e);
+            throw new OperationalException("JMS receive failed on topic '" + activeTopicName + "'", e);
         }
     }
     

@@ -56,7 +56,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
             log.warn("Failed to read metadata for run: {}: {}", simulationRunId, e.getMessage());
             recordError("GET_METADATA_FAILED", "Failed to read metadata",
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to read metadata: " + simulationRunId, e);
+            throw failure("Failed to read metadata: " + simulationRunId, e);
         }
     }
 
@@ -74,7 +74,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
             log.warn("Failed to get run-id from current schema: {}", e.getMessage());
             recordError("GET_RUNID_FAILED", "Failed to get run-id from schema",
                        "Error: " + e.getMessage());
-            throw new RuntimeException("Failed to get run-id from current schema", e);
+            throw failure("Failed to get run-id from current schema", e);
         }
     }
     
