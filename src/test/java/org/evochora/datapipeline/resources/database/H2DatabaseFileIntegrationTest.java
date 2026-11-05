@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.util.Map;
-import java.util.UUID;
 
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.Tag;
@@ -29,10 +28,9 @@ import com.typesafe.config.ConfigFactory;
 class H2DatabaseFileIntegrationTest {
 
     @Test
-    void testJdbcUrl_DirectJdbcUrlProvided() {
+    void testJdbcUrl_DirectJdbcUrlProvided(@TempDir Path dir) {
         // A directly provided URL is used as it stands, so the database file appears where it points.
-        String dbName = "h2-direct-" + UUID.randomUUID();
-        Path dbPath = Path.of(System.getProperty("java.io.tmpdir"), dbName);
+        Path dbPath = dir.resolve("h2-direct");
         Config config = ConfigFactory.parseString(
             "jdbcUrl = \"jdbc:h2:" + dbPath.toString().replace("\\", "/") + ";MODE=PostgreSQL\"");
 
@@ -44,16 +42,11 @@ class H2DatabaseFileIntegrationTest {
     }
 
     @Test
-    void testJdbcUrl_WithVariableExpansion() {
+    void testJdbcUrl_WithVariableExpansion(@TempDir Path dir) {
         // When jdbcUrl contains variables, they should be expanded via HOCON's resolve()
-        String tmpDir = System.getProperty("java.io.tmpdir");
-        String uniqueDb = "h2-test-" + UUID.randomUUID();
-        // Note: Don't set tempDbDirectory - H2 files in /tmp will be cleaned up automatically
-        // Setting it to /tmp would cause cleanup to fail on systemd-private directories
-        
         // Use ConfigFactory.parseMap for the variable definition to avoid caching issues
-        Config varsConfig = ConfigFactory.parseMap(Map.of("test.db.dir", tmpDir));
-        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:\"${test.db.dir}\"/" + uniqueDb + ";MODE=PostgreSQL\"")
+        Config varsConfig = ConfigFactory.parseMap(Map.of("test.db.dir", dir.toString().replace("\\", "/")));
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:\"${test.db.dir}\"/h2-test;MODE=PostgreSQL\"")
             .withFallback(varsConfig)
             .resolve();
         
