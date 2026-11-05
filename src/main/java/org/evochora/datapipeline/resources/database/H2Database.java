@@ -927,9 +927,10 @@ public class H2Database extends AbstractDatabaseResource
      * {@link org.evochora.datapipeline.api.resources.IResource.UsageState#FAILED} state;
      * the exception itself only informs the caller of the current operation.
      * <p>
-     * The exception is logged with its stack trace because this is a system fault: HikariCP
-     * chains the underlying failure that prevented connection creation, and that chain is the
-     * only place where the actual cause appears.
+     * The cause is known, a database the pool cannot reach or a pool that is exhausted, so it is
+     * logged on one line without a stack trace. HikariCP chains the underlying failure that
+     * prevented the connection, and the line carries the messages of that chain, which is where
+     * the actual cause appears.
      * <p>
      * A caller interrupted while it waits for a connection is being stopped, and the pool is
      * sound: HikariCP restores the interrupt flag and reports the interruption in the cause chain
@@ -947,7 +948,7 @@ public class H2Database extends AbstractDatabaseResource
                 throw e;
             }
             log.error("H2 database '{}' cannot acquire a connection for {}: {}",
-                getResourceName(), context, e.getMessage(), e);
+                getResourceName(), context, CauseChain.messages(e));
             recordError("CONNECTION_ACQUIRE_FAILED", "Cannot acquire a database connection",
                 "Database: " + getResourceName() + ", Context: " + context + ", Error: " + e.getMessage());
             throw e;

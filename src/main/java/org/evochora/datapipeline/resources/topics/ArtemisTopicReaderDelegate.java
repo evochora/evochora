@@ -102,8 +102,8 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         } catch (JMSException e) {
             // This is a critical failure. The reader will not be able to receive messages for the new run.
             String topicName = parent.getTopicName();
-            log.error("CRITICAL: Failed to recreate Artemis consumer for group '{}' on topic '{}' for runId '{}'. This reader will be non-functional.",
-                this.consumerGroup, topicName, simulationRunId, e);
+            log.error("CRITICAL: Failed to recreate Artemis consumer for group '{}' on topic '{}' for runId '{}'. This reader will be non-functional: {}",
+                this.consumerGroup, topicName, simulationRunId, CauseChain.messages(e));
             recordError("CONSUMER_RECREATE_FAILED", "Failed to recreate consumer for new runId, reader is non-functional.",
                 "Topic: " + topicName + ", RunId: " + simulationRunId);
         }

@@ -24,6 +24,8 @@ import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.spi.IController;
 import org.evochora.node.spi.ServiceRegistry;
+import org.evochora.datapipeline.api.resources.OperationalException;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -209,7 +211,7 @@ public class AnalyticsController implements IController {
             
             ctx.json(runs);
         } catch (Exception e) {
-            log.error("Failed to list analytics runs", e);
+            logFailure(log, "Failed to list analytics runs", e);
             ctx.status(500).result("Failed to list runs");
         }
     }
@@ -309,7 +311,7 @@ public class AnalyticsController implements IController {
             runRangeCache.put(runId, new CacheEntry(System.currentTimeMillis(), json));
             ctx.contentType("application/json").result(json);
         } catch (Exception e) {
-            log.error("Failed to get the tick range of run {}", runId, e);
+            logFailure(log, "Failed to get the tick range of run {}", e, runId);
             ctx.status(500).result("Failed to get tick range: " + e.getMessage());
         }
     }
@@ -394,7 +396,7 @@ public class AnalyticsController implements IController {
 
             ctx.json(result);
         } catch (Exception e) {
-            log.error("Failed to get tick range for {}/{}", metric, lod, e);
+            logFailure(log, "Failed to get tick range for {}/{}", e, metric, lod);
             ctx.status(500).result("Failed to get tick range: " + e.getMessage());
         }
     }
@@ -568,7 +570,7 @@ public class AnalyticsController implements IController {
             }
 
         } catch (Exception e) {
-            log.error("Query failed for {}/{}/{}", runId, metric, lod, e);
+            logFailure(log, "Query failed for {}/{}/{}", e, runId, metric, lod);
             ctx.status(500).result("Query failed: " + e.getMessage());
         }
     }
@@ -867,7 +869,7 @@ public class AnalyticsController implements IController {
             }
 
         } catch (Exception e) {
-            log.error("Failed to get Parquet for {}/{}/{}", metric, lod, ctx.queryParam("runId"), e);
+            logFailure(log, "Failed to get Parquet for {}/{}/{}", e, metric, lod, ctx.queryParam("runId"));
             ctx.status(500).result("Failed to merge Parquet files: " + e.getMessage());
         }
     }
@@ -1063,7 +1065,8 @@ public class AnalyticsController implements IController {
                         ManifestEntry manifestEntry = gson.fromJson(json, ManifestEntry.class);
                         entries.add(manifestEntry);
                     } catch (Exception e) {
-                        log.warn("Failed to read/parse metadata file: {}", file, e);
+                        // A manifest file that cannot be read or parsed is a fault of the data, told on one line
+                        log.warn("Failed to read/parse metadata file: {}: {}", file, CauseChain.messages(e));
                     }
                 }
             }
@@ -1083,7 +1086,7 @@ public class AnalyticsController implements IController {
             ctx.contentType("application/json").result(responseJson);
             
         } catch (Exception e) {
-            log.error("Failed to aggregate manifest for run {}", runId, e);
+            logFailure(log, "Failed to aggregate manifest for run {}", e, runId);
             ctx.status(500).result("Failed to generate manifest");
         }
     }
@@ -1153,5 +1156,27 @@ public class AnalyticsController implements IController {
             // No metadata or parse error - use metric as-is
         }
         return metric;
+    }
+
+    /**
+     * Logs a request that failed, at ERROR. A failure whose cause chain holds an
+     * {@link OperationalException} has a known cause and is told on one line by the messages of
+     * that chain; any other failure may have met a defect and is logged with its stack trace.
+     *
+     * @param logger the logger to write to
+     * @param message the message, with a placeholder for each of {@code args}
+     * @param failure the exception the request failed with
+     * @param args the values of the message's placeholders
+     */
+    static void logFailure(Logger logger, String message, Exception failure, Object... args) {
+        Object[] arguments = java.util.Arrays.copyOf(args, args.length + 1);
+        OperationalException known = CauseChain.find(failure, OperationalException.class);
+        if (known != null) {
+            arguments[args.length] = CauseChain.messages(known);
+            logger.error(message + ": {}", arguments);
+        } else {
+            arguments[args.length] = failure;
+            logger.error(message, arguments);
+        }
     }
 }

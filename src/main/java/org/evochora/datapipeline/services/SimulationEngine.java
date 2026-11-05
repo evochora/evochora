@@ -68,6 +68,7 @@ import org.evochora.runtime.model.Topology;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.evochora.datapipeline.api.resources.OperationalException;
+import org.evochora.util.CauseChain;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -1010,7 +1011,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                             log.debug("Failed to send tick data for tick {} during shutdown", tick);
                             break;
                         }
-                        log.warn("Failed to capture or send tick data for tick {}", tick, e);
+                        // A known cause, such as a queue that does not take the chunk, is told on one
+                        // line; anything else may be a defect of the capture and keeps its trace
+                        if (CauseChain.find(e, OperationalException.class) != null) {
+                            log.warn("Failed to capture or send tick data for tick {}: {}", tick, CauseChain.messages(e));
+                        } else {
+                            log.warn("Failed to capture or send tick data for tick {}", tick, e);
+                        }
                         recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
                     }
                 }
