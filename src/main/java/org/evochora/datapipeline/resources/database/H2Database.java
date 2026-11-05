@@ -932,8 +932,8 @@ public class H2Database extends AbstractDatabaseResource
      * only place where the actual cause appears.
      * <p>
      * A caller interrupted while it waits for a connection is being stopped, and the pool is
-     * sound: HikariCP restores the interrupt flag and reports the interruption as the cause of
-     * the exception, which is passed on without being recorded as an error.
+     * sound: HikariCP restores the interrupt flag and reports the interruption in the cause chain
+     * of the exception, which is passed on without being recorded as an error.
      *
      * @param context Description of the operation requesting the connection, for error details.
      * @return A pooled connection that the caller must close.
@@ -943,7 +943,7 @@ public class H2Database extends AbstractDatabaseResource
         try {
             return dataSource.getConnection();
         } catch (SQLException e) {
-            if (e.getCause() instanceof InterruptedException) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw e;
             }
             log.error("H2 database '{}' cannot acquire a connection for {}: {}",
