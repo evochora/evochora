@@ -31,15 +31,21 @@ class JavaVersionGuardMainTest {
     private static Outcome runGuard(Path buildInfoDir) throws IOException, InterruptedException, URISyntaxException {
         String guardClasses = Path.of(JavaVersionGuard.class.getProtectionDomain().getCodeSource().getLocation().toURI())
                 .toString();
+        // Written to a file rather than read from the pipe, so that the wait below bounds the test
+        // even if the guard never ends
+        Path stderrFile = buildInfoDir.resolve("guard-stderr.txt");
         Process process = new ProcessBuilder(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-cp", buildInfoDir + File.pathSeparator + guardClasses,
                 JavaVersionGuard.class.getName())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(stderrFile.toFile())
                 .start();
-        String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        assertThat(process.waitFor(10, TimeUnit.SECONDS)).as("the guard has ended").isTrue();
-        return new Outcome(process.exitValue(), stderr);
+        if (!process.waitFor(10, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new AssertionError("The guard did not end within 10 seconds");
+        }
+        return new Outcome(process.exitValue(), Files.readString(stderrFile, StandardCharsets.UTF_8).trim());
     }
 
     private static Path buildInfo(Path dir, String content) throws IOException {
