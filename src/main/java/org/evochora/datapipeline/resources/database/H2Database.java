@@ -864,13 +864,18 @@ public class H2Database extends AbstractDatabaseResource
      * which closes all connections without waiting for rollback. This is critical for
      * large databases (1+ TB) where rollback of uncommitted transactions can take hours.
      * <p>
-     * <strong>Data Safety:</strong> Uncommitted transactions are discarded, but this is
-     * safe because:
+     * <strong>Data Safety:</strong> {@code SHUTDOWN IMMEDIATELY} discards whatever H2 has not yet
+     * written to its file, committed transactions included: H2 writes committed changes in the
+     * background, after a delay. A {@code CHECKPOINT} before it writes those changes first. It
+     * writes only what is pending, without rolling anything back or compacting the file, so the
+     * shutdown stays immediate. What is discarded then is only uncommitted work, which is safe
+     * because:
      * <ul>
      *   <li>All pipeline writes use idempotent MERGE statements</li>
-     *   <li>Discarded batches will be reprocessed on next startup</li>
-     *   <li>Only in-flight data is lost, not committed data</li>
+     *   <li>A batch whose writes were not committed is not acknowledged and is redelivered on the
+     *       next startup</li>
      * </ul>
+     * A {@code CHECKPOINT} that fails is reported and the shutdown goes ahead.
      * <p>
      * <strong>Recovery:</strong> H2 MVStore performs automatic recovery on next startup,
      * rolling back any partially written transactions.
@@ -881,6 +886,7 @@ public class H2Database extends AbstractDatabaseResource
         if (dataSource != null && !dataSource.isClosed()) {
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
+                checkpoint(stmt);
                 // SHUTDOWN IMMEDIATELY: closes all connections immediately without rollback
                 // This avoids hours-long rollback on large databases during shutdown
                 stmt.execute("SHUTDOWN IMMEDIATELY");
@@ -919,6 +925,30 @@ public class H2Database extends AbstractDatabaseResource
         super.close();
     }
     
+    /**
+     * Writes the committed changes H2 still holds in memory to its file.
+     * <p>
+     * A database that is closed or dead fails here with the error codes {@link #close()} handles
+     * for {@code SHUTDOWN IMMEDIATELY}, so those are passed on; any other failure is reported, and
+     * the shutdown goes ahead without the changes that were still pending.
+     *
+     * @param stmt a statement on a connection of this database
+     * @throws SQLException if the database is already closed or dead
+     */
+    private void checkpoint(Statement stmt) throws SQLException {
+        try {
+            stmt.execute("CHECKPOINT");
+        } catch (SQLException e) {
+            if (e.getErrorCode() == 90121 || e.getErrorCode() == 90098) {
+                throw e;
+            }
+            log.warn("H2 database '{}' CHECKPOINT failed, changes not yet written are lost: {}",
+                getResourceName(), e.getMessage());
+            recordError("CHECKPOINT_FAILED", "CHECKPOINT before shutdown failed",
+                "Database: " + getResourceName() + ", Error: " + e.getMessage());
+        }
+    }
+
     /**
      * Acquires a pooled connection and reports a failed acquisition as a resource error.
      * <p>

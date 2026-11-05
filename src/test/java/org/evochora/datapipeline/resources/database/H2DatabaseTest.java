@@ -30,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -109,6 +110,30 @@ class H2DatabaseTest {
         
         assertNotNull(db);
         db.close();
+    }
+
+    @Test
+    void closeKeepsWhatWasCommittedJustBefore(@TempDir Path dir) throws Exception {
+        // The options of the shipped configuration, under which the database stays open until close()
+        String url = "jdbc:h2:" + dir.resolve("committed").toString().replace("\\", "/")
+            + ";MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1";
+        H2Database db = new H2Database("committed", ConfigFactory.parseMap(Map.of("jdbcUrl", url)));
+        try (Connection connection = (Connection) db.acquireDedicatedConnection();
+             java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE written (x INT)");
+            statement.execute("INSERT INTO written VALUES (1)");
+            connection.commit();
+        }
+
+        db.close();
+
+        try (Connection reopened = DriverManager.getConnection(url, "sa", "");
+             java.sql.Statement statement = reopened.createStatement();
+             java.sql.ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM written")) {
+            assertTrue(rows.next());
+            assertEquals(1, rows.getInt(1), "the row committed before close() is in the file");
+            statement.execute("SHUTDOWN");
+        }
     }
 
     @Test
