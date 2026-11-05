@@ -15,6 +15,8 @@ public class ServiceStartException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
     /**
+     * Creates the failure of the start of the named service, carrying what ended it.
+     *
      * @param serviceName the configured name of the service whose start failed
      * @param cause       the failure
      */
