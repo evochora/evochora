@@ -114,8 +114,8 @@ public class ServiceManager implements IMonitorable {
      * If {@code autoStart} is absent or true and a non-empty {@code startupSequence} is configured,
      * the services it names are started in that order before the constructor returns, and a memory
      * estimate for the running pipeline is logged afterwards. A service that fails to start is
-     * logged, and the services after it are started all the same. Otherwise nothing is started and the services wait for {@link #startAll()} or
-     * {@link #startService(String)}.
+     * logged, and the services after it are started all the same. Otherwise nothing is started and
+     * the services wait for {@link #startAll()} or {@link #startService(String)}.
      *
      * @param rootConfig configuration holding a {@code pipeline} section; nothing outside that
      *                   section is read
@@ -936,12 +936,14 @@ public class ServiceManager implements IMonitorable {
      * configured service for the first time. The new instance is built by the factory and bound to
      * newly wrapped resources, while the resources themselves stay as they are. Both halves behave
      * as described for {@link #stopService(String)} and {@link #startService(String)}, which
-     * includes swallowing a recognised start failure and leaving the service without an instance.
+     * includes swallowing a recognised start failure and leaving the service without an instance,
+     * and passing on one the manager does not recognise.
      *
      * @param serviceName the configured name of the service
      * @throws IllegalArgumentException if no service of that name is defined
      * @throws IllegalStateException if the service did not come to a halt and is still running or
      *                               paused when the start is attempted
+     * @throws ServiceStartException if the start failed for a cause the manager does not recognise
      */
     public synchronized void restartService(String serviceName) {
         log.info("Restarting service '{}'...", serviceName);
