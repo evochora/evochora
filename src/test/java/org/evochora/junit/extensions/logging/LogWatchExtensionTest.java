@@ -14,9 +14,9 @@ import org.slf4j.LoggerFactory;
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
-class LogWatchExtensionProbeTest {
+class LogWatchExtensionTest {
 
-    private static final Logger logger = LoggerFactory.getLogger(LogWatchExtensionProbeTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(LogWatchExtensionTest.class);
 
     /**
      * Asks for WARN and ERROR without logging. The check is the extension's own after the test:
