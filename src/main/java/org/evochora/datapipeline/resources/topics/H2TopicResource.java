@@ -455,11 +455,15 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 stmt.execute("SHUTDOWN");
                 log.debug("H2 topic '{}' shutdown command executed", getResourceName());
             } catch (SQLException e) {
-                // A database already shut down, or killed by an I/O error of its store, takes no
-                // further statement; H2Database tells a closed database by the same two codes
-                if (e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN
-                        || e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED) {
+                // A database already shut down takes no further statement; one closed by a failure
+                // of its store is reported, as H2Database does
+                if (e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN) {
                     log.debug("H2 topic '{}' already closed", getResourceName());
+                } else if (e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED) {
+                    log.warn("H2 topic '{}' was closed by a failure of its store: {}",
+                        getResourceName(), e.getMessage());
+                    recordError("DATABASE_CLOSED_BY_FAILURE", "Database closed by a failure of its store",
+                        "Topic: " + getResourceName() + ", Error: " + e.getMessage());
                 } else {
                     // Unexpected error - log warning but continue with pool close
                     log.warn("H2 topic '{}' shutdown command failed: {}",

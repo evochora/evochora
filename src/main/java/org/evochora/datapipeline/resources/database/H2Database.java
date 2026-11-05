@@ -866,10 +866,15 @@ public class H2Database extends AbstractDatabaseResource
                 log.debug("H2 database '{}' shutdown immediately executed", getResourceName());
             } catch (SQLException e) {
                 // Handing the connection back after a successful shutdown reports the database
-                // as closed, so this is the normal end as well as that of a database already
-                // closed or dead
-                if (isClosed(e)) {
+                // as shut down, so this is the normal end as well as that of a database already
+                // shut down
+                if (e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN) {
                     log.debug("H2 database '{}' closed", getResourceName());
+                } else if (e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED) {
+                    log.warn("H2 database '{}' was closed by a failure of its store: {}",
+                        getResourceName(), e.getMessage());
+                    recordError("DATABASE_CLOSED_BY_FAILURE", "Database closed by a failure of its store",
+                        "Database: " + getResourceName() + ", Error: " + e.getMessage());
                 } else {
                     log.warn("H2 database '{}' SHUTDOWN IMMEDIATELY failed: {}",
                         getResourceName(), e.getMessage());
@@ -884,9 +889,9 @@ public class H2Database extends AbstractDatabaseResource
     /**
      * Writes the committed changes H2 still holds in memory to its file.
      * <p>
-     * A database that is already closed or dead is passed on to {@link #close()}, which takes it
-     * for closed; any other failure is reported, and the shutdown goes ahead without the changes
-     * that were still pending.
+     * A database that is already shut down or closed by a failure is passed on to
+     * {@link #close()}, which reports the latter; any other failure is reported here, and the
+     * shutdown goes ahead without the changes that were still pending.
      *
      * @param stmt a statement on a connection of this database
      * @throws SQLException if the database is already closed or dead
