@@ -119,6 +119,9 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             log.debug("Discovering runId from storage (timestamp-based, after {})", indexerStartTime);
             long startTime = System.currentTimeMillis();
 
+            // The wait ends after maxPollDurationMs whether the listing answered or failed: a storage
+            // that cannot be listed would otherwise keep the indexer waiting for ever
+            IOException lastListingFailure = null;
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     List<String> runIds = storage.listRunIds(indexerStartTime);
@@ -127,16 +130,22 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
                         log.debug("Discovered runId from storage: {}", runId);
                         break;
                     }
-
-                    if (System.currentTimeMillis() - startTime > maxPollDurationMs) {
-                        throw new TimeoutException("No simulation run appeared within " + maxPollDurationMs + "ms.");
-                    }
-
-                    Thread.sleep(pollIntervalMs);
+                    lastListingFailure = null;
                 } catch (IOException e) {
                     log.debug("Error listing run IDs from storage, retrying: {}", e.getMessage());
-                    Thread.sleep(pollIntervalMs);
+                    lastListingFailure = e;
                 }
+
+                if (System.currentTimeMillis() - startTime > maxPollDurationMs) {
+                    TimeoutException timeout = new TimeoutException(lastListingFailure == null
+                        ? "No simulation run appeared within " + maxPollDurationMs + "ms."
+                        : "No simulation run appeared within " + maxPollDurationMs
+                            + "ms; listing the storage failed: " + lastListingFailure.getMessage());
+                    timeout.initCause(lastListingFailure);
+                    throw timeout;
+                }
+
+                Thread.sleep(pollIntervalMs);
             }
             
             if (runId == null) {

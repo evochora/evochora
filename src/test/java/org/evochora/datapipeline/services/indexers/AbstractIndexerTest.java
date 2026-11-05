@@ -147,6 +147,19 @@ class AbstractIndexerTest {
         assertThrows(TimeoutException.class, indexer::discoverRunId);
     }
 
+    /** A storage that cannot be listed ends the wait in time as well, naming why. */
+    @Test
+    @org.junit.jupiter.api.Timeout(value = 5, threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
+    void discoverRunId_timestampBased_endsTheWaitWhenTheListingKeepsFailing() throws IOException {
+        Config config = ConfigFactory.parseString("maxPollDurationMs = 50, pollIntervalMs = 10");
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
+
+        when(mockStorage.listRunIds(any(Instant.class))).thenThrow(new IOException("Permission denied"));
+
+        TimeoutException timeout = assertThrows(TimeoutException.class, indexer::discoverRunId);
+        assertTrue(timeout.getMessage().contains("Permission denied"), timeout.getMessage());
+    }
+
     @Test
     void run_callsIndexRunWithDiscoveredId() throws IOException {
         when(mockStorage.findMetadataPath("test-run-configured"))
