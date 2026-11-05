@@ -211,7 +211,7 @@ public class AnalyticsController implements IController {
             
             ctx.json(runs);
         } catch (Exception e) {
-            logFailure(log, "Failed to list analytics runs", e);
+            logFailure("Failed to list analytics runs", e);
             ctx.status(500).result("Failed to list runs");
         }
     }
@@ -311,7 +311,7 @@ public class AnalyticsController implements IController {
             runRangeCache.put(runId, new CacheEntry(System.currentTimeMillis(), json));
             ctx.contentType("application/json").result(json);
         } catch (Exception e) {
-            logFailure(log, "Failed to get the tick range of run {}", e, runId);
+            logFailure("Failed to get the tick range of run {}", e, runId);
             ctx.status(500).result("Failed to get tick range: " + e.getMessage());
         }
     }
@@ -396,7 +396,7 @@ public class AnalyticsController implements IController {
 
             ctx.json(result);
         } catch (Exception e) {
-            logFailure(log, "Failed to get tick range for {}/{}", e, metric, lod);
+            logFailure("Failed to get tick range for {}/{}", e, metric, lod);
             ctx.status(500).result("Failed to get tick range: " + e.getMessage());
         }
     }
@@ -570,7 +570,7 @@ public class AnalyticsController implements IController {
             }
 
         } catch (Exception e) {
-            logFailure(log, "Query failed for {}/{}/{}", e, runId, metric, lod);
+            logFailure("Query failed for {}/{}/{}", e, runId, metric, lod);
             ctx.status(500).result("Query failed: " + e.getMessage());
         }
     }
@@ -869,7 +869,7 @@ public class AnalyticsController implements IController {
             }
 
         } catch (Exception e) {
-            logFailure(log, "Failed to get Parquet for {}/{}/{}", e, metric, lod, ctx.queryParam("runId"));
+            logFailure("Failed to get Parquet for {}/{}/{}", e, metric, lod, ctx.queryParam("runId"));
             ctx.status(500).result("Failed to merge Parquet files: " + e.getMessage());
         }
     }
@@ -1086,7 +1086,7 @@ public class AnalyticsController implements IController {
             ctx.contentType("application/json").result(responseJson);
             
         } catch (Exception e) {
-            logFailure(log, "Failed to aggregate manifest for run {}", e, runId);
+            logFailure("Failed to aggregate manifest for run {}", e, runId);
             ctx.status(500).result("Failed to generate manifest");
         }
     }
@@ -1159,24 +1159,22 @@ public class AnalyticsController implements IController {
     }
 
     /**
-     * Logs a request that failed, at ERROR. A failure whose cause chain holds an
-     * {@link OperationalException} has a known cause and is told on one line by the messages of
-     * that chain; any other failure may have met a defect and is logged with its stack trace.
+     * Logs a request that failed, at ERROR: on one line when its cause is known, and with its
+     * stack trace when it may have met a defect, as {@link OperationalException#reasonOf} tells.
      *
-     * @param logger the logger to write to
      * @param message the message, with a placeholder for each of {@code args}
      * @param failure the exception the request failed with
      * @param args the values of the message's placeholders
      */
-    static void logFailure(Logger logger, String message, Exception failure, Object... args) {
+    private static void logFailure(String message, Exception failure, Object... args) {
         Object[] arguments = java.util.Arrays.copyOf(args, args.length + 1);
-        OperationalException known = CauseChain.find(failure, OperationalException.class);
-        if (known != null) {
-            arguments[args.length] = CauseChain.messages(known);
-            logger.error(message + ": {}", arguments);
+        String reason = OperationalException.reasonOf(failure);
+        if (reason != null) {
+            arguments[args.length] = reason;
+            log.error(message + ": {}", arguments);
         } else {
             arguments[args.length] = failure;
-            logger.error(message, arguments);
+            log.error(message, arguments);
         }
     }
 }

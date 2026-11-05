@@ -825,9 +825,9 @@ public class ServiceManager implements IMonitorable {
 
             // Any other known cause the service passed on, before the configuration check for the
             // same reason as a resume failure: its own message explains what its cause only names
-            OperationalException known = CauseChain.find(e, OperationalException.class);
-            if (known != null) {
-                log.error("Failed to start service '{}': {}", name, CauseChain.messages(known));
+            String reason = OperationalException.reasonOf(e);
+            if (reason != null) {
+                log.error("Failed to start service '{}': {}", name, reason);
                 return;
             }
 

@@ -323,12 +323,13 @@ public abstract class AbstractService implements IService, IMonitorable {
                 // else is a defect, and its trace is what finds it. It is recorded before the state
                 // changes, so that whoever sees ERROR finds why.
                 String service = this.getClass().getSimpleName();
-                OperationalException known = CauseChain.find(e, OperationalException.class);
-                if (known != null) {
-                    String reason = CauseChain.messages(known);
+                String reason = OperationalException.reasonOf(e);
+                if (reason != null) {
+                    OperationalException known = CauseChain.find(e, OperationalException.class);
                     log.error("{} stopped with ERROR: {}", service, reason);
                     addError(new RecordedError(Instant.now(), RecordedError.SERVICE_FAILED,
-                            service + " stopped with ERROR: " + reason, known.getClass().getName()));
+                            service + " stopped with ERROR: " + reason,
+                            (known != null ? known : e).getClass().getName()));
                 } else {
                     log.error("{} stopped with ERROR", service, e);
                     Throwable cause = CauseChain.root(e);
