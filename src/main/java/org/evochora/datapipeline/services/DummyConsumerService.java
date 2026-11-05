@@ -67,7 +67,7 @@ public class DummyConsumerService<T> extends AbstractService {
      * <p>
      * The idempotency tracker and the dead letter queue are optional. Without a tracker no
      * duplicate detection takes place; without a dead letter queue a message that exhausts its
-     * retries is lost and only reported through a warning and a recorded operational error.
+     * retries is lost and only reported through a warning and a recorded error.
      *
      * @param name      The name of the service instance.
      * @param options   The configuration for this service; the supported keys and their defaults

@@ -86,6 +86,19 @@ public class ServiceManagerTest {
         }
     }
 
+    /** A service whose construction fails for a cause it knows and names. */
+    public static class KnownCauseFailingService extends org.evochora.datapipeline.services.AbstractService {
+        public KnownCauseFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
+            super(name, options, resources);
+            throw new org.evochora.datapipeline.api.resources.OperationalException("no run to index",
+                new java.util.concurrent.TimeoutException("waited 5000ms"));
+        }
+
+        @Override
+        protected void run() {
+        }
+    }
+
     /** A service that starts its thread and then fails, as a defect after the start would. */
     public static class StartAnnouncementFailingService extends org.evochora.datapipeline.services.AbstractService {
         public StartAnnouncementFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
@@ -121,6 +134,29 @@ public class ServiceManagerTest {
                         "a service after the failed one in the startup sequence is started all the same");
             });
             // It never ran, so it has no instance: it is reported as stopped, its reason is in the log
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
+    /**
+     * A start that fails for a cause the service knows is logged as one line of its messages and
+     * leaves the service stopped, even when the caller is a single start: it is no defect to pass on.
+     */
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to start service 'broken': no run to index; caused by: waited 5000ms")
+    void aStartFailingForAKnownCauseIsLoggedOnOneLineAndNotPassedOn() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$KnownCauseFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            assertDoesNotThrow(() -> sm.startService("broken"));
             assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
         } finally {
             sm.shutdown();

@@ -21,7 +21,7 @@ import org.evochora.BuildInfo;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -222,6 +222,6 @@ class MetadataIndexerTest {
         // A fatal error does not go through recordError(); the base class records the failure that
         // ended the service, once
         assertEquals(1, indexer.getErrors().size());
-        assertEquals(OperationalError.SERVICE_FAILED, indexer.getErrors().get(0).errorType());
+        assertEquals(RecordedError.SERVICE_FAILED, indexer.getErrors().get(0).errorType());
     }
 }

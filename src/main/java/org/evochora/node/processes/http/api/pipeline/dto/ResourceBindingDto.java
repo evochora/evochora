@@ -1,7 +1,7 @@
 package org.evochora.node.processes.http.api.pipeline.dto;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.services.ResourceBinding;
 
 import java.util.Collections;
@@ -45,7 +45,7 @@ public record ResourceBindingDto(
             final IMonitorable monitorable = (IMonitorable) binding.resource();
             metrics = monitorable.getMetrics();
             errorMessages = monitorable.getErrors().stream()
-                    .map(OperationalError::message)
+                    .map(RecordedError::message)
                     .collect(Collectors.toList());
             healthy = monitorable.isHealthy();
         } else {

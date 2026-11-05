@@ -1743,7 +1743,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
-     * Clears operational errors and resets error counters.
+     * Clears recorded errors and resets error counters.
      * <p>
      * Extends AbstractResource's clearErrors() to also reset storage-specific error counters.
      */

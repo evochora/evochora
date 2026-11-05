@@ -258,10 +258,11 @@ util         →  (nothing)
 - **No Migrations**: Persisted data is read or resumed only by the build that wrote it. Formats carry no version and are never migrated; a run written by an older build is analysed with that build
 - **The engine emits, the pipeline aggregates**: the counters the runtime keeps today (deaths, genomes) stay; a new counter or observation field in the engine for an indexer's sake needs the maintainer's approval. What an indexer or chart needs is derived in the pipeline from the recorded data
 
-**Error Handling & Logging**:
+**Error Handling & Logging** (a stack trace only for a defect, see Stack Traces below):
 - **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - throw only if the caller must handle the failed operation
-- **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
-- **Normal Shutdown** (InterruptedException): `log.debug("msg", args)` - re-throw exception - NO recordError()
+- **Fatal Errors with a known cause**: THROW an `OperationalException` whose message says what went wrong, with the original as its cause. A resource also logs it with `log.error("msg", args)` and records it, because it does not stop itself; a service does neither, `AbstractService` logs it as one line, sets ERROR and records `SERVICE_FAILED`. Failing at start, it is logged by the `ServiceManager`, and the service stays stopped
+- **Defects**: every other exception; `AbstractService` and the `ServiceManager` log it with its stack trace
+- **Normal Shutdown** (an interrupt, as `CauseChain.isInterruptInduced` tells): `log.debug("msg", args)` - re-throw exception - NO recordError()
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
 - **Stack Traces**: pass the exception ONLY when the cause is a bug or unknown (see below) - never when the message can say what went wrong
 - **Health Status**: Services/Resources are unhealthy if `errors.isEmpty() == false` or state == ERROR
@@ -415,16 +416,13 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 A stack trace exists to find out what went wrong. When the system already knows, it is noise: it hides
 the message that tells the operator what to do and makes a system that reacted exactly as intended look
 unstable. So the one question is whether the cause is known.
-- **Known cause** (configuration, user input, a resource that is gone, a broker that does not answer — everything the system anticipated and handles): NO stack trace
+- **Known cause** (configuration, user input, a resource that is gone, a broker that does not answer — everything the system anticipated and handles): NO stack trace; passed on as an `OperationalException`
   - `log.warn("msg", args)` or `log.error("msg", args)` without exception parameter
   - The message says what went wrong and what to change. Where the cause reached the catch site as an exception — a pool that cannot connect, a file that cannot be read — the message carries the messages of the cause chain (`e.getMessage()` and the causes below it), because that is where the diagnosis is; the frames add nothing to it
 - **Bug** (invariant violation, should-never-happen condition) or **unknown cause** (a broad `catch` at a boundary that cannot tell a bug from anything else): WITH stack trace
   - `log.error("msg", args, exception)` or `log.error("msg", args, new IllegalStateException("Invariant violation"))`
   - The trace is for the developer: it is what finds the defect
   - At ERROR, not DEBUG: production runs at INFO, and a cause that is only visible at DEBUG is not visible when it matters
-- For transient errors: `log.warn("msg", args)` without exception parameter
-- For fatal errors: `log.error("msg", args)` then throw exception
-- For interruption/shutdown: `log.debug("msg", args)` then re-throw
 
 **Examples:**
 ```java
@@ -447,9 +445,9 @@ log.debug("H2 database '{}' connection pool started (max={}, minIdle={})", name,
 log.warn("Failed to send message to queue '{}'", queueName);
 recordError("SEND_FAILED", "Queue full", "Queue: " + queueName);
 
-// Good - Fatal error (ERROR) - expected, no stack trace
+// Good - Fatal error of a resource (ERROR) - known cause, no stack trace
 log.error("Cannot initialize database connection pool for '{}'", dbName);
-throw new RuntimeException("Database initialization failed");
+throw new OperationalException("Cannot initialize database connection pool for '" + dbName + "'", e);
 
 // Good - Bug detection (ERROR) - unexpected, WITH stack trace
 if (type == TYPE_CODE && value == 0 && marker != 0) {

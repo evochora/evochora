@@ -26,12 +26,13 @@ import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IResourceInitializer;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.IServiceFactory;
 import org.evochora.datapipeline.api.services.ResourceBinding;
 import org.evochora.datapipeline.api.services.ServiceStatus;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -822,6 +823,14 @@ public class ServiceManager implements IMonitorable {
                 return;
             }
 
+            // Any other known cause the service passed on, before the configuration check for the
+            // same reason as a resume failure: its own message explains what its cause only names
+            OperationalException known = CauseChain.find(e, OperationalException.class);
+            if (known != null) {
+                log.error("Failed to start service '{}': {}", name, CauseChain.messages(known));
+                return;
+            }
+
             // Check if this is a configuration error (IllegalArgumentException, ConfigException, or
             // NegativeArraySizeException)
             if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
@@ -1002,7 +1011,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     @Override
-    public List<OperationalError> getErrors() {
+    public List<RecordedError> getErrors() {
         return services.values().stream()
                 .filter(s -> s instanceof IMonitorable)
                 .flatMap(s -> ((IMonitorable) s).getErrors().stream())
@@ -1027,7 +1036,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     /**
-     * The operational errors reported by the registered services, keyed by service name.
+     * The recorded errors reported by the registered services, keyed by service name.
      * <p>
      * Only services that can be monitored and that actually have errors appear: a service with an
      * empty error list is left out, as is one that has never been started. The errors are the ones
@@ -1036,7 +1045,7 @@ public class ServiceManager implements IMonitorable {
      *
      * @return a map from service name to that service's errors, holding no empty lists
      */
-    public Map<String, List<OperationalError>> getServiceErrors() {
+    public Map<String, List<RecordedError>> getServiceErrors() {
         return services.entrySet().stream()
                 .filter(e -> e.getValue() instanceof IMonitorable)
                 .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), ((IMonitorable) e.getValue()).getErrors()))
@@ -1045,7 +1054,7 @@ public class ServiceManager implements IMonitorable {
     }
 
     /**
-     * The operational errors reported by one service.
+     * The recorded errors reported by one service.
      * <p>
      * A service that cannot be monitored has no errors to report and is not distinguished here from
      * one that reports none.
@@ -1055,7 +1064,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalArgumentException if no instance of that name is registered, which is also the
      *                                  case for a configured service that has never been started
      */
-    public List<OperationalError> getServiceErrors(String serviceName) {
+    public List<RecordedError> getServiceErrors(String serviceName) {
         IService service = getServiceOrFail(serviceName);
         if (service instanceof IMonitorable) {
             return ((IMonitorable) service).getErrors();
@@ -1149,7 +1158,7 @@ public class ServiceManager implements IMonitorable {
 
         List<ResourceBinding> resourceBindings = serviceResourceBindings.getOrDefault(serviceName, Collections.emptyList());
         Map<String, Number> serviceMetrics = (service instanceof IMonitorable) ? ((IMonitorable) service).getMetrics() : Collections.emptyMap();
-        List<OperationalError> errors = (service instanceof IMonitorable) ? ((IMonitorable) service).getErrors() : Collections.emptyList();
+        List<RecordedError> errors = (service instanceof IMonitorable) ? ((IMonitorable) service).getErrors() : Collections.emptyList();
         boolean healthy = (service instanceof IMonitorable) ? ((IMonitorable) service).isHealthy() : (service.getCurrentState() != IService.State.ERROR);
 
         return new ServiceStatus(

@@ -1,6 +1,6 @@
 package org.evochora.node.processes.http.api.pipeline.dto;
 
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.services.ServiceStatus;
 
 import java.util.List;
@@ -40,7 +40,7 @@ public record ServiceStatusDto(
             .collect(Collectors.toList());
 
         final List<String> errorMessages = status.errors().stream()
-            .map(OperationalError::message)
+            .map(RecordedError::message)
             .collect(Collectors.toList());
 
         return new ServiceStatusDto(

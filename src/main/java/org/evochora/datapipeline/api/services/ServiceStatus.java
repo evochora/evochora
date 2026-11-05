@@ -2,7 +2,7 @@ package org.evochora.datapipeline.api.services;
 
 import java.util.List;
 
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 
 import java.util.Map;
 
@@ -15,7 +15,7 @@ import java.util.Map;
  * @param state    The current state of the service (e.g., RUNNING, PAUSED).
  * @param healthy  Whether the service reports itself as healthy (from {@link org.evochora.datapipeline.api.resources.IMonitorable#isHealthy()}).
  * @param metrics  A map of metrics for the service.
- * @param errors   A list of operational errors reported by the service.
+ * @param errors   A list of recorded errors reported by the service.
  * @param resourceBindings A list of {@link org.evochora.datapipeline.api.services.ResourceBinding} objects, one for each of the
  *                 service's resource connections.
  */
@@ -23,7 +23,7 @@ public record ServiceStatus(
     IService.State state,
     boolean healthy,
     Map<String, Number> metrics,
-    List<OperationalError> errors,
+    List<RecordedError> errors,
     List<ResourceBinding> resourceBindings
 ) {
 }

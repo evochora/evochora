@@ -16,7 +16,7 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
@@ -214,7 +214,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      *
      * @param filter A predicate to select which errors to remove.
      */
-    public void clearErrors(Predicate<OperationalError> filter) {
+    public void clearErrors(Predicate<RecordedError> filter) {
         clearErrorsIf(filter);
     }
 

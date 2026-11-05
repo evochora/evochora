@@ -24,16 +24,16 @@ public interface IMonitorable {
     Map<String, Number> getMetrics();
 
     /**
-     * Returns a list of operational errors that have occurred in the component.
+     * Returns a list of recorded errors that have occurred in the component.
      * <p>
      * This list may be cleared by calling {@link #clearErrors()}.
      *
-     * @return A list of {@link OperationalError}s.
+     * @return A list of {@link RecordedError}s.
      */
-    List<OperationalError> getErrors();
+    List<RecordedError> getErrors();
 
     /**
-     * Clears the list of operational errors.
+     * Clears the list of recorded errors.
      * <p>
      * This is typically an administrative action performed via the CLI after
      * an operator has investigated the errors.

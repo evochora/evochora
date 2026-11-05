@@ -3,7 +3,7 @@ package org.evochora.datapipeline.resources;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -26,7 +26,7 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     protected final Config options;
     
     /**
-     * Collection of operational errors that occurred during resource operations.
+     * Collection of recorded errors that occurred during resource operations.
      * These are transient errors the resource kept working through, and fatal ones that leave it
      * unable to serve any caller - a resource does not stop itself, so both belong here.
      * <p>
@@ -34,7 +34,7 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      * Subclasses must not access this directly - use protected methods like
      * {@link #clearErrorsIf(java.util.function.Predicate)} when needed.
      */
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
+    private final ConcurrentLinkedDeque<RecordedError> errors = new ConcurrentLinkedDeque<>();
     
     /**
      * Maximum number of errors to keep in memory. When exceeded, oldest errors are removed.
@@ -73,7 +73,7 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     }
     
     /**
-     * Records an operational error for tracking and monitoring.
+     * Records an error for tracking and monitoring.
      * <p>
      * <strong>IMPORTANT:</strong> Whether an error is recorded is independent of whether it is
      * thrown. Recording reflects the state of the resource; throwing reports the outcome of a
@@ -133,7 +133,7 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      * @param details Additional context about the error
      */
     protected void recordError(String code, String message, String details) {
-        errors.add(new OperationalError(Instant.now(), code, message, details));
+        errors.add(new RecordedError(Instant.now(), code, message, details));
         
         // Prevent unbounded memory growth
         int maxErrors = getMaxErrors();
@@ -143,7 +143,7 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     }
 
     @Override
-    public List<OperationalError> getErrors() {
+    public List<RecordedError> getErrors() {
         return new ArrayList<>(errors);
     }
 
@@ -163,7 +163,7 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      *
      * @param filter Predicate to select which errors to remove
      */
-    protected void clearErrorsIf(java.util.function.Predicate<OperationalError> filter) {
+    protected void clearErrorsIf(java.util.function.Predicate<RecordedError> filter) {
         errors.removeIf(filter);
     }
 

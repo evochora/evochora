@@ -10,7 +10,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.OperationalException;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
@@ -26,7 +27,7 @@ import com.typesafe.config.Config;
  * Error Tracking: Services can use {@link #recordError(String, String, String)} to
  * track transient errors that affect data quality but don't require service termination.
  * The failure that ends the service is recorded by this class itself, as
- * {@link OperationalError#SERVICE_FAILED}, so that a service in {@link IService.State#ERROR}
+ * {@link RecordedError#SERVICE_FAILED}, so that a service in {@link IService.State#ERROR}
  * reports why.
  */
 public abstract class AbstractService implements IService, IMonitorable {
@@ -90,14 +91,14 @@ public abstract class AbstractService implements IService, IMonitorable {
     private final Object shutdownPhaseLock = new Object();
     
     /**
-     * Collection of operational errors that occurred during service execution: the transient
+     * Collection of recorded errors that occurred during service execution: the transient
      * errors that don't stop the service but may affect data quality, and the defect that ended
      * it, if one did. Limited to MAX_ERRORS to prevent unbounded memory growth.
      * <p>
      * Private to enforce use of {@link #recordError(String, String, String)} method.
      * Subclasses must not access this directly.
      */
-    private final ConcurrentLinkedDeque<OperationalError> errors = new ConcurrentLinkedDeque<>();
+    private final ConcurrentLinkedDeque<RecordedError> errors = new ConcurrentLinkedDeque<>();
     
     /**
      * Maximum number of errors to keep in memory. When exceeded, oldest errors are removed.
@@ -298,9 +299,9 @@ public abstract class AbstractService implements IService, IMonitorable {
      * <pre>
      * try {
      *     criticalOperation();
-     * } catch (DatabaseException e) {
+     * } catch (SQLException e) {
      *     sendToDLQ(data, e);  // Custom handling
-     *     throw new RuntimeException("Fatal: Database connection lost", e);  // → ERROR state
+     *     throw new OperationalException("Database connection lost", e);  // → ERROR, one line
      * }
      * </pre>
      */
@@ -317,15 +318,25 @@ public abstract class AbstractService implements IService, IMonitorable {
                 log.debug("Service thread interrupted, shutting down.");
                 Thread.currentThread().interrupt();
             } else {
-                // The service's own loop let the exception or error through: a defect, or a failure
-                // it ends on, and the trace is what tells them apart. It is recorded before the
-                // state changes, so that whoever sees ERROR finds why.
-                log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
-                Throwable cause = CauseChain.root(e);
-                addError(new OperationalError(Instant.now(), OperationalError.SERVICE_FAILED,
-                        this.getClass().getSimpleName() + " stopped with ERROR, stack trace in the log: "
-                                + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()),
-                        cause.getClass().getName()));
+                // The service's own loop let the exception or error through. A known cause, passed
+                // on as an OperationalException, is told by its messages on one line; anything
+                // else is a defect, and its trace is what finds it. It is recorded before the state
+                // changes, so that whoever sees ERROR finds why.
+                String service = this.getClass().getSimpleName();
+                OperationalException known = CauseChain.find(e, OperationalException.class);
+                if (known != null) {
+                    String reason = CauseChain.messages(known);
+                    log.error("{} stopped with ERROR: {}", service, reason);
+                    addError(new RecordedError(Instant.now(), RecordedError.SERVICE_FAILED,
+                            service + " stopped with ERROR: " + reason, known.getClass().getName()));
+                } else {
+                    log.error("{} stopped with ERROR", service, e);
+                    Throwable cause = CauseChain.root(e);
+                    addError(new RecordedError(Instant.now(), RecordedError.SERVICE_FAILED,
+                            service + " stopped with ERROR, stack trace in the log: "
+                                    + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()),
+                            cause.getClass().getName()));
+                }
                 currentState.set(State.ERROR);
             }
         } finally {
@@ -381,11 +392,11 @@ public abstract class AbstractService implements IService, IMonitorable {
      * 
      * <strong>2. Fatal Errors</strong> (service must stop):
      * <ul>
-     *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
-     *   <li>Do NOT use recordError() - AbstractService records the failure as
-     *       {@link OperationalError#SERVICE_FAILED}</li>
-     *   <li>Throw exception - AbstractService will set ERROR state</li>
-     *   <li>Example: Database connection lost, cannot compile program, resource unavailable</li>
+     *   <li>Throw, and do not log or record it: AbstractService logs it once, sets the ERROR state
+     *       and records it as {@link RecordedError#SERVICE_FAILED}</li>
+     *   <li>A known cause is thrown as an {@link OperationalException} whose message says what went
+     *       wrong; it is logged as that one line. Anything else counts as a defect</li>
+     *   <li>Example: Database connection lost, no run to index, resource unavailable</li>
      * </ul>
      * 
      * <strong>3. Normal Shutdown (InterruptedException):</strong>
@@ -403,9 +414,9 @@ public abstract class AbstractService implements IService, IMonitorable {
      *   <li>Example: {@code catch(IOException e) { log.debug("Retry {}/{}", attempt, max); }}</li>
      * </ul>
      * 
-     * <strong>Stack Traces:</strong> AbstractService logs the exception or error that ends the
-     * service at ERROR level with its stack trace. Services should never log it again with
-     * {@code log.error(..., e)}.
+     * <strong>Stack Traces:</strong> only for a defect. AbstractService logs the exception or error
+     * that ends the service at ERROR level, with its stack trace unless it is an
+     * {@link OperationalException}.
      *
      * @throws InterruptedException if the service thread is interrupted.
      */
@@ -584,7 +595,7 @@ public abstract class AbstractService implements IService, IMonitorable {
     }
 
     /**
-     * Records an operational error for tracking and monitoring.
+     * Records an error for tracking and monitoring.
      * <p>
      * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the service
      * continues running. For fatal errors that require stopping the service, use
@@ -607,7 +618,7 @@ public abstract class AbstractService implements IService, IMonitorable {
      * <p>
      * <strong>NOT for:</strong> Fatal errors, InterruptedException, or any error that causes
      * an exception to be thrown: the failure that ends the service is recorded by this class
-     * itself, as {@link OperationalError#SERVICE_FAILED}. See {@link #run()} for complete error
+     * itself, as {@link RecordedError#SERVICE_FAILED}. See {@link #run()} for complete error
      * handling guidelines.
      *
      * @param code    Error code for categorization (e.g., "SEND_ERROR", "TICK_FAILED")
@@ -615,10 +626,10 @@ public abstract class AbstractService implements IService, IMonitorable {
      * @param details Additional context about the error
      */
     protected void recordError(String code, String message, String details) {
-        addError(new OperationalError(Instant.now(), code, message, details));
+        addError(new RecordedError(Instant.now(), code, message, details));
     }
 
-    private void addError(OperationalError error) {
+    private void addError(RecordedError error) {
         errors.add(error);
 
         // Prevent unbounded memory growth
@@ -629,7 +640,7 @@ public abstract class AbstractService implements IService, IMonitorable {
     }
 
     @Override
-    public List<OperationalError> getErrors() {
+    public List<RecordedError> getErrors() {
         return new ArrayList<>(errors);
     }
 

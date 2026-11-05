@@ -2,7 +2,7 @@ package org.evochora.node.processes.http.api.pipeline.dto;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 
 import java.util.Collections;
 import java.util.List;
@@ -43,7 +43,7 @@ public record ResourceStatusDto(
             final IMonitorable monitorable = (IMonitorable) resource;
             metrics = monitorable.getMetrics();
             errorMessages = monitorable.getErrors().stream()
-                    .map(OperationalError::message)
+                    .map(RecordedError::message)
                     .collect(Collectors.toList());
             healthy = monitorable.isHealthy();
         } else {

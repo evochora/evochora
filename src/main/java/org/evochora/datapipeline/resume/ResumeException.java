@@ -1,5 +1,7 @@
 package org.evochora.datapipeline.resume;
 
+import org.evochora.datapipeline.api.resources.OperationalException;
+
 /**
  * Thrown when simulation resume fails.
  * <p>
@@ -12,10 +14,10 @@ package org.evochora.datapipeline.resume;
  *   <li>Plugin instantiation failure</li>
  * </ul>
  * <p>
- * This is a RuntimeException because resume failures typically indicate
- * configuration or data issues that cannot be recovered from automatically.
+ * Its cause is known, a configuration or data the checkpoint does not fit, so it is an
+ * {@link OperationalException}: logged by its message, without a stack trace.
  */
-public class ResumeException extends RuntimeException {
+public class ResumeException extends OperationalException {
 
     /**
      * Creates a ResumeException with the specified message.

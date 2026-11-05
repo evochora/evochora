@@ -12,7 +12,7 @@ import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
@@ -264,7 +264,7 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     }
 
     @Override
-    public List<OperationalError> getErrors() {
+    public List<RecordedError> getErrors() {
         return Collections.emptyList();
     }
 

@@ -4,7 +4,8 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import org.evochora.datapipeline.api.resources.IResource;
-import org.evochora.datapipeline.api.resources.OperationalError;
+import org.evochora.datapipeline.api.resources.OperationalException;
+import org.evochora.datapipeline.api.resources.RecordedError;
 import org.evochora.datapipeline.api.services.IService;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
@@ -110,6 +111,7 @@ public class AbstractServiceTest {
      */
     private static class ErrorCallRecorder extends TurboFilter {
         volatile String message;
+        volatile Object[] params;
         volatile Throwable throwable;
 
         @Override
@@ -119,6 +121,7 @@ public class AbstractServiceTest {
                 return FilterReply.NEUTRAL;
             }
             message = format;
+            this.params = params;
             if (t != null) {
                 throwable = t;
             } else if (params != null && params.length > 0 && params[params.length - 1] instanceof Throwable last) {
@@ -221,10 +224,44 @@ public class AbstractServiceTest {
 
             // A service in ERROR reports why: the failure that ended it
             assertEquals(1, service.getErrors().size());
-            OperationalError failure = service.getErrors().get(0);
-            assertEquals(OperationalError.SERVICE_FAILED, failure.errorType());
+            RecordedError failure = service.getErrors().get(0);
+            assertEquals(RecordedError.SERVICE_FAILED, failure.errorType());
             assertTrue(failure.message().contains("test-induced defect"), failure.message());
             assertEquals(defect.getClass().getName(), failure.details());
+        } finally {
+            loggerContext.getTurboFilterList().remove(recorder);
+        }
+    }
+
+    /**
+     * A known cause, passed on as an {@link OperationalException} even under a wrapper of its own,
+     * is logged as one line of the messages of its chain and without a stack trace.
+     */
+    @Test
+    void aKnownCauseFromRunIsLoggedOnOneLineWithoutStackTraceAndStopsTheServiceWithError() throws InterruptedException {
+        RuntimeException wrapped = new RuntimeException("Indexing failed", new OperationalException(
+                "database 'index' is unreachable", new java.sql.SQLException("Connection refused")));
+        FailingService service = new FailingService("failing-service", config, resources, wrapped);
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        ErrorCallRecorder recorder = new ErrorCallRecorder();
+        recorder.start();
+        loggerContext.getTurboFilterList().add(0, recorder);
+        try {
+            service.start();
+            assertTrue(service.terminated.await(5, TimeUnit.SECONDS));
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(IService.State.ERROR, service.getCurrentState()));
+
+            assertEquals("{} stopped with ERROR: {}", recorder.message);
+            assertNull(recorder.throwable, "a known cause carries no stack trace");
+            assertEquals("database 'index' is unreachable; caused by: Connection refused", recorder.params[1]);
+
+            assertEquals(1, service.getErrors().size());
+            RecordedError failure = service.getErrors().get(0);
+            assertEquals(RecordedError.SERVICE_FAILED, failure.errorType());
+            assertTrue(failure.message().endsWith("database 'index' is unreachable; caused by: Connection refused"),
+                failure.message());
+            assertEquals(OperationalException.class.getName(), failure.details());
         } finally {
             loggerContext.getTurboFilterList().remove(recorder);
         }
