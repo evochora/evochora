@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeoutException;
 
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -90,7 +91,7 @@ class AbstractIndexerTest {
         Config config = ConfigFactory.parseString("runId = \"nonexistent-run\"");
         TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, indexer::discoverRunId);
+        OperationalException ex = assertThrows(OperationalException.class, indexer::discoverRunId);
         assertTrue(ex.getMessage().contains("nonexistent-run"));
         assertTrue(ex.getMessage().contains("No simulation data found"));
     }

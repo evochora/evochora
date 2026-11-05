@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.ISimulationRunAwareTopic;
 import org.evochora.datapipeline.services.AbstractService;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import com.google.protobuf.Message;
 import com.typesafe.config.Config;
@@ -104,7 +105,7 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             // Validate that the run actually exists in storage
             try {
                 if (storage.findMetadataPath(configuredRunId).isEmpty()) {
-                    throw new IllegalArgumentException(
+                    throw new OperationalException(
                         "No simulation data found in storage for configured runId: " + configuredRunId +
                         ". Verify that the runId is correct.");
                 }
@@ -195,6 +196,9 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
     protected void run() throws InterruptedException {
         String runId = null;
         
+        // A failure ends the service, and AbstractService logs it once: a wait that ran out has a
+        // known cause and is told on one line, anything else is passed on as it is, wrapped only
+        // because run() may throw no checked exception
         // Phase 1: Discover run ID
         try {
             runId = discoverRunId();
@@ -202,13 +206,13 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             log.debug("Run discovery interrupted during shutdown");
             throw e;
         } catch (TimeoutException e) {
-            log.error("Run discovery timeout after {}ms", maxPollDurationMs);
-            throw new RuntimeException("Run discovery timeout", e);  // Fatal → ERROR state
+            throw new OperationalException(e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Failed to discover run: {}", e.getMessage());
-            throw new RuntimeException("Run discovery failed", e);  // Fatal → ERROR state
+            throw new RuntimeException("Run discovery failed", e);
         }
-        
+
         // Phase 2: Index the run
         try {
             indexRun(runId);
@@ -216,11 +220,11 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
             log.debug("Indexing interrupted during shutdown for run: {}", runId);
             throw e;
         } catch (TimeoutException e) {
-            log.error("Indexing timeout for run: {}", runId);
-            throw new RuntimeException("Indexing timeout", e);  // Fatal → ERROR state
+            throw new OperationalException(e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Indexing failed for run: {}", runId);
-            throw new RuntimeException("Indexing failed", e);  // Fatal → ERROR state
+            throw new RuntimeException("Indexing failed for run: " + runId, e);
         }
     }
 }

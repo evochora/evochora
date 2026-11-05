@@ -353,9 +353,8 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 
             } catch (Exception e) {
                 // Initializing writes to storage; what fails in there is not known at this point -
-                // storage or a defect of the plugin - so the trace stays. The service's own error
-                // log names only the wrapper
-                log.error("Failed to initialize analytics plugin: {}", plugin.getMetricId(), e);
+                // storage or a defect of the plugin - so it is passed on as it is, and AbstractService
+                // logs it once, with its trace unless its cause is known
                 throw new RuntimeException("Failed to initialize plugin: " + plugin.getMetricId(), e);
             }
         }

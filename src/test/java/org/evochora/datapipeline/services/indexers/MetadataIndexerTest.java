@@ -118,8 +118,6 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to index metadata for run: test-run-123")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Indexing failed for run: test-run-123")
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR")
     void databaseFailure_entersErrorState() throws Exception {
         // Arrange
@@ -164,9 +162,7 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Metadata notification did not arrive within \\d+ms for run: test-run-123")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Indexing timeout for run: test-run-123")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR: Metadata notification did not arrive within \\d+ms for run: test-run-123")
     void topicPollTimeout_entersErrorState() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\", topicPollTimeoutMs = 100");
@@ -194,9 +190,7 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Metadata notification did not arrive within \\d+ms for run: test-run-123")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Indexing timeout for run: test-run-123")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR: Metadata notification did not arrive within \\d+ms for run: test-run-123")
     void errorTracking_recordsErrorsOnTimeout() throws Exception {
         // Arrange: Topic poll returns null (timeout scenario)
         when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(null);

@@ -72,8 +72,8 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
         if (message == null) {
             metadataFailed.incrementAndGet();
-            log.error("Metadata notification did not arrive within {}ms for run: {}", topicPollTimeoutMs, runId);
-            throw new TimeoutException("Metadata notification timeout after " + topicPollTimeoutMs + "ms");
+            throw new TimeoutException("Metadata notification did not arrive within " + topicPollTimeoutMs
+                + "ms for run: " + runId);
         }
         
         MetadataInfo info = message.payload();
@@ -92,7 +92,6 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
             log.debug("Successfully indexed metadata for run: {}, service stopping", runId);
         } catch (Exception e) {
             metadataFailed.incrementAndGet();
-            log.error("Failed to index metadata for run: {}", runId);
             throw e;
         } finally {
             setShutdownPhase(ShutdownPhase.WAITING);

@@ -38,7 +38,6 @@ import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.ExpectLog;
-import org.evochora.junit.extensions.logging.ExpectLogs;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -218,14 +217,9 @@ class DummyIndexerIntegrationTest {
     }
     
     @Test
-    @ExpectLogs({
-        @ExpectLog(level = ERROR,
-                   loggerPattern = ".*DummyIndexer.*",
-                   messagePattern = "Failed to discover run:.*"),
-        @ExpectLog(level = ERROR,
-                   loggerPattern = ".*DummyIndexer.*",
-                   messagePattern = ".*DummyIndexer.* stopped with ERROR")
-    })
+    @ExpectLog(level = ERROR,
+               loggerPattern = ".*DummyIndexer.*",
+               messagePattern = "DummyIndexer stopped with ERROR: No simulation data found in storage for configured runId: .*")
     void testMetadataReading_Timeout() throws Exception {
         // Given: Create run ID with no data in storage (simulates wrong runId)
         String runId = "test-run-" + UUID.randomUUID();
