@@ -90,7 +90,7 @@ public class MetadataPersistenceService extends AbstractService {
      * @param name service name for identification
      * @param options configuration options (maxRetries, retryBackoffMs)
      * @param resources resource map containing input queue, storage, and optional DLQ
-     * @throws IllegalArgumentException if configuration validation fails
+     * @throws OperationalException if configuration validation fails
      * @throws IllegalStateException if required resources are missing
      */
     public MetadataPersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
@@ -123,10 +123,10 @@ public class MetadataPersistenceService extends AbstractService {
 
         // Validation
         if (maxRetries < 0) {
-            throw new IllegalArgumentException("maxRetries cannot be negative");
+            throw new OperationalException("maxRetries cannot be negative");
         }
         if (retryBackoffMs < 0) {
-            throw new IllegalArgumentException("retryBackoffMs cannot be negative");
+            throw new OperationalException("retryBackoffMs cannot be negative");
         }
 
         log.debug("MetadataPersistenceService initialized: maxRetries={}, retryBackoff={}ms",

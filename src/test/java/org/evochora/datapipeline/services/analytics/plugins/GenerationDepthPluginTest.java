@@ -9,6 +9,7 @@ import java.util.Map;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -162,7 +163,7 @@ class GenerationDepthPluginTest {
 
         assertThatThrownBy(() -> empty.configure(ConfigFactory.parseMap(
                 Map.of("metricId", "depth", "lineageMetricId", " "))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("lineageMetricId");
     }
 }

@@ -285,11 +285,11 @@ class DlqComponentTest {
         
         // When/Then: Constructor rejects zero/negative maxRetries
         assertThatThrownBy(() -> new DlqComponent<>(tracker, dlq, 0, "DummyIndexer"))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("MaxRetries must be positive");
         
         assertThatThrownBy(() -> new DlqComponent<>(tracker, dlq, -1, "DummyIndexer"))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("MaxRetries must be positive");
     }
     

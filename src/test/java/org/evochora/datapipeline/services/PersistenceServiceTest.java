@@ -118,7 +118,7 @@ class PersistenceServiceTest {
     void testConstructorWithInvalidMaxBatchSize() {
         Config invalidConfig = ConfigFactory.parseMap(Map.of("maxBatchSize", 0));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+        OperationalException exception = assertThrows(OperationalException.class, () -> {
             new PersistenceService("test-persistence", invalidConfig, resources);
         });
 
@@ -129,7 +129,7 @@ class PersistenceServiceTest {
     void testConstructorWithInvalidBatchTimeout() {
         Config invalidConfig = ConfigFactory.parseMap(Map.of("batchTimeoutSeconds", -1));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+        OperationalException exception = assertThrows(OperationalException.class, () -> {
             new PersistenceService("test-persistence", invalidConfig, resources);
         });
 

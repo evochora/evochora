@@ -105,7 +105,7 @@ class MetadataPersistenceServiceTest {
     void testConstructorWithInvalidMaxRetries() {
         Config invalidConfig = ConfigFactory.parseMap(Map.of("maxRetries", -1));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+        OperationalException exception = assertThrows(OperationalException.class, () -> {
             new MetadataPersistenceService("test-metadata-persistence", invalidConfig, resources);
         });
 
@@ -116,7 +116,7 @@ class MetadataPersistenceServiceTest {
     void testConstructorWithInvalidRetryBackoff() {
         Config invalidConfig = ConfigFactory.parseMap(Map.of("retryBackoffMs", -1));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+        OperationalException exception = assertThrows(OperationalException.class, () -> {
             new MetadataPersistenceService("test-metadata-persistence", invalidConfig, resources);
         });
 

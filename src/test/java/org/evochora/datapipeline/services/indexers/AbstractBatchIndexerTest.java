@@ -42,6 +42,7 @@ import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -347,7 +348,7 @@ class AbstractBatchIndexerTest {
 
     @Test
     void constructorRejectsNonPositiveInsertBatchSize() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+        OperationalException ex = assertThrows(OperationalException.class,
             () -> createStreamingIndexer("test-run-c01", 0, 100));
         assertTrue(ex.getMessage().contains("insertBatchSize"), ex.getMessage());
         assertTrue(ex.getMessage().contains("test-streaming-indexer"), ex.getMessage());
@@ -355,7 +356,7 @@ class AbstractBatchIndexerTest {
 
     @Test
     void constructorRejectsNonPositiveFlushTimeout() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+        OperationalException ex = assertThrows(OperationalException.class,
             () -> createStreamingIndexer("test-run-c02", 3, 0));
         assertTrue(ex.getMessage().contains("flushTimeoutMs"), ex.getMessage());
     }

@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -255,7 +256,7 @@ class GenomeLineagePluginTest {
         // a second place to hold it - and the place that wins when the two disagree
         assertThatThrownBy(() -> new GenomeLineagePlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "m", "lodLevels", 3)))
-            ).isInstanceOf(IllegalArgumentException.class)
+            ).isInstanceOf(OperationalException.class)
              .hasMessageContaining("lodLevels")
              .hasMessageContaining("descendants look like roots");
     }

@@ -131,8 +131,8 @@ class SimulationEngineTest {
                 "environment", Map.of("shape", List.of(32, 32), "topology", "TORUS"),
                 "plugins", Collections.emptyList()
         ));
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", emptyConfig, resources)
         );
         assertEquals("At least one organism must be configured.", exception.getMessage());
@@ -176,8 +176,8 @@ class SimulationEngineTest {
                         "initialEnergy", 32768,
                         "placement", Map.of("positions", List.of(5, 5))))))
                 .withFallback(createValidConfig());
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
         assertTrue(exception.getMessage().contains("initialEnergy") && exception.getMessage().contains("32768")
@@ -188,8 +188,8 @@ class SimulationEngineTest {
     @Test
     void constructor_shouldThrowException_whenSamplingIntervalIsZero() {
         Config config = createValidConfig().withValue("samplingInterval", ConfigValueFactory.fromAnyRef(0));
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
         assertEquals("samplingInterval must be >= 1", exception.getMessage());
@@ -198,8 +198,8 @@ class SimulationEngineTest {
     @Test
     void constructor_shouldThrowException_whenSamplingIntervalIsNegative() {
         Config config = createValidConfig().withValue("samplingInterval", ConfigValueFactory.fromAnyRef(-1));
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
         assertEquals("samplingInterval must be >= 1", exception.getMessage());
@@ -237,8 +237,8 @@ class SimulationEngineTest {
                         "placement", Map.of("positions", List.of(5)) // 1D position for 2D world
                 )))
         );
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
         assertTrue(exception.getMessage().contains("placement mismatch"));
@@ -328,8 +328,8 @@ class SimulationEngineTest {
 
     private void assertRejected(String option, Object value, String expectedMessage) {
         Config config = createValidConfig().withValue(option, ConfigValueFactory.fromAnyRef(value));
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources)
         );
         assertEquals(expectedMessage, exception.getMessage());
@@ -346,8 +346,8 @@ class SimulationEngineTest {
     @Test
     void constructor_shouldRejectAMaxCellsPerOrganismBelowOne() {
         Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(0));
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources)
         );
         assertEquals("maxCellsPerOrganism must be >= 1", exception.getMessage());
@@ -359,8 +359,8 @@ class SimulationEngineTest {
                 "environment.shape",
                 ConfigValueFactory.fromAnyRef(List.of(32, 40))
         );
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        OperationalException exception = assertThrows(
+                OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources)
         );
         assertEquals("environment.shape: World dimension 1 is 40, which is not a multiple of 32; "
@@ -447,7 +447,7 @@ class SimulationEngineTest {
         Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
         Config config = placementConfig("BOUND", organism(program, 31, 0));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
         assertTrue(exception.getMessage().contains("outside the bounded world"), exception.getMessage());
         assertTrue(exception.getMessage().contains("[32, 0]"), exception.getMessage());
@@ -458,7 +458,7 @@ class SimulationEngineTest {
         Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
         Config config = placementConfig("BOUND", organism(program, 40, 0));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
         assertTrue(exception.getMessage().contains("start position [40, 0]"), exception.getMessage());
     }
@@ -477,7 +477,7 @@ class SimulationEngineTest {
         Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
         Config config = placementConfig("TORUS", organism(program, 0, 0), organism(program, 1, 0));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
         assertTrue(exception.getMessage().contains("organism 2 at [1, 0]"), exception.getMessage());
         assertTrue(exception.getMessage().contains("owned by organism 1"), exception.getMessage());
@@ -591,7 +591,7 @@ class SimulationEngineTest {
         Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
         Config config = placementConfig("TORUS", organismWithDefines(program, Map.of("a", 1, "A", 2)));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
         assertTrue(exception.getMessage().contains("organisms[0]: Defines"), exception.getMessage());
         assertTrue(exception.getMessage().contains("case-insensitive"), exception.getMessage());
@@ -603,10 +603,10 @@ class SimulationEngineTest {
         Config text = placementConfig("TORUS", organismWithDefines(program, Map.of("EXTRA", "yes")));
         Config fraction = placementConfig("TORUS", organismWithDefines(program, Map.of("EXTRA", 2.5)));
 
-        IllegalArgumentException textException = assertThrows(IllegalArgumentException.class,
+        OperationalException textException = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", text, resources));
         assertTrue(textException.getMessage().contains("organisms[0].defines.EXTRA"), textException.getMessage());
-        IllegalArgumentException fractionException = assertThrows(IllegalArgumentException.class,
+        OperationalException fractionException = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", fraction, resources));
         assertTrue(fractionException.getMessage().contains("organisms[0].defines.EXTRA"), fractionException.getMessage());
     }
@@ -639,7 +639,7 @@ class SimulationEngineTest {
     void readValues_rejectsAValuesEntryThatIsNoObject() {
         Config entry = ConfigFactory.parseString("values = \"DATA:20\"");
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> SimulationEngine.readValues(entry, 0));
         assertTrue(exception.getMessage().contains("organisms[0].values must be an object"), exception.getMessage());
     }
@@ -649,7 +649,7 @@ class SimulationEngineTest {
         Path program = writeProgram("valued.evo", VALUED_PROGRAM);
         Config config = placementConfig("TORUS", organismWithValues(program, Map.of("steps", "DATA:1", "STEPS", "DATA:2")));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
         assertTrue(exception.getMessage().contains("organisms[0]: Values"), exception.getMessage());
         assertTrue(exception.getMessage().contains("case-insensitive"), exception.getMessage());
@@ -659,7 +659,7 @@ class SimulationEngineTest {
     void readValues_rejectsAValueThatIsNoString() {
         Config entry = ConfigFactory.parseString("values { STEPS = 20 }");
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+        OperationalException exception = assertThrows(OperationalException.class,
                 () -> SimulationEngine.readValues(entry, 0));
         assertTrue(exception.getMessage().contains("organisms[0].values.STEPS"), exception.getMessage());
     }

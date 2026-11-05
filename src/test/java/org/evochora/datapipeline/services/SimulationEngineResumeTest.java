@@ -41,6 +41,7 @@ import org.mockito.ArgumentCaptor;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.test.utils.ProtoTestUtils;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 /**
  * Unit tests for SimulationEngine resume mode (config-driven).
@@ -111,7 +112,7 @@ class SimulationEngineResumeTest {
             """);
 
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("resume.runId");
     }
 
@@ -198,7 +199,7 @@ class SimulationEngineResumeTest {
         Config options = createForkOptions(TEST_RUN_ID, 1100, 1050, 100);
 
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("toTick");
     }
 
@@ -221,7 +222,7 @@ class SimulationEngineResumeTest {
             """.formatted(TEST_RUN_ID));
 
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("fromTick and toTick");
     }
 
@@ -233,7 +234,7 @@ class SimulationEngineResumeTest {
         Config options = createForkOptions(TEST_RUN_ID, 1050, 1100, 3);
 
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("must divide the parent's")
             .hasMessageContaining("120000")
             .hasMessageContaining("4000000");

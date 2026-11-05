@@ -21,6 +21,7 @@ import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import com.typesafe.config.Config;
 
@@ -91,7 +92,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
      * @param name      the service name
      * @param options   HOCON config with {@code maxBatchSize} and {@code batchTimeoutSeconds}
      * @param resources the resource map
-     * @throws IllegalArgumentException if configuration values are invalid
+     * @throws OperationalException if configuration values are invalid
      * @throws IllegalStateException    if required resources are missing
      */
     public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
@@ -124,10 +125,10 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
 
         // Validation
         if (maxBatchSize <= 0) {
-            throw new IllegalArgumentException("maxBatchSize must be positive");
+            throw new OperationalException("maxBatchSize must be positive");
         }
         if (batchTimeoutSeconds <= 0) {
-            throw new IllegalArgumentException("batchTimeoutSeconds must be positive");
+            throw new OperationalException("batchTimeoutSeconds must be positive");
         }
 
         log.debug("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, idempotency={}",

@@ -24,6 +24,7 @@ import org.evochora.datapipeline.services.indexers.components.DlqComponent;
 import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
 import org.evochora.datapipeline.utils.BuildRevisionCheck;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import com.typesafe.config.Config;
 
@@ -111,11 +112,11 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         this.streamingFlushTimeoutMs = options.hasPath("flushTimeoutMs")
             ? options.getLong("flushTimeoutMs") : 5000L;
         if (streamingInsertBatchSize <= 0) {
-            throw new IllegalArgumentException(String.format(
+            throw new OperationalException(String.format(
                 "'insertBatchSize' must be positive for indexer '%s', but was %d", name, streamingInsertBatchSize));
         }
         if (streamingFlushTimeoutMs <= 0) {
-            throw new IllegalArgumentException(String.format(
+            throw new OperationalException(String.format(
                 "'flushTimeoutMs' must be positive for indexer '%s', but was %d", name, streamingFlushTimeoutMs));
         }
         this.streamingTracker = new StreamingAckTracker<>();

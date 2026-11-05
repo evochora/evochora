@@ -299,7 +299,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             try {
                 Class<?> clazz = Class.forName(className);
                 if (!IAnalyticsPlugin.class.isAssignableFrom(clazz)) {
-                    throw new IllegalArgumentException("Class " + className + " does not implement IAnalyticsPlugin");
+                    throw new OperationalException("Class " + className + " does not implement IAnalyticsPlugin");
                 }
                 
                 IAnalyticsPlugin plugin = (IAnalyticsPlugin) clazz.getDeclaredConstructor().newInstance();

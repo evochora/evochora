@@ -212,11 +212,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private RunOptions readRunOptions(Config config) {
         double organismDensityFactor = readDouble(config, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR);
         if (!(organismDensityFactor >= 0.0)) {
-            throw new IllegalArgumentException("organismDensityFactor must be >= 0, got " + organismDensityFactor);
+            throw new OperationalException("organismDensityFactor must be >= 0, got " + organismDensityFactor);
         }
         double estimatedDeltaRatio = readDouble(config, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO);
         if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
-            throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
+            throw new OperationalException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
         }
         int samplingInterval = readPositiveInt(config, "samplingInterval", 1);
         int accumulatedDeltaInterval = readPositiveInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL);
@@ -308,19 +308,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param resources A map of resource ports to lists of resources; {@code tickData} and
      *                  {@code metadataOutput} are required, {@code resumeStorage} additionally
      *                  in resume mode.
-     * @throws OperationalException if a required resource port is missing or carries a resource
-     *                              of the wrong type, if a program file or the checkpoint to
-     *                              resume from cannot be read, or if a configured plugin class
-     *                              does not exist.
+     * @throws OperationalException if the configuration or the data does not fit: a required
+     *                              resource port missing or carrying a resource of the wrong
+     *                              type, no configured organism, an unknown environment
+     *                              topology, a shape component below one, a placement whose
+     *                              coordinate count does not match the world, flags of an
+     *                              organism that are not booleans or integers or name one flag
+     *                              twice, a program file that cannot be read, a missing
+     *                              {@code resume.runId}, a checkpoint that cannot be loaded, or a
+     *                              configured plugin class that does not exist.
+     * @throws IllegalArgumentException if a program cannot be compiled, carrying the compiler's
+     *                                  messages.
      * @throws IllegalStateException if the configured environment has more cells than an
      *                               {@code int} can address.
-     * @throws IllegalArgumentException if the configuration is invalid, for example no configured
-     *                                  organism, an unknown environment topology, a shape
-     *                                  component below one, a placement whose coordinate count
-     *                                  does not match the world, flags of an organism that are not
-     *                                  booleans or integers or name one flag twice, a program that
-     *                                  cannot be read or compiled, a missing {@code resume.runId},
-     *                                  or a checkpoint that cannot be loaded.
      */
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -407,7 +407,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     private int readPositiveInt(Config options, String path, int defaultValue) {
         int value = readInt(options, path, defaultValue);
-        if (value < 1) throw new IllegalArgumentException(path + " must be >= 1");
+        if (value < 1) throw new OperationalException(path + " must be >= 1");
         return value;
     }
 
@@ -458,7 +458,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      */
     private InitializedState initializeFromCheckpoint(Config options) {
         if (!options.hasPath("resume.runId")) {
-            throw new IllegalArgumentException(
+            throw new OperationalException(
                 "resume.runId is required when resume.enabled=true");
         }
         String parentRunId = options.getString("resume.runId");
@@ -562,15 +562,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     private ForkRequest readForkRequest(Config fork) {
         if (!fork.hasPath("fromTick") || !fork.hasPath("toTick")) {
-            throw new IllegalArgumentException("resume.fork requires fromTick and toTick");
+            throw new OperationalException("resume.fork requires fromTick and toTick");
         }
         long fromTick = fork.getLong("fromTick");
         long toTick = fork.getLong("toTick");
         if (fromTick < 0) {
-            throw new IllegalArgumentException("resume.fork.fromTick must be >= 0, got " + fromTick);
+            throw new OperationalException("resume.fork.fromTick must be >= 0, got " + fromTick);
         }
         if (toTick < fromTick) {
-            throw new IllegalArgumentException(
+            throw new OperationalException(
                 "resume.fork.toTick must not lie before fromTick, got fromTick=" + fromTick + " toTick=" + toTick);
         }
         return new ForkRequest(fromTick, toTick);
@@ -594,7 +594,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param parent the recording options of the parent run
      * @param fork the recording options of the fork
      * @return the parent and the rounded window
-     * @throws IllegalArgumentException if the fork's chunk length does not divide the parent's
+     * @throws OperationalException if the fork's chunk length does not divide the parent's
      * @throws OperationalException if the window's first tick is not one the fork samples
      */
     private static ForkOrigin forkWindow(String parentRunId, ForkRequest request, long checkpointTick,
@@ -602,7 +602,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         long parentTicksPerChunk = ticksPerChunk(parent);
         long forkTicksPerChunk = ticksPerChunk(fork);
         if (parentTicksPerChunk % forkTicksPerChunk != 0) {
-            throw new IllegalArgumentException(String.format(
+            throw new OperationalException(String.format(
                 "A fork's chunks must divide the parent's: the fork records %d ticks per chunk "
                     + "(samplingInterval %d × accumulatedDeltaInterval %d × snapshotInterval %d × chunkInterval %d), "
                     + "the parent run %s records %d",
@@ -665,7 +665,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param envProps        The world the programs are laid out for.
      * @return One artifact per organism entry, in the order of the entries; entries of one
      *         variant share the same artifact instance.
-     * @throws IllegalArgumentException if an entry's flags are invalid (see
+     * @throws OperationalException if an entry's flags are invalid (see
      *                                  {@link #readDefines(Config, int)}) or name one flag twice
      *                                  in different case, if its values are invalid (see
      *                                  {@link #readValues(Config, int)}) or name one value twice
@@ -687,7 +687,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 compilerOptions = new CompilerOptions(sourceRoots, defines, values);
             } catch (IllegalArgumentException e) {
                 // The options say themselves whether the defines or the values are wrong
-                throw new IllegalArgumentException("organisms[" + index + "]: " + e.getMessage(), e);
+                throw new OperationalException("organisms[" + index + "]: " + e.getMessage(), e);
             }
             ProgramVariant variant = new ProgramVariant(programPath, compilerOptions.defines(), compilerOptions.values());
             ProgramArtifact artifact = artifactsByVariant.get(variant);
@@ -715,9 +715,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param orgConfig The organism entry.
      * @param index     The position of the entry in {@code organisms}, for the error message.
      * @return The settings of the flags the entry names, by name as written.
-     * @throws IllegalArgumentException if {@code defines} is not an object, or a value is neither
-     *                                  a boolean nor an integer;
-     *                                  the message names the entry and the flag.
+     * @throws OperationalException if {@code defines} is not an object, or a value is neither
+     *                               a boolean nor an integer;
+     *                               the message names the entry and the flag.
      */
     static Map<String, FlagSetting> readDefines(Config orgConfig, int index) {
         if (!orgConfig.hasPath("defines")) {
@@ -725,7 +725,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         ConfigValue definesValue = orgConfig.getValue("defines");
         if (definesValue.valueType() != ConfigValueType.OBJECT) {
-            throw new IllegalArgumentException("organisms[" + index + "].defines must be an object of flags, got "
+            throw new OperationalException("organisms[" + index + "].defines must be an object of flags, got "
                     + definesValue.valueType().name().toLowerCase(Locale.ROOT));
         }
         Map<String, FlagSetting> defines = new HashMap<>();
@@ -737,7 +737,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             } else if (value instanceof Integer || value instanceof Long) {
                 defines.put(name, FlagSetting.set(((Number) value).longValue()));
             } else {
-                throw new IllegalArgumentException("organisms[" + index + "].defines." + name
+                throw new OperationalException("organisms[" + index + "].defines." + name
                         + " must be true, false or an integer, got " + entry.getValue().render(ConfigRenderOptions.concise()));
             }
         }
@@ -753,8 +753,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param orgConfig The organism entry.
      * @param index     The position of the entry in {@code organisms}, for the error message.
      * @return The values by name as written.
-     * @throws IllegalArgumentException if {@code values} is not an object, or a value is not a
-     *                                  string; the message names the entry and the value.
+     * @throws OperationalException if {@code values} is not an object, or a value is not a
+     *                               string; the message names the entry and the value.
      */
     static Map<String, String> readValues(Config orgConfig, int index) {
         if (!orgConfig.hasPath("values")) {
@@ -762,13 +762,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         ConfigValue valuesValue = orgConfig.getValue("values");
         if (valuesValue.valueType() != ConfigValueType.OBJECT) {
-            throw new IllegalArgumentException("organisms[" + index + "].values must be an object of values, got "
+            throw new OperationalException("organisms[" + index + "].values must be an object of values, got "
                     + valuesValue.valueType().name().toLowerCase(Locale.ROOT));
         }
         Map<String, String> values = new HashMap<>();
         for (Map.Entry<String, ConfigValue> entry : ((ConfigObject) valuesValue).entrySet()) {
             if (entry.getValue().valueType() != ConfigValueType.STRING) {
-                throw new IllegalArgumentException("organisms[" + index + "].values." + entry.getKey()
+                throw new OperationalException("organisms[" + index + "].values." + entry.getKey()
                         + " must be a string, got " + entry.getValue().render(ConfigRenderOptions.concise()));
             }
             values.put(entry.getKey(), (String) entry.getValue().unwrapped());
@@ -792,7 +792,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         List<? extends Config> organismConfigs = options.getConfigList("organisms");
         if (organismConfigs.isEmpty()) {
-            throw new IllegalArgumentException("At least one organism must be configured.");
+            throw new OperationalException("At least one organism must be configured.");
         }
 
         List<SourceRoot> sourceRoots;
@@ -811,13 +811,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         try {
             isToroidal = Topology.parse(topology).isToroidal();
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(
+            throw new OperationalException(
                 "Invalid environment.topology: \"" + topology + "\". Must be \"TORUS\" or \"BOUND\".", e);
         }
         int[] shape = options.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
         for (int i = 0; i < shape.length; i++) {
             if (shape[i] < 1) {
-                throw new IllegalArgumentException(
+                throw new OperationalException(
                     "environment.shape[" + i + "] must be >= 1, got " + shape[i]);
             }
         }
@@ -827,7 +827,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         try {
             Environment.requireValidWorld(envProps);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("environment.shape: " + e.getMessage(), e);
+            throw new OperationalException("environment.shape: " + e.getMessage(), e);
         }
 
         List<ProgramArtifact> organismArtifacts = compileOrganismPrograms(organismConfigs, sourceRoots, envProps);
@@ -887,7 +887,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Config orgConfig = organismConfigs.get(index);
             List<Integer> positions = orgConfig.getIntList("placement.positions");
             if (positions.size() != worldDimensions) {
-                throw new IllegalArgumentException(
+                throw new OperationalException(
                     "Organism placement mismatch: World has " + worldDimensions +
                     " dimensions but placement has " + positions.size() + " coordinates");
             }
@@ -896,7 +896,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             ProgramArtifact artifact = organismArtifacts.get(index);
             int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
             if (!envProps.isToroidal() && !insideWorld(startPosition, envProps.getWorldShape())) {
-                throw new IllegalArgumentException(
+                throw new OperationalException(
                     "Organism placement outside the world: start position " + Arrays.toString(startPosition)
                     + " of program " + programPath + " lies outside the bounded world of shape "
                     + Arrays.toString(envProps.getWorldShape()));
@@ -905,7 +905,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             int initialEnergy = orgConfig.getInt("initialEnergy");
             int maxEnergy = simulation.getOrganismConfig().getInt("max-energy");
             if (initialEnergy > maxEnergy) {
-                throw new IllegalArgumentException(
+                throw new OperationalException(
                     "Organism initialEnergy of program " + programPath + " is " + initialEnergy
                     + ", above max-energy " + maxEnergy + ", which is the most an organism can hold");
             }
@@ -1527,7 +1527,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         EnvironmentProperties props = environment.getProperties();
         if (!props.isToroidal() && !insideWorld(absolutePos, props.getWorldShape())) {
-            throw new IllegalArgumentException(String.format(
+            throw new OperationalException(String.format(
                 "Organism placement outside the world: organism %d at %s places a cell at %s, outside the bounded world of shape %s",
                 organism.getId(), Arrays.toString(startPosition), Arrays.toString(absolutePos),
                 Arrays.toString(props.getWorldShape())));
@@ -1536,7 +1536,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int existingOwner = environment.getOwnerId(absolutePos);
         org.evochora.runtime.model.Molecule existing = environment.getMolecule(absolutePos);
         if (!existing.isEmpty() || existingOwner != 0) {
-            throw new IllegalArgumentException(String.format(
+            throw new OperationalException(String.format(
                 "Organism placement overlap: organism %d at %s places a cell at %s, which already holds %s owned by organism %d",
                 organism.getId(), Arrays.toString(startPosition), Arrays.toString(absolutePos),
                 existing, existingOwner));

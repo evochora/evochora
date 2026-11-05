@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -221,7 +222,7 @@ class GenomePopulationPluginTest {
         assertThatThrownBy(() -> configured.configure(ConfigFactory.parseMap(Map.of(
                 "metricId", "genome_population",
                 "mutationSummaryMetricId", "  "))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("mutationSummaryMetricId");
     }
 

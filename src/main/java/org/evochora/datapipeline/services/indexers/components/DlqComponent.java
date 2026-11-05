@@ -55,7 +55,8 @@ public class DlqComponent<T extends Message, ACK> {
      * @param dlq Dead letter queue resource (must not be null)
      * @param maxRetries Maximum retries before moving to DLQ (must be positive)
      * @param indexerName Name of indexer for metadata (must not be null/blank)
-     * @throws IllegalArgumentException if any parameter is invalid
+     * @throws IllegalArgumentException if the tracker, the DLQ or the indexer name is missing
+     * @throws OperationalException if maxRetries, which comes from the configuration, is not positive
      */
     public DlqComponent(IRetryTracker retryTracker,
                         IDeadLetterQueueResource<T> dlq,
@@ -68,7 +69,7 @@ public class DlqComponent<T extends Message, ACK> {
             throw new IllegalArgumentException("DLQ must not be null");
         }
         if (maxRetries <= 0) {
-            throw new IllegalArgumentException("MaxRetries must be positive");
+            throw new OperationalException("MaxRetries must be positive");
         }
         if (indexerName == null || indexerName.isBlank()) {
             throw new IllegalArgumentException("Indexer name must not be null or blank");

@@ -11,6 +11,7 @@ import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -242,7 +243,7 @@ class DeathLifetimesPluginTest {
         // a second place to hold it - and the place that wins when the two disagree
         assertThatThrownBy(() -> new DeathLifetimesPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "m", "samplingInterval", 10)))
-            ).isInstanceOf(IllegalArgumentException.class)
+            ).isInstanceOf(OperationalException.class)
              .hasMessageContaining("samplingInterval")
              .hasMessageContaining("loses its deaths for good");
     }

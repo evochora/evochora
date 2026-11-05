@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -106,17 +107,17 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
     void configure_rejectsIntervalsBelowOne() {
         assertThatThrownBy(() -> new TestPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "test", "samplingInterval", 0))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("samplingInterval must be at least 1");
 
         assertThatThrownBy(() -> new TestPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "test", "lodFactor", 0))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("lodFactor must be at least 1");
 
         assertThatThrownBy(() -> new TestPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "test", "lodLevels", 0))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("lodLevels must be at least 1");
     }
 
@@ -195,7 +196,7 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
     void fixedOption_refusesToBeConfigured() {
         assertThatThrownBy(() -> new FixedIntervalPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "test", "samplingInterval", 5))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("samplingInterval")
             .hasMessageContaining("cannot be configured")
             .hasMessageContaining("every recording carries what happened since the previous one");
@@ -207,7 +208,7 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
         // configuration would then quietly win over the plugin that needs the value
         assertThatThrownBy(() -> new FixedIntervalPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "test", "samplingInterval", 1))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("cannot be configured");
     }
 

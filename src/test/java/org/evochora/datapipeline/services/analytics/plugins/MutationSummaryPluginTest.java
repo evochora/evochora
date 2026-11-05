@@ -20,6 +20,7 @@ import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -279,7 +280,7 @@ class MutationSummaryPluginTest {
         // a second place to hold it - and the place that wins when the two disagree
         assertThatThrownBy(() -> new MutationSummaryPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "m", "samplingInterval", 10))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("samplingInterval")
             .hasMessageContaining("loses them for good");
     }
@@ -288,7 +289,7 @@ class MutationSummaryPluginTest {
     void lodLevelsCannotBeConfigured() {
         assertThatThrownBy(() -> new MutationSummaryPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "m", "lodLevels", 5))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("lodLevels");
     }
 

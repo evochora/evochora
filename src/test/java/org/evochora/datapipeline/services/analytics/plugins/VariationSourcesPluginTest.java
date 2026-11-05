@@ -20,6 +20,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
+import org.evochora.datapipeline.api.resources.OperationalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -298,7 +299,7 @@ class VariationSourcesPluginTest {
         // a second place to hold it - and the place that wins when the two disagree
         assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "m", "samplingInterval", 10))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("samplingInterval")
             .hasMessageContaining("loses its births for good");
     }
@@ -468,7 +469,7 @@ class VariationSourcesPluginTest {
         // The card would look for a table under no name and show nothing
         assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
                 Map.of("metricId", "variation_sources", "birthsMetricId", "  "))))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(OperationalException.class)
             .hasMessageContaining("birthsMetricId");
     }
 

@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.api.analytics;
 
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
+import org.evochora.datapipeline.api.resources.OperationalException;
 
 import com.typesafe.config.Config;
 
@@ -117,7 +118,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      * @param holds what the named table holds, for the message
      * @param fallback the name to keep when the option is absent
      * @return the metric id to load that table under
-     * @throws IllegalArgumentException if the option is configured empty
+     * @throws OperationalException if the option is configured empty
      */
     protected String companionMetricId(Config config, String option, String holds, String fallback) {
         if (!config.hasPath(option)) {
@@ -125,7 +126,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         }
         String configured = config.getString(option).trim();
         if (configured.isEmpty()) {
-            throw new IllegalArgumentException("Metric '" + metricId + "': " + option
+            throw new OperationalException("Metric '" + metricId + "': " + option
                 + " names the metric holding " + holds + ", and cannot be empty.");
         }
         return configured;
@@ -177,7 +178,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      * @param fixed    what the plugin fixes, or {@code null}
      * @param fallback the value to keep when neither fixes nor configures it
      * @return the value to use
-     * @throws IllegalArgumentException if the option is configured although the plugin fixes it,
+     * @throws OperationalException if the option is configured although the plugin fixes it,
      *         or if a configured value is below one
      */
     private int settle(Config config, String option, Fixed fixed, int fallback) {
@@ -185,7 +186,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
             return config.hasPath(option) ? requireAtLeastOne(config.getInt(option), option) : fallback;
         }
         if (config.hasPath(option)) {
-            throw new IllegalArgumentException("Metric '" + metricId + "': " + option
+            throw new OperationalException("Metric '" + metricId + "': " + option
                 + " is " + fixed.value() + " for this metric and cannot be configured, because "
                 + fixed.reason() + ". Remove it from the configuration.");
         }
@@ -202,11 +203,11 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      * @param value  The configured value
      * @param option The option name, for the error message
      * @return The value, if it is at least one
-     * @throws IllegalArgumentException if the value is below one
+     * @throws OperationalException if the value is below one
      */
     private int requireAtLeastOne(int value, String option) {
         if (value < 1) {
-            throw new IllegalArgumentException(
+            throw new OperationalException(
                 "Metric '" + metricId + "': " + option + " must be at least 1, but is " + value + ".");
         }
         return value;

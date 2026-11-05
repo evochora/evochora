@@ -17,7 +17,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.evochora.compiler.api.CompilationException;
-import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.services.ISimulationSource;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -784,11 +783,6 @@ public class ServiceManager implements IMonitorable {
             // Unwrap reflection exceptions to find root cause
             Throwable cause = CauseChain.root(e);
 
-            // Sought along the chain rather than taken from its end: a resume failure explains what
-            // about the checkpoint is unusable, and explaining it is what gives it a cause of its
-            // own — which the unwrapping above would then run past.
-            ResumeException resumeFailure = CauseChain.find(e, ResumeException.class);
-
             // Check if this is an OutOfMemoryError wrapped in RuntimeException (from reflection)
             if (cause instanceof OutOfMemoryError && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
                 try {
@@ -812,28 +806,19 @@ public class ServiceManager implements IMonitorable {
                 return;
             }
 
-            // Before the configuration check below, and not by coincidence: a checkpoint that cannot
-            // be read reports the argument it could not make sense of, so its cause is often an
-            // IllegalArgumentException. Left in the other order, that cause would be read as a
-            // configuration error and send the operator to the configuration file.
-            if (resumeFailure != null) {
-                String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
-                log.error(errorMsg);
-                // Don't throw - just log and return. Service remains in stopped state.
-                return;
-            }
-
-            // Any other known cause the service passed on, before the configuration check for the
-            // same reason as a resume failure: its own message explains what its cause only names
+            // A known cause the service passed on, a configuration or data that does not fit, a
+            // checkpoint that cannot be resumed from among them, is told on one line. It is sought
+            // along the chain rather than taken from its end: a failure that was given a reason on
+            // its way out carries the technical exception it explains as its own cause
             String reason = OperationalException.reasonOf(e);
             if (reason != null) {
                 log.error("Failed to start service '{}': {}", name, reason);
                 return;
             }
 
-            // Check if this is a configuration error (IllegalArgumentException, ConfigException, or
-            // NegativeArraySizeException)
-            if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
+            // A key the configuration library cannot read, missing or of the wrong type, is a
+            // configuration error by its very type
+            if (cause instanceof com.typesafe.config.ConfigException) {
                 String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
