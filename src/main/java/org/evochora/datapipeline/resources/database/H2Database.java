@@ -859,6 +859,7 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     public void close() {
         if (dataSource != null && !dataSource.isClosed()) {
+            makeRoomForTheShutdownConnection();
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
                 checkpoint(stmt);
@@ -884,6 +885,26 @@ public class H2Database extends AbstractDatabaseResource
             }
         }
         super.close();
+    }
+
+    /**
+     * Grows the pool by one connection if every connection it may open is in use, so that the
+     * shutdown gets its connection at once.
+     * <p>
+     * The wrappers hold their connections until the pool closes, after the shutdown. With all of
+     * them taken, the shutdown would wait for HikariCP's connection timeout and then fail, and
+     * the committed changes {@code CHECKPOINT} is there to write would be lost. HikariCP takes a
+     * new maximum pool size at runtime and opens the extra connection on demand. With a free
+     * connection, the pool stays as configured.
+     */
+    private void makeRoomForTheShutdownConnection() {
+        var pool = dataSource.getHikariPoolMXBean();
+        var config = dataSource.getHikariConfigMXBean();
+        if (pool.getIdleConnections() == 0 && pool.getTotalConnections() >= config.getMaximumPoolSize()) {
+            config.setMaximumPoolSize(config.getMaximumPoolSize() + 1);
+            log.debug("H2 database '{}': every pooled connection is in use, pool grown by one for the shutdown",
+                getResourceName());
+        }
     }
 
     /**

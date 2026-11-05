@@ -79,4 +79,31 @@ class H2DatabaseFileIntegrationTest {
             statement.execute("SHUTDOWN");
         }
     }
+
+    @Test
+    void closeKeepsWhatWasCommittedAlsoWhenEveryPooledConnectionIsInUse(@TempDir Path dir) throws Exception {
+        String url = "jdbc:h2:" + dir.resolve("full-pool").toString().replace("\\", "/")
+            + ";MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1";
+        H2Database db = new H2Database("full-pool",
+            ConfigFactory.parseMap(Map.of("jdbcUrl", url, "maxPoolSize", 2, "minIdle", 0)));
+        // Both connections the pool may open stay taken, as the wrappers' do until the pool
+        // closes; closing the pool ends them
+        Connection writing = (Connection) db.acquireDedicatedConnection();
+        db.acquireDedicatedConnection();
+        try (java.sql.Statement statement = writing.createStatement()) {
+            statement.execute("CREATE TABLE written (x INT)");
+            statement.execute("INSERT INTO written VALUES (1)");
+        }
+        writing.commit();
+
+        db.close();
+
+        try (Connection reopened = DriverManager.getConnection(url, "sa", "");
+             java.sql.Statement statement = reopened.createStatement();
+             java.sql.ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM written")) {
+            assertTrue(rows.next());
+            assertEquals(1, rows.getInt(1), "the row committed before close() is in the file");
+            statement.execute("SHUTDOWN");
+        }
+    }
 }
