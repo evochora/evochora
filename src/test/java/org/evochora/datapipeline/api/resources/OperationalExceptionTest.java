@@ -28,6 +28,13 @@ class OperationalExceptionTest {
     }
 
     @Test
+    void aStatementTheDatabaseRejectsAsMalformedIsADefectEvenWhenCaughtStraight() {
+        assertNull(OperationalException.reasonOf(new java.sql.SQLSyntaxErrorException("Syntax error")));
+        assertEquals("Connection refused",
+            OperationalException.reasonOf(new java.sql.SQLNonTransientConnectionException("Connection refused")));
+    }
+
+    @Test
     void anUncheckedExceptionWithoutAKnownCauseMayBeADefect() {
         assertNull(OperationalException.reasonOf(new IllegalStateException("defect")));
         assertNull(OperationalException.reasonOf(new LinkageError("defect")));

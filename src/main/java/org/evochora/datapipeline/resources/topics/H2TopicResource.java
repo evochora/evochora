@@ -15,6 +15,7 @@ import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.api.resources.OperationalException;
+import org.evochora.datapipeline.utils.JdbcFailures;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -392,7 +393,10 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
                 log.error("Failed to setup schema for topic '{}', run: {} - Cause: {}", getResourceName(), simulationRunId, e.getMessage());
                 recordError("SCHEMA_SETUP_FAILED", "Schema setup failed", 
                     "Topic: " + getResourceName() + ", Run: " + simulationRunId + ", Cause: " + e.getMessage());
-                throw new OperationalException("Failed to setup schema for run: " + simulationRunId, e);
+                String failed = "Failed to setup schema for run: " + simulationRunId;
+                throw JdbcFailures.isFaultOfTheStatement(e)
+                    ? new RuntimeException(failed, e)
+                    : new OperationalException(failed, e);
             }
         }
     }

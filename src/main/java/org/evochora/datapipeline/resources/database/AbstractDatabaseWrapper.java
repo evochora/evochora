@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database;
 import org.evochora.datapipeline.api.resources.*;
 import org.evochora.datapipeline.api.resources.database.ISchemaAwareDatabase;
 import org.evochora.datapipeline.api.resources.database.IConnectionManageable;
+import org.evochora.datapipeline.utils.JdbcFailures;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -167,14 +168,17 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
     /**
      * The failure of a call to the database, to throw from a wrapper. An {@link SQLException} or
      * an {@link IOException} comes from the database or the data it holds, a known cause, and is
-     * passed on as an {@link OperationalException}; anything else is passed on as a defect.
+     * passed on as an {@link OperationalException}, unless {@link JdbcFailures} finds the
+     * statement itself at fault; that is a defect, as is anything else, and is passed on as such.
      *
      * @param message what failed, naming the operation and the run or service it was for
      * @param cause the exception the call failed with
      * @return the exception to throw
      */
     protected static RuntimeException failure(String message, Exception cause) {
-        return cause instanceof SQLException || cause instanceof IOException
+        boolean known = cause instanceof SQLException sql ? !JdbcFailures.isFaultOfTheStatement(sql)
+            : cause instanceof IOException;
+        return known
             ? new OperationalException(message, cause)
             : new RuntimeException(message, cause);
     }

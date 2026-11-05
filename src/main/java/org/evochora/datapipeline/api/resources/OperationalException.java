@@ -1,5 +1,8 @@
 package org.evochora.datapipeline.api.resources;
 
+import java.sql.SQLException;
+
+import org.evochora.datapipeline.utils.JdbcFailures;
 import org.evochora.util.CauseChain;
 
 /**
@@ -45,7 +48,9 @@ public class OperationalException extends RuntimeException {
      * A cause is known when the chain holds an {@code OperationalException}, told from that link
      * on, or when the failure itself is a checked exception, told from there: a checked exception
      * caught straight from a call is a failure of the surroundings the call reaches, storage or a
-     * database. A checked exception further down the chain does not count, because Java wraps
+     * database, unless it is a statement {@link JdbcFailures} finds at fault, which is a defect of
+     * the code that wrote it. A checked exception further down the chain does not count, because
+     * Java wraps
      * whatever a constructor called by reflection throws, defects as well, in a checked
      * {@link java.lang.reflect.InvocationTargetException}.
      *
@@ -56,6 +61,9 @@ public class OperationalException extends RuntimeException {
         OperationalException known = CauseChain.find(failure, OperationalException.class);
         if (known != null) {
             return CauseChain.messages(known);
+        }
+        if (failure instanceof SQLException sql && JdbcFailures.isFaultOfTheStatement(sql)) {
+            return null;
         }
         if (!(failure instanceof RuntimeException) && !(failure instanceof Error)) {
             return CauseChain.messages(failure);

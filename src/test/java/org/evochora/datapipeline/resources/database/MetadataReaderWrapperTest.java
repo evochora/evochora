@@ -150,6 +150,17 @@ class MetadataReaderWrapperTest {
         assertFalse(defect instanceof org.evochora.datapipeline.api.resources.OperationalException);
     }
 
+    /** A statement the database rejects as malformed is a defect of the code that wrote it. */
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to read metadata.*")
+    void getMetadata_takesAMalformedStatementForADefect() throws Exception {
+        when(mockDatabase.doGetMetadata(any(), eq("syntax-run")))
+            .thenThrow(new java.sql.SQLSyntaxErrorException("Syntax error in SQL statement"));
+
+        RuntimeException failure = assertThrows(RuntimeException.class, () -> wrapper.getMetadata("syntax-run"));
+        assertFalse(failure instanceof org.evochora.datapipeline.api.resources.OperationalException);
+    }
+
     @Test
     void metrics_containCountsAndLatencyPercentiles() throws Exception {
         // Given: Perform several operations
