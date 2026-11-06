@@ -146,7 +146,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
             this.writerPool.start();
 
             // Test connection
-            try (Connection conn = connectionFactory.createConnection()) {
+            try (Connection _ = connectionFactory.createConnection()) {
                 // Just test if we can connect
             }
 

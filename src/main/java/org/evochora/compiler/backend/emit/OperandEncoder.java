@@ -107,9 +107,9 @@ public final class OperandEncoder {
                 }
                 // A type and a position never become cells; an operand holding one is a defect
                 // of the phase that let it through
-                case Value.Type type -> throw new CompilationException(SourceInfo.locate(src,
+                case Value.Type _ -> throw new CompilationException(SourceInfo.locate(src,
                         "Internal error: a molecule type cannot be encoded as an operand."));
-                case Value.Position position -> throw new CompilationException(SourceInfo.locate(src,
+                case Value.Position _ -> throw new CompilationException(SourceInfo.locate(src,
                         "Internal error: a position cannot be encoded as an operand."));
             };
             // A label reference is turned into a LABELREF literal by the linking rule of the

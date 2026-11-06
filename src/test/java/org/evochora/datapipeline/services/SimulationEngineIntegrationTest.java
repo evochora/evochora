@@ -144,12 +144,12 @@ class SimulationEngineIntegrationTest {
         // Clean up queues to ensure test isolation
         try {
             if (tickDataQueue != null) {
-                try (StreamingBatch<?> batch = tickDataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {
+                try (StreamingBatch<?> _ = tickDataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {
                     // Drain all remaining items
                 }
             }
             if (metadataQueue != null) {
-                try (StreamingBatch<?> batch = metadataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {
+                try (StreamingBatch<?> _ = metadataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {
                     // Drain all remaining items
                 }
             }
@@ -971,8 +971,8 @@ class SimulationEngineIntegrationTest {
         engine1.stop();
 
         // Clear queues
-        try (StreamingBatch<?> clearTick = tickDataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {}
-        try (StreamingBatch<?> clearMeta = metadataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {}
+        try (StreamingBatch<?> _ = tickDataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {}
+        try (StreamingBatch<?> _ = metadataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {}
 
         // Run second engine with same seed
         SimulationEngine engine2 = new SimulationEngine("test-engine-2", deterministicConfig, resources);

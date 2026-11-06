@@ -60,7 +60,7 @@ public final class Flags {
         defines.forEach((name, setting) -> {
             switch (setting) {
                 case FlagSetting.Set set -> flags.entries.put(key(name), new Definition(set.value(), CONFIGURATION));
-                case FlagSetting.Off off -> flags.off.add(key(name));
+                case FlagSetting.Off _ -> flags.off.add(key(name));
             }
         });
         return flags;

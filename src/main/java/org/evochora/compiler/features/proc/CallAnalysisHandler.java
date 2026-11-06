@@ -205,8 +205,8 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         }
         if (bound instanceof LiteralNode literal) {
             return switch (literal.value()) {
-                case Value.Number number -> Meaning.NUMBER;
-                case Value.Type type -> Meaning.TYPE;
+                case Value.Number _ -> Meaning.NUMBER;
+                case Value.Type _ -> Meaning.TYPE;
                 default -> Meaning.LITERAL;
             };
         }

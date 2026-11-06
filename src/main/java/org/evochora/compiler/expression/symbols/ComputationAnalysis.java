@@ -101,8 +101,8 @@ public final class ComputationAnalysis {
         return switch (result) {
             case EvaluationResult.Value value -> Optional.of(ExpressionOutcome.of(value.value()));
             case EvaluationResult.Partial partial -> Optional.of(ExpressionOutcome.later(partial.expression(), partial.kind()));
-            case EvaluationResult.Error error -> Optional.empty();
-            case EvaluationResult.Reported reported -> Optional.empty();
+            case EvaluationResult.Error _ -> Optional.empty();
+            case EvaluationResult.Reported _ -> Optional.empty();
         };
     }
 }

@@ -246,7 +246,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 }
             }
             case OperationExpression operation -> operation.operands().forEach(this::classifyNames);
-            case LiteralExpression literal -> {
+            case LiteralExpression _ -> {
                 // A literal names nothing
             }
         }

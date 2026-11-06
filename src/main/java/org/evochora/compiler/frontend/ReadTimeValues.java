@@ -123,9 +123,9 @@ public final class ReadTimeValues {
                         ? new Reading.Number(number.value(), formOf(tokens, parsed.expression()))
                         : new Reading.Failed("Expected a number.", tokens.getFirst().source());
                 case EvaluationResult.Error error -> new Reading.Failed(error.reason(), error.at());
-                case EvaluationResult.Partial partial ->
+                case EvaluationResult.Partial _ ->
                         new Reading.Failed("A position cannot be used in a computation with flags.", tokens.getFirst().source());
-                case EvaluationResult.Reported reported -> throw new IllegalStateException(
+                case EvaluationResult.Reported _ -> throw new IllegalStateException(
                         "A computation at read time reported an error at a definition, though no name answers so.");
             };
         };

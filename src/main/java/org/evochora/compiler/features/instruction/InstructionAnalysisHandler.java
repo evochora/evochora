@@ -182,11 +182,11 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      */
     private static void checkValue(Value value, SourceInfo at, Slot slot, DiagnosticsEngine diagnostics) {
         switch (value) {
-            case Value.Type type -> reportWrongType(slot, "TYPE", diagnostics);
-            case Value.Position position -> reportWrongType(slot, "POSITION", diagnostics);
-            case Value.Vector vector -> reportWrongType(slot, ArgKind.VECTOR, diagnostics);
-            case Value.Typed typed -> reportWrongType(slot, ArgKind.LITERAL, diagnostics);
-            case Value.Number number -> {
+            case Value.Type _ -> reportWrongType(slot, "TYPE", diagnostics);
+            case Value.Position _ -> reportWrongType(slot, "POSITION", diagnostics);
+            case Value.Vector _ -> reportWrongType(slot, ArgKind.VECTOR, diagnostics);
+            case Value.Typed _ -> reportWrongType(slot, ArgKind.LITERAL, diagnostics);
+            case Value.Number _ -> {
                 reportWrongType(slot, ArgKind.LITERAL, diagnostics);
                 if (slot.expected() == ArgKind.LITERAL) {
                     diagnostics.reportError(

@@ -53,7 +53,6 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
                     countToken.source().fileName(), countToken.source().lineNumber());
             return;
         }
-        int count = (int) written;
 
         if (written < 0) {
             preProcessor.getDiagnostics().reportError(

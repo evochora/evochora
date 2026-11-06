@@ -64,7 +64,7 @@ public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode
                 entries.put("step", ctx.convertValue(stepped.step()));
                 entries.put("end", ctx.convertValue(stepped.end()));
             }
-            case WildcardValueComponent wildcard -> entries.put("kind", new IrValue.Str("wildcard"));
+            case WildcardValueComponent _ -> entries.put("kind", new IrValue.Str("wildcard"));
         }
         return new IrValue.MapVal(Map.copyOf(entries));
     }

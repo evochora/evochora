@@ -124,8 +124,8 @@ public final class LayoutArguments {
         return switch (result) {
             case EvaluationResult.Value value -> Optional.of(value.value().kind());
             case EvaluationResult.Partial partial -> Optional.of(partial.kind());
-            case EvaluationResult.Error error -> Optional.empty();
-            case EvaluationResult.Reported reported -> Optional.empty();
+            case EvaluationResult.Error _ -> Optional.empty();
+            case EvaluationResult.Reported _ -> Optional.empty();
         };
     }
 
