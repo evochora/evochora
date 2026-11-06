@@ -1,6 +1,5 @@
 package org.evochora.compiler.features.instruction;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.expression.EvaluationResult;
 import org.evochora.compiler.expression.OperationRegistry;
 import org.evochora.compiler.expression.symbols.ComputationAnalysis;
@@ -115,7 +114,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
     private void checkComputation(ExpressionNode expression, Slot slot, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         EvaluationResult result = computations.evaluate(expression, symbolTable, diagnostics);
         if (result instanceof EvaluationResult.Value value) {
-            checkValue(value.value(), expression.sourceInfo(), slot, diagnostics);
+            checkValue(value.value(), slot, diagnostics);
         } else if (result instanceof EvaluationResult.Partial partial) {
             reportLayoutValue(partial.kind(), slot, diagnostics);
         }
@@ -169,7 +168,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      */
     private void checkOperand(AstNode argument, Slot slot, DiagnosticsEngine diagnostics) {
         if (argument instanceof LiteralNode literal) {
-            checkValue(literal.value(), literal.sourceInfo(), slot, diagnostics);
+            checkValue(literal.value(), slot, diagnostics);
             return;
         }
         reportWrongType(slot, getArgumentTypeFromNode(argument), diagnostics);
@@ -180,7 +179,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      * literal argument, which has to carry a molecule type, written or reached through a constant
      * or a computation alike; a molecule type and a position are no argument at all.
      */
-    private static void checkValue(Value value, SourceInfo at, Slot slot, DiagnosticsEngine diagnostics) {
+    private static void checkValue(Value value, Slot slot, DiagnosticsEngine diagnostics) {
         switch (value) {
             case Value.Type _ -> reportWrongType(slot, "TYPE", diagnostics);
             case Value.Position _ -> reportWrongType(slot, "POSITION", diagnostics);

@@ -1,6 +1,5 @@
 package org.evochora.compiler.features.expression;
 
-import org.evochora.compiler.expression.IEvaluationContext;
 import org.evochora.compiler.expression.IOperation;
 import org.evochora.compiler.expression.IOperationGroup;
 import org.evochora.compiler.expression.Level;
@@ -69,10 +68,10 @@ final class ArithmeticOperations implements IOperationGroup {
     private static IOperation sign() {
         return new DefinedOperation("-", Notation.PREFIX, Level.PREFIX,
                 List.of(Signature.of(Kind.NUMBER, Kind.NUMBER), Signature.of(Kind.TYPED, Kind.TYPED)),
-                ArithmeticOperations::negate);
+                (operands, _) -> negate(operands));
     }
 
-    private static OperationResult negate(List<Value> operands, IEvaluationContext context) {
+    private static OperationResult negate(List<Value> operands) {
         return switch (operands.get(0)) {
             case Value.Number a -> Components.number(0, a.value(), Math::subtractExact, false, Value.Number::new);
             case Value.Typed a -> Components.number(0, a.number(), Math::subtractExact, false, n -> new Value.Typed(a.type(), n));

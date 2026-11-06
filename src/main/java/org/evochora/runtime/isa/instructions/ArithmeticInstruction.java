@@ -103,7 +103,7 @@ public class ArithmeticInstruction extends Instruction {
             return;
         }
         if (getName().startsWith("DOT") || getName().startsWith("CRS")) {
-            handleVectorProducts(context.getWorld(), operands);
+            handleVectorProducts(operands);
             return;
         }
 
@@ -207,7 +207,7 @@ public class ArithmeticInstruction extends Instruction {
         }
     }
 
-    private void handleVectorProducts(Environment environment, List<Operand> operands) {
+    private void handleVectorProducts(List<Operand> operands) {
         Organism organism = this.organism;
         String name = getName();
         boolean stackVariant = name.endsWith("S");

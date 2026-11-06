@@ -217,31 +217,6 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     }
     
     /**
-     * Setup callback for H2SchemaUtil: creates tables.
-     * <p>
-     * This method performs ALL schema-specific setup:
-     * <ul>
-     *   <li>Creates centralized topic tables ({@code topic_messages}, {@code topic_consumer_group_acks})</li>
-     *   <li>Creates all necessary indexes</li>
-     * </ul>
-     * <p>
-     * <strong>Thread Safety:</strong>
-     * This method is called from {@link #setSimulationRun(String)} within a synchronized block.
-     * <p>
-     * <strong>Callback for H2SchemaUtil:</strong>
-     * This method is passed as a {@link org.evochora.datapipeline.utils.H2SchemaUtil.SchemaSetupCallback}
-     * callback to {@link org.evochora.datapipeline.utils.H2SchemaUtil#setupRunSchema}.
-     *
-     * @param connection The database connection (already switched to target schema).
-     * @param schemaName The sanitized schema name (provided by H2SchemaUtil).
-     * @throws SQLException if setup fails.
-     */
-    private void setupSchemaResources(Connection connection, String schemaName) throws SQLException {
-        // Create tables
-        createTablesInSchema(connection);
-    }
-    
-    /**
      * Creates centralized tables for topic messages and acknowledgments in the current schema.
      * <p>
      * <strong>Centralized Design (Shared Table Structure per Run):</strong>
@@ -383,7 +358,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         synchronized (initLock) {
             try (Connection conn = getConnection()) {
                 // Setup schema + tables for this run (called only once, guaranteed by AbstractTopicResource)
-                H2SchemaUtil.setupRunSchema(conn, simulationRunId, this::setupSchemaResources);
+                H2SchemaUtil.setupRunSchema(conn, simulationRunId, (connection, _) -> createTablesInSchema(connection));
                 
                 log.debug("H2 topic '{}' setup complete for run: {}", getResourceName(), simulationRunId);
                 
