@@ -149,7 +149,7 @@ class H2DatabaseTest {
         }
         H2Database pool = new H2Database("interrupt-db",
                 ConfigFactory.parseString("jdbcUrl = \"" + dbUrl + "\"\nmaxPoolSize = 1"));
-        try (IDatabaseReader holder = pool.createReader(runId)) {
+        try (IDatabaseReader _ = pool.createReader(runId)) {
             // The waiting caller is being stopped, as a service is when its node shuts down
             Thread.currentThread().interrupt();
             assertThrows(SQLException.class, pool::findLatestRunId);
