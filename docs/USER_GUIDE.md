@@ -34,6 +34,8 @@ This guide takes you through an experiment with Evochora, from starting a simula
 
 Download the archive for your system from the [releases page](https://github.com/evochora/evochora/releases), unpack it and start a node as described in the [Quick Start](../README.md#quick-start). The node starts a run with the default ancestor in the default environment. Open the visualizer and you can watch the ancestor copy itself.
 
+You normally work in the unpacked folder: your configuration, your ancestors and the data of your runs are kept in it by default, next to the program and its sources. That way the whole folder can be published as an experiment, and the runs come with the exact software that produced them.
+
 A Docker image is published as well, but the archives are the recommended way to run Evochora. The next step shows how to choose another ancestor or write your own.
 
 ## 2. Choose or Write an Ancestor
