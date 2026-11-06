@@ -35,6 +35,7 @@ import com.typesafe.config.Config;
  *       port = 8082
  *     }
  *     allowOthers = false
+ *     database = ${pipeline.resources.index-database.options}   # Required: its jdbcUrl
  *     useSSL = false
  *     trace = false
  *   }
@@ -46,7 +47,7 @@ import com.typesafe.config.Config;
  *
  * <p>Users must manually enter database connection details on first access:</p>
  * <ul>
- *   <li>JDBC URL: {@code jdbc:h2:./data/database/evochora} (relative to working directory)</li>
+ *   <li>JDBC URL: {@code database.jdbcUrl}, which the process writes into the log at startup</li>
  *   <li>Username: {@code sa}</li>
  *   <li>Password: (empty)</li>
  * </ul>
@@ -61,10 +62,17 @@ public class H2ConsoleProcess extends AbstractProcess {
      *
      * @param processName The name of this process instance from the configuration.
      * @param dependencies Dependencies injected by the Node (currently none required).
-     * @param options The configuration for this process, including network settings and H2 options.
+     * @param options The configuration for this process, including network settings, H2 options
+     *                and {@code database.jdbcUrl}, the URL of the database the console is meant for.
+     * @throws IllegalArgumentException if the console is enabled and {@code database.jdbcUrl} is missing.
      */
     public H2ConsoleProcess(final String processName, final Map<String, Object> dependencies, final Config options) {
         super(processName, dependencies, options);
+        final boolean enabled = !options.hasPath("enabled") || options.getBoolean("enabled");
+        if (enabled && !options.hasPath("database.jdbcUrl")) {
+            throw new IllegalArgumentException("The H2 web console needs database.jdbcUrl; "
+                + "reference.conf sets it to the index database");
+        }
     }
 
     @Override
@@ -115,21 +123,14 @@ public class H2ConsoleProcess extends AbstractProcess {
 
             final String consoleUrl = String.format("http://%s:%d", host, port);
             
-            // Log startup with connection details if database config is provided
-            if (options.hasPath("database")) {
-                final Config dbConfig = options.getConfig("database");
-                final String jdbcUrl = getJdbcUrl(dbConfig);
-                final String username = dbConfig.hasPath("username") ? dbConfig.getString("username") : "sa";
-                final String password = dbConfig.hasPath("password") ? dbConfig.getString("password") : "";
-                
-                LOGGER.info("H2 web console started at {} - Connect: JDBC URL: {}, User: {}, Password: {}",
-                    consoleUrl,
-                    jdbcUrl,
-                    username,
-                    password.isEmpty() ? "(empty)" : "***");
-            } else {
-                LOGGER.info("H2 web console started at {}", consoleUrl);
-            }
+            final Config dbConfig = options.getConfig("database");
+            final String username = dbConfig.hasPath("username") ? dbConfig.getString("username") : "sa";
+            final String password = dbConfig.hasPath("password") ? dbConfig.getString("password") : "";
+            LOGGER.info("H2 web console started at {} - Connect: JDBC URL: {}, User: {}, Password: {}",
+                consoleUrl,
+                dbConfig.getString("jdbcUrl"),
+                username,
+                password.isEmpty() ? "(empty)" : "***");
 
         } catch (final SQLException e) {
             // Known ground: the port, the address or the database the console is configured for;
@@ -139,23 +140,6 @@ public class H2ConsoleProcess extends AbstractProcess {
         }
     }
     
-    /**
-     * Builds the JDBC URL from database configuration.
-     * Variable substitution is handled by HOCON's native resolution.
-     */
-    private String getJdbcUrl(final Config dbConfig) {
-        if (dbConfig.hasPath("jdbcUrl")) {
-            return dbConfig.getString("jdbcUrl");
-        }
-        if (!dbConfig.hasPath("dataDirectory")) {
-            return "jdbc:h2:" + System.getProperty("user.dir") + "/data/database/evochora;MODE=PostgreSQL";
-        }
-        
-        String dataDir = dbConfig.getString("dataDirectory");
-        
-        return "jdbc:h2:" + dataDir + "/evochora;MODE=PostgreSQL";
-    }
-
     @Override
     public void stop() {
         if (webServer != null) {

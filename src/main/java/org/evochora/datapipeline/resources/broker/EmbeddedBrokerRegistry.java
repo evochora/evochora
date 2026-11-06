@@ -461,9 +461,11 @@ public final class EmbeddedBrokerRegistry {
     }
 
     private static String resolveDataDirectory(Config config) {
-        return config.hasPath("dataDirectory")
-            ? config.getString("dataDirectory")
-            : System.getProperty("user.dir") + "/data/broker";
+        if (!config.hasPath("dataDirectory")) {
+            throw new IllegalArgumentException("A persistent broker needs dataDirectory; "
+                + "reference.conf sets it below pipeline.dataBaseDir");
+        }
+        return config.getString("dataDirectory");
     }
 
     /**
