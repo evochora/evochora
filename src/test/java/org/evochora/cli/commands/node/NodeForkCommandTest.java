@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-
 import org.evochora.cli.CommandLineInterface;
+import org.evochora.cli.config.ConfigLoader;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,19 @@ import picocli.CommandLine;
  */
 @Tag("unit")
 class NodeForkCommandTest {
+
+    /** reference.conf resolves its paths against the project folder, which the loader sets at startup. */
+    @BeforeEach
+    void setProjectFolder() {
+        System.setProperty(ConfigLoader.HOME_KEY, System.getProperty("java.io.tmpdir"));
+        ConfigFactory.invalidateCaches();
+    }
+
+    @AfterEach
+    void clearProjectFolder() {
+        System.clearProperty(ConfigLoader.HOME_KEY);
+        ConfigFactory.invalidateCaches();
+    }
 
     private static final String PARENT_RUN = "20260101-12000000-a-run";
     private static final String ENGINE_OPTIONS = "pipeline.services.simulation-engine.options";

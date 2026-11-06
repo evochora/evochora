@@ -1,6 +1,9 @@
 package org.evochora.cli;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 import org.evochora.cli.commands.CleanupCommand;
@@ -58,7 +61,7 @@ public class CommandLineInterface implements Callable<Integer> {
 
     @Option(
         names = {"-c", "--config"},
-        description = "Path to custom configuration file (default: config/evochora.conf in the working or the installation directory)"
+        description = "Path to custom configuration file, relative to the working directory (default: config/evochora.conf of the project folder)"
     )
     private File configFile;
 
@@ -106,26 +109,43 @@ public class CommandLineInterface implements Callable<Integer> {
         command.getSubcommands().values().forEach(subcommand -> answerVersion(subcommand, provider));
     }
 
+    /**
+     * Loads the configuration and then reports how it was found: the project folder and the
+     * file. The loader's messages are held until the logging settings of the configuration
+     * apply, because before that only the levels of {@code logback.xml} hold, which drop INFO;
+     * they are reported on the first load only, since a reload with overrides finds the same
+     * folder and file. A configuration that fails to load ends the process, and the error names
+     * what the loader had found up to then.
+     */
     private void initialize(final Config overrides) {
-        // Initialize logger early for config loading feedback
         final Logger logger = LoggerFactory.getLogger(CommandLineInterface.class);
+        final List<Map.Entry<ConfigLoader.MessageLevel, String>> messages = new ArrayList<>();
 
         try {
-            this.config = ConfigLoader.resolve(this.configFile, overrides, (level, message) -> {
-                switch (level) {
-                    case INFO -> logger.info(message);
-                    case WARN -> logger.warn(message);
-                }
-            });
+            this.config = ConfigLoader.resolve(this.configFile, overrides,
+                    (level, message) -> messages.add(Map.entry(level, message)));
         } catch (IllegalArgumentException e) {
-            logger.error(e.getMessage());
+            logger.error("{} [{}]", e.getMessage(), texts(messages));
             System.exit(1);
         } catch (com.typesafe.config.ConfigException e) {
-            logger.error("Failed to load or parse configuration: {}", e.getMessage());
+            logger.error("Failed to load or parse configuration: {} [{}]", e.getMessage(), texts(messages));
             System.exit(1);
         }
 
+        final boolean firstLoad = !loggingConfigured;
         configureLogging();
+        if (firstLoad) {
+            for (final Map.Entry<ConfigLoader.MessageLevel, String> message : messages) {
+                switch (message.getKey()) {
+                    case INFO -> logger.info(message.getValue());
+                    case WARN -> logger.warn(message.getValue());
+                }
+            }
+        }
+    }
+
+    private static String texts(final List<Map.Entry<ConfigLoader.MessageLevel, String>> messages) {
+        return String.join("; ", messages.stream().map(Map.Entry::getValue).toList());
     }
 
     /**

@@ -9,8 +9,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import org.evochora.cli.config.ConfigLoader;
 import org.evochora.datapipeline.api.analytics.IAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +32,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  * plugins for their manifest rather than reading their source.
  */
 class AnalyticsChartTypesTest {
+
+    /** reference.conf resolves its paths against the project folder, which the loader sets at startup. */
+    @BeforeEach
+    void setProjectFolder() {
+        System.setProperty(ConfigLoader.HOME_KEY, System.getProperty("java.io.tmpdir"));
+        ConfigFactory.invalidateCaches();
+    }
+
+    @AfterEach
+    void clearProjectFolder() {
+        System.clearProperty(ConfigLoader.HOME_KEY);
+        ConfigFactory.invalidateCaches();
+    }
 
     private static final String PLUGINS = "pipeline.analytics-plugins";
     private static final Path CHART_DIR = Path.of("src/main/web/analyzer/js/charts");

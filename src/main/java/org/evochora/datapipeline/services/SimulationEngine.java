@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -772,6 +773,24 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return values;
     }
 
+    /**
+     * A source root as the compiler takes it: a relative path is resolved against
+     * {@code compiler.base-directory}, the project folder, so that the configuration's roots do
+     * not depend on the directory the node was started from; an absolute path and a URL stay as
+     * configured.
+     *
+     * @param path          the configured root.
+     * @param baseDirectory the directory relative roots are resolved against.
+     * @return the root the compiler resolves programs against.
+     */
+    static String againstBaseDirectory(String path, Path baseDirectory) {
+        // A root with a scheme, such as https://, is a URL and no path of this machine
+        if (path.matches("[A-Za-z][A-Za-z0-9+.-]*://.*") || Path.of(path).isAbsolute()) {
+            return path;
+        }
+        return baseDirectory.resolve(path).normalize().toString();
+    }
+
     private static String newRunId() {
         return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
             + "-" + UUID.randomUUID().toString();
@@ -800,6 +819,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                     .toList();
         } else {
             sourceRoots = CompilerOptions.defaults().sourceRoots();
+        }
+        if (options.hasPath("compiler.base-directory")) {
+            Path baseDirectory = Path.of(options.getString("compiler.base-directory"));
+            sourceRoots = sourceRoots.stream()
+                    .map(root -> new SourceRoot(againstBaseDirectory(root.path(), baseDirectory), root.prefix()))
+                    .toList();
         }
 
         String topology = options.getString("environment.topology");

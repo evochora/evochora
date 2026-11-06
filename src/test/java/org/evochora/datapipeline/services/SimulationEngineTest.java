@@ -655,6 +655,32 @@ class SimulationEngineTest {
     }
 
     @Test
+    void constructor_resolvesARelativeSourceRootAgainstTheBaseDirectory() throws IOException {
+        Path project = tempDir.resolve("project");
+        Path ancestor = Files.createDirectories(project.resolve("ancestors").resolve("mine"));
+        Files.copy(programFile, ancestor.resolve("main.evo"));
+        Config config = createValidConfig()
+                .withValue("compiler.base-directory", ConfigValueFactory.fromAnyRef(project.toString()))
+                .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", "ancestors"))))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of("program", "mine/main.evo",
+                        "initialEnergy", 1000, "placement", Map.of("positions", List.of(0, 0))))));
+
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void againstBaseDirectory_resolvesOnlyARelativePath() {
+        Path project = tempDir.resolve("project");
+
+        assertEquals(project.resolve("assembly/ancestors").normalize().toString(),
+                SimulationEngine.againstBaseDirectory("assembly/ancestors", project));
+        String absolute = tempDir.resolve("elsewhere").toString();
+        assertEquals(absolute, SimulationEngine.againstBaseDirectory(absolute, project));
+        assertEquals("https://example.com/organisms",
+                SimulationEngine.againstBaseDirectory("https://example.com/organisms", project));
+    }
+
+    @Test
     void readValues_rejectsAValueThatIsNoString() {
         Config entry = ConfigFactory.parseString("values { STEPS = 20 }");
 
