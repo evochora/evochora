@@ -262,7 +262,7 @@ Such a system naturally leads to **niche construction** [(Odling-Smee et al., 20
 ## 5. Scalability and Reproducibility
 
 The grand scientific ambitions of Evochora are predicated on the ability to run large-scale experiments that are both computationally feasible and scientifically rigorous. Unlike many prototype simulations, Evochora is built on a mature software engineering foundation designed for long-term stability and distributed execution. This section outlines the computational framework, addressing its performance architecture, data handling capabilities, and the provisions for reproducible analysis.
-For a detailed technical breakdown of the engineering choices behind this performance (e.g., why standard GPU kernels were avoided), see the **[Architecture & Design Decisions](ARCHITECTURE_DECISIONS.md)** document.
+For a detailed technical breakdown of the engineering choices behind this performance (e.g., why standard GPU kernels were avoided), see the **[Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md)** document.
 
 ### Engineering Maturity Status
 
