@@ -10,8 +10,6 @@ Every run is deterministic, runs at millions of instructions per second on a wor
 
 The first experiment records are published and citable. Each traces a selective sweep to the instructions that caused it. None of the evolved bodies or behaviors were designed or rewarded: parents came to build their children far away, a dispersal that loosened the kin structure of the population; the shell around a child changed to cheaper matter; and the rule for when to reproduce settled in opposite directions in two runs, one with plentiful energy and one with little.
 
-This document describes the platform's physics, the tools for observing and analyzing a run, the first results, the research directions it is built for, its architecture, and its limitations.
-
 **Live demo:** [https://evochora.org/](https://evochora.org/)
 
 ## Table of Contents
