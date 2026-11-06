@@ -1,4 +1,4 @@
-Development version, built from commit [@COMMIT@](@COMMIT_URL@). It is rebuilt with every change to Evochora and may contain errors.
+Development version, built on @DATE@ from commit [@COMMIT@](@COMMIT_URL@). It is rebuilt with every change to Evochora and may contain errors.
 
 The next build replaces it, and a run can be read and continued only with the build that wrote it. For a run you want to come back to, use a release with a version number: it stays available.
 

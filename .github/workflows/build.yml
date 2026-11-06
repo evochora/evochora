@@ -567,7 +567,8 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          sed -e "s|@COMMIT@|${SHA:0:8}|g" -e "s|@COMMIT_URL@|$COMMIT_URL|g" \
+          BUILD_DATE=$(date -u +%Y-%m-%d)
+          sed -e "s|@DATE@|$BUILD_DATE|g" -e "s|@COMMIT@|${SHA:0:8}|g" -e "s|@COMMIT_URL@|$COMMIT_URL|g" \
             .github/release-notes-latest.md > release-notes-latest.md
 
       - name: Update the pre-release latest
