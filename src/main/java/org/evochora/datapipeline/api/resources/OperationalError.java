@@ -19,4 +19,12 @@ public record OperationalError(
     String message,
     String details
 ) {
+
+    /**
+     * The type of the error that ended a running service: an exception or {@link Error} its own
+     * work let through, whether a defect or a failure of its surroundings such as data that never
+     * arrived. It is recorded so that a service in error reports why; its message names the
+     * innermost cause, and the stack trace in the log tells which of the two it was.
+     */
+    public static final String SERVICE_FAILED = "SERVICE_FAILED";
 }

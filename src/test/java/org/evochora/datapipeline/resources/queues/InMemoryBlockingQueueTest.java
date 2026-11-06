@@ -294,4 +294,41 @@ public class InMemoryBlockingQueueTest {
         IResource wrappedConsumer = (IResource) consumer;
         assertEquals("test-queue", wrappedConsumer.getResourceName());
     }
+
+    @Test
+    void anInterruptDuringTheCoalescingDelayReturnsTheElementAlreadyTaken() throws Exception {
+        InMemoryBlockingQueue<String> coalescing = new InMemoryBlockingQueue<>("coalescing",
+                ConfigFactory.parseMap(Map.of("capacity", 10, "coalescingDelayMs", 60_000)));
+        AtomicReference<List<String>> received = new AtomicReference<>();
+        AtomicBoolean interruptFlagSet = new AtomicBoolean();
+        Thread consumer = new Thread(() -> {
+            try (StreamingBatch<String> batch = coalescing.receiveBatch(10, 60, TimeUnit.SECONDS)) {
+                List<String> items = new ArrayList<>();
+                batch.forEach(items::add);
+                received.set(items);
+                interruptFlagSet.set(Thread.currentThread().isInterrupted());
+            } catch (Exception e) {
+                received.set(List.of("failed: " + e));
+            }
+        }, "coalescing-consumer");
+        consumer.start();
+        // The element arrives while the consumer waits for the first one; with nothing behind it
+        // the consumer then waits the coalescing delay, where the interrupt is meant to reach it
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+                .atMost(5, TimeUnit.SECONDS).until(() -> consumer.getState() == Thread.State.TIMED_WAITING);
+        coalescing.put("tick-0");
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+                .atMost(5, TimeUnit.SECONDS).until(() -> isSleeping(consumer));
+        consumer.interrupt();
+        consumer.join(5000);
+
+        assertEquals(List.of("tick-0"), received.get(), "the element taken before the interrupt is returned");
+        assertTrue(interruptFlagSet.get(), "the caller learns of the interrupt");
+    }
+
+    private static boolean isSleeping(Thread thread) {
+        return thread.getState() == Thread.State.TIMED_WAITING
+                && java.util.Arrays.stream(thread.getStackTrace()).anyMatch(frame ->
+                        frame.getClassName().equals(Thread.class.getName()) && frame.getMethodName().startsWith("sleep"));
+    }
 }

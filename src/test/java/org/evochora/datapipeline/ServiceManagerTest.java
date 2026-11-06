@@ -2,7 +2,6 @@ package org.evochora.datapipeline;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
@@ -13,12 +12,13 @@ import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -72,6 +72,127 @@ public class ServiceManagerTest {
               }
             }
         """, maxMessages, maxMessages));
+    }
+
+    /** A service whose construction fails for a reason the manager does not recognise. */
+    public static class ConstructionFailingService extends org.evochora.datapipeline.services.AbstractService {
+        public ConstructionFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
+            super(name, options, resources);
+            throw new IllegalStateException("test-induced defect");
+        }
+
+        @Override
+        protected void run() {
+        }
+    }
+
+    /** A service that starts its thread and then fails, as a defect after the start would. */
+    public static class StartAnnouncementFailingService extends org.evochora.datapipeline.services.AbstractService {
+        public StartAnnouncementFailingService(String name, Config options, java.util.Map<String, java.util.List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() {
+        }
+
+        @Override
+        protected void logStarted() {
+            throw new LinkageError("test-induced defect");
+        }
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
+    void aServiceFailingToStartIsLoggedLeftWithoutAnInstanceAndTheOthersStartAllTheSame() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = true
+              startupSequence = ["consumer", "broken", "producer"]
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$ConstructionFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state(),
+                        "a service after the failed one in the startup sequence is started all the same");
+            });
+            // It never ran, so it has no instance: it is reported as stopped, its reason is in the log
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
+    /**
+     * A single start, as the HTTP API makes it, passes the defect on to its caller, unlogged: the
+     * caller handles it and logs it, and no other service is involved.
+     */
+    @Test
+    void aSingleStartPassesADefectOnWithoutLoggingIt() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$ConstructionFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            ServiceStartException thrown = assertThrows(ServiceStartException.class, () -> sm.startService("broken"));
+            assertTrue(thrown.getMessage().contains("'broken'"), thrown.getMessage());
+            assertNotNull(thrown.getCause());
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to create and start a new instance for service 'broken'\\.")
+    void anErrorDuringAStartIsHandledLikeAnExceptionAndTheOthersStartAllTheSame() {
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = true
+              startupSequence = ["broken", "producer"]
+              services.broken.className = "org.evochora.datapipeline.ServiceManagerTest$StartAnnouncementFailingService"
+            }
+        """).withFallback(createTestConfig(true));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state()));
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("broken").state());
+        } finally {
+            sm.shutdown();
+        }
+    }
+
+    /** A resource whose construction fails with a cause wrapped in a failure of its own. */
+    public static class ConstructionFailingResource {
+        public ConstructionFailingResource(String name, Config options) {
+            throw new IllegalStateException("cannot build " + name,
+                    new java.io.IOException("test-induced root cause"));
+        }
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to instantiate resource 'broken': test-induced root cause\\. Skipping this resource\\.")
+    void aResourceThatCannotBeBuiltIsSkippedWithItsRootCauseAndTheOthersAreBuilt() {
+        Config config = ConfigFactory.parseString("""
+            pipeline.resources.broken.className = "org.evochora.datapipeline.ServiceManagerTest$ConstructionFailingResource"
+        """).withFallback(createTestConfig(false));
+
+        ServiceManager sm = new ServiceManager(config);
+        try {
+            assertEquals(3, sm.getMetrics().get("resources_total"), "the three resources that can be built are there");
+        } finally {
+            sm.shutdown();
+        }
     }
 
     @Test
@@ -290,73 +411,6 @@ public class ServiceManagerTest {
         assertTrue(sm.isHealthy());
     }
 
-    /**
-     * A failure that was given a reason on the way out must still be recognised by that reason.
-     * <p>
-     * Startup failures arrive wrapped in whatever reflection put around them, so the handler looks
-     * along the chain of causes. Looking only at its far end finds the technical exception and misses
-     * the one that says what went wrong — and the more carefully a failure is explained, the more
-     * reliably it would be missed, because explaining it is what gives it a cause of its own.
-     */
-    @Test
-    void findInChain_FindsAnExplainedFailureRatherThanItsTechnicalCause() {
-        ResumeException explained = new ResumeException(
-                "Checkpoint carries an unreadable RNG state", new java.nio.BufferUnderflowException());
-        RuntimeException asThrownByReflection = new RuntimeException("Failed to create instance", explained);
-
-        assertSame(explained, ServiceManager.findInChain(asThrownByReflection, ResumeException.class),
-                "the failure that carries the reason");
-        assertNull(ServiceManager.findInChain(asThrownByReflection, IllegalStateException.class),
-                "a type that does not occur in the chain");
-        assertSame(explained, ServiceManager.findInChain(explained, ResumeException.class),
-                "a failure that is its own outermost link");
-    }
-
-    /**
-     * A checkpoint that cannot be read is not a configuration mistake, even when it says so at the
-     * bottom of its chain of causes.
-     * <p>
-     * A restorer reports the value it could not make sense of, which frequently leaves an
-     * {@link IllegalArgumentException} as the innermost cause. Deciding on that innermost cause would
-     * announce a configuration error and send whoever reads it to the configuration file, while the
-     * checkpoint stays unmentioned.
-     */
-    @Test
-    void findInChain_PrefersTheResumeFailureOverItsArgumentCause() {
-        ResumeException explained = new ResumeException(
-                "Unknown token type: 42", new IllegalArgumentException("No enum constant TokenType.42"));
-        RuntimeException asThrownByReflection = new RuntimeException("Failed to create instance", explained);
-
-        assertSame(explained, ServiceManager.findInChain(asThrownByReflection, ResumeException.class),
-                "the resume failure, not the argument it names");
-        assertNotNull(ServiceManager.findInChain(asThrownByReflection, IllegalArgumentException.class),
-                "the argument cause is present too — which is why the order of the checks decides");
-    }
-
-    /**
-     * A chain of causes that leads back into itself is walked to an end rather than forever.
-     * <p>
-     * Java rejects a throwable given itself as its cause, but not a ring of two: the second is
-     * constructed with the first as its cause, and the first is then given the second. Nothing in
-     * this code base builds one, and every startup failure passes through here — including ones
-     * raised inside libraries. Running into a ring would not produce a wrong message but a node that
-     * neither starts nor stops.
-     */
-    @Test
-    // In its own thread: a walk that does not end would otherwise hang the suite rather than fail it,
-    // because the default timeout is only read once the test returns.
-    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void findInChain_ReturnsOnACauseThatLeadsBackIntoItself() {
-        Exception first = new Exception("A");
-        Exception second = new Exception("B", first);
-        first.initCause(second);
-
-        assertNull(ServiceManager.findInChain(first, ResumeException.class),
-                "a type that does not occur — the walk has to end on its own");
-        assertSame(first, ServiceManager.findInChain(first, Exception.class),
-                "a type that occurs is still found");
-    }
-
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to build factory for service 'test': Service 'test' references unknown resource 'non-existent-queue' for port 'input'\\. Skipping this service\\.")
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to build factory for service 'test': com\\.example\\.NonExistent\\. Skipping this service\\.")
@@ -414,6 +468,76 @@ public class ServiceManagerTest {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> new ServiceManager(config));
         assertTrue(exception.getMessage().contains("samplingInterval"), exception.getMessage());
+    }
+
+    /** A service that needs no resources and runs until it is stopped. */
+    private static class IdleService extends org.evochora.datapipeline.services.AbstractService {
+        IdleService(String name) {
+            super(name, ConfigFactory.empty(), java.util.Map.of());
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            while (!isStopRequested()) {
+                checkPause();
+                Thread.sleep(10);
+            }
+        }
+    }
+
+    /**
+     * A start that fails while a second start of the same service waits must leave the second one
+     * to come up on its own: without the manager's lock the second would register a running
+     * instance during the first one's construction, and the first one's failure would then remove
+     * that running instance from the registry, so that the service is reported as stopped while it
+     * runs.
+     */
+    @Test
+    void aStartWaitsForAnotherStartOfTheSameServiceToEnd() throws InterruptedException {
+        ServiceManager sm = new ServiceManager(createTestConfig(true));
+        CountDownLatch firstConstructing = new CountDownLatch(1);
+        CountDownLatch firstMayFail = new CountDownLatch(1);
+        AtomicInteger creations = new AtomicInteger();
+        sm.registerCustomFactory("producer", () -> {
+            if (creations.incrementAndGet() == 1) {
+                firstConstructing.countDown();
+                try {
+                    firstMayFail.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new IllegalStateException("test-induced defect");
+            }
+            return new IdleService("producer");
+        });
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread first = new Thread(() -> {
+            try {
+                sm.startService("producer");
+            } catch (ServiceStartException e) {
+                firstFailure.set(e);
+            }
+        }, "first-start");
+        Thread second = new Thread(() -> sm.startService("producer"), "second-start");
+        try {
+            first.start();
+            assertTrue(firstConstructing.await(5, TimeUnit.SECONDS), "the first start is constructing");
+            second.start();
+            // Waiting for the first start, or, without the lock, already through
+            await().atMost(5, TimeUnit.SECONDS).until(() ->
+                    second.getState() == Thread.State.BLOCKED || second.getState() == Thread.State.TERMINATED);
+            firstMayFail.countDown();
+            first.join(5000);
+            second.join(5000);
+
+            assertEquals(2, creations.get());
+            assertNotNull(firstFailure.get(), "the first start passes its failure on");
+            ServiceStatus producer = sm.getServiceStatus("producer");
+            assertEquals(IService.State.RUNNING, producer.state());
+        } finally {
+            firstMayFail.countDown();
+            sm.shutdown();
+        }
     }
 
     @Test

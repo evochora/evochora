@@ -63,28 +63,27 @@ public class ZstdCodec implements ICompressionCodec {
      * Creates a ZstdCodec with configuration from Typesafe Config.
      * <p>
      * Reads compression level from {@code level} key, defaults to 3 if not specified.
-     * Level is clamped to valid range [1, 22].
      *
      * @param config configuration containing optional {@code level} parameter
+     * @throws IllegalArgumentException if the configured level lies outside the valid range [1, 22]
      */
     public ZstdCodec(Config config) {
-        int configuredLevel = config.hasPath("level") ? config.getInt("level") : DEFAULT_LEVEL;
-        this.level = Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, configuredLevel));
-
-        if (configuredLevel != this.level) {
-            // Log warning if level was clamped (using System.err since we don't have logger here)
-            System.err.printf("WARNING: Zstd compression level %d is outside valid range [%d, %d], " +
-                "clamped to %d%n", configuredLevel, MIN_LEVEL, MAX_LEVEL, this.level);
-        }
+        this(config.hasPath("level") ? config.getInt("level") : DEFAULT_LEVEL);
     }
 
     /**
      * Creates a ZstdCodec with explicit compression level.
      *
-     * @param level compression level (1-22), will be clamped to valid range
+     * @param level compression level (1-22)
+     * @throws IllegalArgumentException if the level lies outside the valid range: a level out of
+     *                                  range is a mistake, which a level near it would hide
      */
     public ZstdCodec(int level) {
-        this.level = Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, level));
+        if (level < MIN_LEVEL || level > MAX_LEVEL) {
+            throw new IllegalArgumentException("Zstd compression level " + level
+                + " is outside the valid range [" + MIN_LEVEL + ", " + MAX_LEVEL + "]");
+        }
+        this.level = level;
     }
 
     @Override

@@ -317,8 +317,15 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
 
             // Step 2: Prepare tables (template method hook for subclasses)
             // Called AFTER metadata is loaded, so subclasses can use getMetadata()
-            // for schema-dependent table creation (e.g., dimensions for EnvironmentIndexer)
-            prepareTables(runId);
+            // for schema-dependent table creation (e.g., dimensions for EnvironmentIndexer).
+            // It writes to the database, so a stop must not interrupt it: H2 writes its file
+            // through an interruptible channel, which an interrupt closes for every thread
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            try {
+                prepareTables(runId);
+            } finally {
+                setShutdownPhase(ShutdownPhase.WAITING);
+            }
 
             // Step 3: Topic loop
             // Check both isStopRequested() (graceful) and isInterrupted() (forced)
@@ -597,7 +604,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      */
     private void streamingCommitAndAck() throws Exception {
         setShutdownPhase(ShutdownPhase.PROCESSING);
-        Thread.interrupted();
         try {
             commitProcessedChunks();
             streamingTracker.onCommit();
@@ -668,6 +674,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * <strong>Idempotency:</strong> Must use CREATE TABLE IF NOT EXISTS for safety.
      * Multiple indexer instances may call this concurrently.
+     * <p>
+     * It runs in the PROCESSING phase: a stop waits for it instead of interrupting it.
      *
      * @param runId The simulation run ID (schema already set by AbstractIndexer)
      * @throws Exception if table preparation fails

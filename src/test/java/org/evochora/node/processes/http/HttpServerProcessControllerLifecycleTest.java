@@ -10,6 +10,8 @@ import java.net.Socket;
 import java.util.Map;
 
 import org.evochora.datapipeline.ServiceManager;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.IController;
 import org.evochora.node.spi.ServiceRegistry;
@@ -24,7 +26,7 @@ import io.javalin.config.RoutesConfig;
 
 /**
  * Tests that {@link HttpServerProcess} closes the controllers it created once the server has
- * stopped.
+ * stopped, and that it skips a controller it cannot create, naming the root cause.
  * <p>
  * Integration test: it starts the server on a free port the operating system names.
  */
@@ -64,6 +66,25 @@ class HttpServerProcessControllerLifecycleTest {
         }
     }
 
+    /** A controller whose construction fails with a cause wrapped in a failure of its own. */
+    public static final class FailingController implements IController {
+        /**
+         * Constructor the server calls; it always fails.
+         *
+         * @param registry Not used
+         * @param options  Not used
+         */
+        public FailingController(final ServiceRegistry registry, final Config options) {
+            throw new IllegalStateException("cannot build the controller",
+                new IOException("test-induced root cause"));
+        }
+
+        @Override
+        public void registerRoutes(final RoutesConfig routes, final String basePath) {
+            // Never reached: the constructor fails
+        }
+    }
+
     private static boolean acceptsConnections(final int port) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("127.0.0.1", port), 500);
@@ -80,14 +101,18 @@ class HttpServerProcessControllerLifecycleTest {
     }
 
     @Test
-    void closesItsControllersOnceAfterTheServerHasStopped() throws IOException {
+    @ExpectLog(level = LogLevel.ERROR,
+        messagePattern = "Failed to register controller at path '.*failing.*': test-induced root cause")
+    void closesItsControllersOnceAfterTheServerHasStoppedAndSkipsOneItCannotCreate() throws IOException {
         RecordingController.closed = 0;
         RecordingController.serverRunningAtClose = true;
         RecordingController.port = freePort();
         final Config options = ConfigFactory.parseString(
             "network { host = \"127.0.0.1\", port = " + RecordingController.port + " }\n"
-            + "routes { test { \"$controller\" { className = \""
-            + RecordingController.class.getName() + "\" } } }");
+            + "routes {\n"
+            + "  test { \"$controller\" { className = \"" + RecordingController.class.getName() + "\" } }\n"
+            + "  failing { \"$controller\" { className = \"" + FailingController.class.getName() + "\" } }\n"
+            + "}");
         final HttpServerProcess process = new HttpServerProcess("http-test",
             Map.of("serviceManager", mock(ServiceManager.class)), options);
 
@@ -96,7 +121,7 @@ class HttpServerProcessControllerLifecycleTest {
         assertThat(acceptsConnections(RecordingController.port)).as("the server is up").isTrue();
 
         process.stop();
-        assertThat(RecordingController.closed).isEqualTo(1);
+        assertThat(RecordingController.closed).as("the controller that was created is closed").isEqualTo(1);
         assertThat(RecordingController.serverRunningAtClose).isFalse();
 
         process.stop();

@@ -32,6 +32,7 @@ import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.IServiceFactory;
 import org.evochora.datapipeline.api.services.ResourceBinding;
 import org.evochora.datapipeline.api.services.ServiceStatus;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,11 +56,12 @@ import com.typesafe.config.ConfigValueType;
  * stop/start cycle possible while the process keeps running, and it is also why a manager cannot be
  * used again after a shutdown: closed resources are not reopened.
  * <p>
- * <strong>Failure to start.</strong> A start that fails for a recognised reason — insufficient
- * memory, a program that does not compile, a checkpoint that cannot be resumed from, a rejected
- * configuration, a world too large for a Java array — is logged with an explanation and swallowed,
- * leaving the service without an instance and therefore reported as
- * {@link IService.State#STOPPED}. Any other runtime failure is logged and rethrown.
+ * <strong>Failure to start.</strong> A start that fails leaves the service without an instance,
+ * reported as {@link IService.State#STOPPED}. A recognised reason — insufficient memory, a program
+ * that does not compile, a checkpoint that cannot be resumed from, a rejected configuration, a
+ * world too large for a Java array — is logged with an explanation. Any other failure, exception
+ * or {@link Error}, is a defect and passed on as a {@link ServiceStartException}; the start of all
+ * services logs it with its stack trace and starts the ones after it all the same.
  * <p>
  * <strong>Failure while running.</strong> The manager does not watch its services. One that ends in
  * {@link IService.State#ERROR} stays registered in that state: it is skipped by
@@ -68,9 +70,11 @@ import com.typesafe.config.ConfigValueType;
  * <p>
  * <strong>Threading.</strong> The registries are concurrent maps and the reporting methods take
  * their snapshots without locking, so they may be called from any thread while services run. The
- * life-cycle methods hold no lock either: two threads starting or stopping the same service at the
- * same time race, and serialising them is the caller's job. {@link #stopAll()} makes deliberate use
- * of this by stopping distinct services in parallel.
+ * life-cycle methods — starting, stopping, pausing, resuming and restarting one service or all of
+ * them, and {@link #shutdown()} — hold the manager's lock, so each one sees the state the previous
+ * one left: a start asked for while a stop runs waits for the stop to end. Within the lock,
+ * {@link #stopAll()} still stops distinct services in parallel. Should its wait for them be
+ * interrupted, it releases the lock while those stops may still run.
  */
 public class ServiceManager implements IMonitorable {
 
@@ -109,8 +113,9 @@ public class ServiceManager implements IMonitorable {
      * <p>
      * If {@code autoStart} is absent or true and a non-empty {@code startupSequence} is configured,
      * the services it names are started in that order before the constructor returns, and a memory
-     * estimate for the running pipeline is logged afterwards. Otherwise nothing is started and the
-     * services wait for {@link #startAll()} or {@link #startService(String)}.
+     * estimate for the running pipeline is logged afterwards. A service that fails to start is
+     * logged, and the services after it are started all the same. Otherwise nothing is started and
+     * the services wait for {@link #startAll()} or {@link #startService(String)}.
      *
      * @param rootConfig configuration holding a {@code pipeline} section; nothing outside that
      *                   section is read
@@ -118,8 +123,6 @@ public class ServiceManager implements IMonitorable {
      *                                  the options of a configured simulation engine do not form
      *                                  valid simulation parameters — checked before anything is
      *                                  started, so that the failure leaves no service running
-     * @throws RuntimeException if auto-starting a service fails for a reason the manager does not
-     *                          recognise, in which case the failure is not swallowed but passed on
      */
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
@@ -284,10 +287,7 @@ public class ServiceManager implements IMonitorable {
                 log.info("Instantiated resource '{}' of type {}", resourceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = CauseChain.root(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 log.error("Failed to instantiate resource '{}': {}. Skipping this resource.", resourceName, errorMsg);
             }
@@ -352,10 +352,7 @@ public class ServiceManager implements IMonitorable {
                 log.info("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
-                Throwable cause = e;
-                while (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                }
+                Throwable cause = CauseChain.root(e);
                 String errorMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, errorMsg);
             }
@@ -373,42 +370,6 @@ public class ServiceManager implements IMonitorable {
      */
     private static boolean isSetToNull(Config object, String key) {
         return object.root().get(key).valueType() == ConfigValueType.NULL;
-    }
-
-    /**
-     * How far a chain of causes is followed. Far beyond any chain this code produces — the bound is
-     * there so that a ring ends the walk, not to cut a real chain short.
-     */
-    private static final int MAX_CAUSE_DEPTH = 100;
-
-    /**
-     * The outermost failure of the given type along a chain of causes, or {@code null} if none is of
-     * that type.
-     * <p>
-     * A failure raised during startup reaches this class wrapped in whatever reflection put around
-     * it, so its type has to be sought rather than read off. Sought from the outside in, because a
-     * failure that was given a reason on its way out carries the technical exception it replaced as
-     * its own cause: taking the innermost link would find that technical exception again and lose
-     * the reason.
-     *
-     * The walk is bounded. Java rejects a throwable given itself as its cause but not a ring of two,
-     * which the public API can build — and every startup failure passes through here, including ones
-     * raised inside libraries. A ring would not produce a wrong message but a node that neither
-     * starts nor stops.
-     *
-     * @param <T> the type of failure looked for
-     * @param thrown the failure as it arrived
-     * @param type the type of failure looked for
-     * @return the outermost link of that type, or {@code null}
-     */
-    static <T extends Throwable> T findInChain(Throwable thrown, Class<T> type) {
-        Throwable link = thrown;
-        for (int depth = 0; link != null && depth < MAX_CAUSE_DEPTH; depth++, link = link.getCause()) {
-            if (type.isInstance(link)) {
-                return type.cast(link);
-            }
-        }
-        return null;
     }
 
     private ResourceContext parseResourceUri(String uri, String serviceName, String portName) {
@@ -447,6 +408,9 @@ public class ServiceManager implements IMonitorable {
                 action.accept(serviceName);
             } catch (IllegalStateException | IllegalArgumentException e) {
                 log.warn("Could not perform action on service '{}': {}", serviceName, e.getMessage());
+            } catch (ServiceStartException e) {
+                // A defect in the start of one service, which stops that service but not the rest
+                log.error(e.getMessage(), e.getCause());
             }
         }
     }
@@ -457,10 +421,11 @@ public class ServiceManager implements IMonitorable {
      * Nothing else is started: a configured service the sequence does not name stays untouched. A
      * service that is not defined, or that is already running and would have to be restarted
      * explicitly, is logged and skipped so the remaining ones still come up. Every other outcome of
-     * a start is the one described for {@link #startService(String)}, including a failure that is
-     * passed on and then leaves the rest of the sequence unstarted.
+     * a start is the one described for {@link #startService(String)}: a service that fails to
+     * start is logged and left without an instance, and the rest of the sequence is started all
+     * the same.
      */
-    public void startAll() {
+    public synchronized void startAll() {
         log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
         startAllInternal();
     }
@@ -485,7 +450,7 @@ public class ServiceManager implements IMonitorable {
      * The services stay registered with the state they ended in, so they can still be inspected and
      * started again. Resources are left open; closing them is {@link #shutdown()}'s job.
      */
-    public void stopAll() {
+    public synchronized void stopAll() {
         log.info("\u001B[34m========== Stopping Services ==========\u001B[0m");
         // Reversed only to decide which stop is triggered first. The stops themselves run at the
         // same time (see below), so this order does not sequence them: a service later in the list
@@ -511,7 +476,7 @@ public class ServiceManager implements IMonitorable {
         for (String name : actuallyStoppable) {
             Thread t = new Thread(() -> {
                 try {
-                    stopService(name);
+                    stopInstance(name);
                 } catch (Exception e) {
                     // A one-shot service can finish between the selection above and this stop
                     if (services.get(name).getCurrentState() == IService.State.STOPPED) {
@@ -544,7 +509,7 @@ public class ServiceManager implements IMonitorable {
      * <p>
      * Once resources are closed, they cannot be reopened, making restart impossible.
      */
-    public void shutdown() {
+    public synchronized void shutdown() {
         stopAll();
         closeAllResources();
     }
@@ -589,7 +554,7 @@ public class ServiceManager implements IMonitorable {
      * to pause. Only a service whose state changes between this decision and the call refuses, and
      * that one is logged and skipped while the remaining ones are still asked.
      */
-    public void pauseAll() {
+    public synchronized void pauseAll() {
         List<String> running = servicesInState(IService.State.RUNNING);
         log.info("Pausing {} running service(s)...", running.size());
         applyToAllServices(this::pauseService, running);
@@ -604,7 +569,7 @@ public class ServiceManager implements IMonitorable {
      * service whose state changes between this decision and the call refuses, and that one is logged
      * and skipped while the remaining ones are still asked.
      */
-    public void resumeAll() {
+    public synchronized void resumeAll() {
         List<String> paused = servicesInState(IService.State.PAUSED);
         log.info("Resuming {} paused service(s)...", paused.size());
         applyToAllServices(this::resumeService, paused);
@@ -639,7 +604,7 @@ public class ServiceManager implements IMonitorable {
      * discards the stopped one — a service that was paused therefore returns running. The resources
      * themselves are neither closed nor reopened.
      */
-    public void restartAll() {
+    public synchronized void restartAll() {
         log.info("Restarting all services...");
         // Taken before the stop, because stopping is what makes this information unavailable.
         // Starting the startup sequence instead would drop every service that was switched on
@@ -705,18 +670,18 @@ public class ServiceManager implements IMonitorable {
      * A service that identifies itself as the source of the simulation run becomes the one the
      * manager reports through {@link #getActiveRunId()}.
      * <p>
-     * Most failures to start are not passed on. Insufficient memory, a program that does not
-     * compile, a checkpoint that cannot be resumed from, a rejected configuration and a world too
-     * large for a Java array are logged with an explanation, and so is any checked exception; in
-     * each case the service is left without an instance and is reported as
-     * {@link IService.State#STOPPED} afterwards. Every other {@link RuntimeException} is logged and
-     * rethrown.
+     * Insufficient memory, a program that does not compile, a checkpoint that cannot be resumed
+     * from, a rejected configuration and a world too large for a Java array are logged with an
+     * explanation and not passed on. Any other failure, exception or {@link Error}, is a defect and
+     * passed on, unlogged, to whoever handles it. In each case the service is left without an
+     * instance and is reported as {@link IService.State#STOPPED} afterwards.
      *
      * @param name the configured name of the service
      * @throws IllegalArgumentException if no service of that name is defined
      * @throws IllegalStateException if an instance of that name is still running or paused
+     * @throws ServiceStartException if the start failed for a cause the manager does not recognise
      */
-    public void startService(String name) {
+    public synchronized void startService(String name) {
         // VALIDATION: Check if the service already exists and its state
         IService existing = services.get(name);
         if (existing != null) {
@@ -806,7 +771,9 @@ public class ServiceManager implements IMonitorable {
             log.error(errorMsg);
             // Don't throw - just log and return. Service remains in stopped state.
             return;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
+            // An Error other than running out of memory, such as a class failing to load, ends a
+            // start like an exception: it is this service that failed, not the start of the others
             // Clean up maps in case of a startup failure.
             clearSimulationSourceIfMatch(services.get(name));
             services.remove(name);
@@ -814,15 +781,12 @@ public class ServiceManager implements IMonitorable {
             activeWrappedResources.remove(name);
 
             // Unwrap reflection exceptions to find root cause
-            Throwable cause = e;
-            while (cause.getCause() != null && cause.getCause() != cause) {
-                cause = cause.getCause();
-            }
+            Throwable cause = CauseChain.root(e);
 
             // Sought along the chain rather than taken from its end: a resume failure explains what
             // about the checkpoint is unusable, and explaining it is what gives it a cause of its
             // own — which the unwrapping above would then run past.
-            ResumeException resumeFailure = findInChain(e, ResumeException.class);
+            ResumeException resumeFailure = CauseChain.find(e, ResumeException.class);
 
             // Check if this is an OutOfMemoryError wrapped in RuntimeException (from reflection)
             if (cause instanceof OutOfMemoryError && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
@@ -882,9 +846,9 @@ public class ServiceManager implements IMonitorable {
                 }
             }
 
-            // Re-throw other runtime exceptions
-            log.error("Failed to create and start a new instance for service '{}'.", name, e);
-            throw e;
+            // Any other cause is unknown to the manager: a defect, passed on for whoever handles it
+            // to log with the trace that finds it
+            throw new ServiceStartException(name, e);
         }
     }
 
@@ -905,7 +869,15 @@ public class ServiceManager implements IMonitorable {
      *
      * @param name the configured name of the service
      */
-    public void stopService(String name) {
+    public synchronized void stopService(String name) {
+        stopInstance(name);
+    }
+
+    /**
+     * {@link #stopService(String)} without the manager's lock, for the threads on which
+     * {@link #stopAll()} stops services in parallel while it holds the lock.
+     */
+    private void stopInstance(String name) {
         IService service = services.get(name);
         if (service == null) {
             log.warn("Attempted to stop service '{}', but it was not found among services.", name);
@@ -939,7 +911,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalArgumentException if no instance of that name is registered, which is also the
      *                                  case for a configured service that has never been started
      */
-    public void pauseService(String serviceName) {
+    public synchronized void pauseService(String serviceName) {
         getServiceOrFail(serviceName).pause();
     }
 
@@ -953,7 +925,7 @@ public class ServiceManager implements IMonitorable {
      * @throws IllegalArgumentException if no instance of that name is registered, which is also the
      *                                  case for a configured service that has never been started
      */
-    public void resumeService(String serviceName) {
+    public synchronized void resumeService(String serviceName) {
         getServiceOrFail(serviceName).resume();
     }
 
@@ -964,14 +936,16 @@ public class ServiceManager implements IMonitorable {
      * configured service for the first time. The new instance is built by the factory and bound to
      * newly wrapped resources, while the resources themselves stay as they are. Both halves behave
      * as described for {@link #stopService(String)} and {@link #startService(String)}, which
-     * includes swallowing a recognised start failure and leaving the service without an instance.
+     * includes swallowing a recognised start failure and leaving the service without an instance,
+     * and passing on one the manager does not recognise.
      *
      * @param serviceName the configured name of the service
      * @throws IllegalArgumentException if no service of that name is defined
      * @throws IllegalStateException if the service did not come to a halt and is still running or
      *                               paused when the start is attempted
+     * @throws ServiceStartException if the start failed for a cause the manager does not recognise
      */
-    public void restartService(String serviceName) {
+    public synchronized void restartService(String serviceName) {
         log.info("Restarting service '{}'...", serviceName);
         stopService(serviceName);
         startService(serviceName);

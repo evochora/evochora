@@ -1,8 +1,5 @@
 services:
   evochora:
-    build:
-      context: ../../..
-      dockerfile: infrastructure/docker/evochora-node/Dockerfile
     # EVOCHORA_IMAGE takes a whole reference, so it can name a tag or an exact digest
     # (…@sha256:…). A digest is the only way to redeploy precisely what once ran: a tag such as
     # latest is overwritten by the next build. IMAGE_TAG remains the fallback so an existing

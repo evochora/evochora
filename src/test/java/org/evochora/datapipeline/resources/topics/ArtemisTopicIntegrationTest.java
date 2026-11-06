@@ -2,16 +2,19 @@ package org.evochora.datapipeline.resources.topics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 import java.io.File;
 import java.util.Comparator;
 import java.nio.file.Path;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.resources.IResource.UsageState;
@@ -164,6 +167,56 @@ class ArtemisTopicIntegrationTest {
                         Map.of("consumerGroup", "   "))))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("consumerGroup");
+    }
+
+    /** A call into the topic that may throw, run on a thread of its own. */
+    @FunctionalInterface
+    private interface TopicCall {
+        void run() throws Exception;
+    }
+
+    /**
+     * Runs the call on a thread of its own, interrupts that thread once it waits for a message, and
+     * returns what the call ended with.
+     */
+    private static Throwable interruptOnceWaitingForAMessage(TopicCall call) throws InterruptedException {
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread caller = new Thread(() -> {
+            try {
+                call.run();
+            } catch (Throwable t) {
+                outcome.set(t);
+            }
+        }, "topic-caller");
+        caller.start();
+        // Waiting for the frame, not for a fixed time, makes sure the interrupt reaches the receive
+        await().pollDelay(0, TimeUnit.MILLISECONDS).pollInterval(5, TimeUnit.MILLISECONDS)
+            .atMost(5, TimeUnit.SECONDS).until(() -> isWaitingForAMessage(caller));
+        caller.interrupt();
+        caller.join(5000);
+        assertThat(caller.isAlive()).describedAs("the call has ended").isFalse();
+        return outcome.get();
+    }
+
+    private static boolean isWaitingForAMessage(Thread thread) {
+        Thread.State state = thread.getState();
+        return (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING)
+            && Arrays.stream(thread.getStackTrace()).anyMatch(frame ->
+                frame.getClassName().equals("org.apache.activemq.artemis.core.client.impl.ClientConsumerImpl"));
+    }
+
+    @Test
+    @DisplayName("A stop that interrupts a reader waiting for a message ends the poll as an interrupt")
+    void anInterruptWhileAReaderWaitsEndsThePollAsAnInterrupt() throws Exception {
+        this.topic = new ArtemisTopicResource<>("interrupt-read-topic", sharedConfig);
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
+            new ResourceContext("reader-service", "reader-port", "topic-read", "interrupt-read-topic", Map.of("consumerGroup", "interrupt-group")));
+        this.topic.setSimulationRun("RUN-INTERRUPT-READ");
+
+        Throwable outcome = interruptOnceWaitingForAMessage(() -> reader.poll(30, TimeUnit.SECONDS));
+
+        assertThat(outcome).isInstanceOf(InterruptedException.class).hasMessage("JMS receive interrupted");
     }
 
     @Test

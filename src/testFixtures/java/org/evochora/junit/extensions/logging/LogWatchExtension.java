@@ -267,16 +267,22 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         }
 
         /**
-         * Sees every log call of the test before the logger's level filters it. A call with no
-         * message is a logger asking whether a level is enabled; it enters no timeline.
+         * Sees every log call of the test before the logger's level filters it, and also every
+         * question whether a level is enabled, such as {@code isWarnEnabled()}, which Logback
+         * passes here without message, arguments or exception. Such a question logs nothing, so
+         * it is neither counted nor kept in the timeline. A log call with a {@code null} message
+         * and nothing else arrives in the same form and is passed over as well.
          */
         @Override
         public FilterReply decide(Marker marker, ch.qos.logback.classic.Logger logger, Level level, String format, Object[] params, Throwable t) {
+            if (format == null && params == null && t == null) {
+                return FilterReply.NEUTRAL;
+            }
             long millis = (System.nanoTime() - testStartNanos) / 1_000_000L;
             boolean teardown = testMethodEnded;
             String thread = Thread.currentThread().getName();
             LogLevel kept = timelineLevel;
-            if (kept != null && format != null && level.isGreaterOrEqual(toLogback(kept))) {
+            if (kept != null && level.isGreaterOrEqual(toLogback(kept))) {
                 recordInTimeline(String.format("%6d ms [%s] %s - %s (thread %s%s)", millis, level, logger.getName(),
                         formatMessage(format, params), thread, teardown ? ", teardown" : ""));
             }

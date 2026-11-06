@@ -1,0 +1,11 @@
+{
+  "allowedLicenses": [
+    { "moduleLicense": "Apache License, Version 2.0", "text": "Apache-2.0.txt" },
+    { "moduleLicense": "Eclipse Public License - v 1.0", "text": "EPL-1.0.txt" },
+    { "moduleLicense": "Eclipse Public License - v 2.0", "text": "EPL-2.0.txt" },
+    { "moduleLicense": "Mozilla Public License, Version 2.0", "text": "MPL-2.0.txt" },
+    { "moduleLicense": "MIT License" },
+    { "moduleLicense": "The 2-Clause BSD License" },
+    { "moduleLicense": "The 3-Clause BSD License" }
+  ]
+}

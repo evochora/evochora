@@ -40,7 +40,9 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew webTest            # Web frontend tests (vitest, src/test/web)
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
-./gradlew distZip distTar    # Create distribution archives
+./gradlew installDist        # Distribution for development under build/install/evochora, run on JAVA_HOME
+./gradlew installLocalPlatformDist  # This machine's platform distribution, with its Java runtime, under build/install
+./gradlew platformDistributions     # Every published platform archive, under build/distributions
 ./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
 ./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```
@@ -186,10 +188,12 @@ node         →  datapipeline, runtime
 datapipeline →  compiler, runtime
 compiler     →  runtime
 runtime      →  (nothing)
+util         →  (nothing)
 ```
 
 - **Authority**: `PackageDependencyRulesTest` enforces this graph and is the single source of truth. The graph is repeated here for orientation only — when the two disagree, the test is right.
-- **`runtime` depends on nothing**: the simulation core carries no outward surface. Every type it borrowed from another package would have to be carried along by a reimplementation in another language.
+- **Every package but `runtime` may use `util`**: it holds the helpers that belong to no part of Evochora, such as walking the causes of an exception, and depends on nothing. A helper that knows about runs, organisms, the pipeline or the node belongs to that part instead.
+- **`runtime` depends on nothing**: every part around the simulation core can be replaced without touching it.
 - **`compiler → runtime` is intended**: the instruction set is what the compiler targets. The compiler sees it through `IInstructionSet`; only the adapter in `compiler.isa` reads the runtime's declarations, and `EnvironmentProperties`, the world a program is laid out for, is the one other runtime type the compiler takes.
 - **Process wrappers belong to `node`, domain logic to `datapipeline`**: node owns process lifecycles, not what runs inside them. An adapter joining the two lives on node's side, which is the permitted direction.
 - **Adding an edge**: a new dependency the graph does not permit fails the test, which names the classes involved. Withdraw the import, or change the rule and let the change be reviewed. Editing the rule is legitimate — doing it by reflex is what destroys its value.
@@ -256,7 +260,7 @@ runtime      →  (nothing)
 
 **Error Handling & Logging**:
 - **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - throw only if the caller must handle the failed operation
-- **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
+- **Fatal Errors** (service/resource cannot serve any caller): a resource: `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded. A service only throws: the failure ends it, and `AbstractService` logs it once and records it as `SERVICE_FAILED`
 - **Normal Shutdown** (InterruptedException): `log.debug("msg", args)` - re-throw exception - NO recordError()
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
 - **Stack Traces**: pass the exception ONLY when the cause is a bug or unknown (see below) - never when the message can say what went wrong
@@ -282,7 +286,7 @@ runtime      →  (nothing)
 
 ## CLI (`src/main/java/org/evochora/cli/`)
 
-- **Entry Point**: `CommandLineInterface.main()`
+- **Entry Point**: `CommandLineInterface.main()`. Before it, the start scripts run `JavaVersionGuard` (source set `launcher`, compiled for the oldest Java the compiler targets) on any Java other than the runtime a distribution brings, so that an older Java stops with a message naming the Java Evochora needs
 - **PicoCLI**: Use PicoCLI annotations for commands and options
 - **Command Pattern**: Each command implements `Callable<Integer>` with exit codes (0=success, 1=error, 2=system error)
 - **Subcommands**: `node run`, `node resume`, `node fork`, `node show`, `compile`, `inspect`, `video`, `cleanup`
@@ -353,7 +357,8 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - Raising the bound is a deliberate change, made once the suite has grown past it
 - `newCodeCoverage` asks the other question: of the lines a branch changes, how many the tests
   reach. It measures nothing of its own — it intersects the JaCoCo report with `git diff` against
-  the merge base — and covers the same code as the gate above, everything under `src/main/java`
+  the merge base — and covers the same code as the gate above, the source sets `main` and
+  `launcher` that `build.gradle.kts` names once for both
 - On a pull request the figure appears as a comment — from a fork, in the job log only, because
   its token may not write. There is no bound yet: the task reports and passes; setting
   `newCodeCoverage.minimum` turns it into a gate that fails the build — a share between 0 and 1,
@@ -370,7 +375,8 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 **Framework:**
 - Use SLF4J + Logback: `LoggerFactory.getLogger(this.getClass())`
-- NEVER use `System.out.println()` or `System.err.println()`
+- Code that runs inside the node (`node`, `datapipeline`, `runtime`, `compiler`) NEVER writes to `System.out` or `System.err`: a running node's console is watched by nobody, and only its log is read. `ConsoleOutputRulesTest` enforces this
+- The console belongs to the command line interface in `cli`, before a node runs or instead of one: the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version) write their results, progress and errors there, and the node commands `node resume` and `node fork` an error in their arguments or checkpoint before the node starts; so do the launcher's Java check, which runs before logging exists, and the welcome banner, shown only with `PLAIN` logging
 
 **Log Levels by Component:**
 
@@ -385,7 +391,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
   - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
   - Explicit runId configuration
 - `WARN`: Transient errors (always with `recordError()` call) - duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings
-- `ERROR`: Fatal initialization/runtime errors (schema setup failed, discovery timeout, indexing failed)
+- `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
 - `DEBUG`: All operational details (batch processing, retries, interrupts, shutdown sequences, drain operations)
 
 **AbstractService (automatic lifecycle logs):**
@@ -517,7 +523,7 @@ void send(T message) throws InterruptedException;
 
 ## CI & PR Expectations
 
-- CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows (includes the PMD gate).
+- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: the standard configuration, with a plugin added that the start test builds against the archive's `lib/` and puts into its `plugins/`, must run until every indexer has processed ticks and the plugin has run, and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
 - PR must include: a summary of what changed and why, the verification that was performed, green CI.
 - Branch naming: short and purpose-describing, e.g. `feature/<topic>`.
 

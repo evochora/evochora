@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.node.processes.AbstractProcess;
-import org.evochora.datapipeline.utils.CauseChain;
+import org.evochora.util.CauseChain;
 import org.h2.tools.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

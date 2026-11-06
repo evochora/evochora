@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.services.IService;
+import org.evochora.util.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +25,9 @@ import com.typesafe.config.Config;
  * <p>
  * Error Tracking: Services can use {@link #recordError(String, String, String)} to
  * track transient errors that affect data quality but don't require service termination.
+ * The failure that ends the service is recorded by this class itself, as
+ * {@link OperationalError#SERVICE_FAILED}, so that a service in {@link IService.State#ERROR}
+ * reports why.
  */
 public abstract class AbstractService implements IService, IMonitorable {
 
@@ -77,11 +81,19 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Default is WAITING — services that never set this get immediate interrupt on shutdown.
      */
     private volatile ShutdownPhase currentShutdownPhase = ShutdownPhase.WAITING;
+
+    /**
+     * Makes the switch to {@link ShutdownPhase#PROCESSING} and the interrupt {@link #stop()} sends
+     * to a service in {@link ShutdownPhase#WAITING} exclusive of each other: a stop that has seen
+     * WAITING delivers its interrupt before the service can switch, and the switch clears it. A
+     * stop that has seen PROCESSING sends none; the switch back to WAITING delivers it instead.
+     */
+    private final Object shutdownPhaseLock = new Object();
     
     /**
-     * Collection of operational errors that occurred during service execution.
-     * These are transient errors that don't stop the service but may affect data quality.
-     * Limited to MAX_ERRORS to prevent unbounded memory growth.
+     * Collection of operational errors that occurred during service execution: the transient
+     * errors that don't stop the service but may affect data quality, and the defect that ended
+     * it, if one did. Limited to MAX_ERRORS to prevent unbounded memory growth.
      * <p>
      * Private to enforce use of {@link #recordError(String, String, String)} method.
      * Subclasses must not access this directly.
@@ -127,7 +139,22 @@ public abstract class AbstractService implements IService, IMonitorable {
         serviceThread = new Thread(this::runService);
         serviceThread.setName(serviceName);
         serviceThread.start();
-        logStarted();
+        try {
+            logStarted();
+        } catch (RuntimeException | Error e) {
+            // The thread already runs, and a start that fails must not leave it running behind the
+            // failure: it is stopped again before the failure is passed on. A thread that has ended
+            // meanwhile needs no stop; a stop that fails travels with the failure it followed.
+            State state = getCurrentState();
+            if (state == State.RUNNING || state == State.PAUSED) {
+                try {
+                    stop();
+                } catch (RuntimeException | Error stopFailure) {
+                    e.addSuppressed(stopFailure);
+                }
+            }
+            throw e;
+        }
     }
 
     /**
@@ -146,7 +173,8 @@ public abstract class AbstractService implements IService, IMonitorable {
             // PHASE-AWARE GRACEFUL SHUTDOWN
             // ============================================================
             // 1. Signal stop request + wake paused threads
-            // 2. If WAITING → immediate interrupt (breaks blocking receive/poll)
+            // 2. If WAITING → immediate interrupt (breaks blocking receive/poll); if PROCESSING,
+            //    the service's switch back to WAITING delivers the interrupt (setShutdownPhase)
             // 3. Wait for thread termination (full timeout as grace period)
             // 4. If still alive → force interrupt + WARN (regardless of phase)
             // 5. If still alive → ERROR state
@@ -169,9 +197,12 @@ public abstract class AbstractService implements IService, IMonitorable {
                     // WAITING services can be interrupted immediately — they are blocked on
                     // receive/poll calls that respond to interrupt without data corruption.
                     // PROCESSING services are mid-write to storage/database — interrupt would
-                    // corrupt NIO FileChannels via ClosedByInterruptException.
-                    if (getShutdownPhase() == ShutdownPhase.WAITING) {
-                        serviceThread.interrupt();
+                    // corrupt NIO FileChannels via ClosedByInterruptException. They get the
+                    // interrupt when they switch back to WAITING, in setShutdownPhase.
+                    synchronized (shutdownPhaseLock) {
+                        if (currentShutdownPhase == ShutdownPhase.WAITING) {
+                            serviceThread.interrupt();
+                        }
                     }
 
                     // Wait for thread termination (full timeout as grace period for PROCESSING)
@@ -282,14 +313,22 @@ public abstract class AbstractService implements IService, IMonitorable {
         } catch (InterruptedException e) {
             log.debug("Service thread interrupted, shutting down.");
             Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            if (isInterruptInduced(e)) {
+        } catch (Exception | Error e) {
+            // An Error is caught as well: left to the JVM, it would end the thread on stderr, out
+            // of the log, and the service would count as STOPPED rather than as failed.
+            if (CauseChain.isInterruptInduced(e)) {
                 log.debug("Service thread interrupted, shutting down.");
                 Thread.currentThread().interrupt();
             } else {
-                // The service's own loop let the exception through, so its cause is not one the
-                // service knows how to handle: a defect, and the trace is what finds it.
+                // The service's own loop let the exception or error through: a defect, or a failure
+                // it ends on, and the trace is what tells them apart. It is recorded before the
+                // state changes, so that whoever sees ERROR finds why.
                 log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
+                Throwable cause = CauseChain.root(e);
+                addError(new OperationalError(Instant.now(), OperationalError.SERVICE_FAILED,
+                        this.getClass().getSimpleName() + " stopped with ERROR, stack trace in the log: "
+                                + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()),
+                        cause.getClass().getName()));
                 currentState.set(State.ERROR);
             }
         } finally {
@@ -299,22 +338,6 @@ public abstract class AbstractService implements IService, IMonitorable {
             }
             log.debug("Service thread for {} has terminated.", this.getClass().getSimpleName());
         }
-    }
-
-    /**
-     * Checks whether an exception was induced by a Thread.interrupt() call by walking
-     * the cause chain for interrupt-specific types. Libraries like Artemis wrap
-     * InterruptedException in RuntimeExceptions (e.g., ActiveMQInterruptedException),
-     * and NIO throws ClosedByInterruptException when a channel is interrupted mid-IO.
-     */
-    private static boolean isInterruptInduced(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof InterruptedException
-                    || current instanceof java.nio.channels.ClosedByInterruptException) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -336,7 +359,6 @@ public abstract class AbstractService implements IService, IMonitorable {
      *             if (batch.size() == 0) continue;
      *
      *             setShutdownPhase(ShutdownPhase.PROCESSING);
-     *             Thread.interrupted(); // Clear interrupt flag from WAITING→PROCESSING race
      *
      *             storage.write(batch);
      *             batch.commit();
@@ -362,9 +384,10 @@ public abstract class AbstractService implements IService, IMonitorable {
      * 
      * <strong>2. Fatal Errors</strong> (service must stop):
      * <ul>
-     *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
-     *   <li>Do NOT use recordError() - service stops anyway</li>
-     *   <li>Throw exception - AbstractService will set ERROR state</li>
+     *   <li>Throw an exception whose message says what went wrong, with its context</li>
+     *   <li>Do NOT log it - AbstractService logs the failure once</li>
+     *   <li>Do NOT use recordError() - AbstractService records the failure as
+     *       {@link OperationalError#SERVICE_FAILED} and sets ERROR state</li>
      *   <li>Example: Database connection lost, cannot compile program, resource unavailable</li>
      * </ul>
      * 
@@ -383,8 +406,9 @@ public abstract class AbstractService implements IService, IMonitorable {
      *   <li>Example: {@code catch(IOException e) { log.debug("Retry {}/{}", attempt, max); }}</li>
      * </ul>
      * 
-     * <strong>Stack Traces:</strong> Exception stack traces are always logged at DEBUG level
-     * by AbstractService. Services should never log exceptions with {@code log.error(..., e)}.
+     * <strong>Stack Traces:</strong> AbstractService logs the exception or error that ends the
+     * service at ERROR level with its stack trace. Services should never log it again with
+     * {@code log.error(..., e)}.
      *
      * @throws InterruptedException if the service thread is interrupted.
      */
@@ -452,17 +476,30 @@ public abstract class AbstractService implements IService, IMonitorable {
     }
 
     /**
-     * Sets the current shutdown phase. Subclasses call this to mark IO-critical sections.
+     * Sets the current shutdown phase. Subclasses call this from the service's own thread to mark
+     * IO-critical sections.
      * <p>
-     * Set to PROCESSING before storage/database writes and back to WAITING after commit.
-     * When transitioning to PROCESSING, callers should also clear any pending interrupt
-     * flag via {@code Thread.interrupted()} to prevent a race where stop() interrupted
-     * the thread while it was still in WAITING but has since entered PROCESSING.
+     * Set to PROCESSING before storage/database writes and back to WAITING after commit. The
+     * switch to PROCESSING clears an interrupt that {@link #stop()} sent while the service was
+     * still WAITING, and it cannot fall between the moment a stop sees WAITING and the moment its
+     * interrupt arrives: an interrupt meant to end a wait never reaches the write that follows it.
+     * <p>
+     * The switch back to WAITING delivers the interrupt of a stop that was requested meanwhile,
+     * which a stop does not send to a service that is processing. A service may be interrupted
+     * at any time while it waits, so this is the interrupt the stop would have sent a moment
+     * later, and no stop is lost to the write it waited for.
      *
      * @param phase the new shutdown phase
      */
     protected void setShutdownPhase(ShutdownPhase phase) {
-        this.currentShutdownPhase = phase;
+        synchronized (shutdownPhaseLock) {
+            this.currentShutdownPhase = phase;
+            if (phase == ShutdownPhase.PROCESSING) {
+                Thread.interrupted();
+            } else if (stopRequested.get()) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     /**
@@ -560,8 +597,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Records an operational error for tracking and monitoring.
      * <p>
      * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the service
-     * continues running. For fatal errors that require stopping the service, use
-     * {@code log.error()} and throw an exception instead.
+     * continues running. A fatal error that requires stopping the service is thrown instead;
+     * {@code AbstractService} logs and records it.
      * <p>
      * Use this method to track transient errors that don't require service termination
      * but may affect data quality or indicate problems. These errors affect the service's
@@ -579,15 +616,21 @@ public abstract class AbstractService implements IService, IMonitorable {
      * </ul>
      * <p>
      * <strong>NOT for:</strong> Fatal errors, InterruptedException, or any error that causes
-     * an exception to be thrown. See {@link #run()} for complete error handling guidelines.
+     * an exception to be thrown: the failure that ends the service is recorded by this class
+     * itself, as {@link OperationalError#SERVICE_FAILED}. See {@link #run()} for complete error
+     * handling guidelines.
      *
      * @param code    Error code for categorization (e.g., "SEND_ERROR", "TICK_FAILED")
      * @param message Human-readable error message
      * @param details Additional context about the error
      */
     protected void recordError(String code, String message, String details) {
-        errors.add(new OperationalError(Instant.now(), code, message, details));
-        
+        addError(new OperationalError(Instant.now(), code, message, details));
+    }
+
+    private void addError(OperationalError error) {
+        errors.add(error);
+
         // Prevent unbounded memory growth
         int maxErrors = getMaxErrors();
         while (errors.size() > maxErrors) {

@@ -27,6 +27,8 @@ import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
+import org.evochora.util.CauseChain;
+import org.h2.api.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,10 +114,7 @@ public class H2Database extends AbstractDatabaseResource
                 name, hikariConfig.getMaximumPoolSize(), hikariConfig.getMinimumIdle());
         } catch (Exception e) {
             // Unwrap to find root cause
-            Throwable cause = e;
-            while (cause.getCause() != null && cause.getCause() != cause) {
-                cause = cause.getCause();
-            }
+            Throwable cause = CauseChain.root(e);
             
             String causeMsg = cause.getMessage() != null ? cause.getMessage() : "";
             
@@ -821,106 +820,129 @@ public class H2Database extends AbstractDatabaseResource
     /**
      * Closes the HikariCP connection pool for this H2 database.
      * <p>
-     * This is called by {@link AbstractDatabaseResource#close()} after all wrappers
-     * have been closed and connections released back to the pool.
-     * <p>
-     * <strong>Important:</strong> Before closing the pool, we execute a SQL {@code SHUTDOWN}
-     * command to ensure the H2 MVStore flushes all pending writes to disk. This prevents
-     * database corruption ("Double mark" errors) that can occur when the database file
-     * is not cleanly closed. The issue is that {@code DB_CLOSE_ON_EXIT=FALSE} combined with
-     * {@code DB_CLOSE_DELAY=-1} keeps the database open until explicit shutdown, but
-     * HikariCP's {@code close()} only releases connections without triggering H2's shutdown.
+     * Called by {@link AbstractDatabaseResource#close()} after all wrappers have been closed.
+     * The database itself is already shut down at that point, by {@link #close()}.
      */
     @Override
     protected void closeConnectionPool() {
         if (dataSource != null && !dataSource.isClosed()) {
-            // Execute SHUTDOWN to ensure H2 MVStore flushes all pages to disk
-            // This prevents "Double mark" corruption errors on next startup
-            try (Connection conn = dataSource.getConnection();
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute("SHUTDOWN");
-                log.debug("H2 database '{}' shutdown command executed", getResourceName());
-            } catch (SQLException e) {
-                // H2 error code 90121 = "Database is already closed"
-                // This is expected for in-memory databases without DB_CLOSE_ON_EXIT=FALSE
-                // or when all connections have been released, triggering auto-close
-                if (e.getErrorCode() == 90121) {
-                    log.debug("H2 database '{}' already closed (in-memory or auto-closed)", getResourceName());
-                } else {
-                    // Unexpected error - log warning but continue with pool close
-                    // Corruption is still possible but we've done our best
-                    log.warn("H2 database '{}' shutdown command failed: {}",
-                        getResourceName(), e.getMessage());
-                }
-            }
-
             dataSource.close();
             log.debug("H2 database '{}' connection pool closed", getResourceName());
         }
     }
 
     /**
-     * Performs fast shutdown by executing SHUTDOWN IMMEDIATELY before closing wrappers.
+     * Shuts the database down with SHUTDOWN IMMEDIATELY, then closes the wrappers and the pool.
      * <p>
-     * This overrides the default close() behavior to execute SHUTDOWN IMMEDIATELY first,
-     * which closes all connections without waiting for rollback. This is critical for
-     * large databases (1+ TB) where rollback of uncommitted transactions can take hours.
+     * SHUTDOWN IMMEDIATELY closes the database and every connection to it without rolling back
+     * open transactions. This is critical for large databases (1+ TB), where the rollback that
+     * closing the wrappers' connections would otherwise start can take hours. The wrappers and
+     * the pool are closed afterwards, by {@link AbstractDatabaseResource#close()}; their
+     * connections are already dead then, which they report only at DEBUG level.
      * <p>
-     * <strong>Data Safety:</strong> Uncommitted transactions are discarded, but this is
-     * safe because:
+     * <strong>Data Safety:</strong> {@code SHUTDOWN IMMEDIATELY} discards whatever H2 has not yet
+     * written to its file, committed transactions included: H2 writes committed changes in the
+     * background, after a delay. A {@code CHECKPOINT} before it writes those changes first. It
+     * writes only what is pending, without rolling anything back or compacting the file, so the
+     * shutdown stays immediate. What is discarded then is only uncommitted work, which is safe
+     * because:
      * <ul>
      *   <li>All pipeline writes use idempotent MERGE statements</li>
-     *   <li>Discarded batches will be reprocessed on next startup</li>
-     *   <li>Only in-flight data is lost, not committed data</li>
+     *   <li>A batch whose writes were not committed is not acknowledged and is redelivered on the
+     *       next startup</li>
      * </ul>
+     * A {@code CHECKPOINT} that fails is reported and the shutdown goes ahead.
      * <p>
      * <strong>Recovery:</strong> H2 MVStore performs automatic recovery on next startup,
      * rolling back any partially written transactions.
      */
     @Override
     public void close() {
-        // Execute SHUTDOWN IMMEDIATELY first to avoid long rollback on wrapper close
         if (dataSource != null && !dataSource.isClosed()) {
+            makeRoomForTheShutdownConnection();
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
-                // SHUTDOWN IMMEDIATELY: closes all connections immediately without rollback
-                // This avoids hours-long rollback on large databases during shutdown
+                checkpoint(stmt);
                 stmt.execute("SHUTDOWN IMMEDIATELY");
                 log.debug("H2 database '{}' shutdown immediately executed", getResourceName());
             } catch (SQLException e) {
-                // 90121 = "Database is already closed" (normal auto-close)
-                // 90098 = "The database has been closed" (MVStore I/O error killed the database)
-                if (e.getErrorCode() == 90121 || e.getErrorCode() == 90098) {
-                    log.debug("H2 database '{}' already closed", getResourceName());
+                // Handing the connection back after a successful shutdown reports the database
+                // as shut down, so this is the normal end as well as that of a database already
+                // shut down
+                if (e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN) {
+                    log.debug("H2 database '{}' closed", getResourceName());
+                } else if (e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED) {
+                    log.warn("H2 database '{}' was closed by a failure of its store: {}",
+                        getResourceName(), e.getMessage());
+                    recordError("DATABASE_CLOSED_BY_FAILURE", "Database closed by a failure of its store",
+                        "Database: " + getResourceName() + ", Error: " + e.getMessage());
                 } else {
                     log.warn("H2 database '{}' SHUTDOWN IMMEDIATELY failed: {}",
                         getResourceName(), e.getMessage());
                     recordError("SHUTDOWN_FAILED", "SHUTDOWN IMMEDIATELY failed",
                         "Database: " + getResourceName() + ", Error: " + e.getMessage());
                 }
-                // Database is dead or already closed — don't attempt more SQL operations.
-                // Just close wrappers (releasing pooled connections) and force-close the pool.
-                try {
-                    closeAllWrappers();
-                } finally {
-                    try {
-                        dataSource.close();
-                    } catch (Exception poolEx) {
-                        log.warn("H2 database '{}' connection pool close failed: {}",
-                            getResourceName(), poolEx.getMessage());
-                        recordError("POOL_CLOSE_FAILED", "Connection pool close failed during force-close",
-                            "Database: " + getResourceName() + ", Error: " + poolEx.getMessage());
-                    }
-                }
-                log.debug("H2 database '{}' connection pool force-closed", getResourceName());
-                return;
             }
         }
-
-        // Normal path: SHUTDOWN IMMEDIATELY succeeded — close wrappers and pool
         super.close();
     }
-    
+
+    /**
+     * Grows the pool by one connection if every connection it may open is in use, so that the
+     * shutdown gets its connection at once.
+     * <p>
+     * The wrappers hold their connections until the pool closes, after the shutdown. With all of
+     * them taken, the shutdown would wait for HikariCP's connection timeout and then fail, and
+     * the committed changes {@code CHECKPOINT} is there to write would be lost. HikariCP takes a
+     * new maximum pool size at runtime and opens the extra connection on demand. With a free
+     * connection, the pool stays as configured.
+     */
+    private void makeRoomForTheShutdownConnection() {
+        var pool = dataSource.getHikariPoolMXBean();
+        var config = dataSource.getHikariConfigMXBean();
+        if (pool.getIdleConnections() == 0 && pool.getTotalConnections() >= config.getMaximumPoolSize()) {
+            config.setMaximumPoolSize(config.getMaximumPoolSize() + 1);
+            log.debug("H2 database '{}': every pooled connection is in use, pool grown by one for the shutdown",
+                getResourceName());
+        }
+    }
+
+    /**
+     * Writes the committed changes H2 still holds in memory to its file.
+     * <p>
+     * A database that is already shut down or closed by a failure is passed on to
+     * {@link #close()}, which reports the latter; any other failure is reported here, and the
+     * shutdown goes ahead without the changes that were still pending.
+     *
+     * @param stmt a statement on a connection of this database
+     * @throws SQLException if the database is already closed or dead
+     */
+    private void checkpoint(Statement stmt) throws SQLException {
+        try {
+            stmt.execute("CHECKPOINT");
+        } catch (SQLException e) {
+            if (isClosed(e)) {
+                throw e;
+            }
+            log.warn("H2 database '{}' CHECKPOINT failed, changes not yet written are lost: {}",
+                getResourceName(), e.getMessage());
+            recordError("CHECKPOINT_FAILED", "CHECKPOINT before shutdown failed",
+                "Database: " + getResourceName() + ", Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Whether a failure says that the database is no longer open: shut down, or killed by an
+     * I/O error of its store.
+     *
+     * @param e the failure H2 reported
+     * @return {@code true} if no further statement can reach the database
+     */
+    private static boolean isClosed(SQLException e) {
+        return e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN
+            || e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED;
+    }
+
     /**
      * Acquires a pooled connection and reports a failed acquisition as a resource error.
      * <p>
@@ -934,8 +956,8 @@ public class H2Database extends AbstractDatabaseResource
      * only place where the actual cause appears.
      * <p>
      * A caller interrupted while it waits for a connection is being stopped, and the pool is
-     * sound: HikariCP restores the interrupt flag and reports the interruption as the cause of
-     * the exception, which is passed on without being recorded as an error.
+     * sound: HikariCP restores the interrupt flag and reports the interruption in the cause chain
+     * of the exception, which is passed on without being recorded as an error.
      *
      * @param context Description of the operation requesting the connection, for error details.
      * @return A pooled connection that the caller must close.
@@ -945,7 +967,7 @@ public class H2Database extends AbstractDatabaseResource
         try {
             return dataSource.getConnection();
         } catch (SQLException e) {
-            if (e.getCause() instanceof InterruptedException) {
+            if (CauseChain.isInterruptInduced(e)) {
                 throw e;
             }
             log.error("H2 database '{}' cannot acquire a connection for {}: {}",

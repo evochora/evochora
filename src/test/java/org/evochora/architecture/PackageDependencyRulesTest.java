@@ -20,7 +20,11 @@ import com.tngtech.archunit.junit.ArchTest;
  * datapipeline -&gt;  compiler, runtime
  * compiler     -&gt;  runtime
  * runtime      -&gt;  (nothing)
+ * util         -&gt;  (nothing)
  * </pre>
+ * Every package but {@code runtime} may reference {@code util}, which holds the helpers that
+ * belong to no part of Evochora and therefore sits below all of them.
+ * <p>
  * This class is the authoritative statement of that graph. An import creating an edge the graph does
  * not permit fails a test here, naming the source class, the target class and the rule it violates.
  * The only ways forward are withdrawing the import or editing this class, and an edit to this class
@@ -29,7 +33,7 @@ import com.tngtech.archunit.junit.ArchTest;
  * a long list that gets extended by reflex carries no signal.
  * <p>
  * {@code cli} sits at the top of the graph and may reference everything, so it has no rule of its
- * own. That it may not be referenced from anywhere follows from the four rules below, each of which
+ * own. That it may not be referenced from anywhere follows from the rules below, each of which
  * excludes it.
  * <p>
  * Rules are written in the direction of the graph — "whom may I use" — so that they read the same
@@ -53,15 +57,33 @@ class PackageDependencyRulesTest {
     private static final String ROOT = "org.evochora";
 
     /**
-     * {@code runtime} is the base of the graph and references no other top-level package.
-     * <p>
-     * The simulation core carries nothing outward: every type it borrowed from another package
-     * would be a type a reimplementation in another language has to carry along.
+     * {@code runtime} is the base of the graph and references no other package of the project, so
+     * that every part around the simulation core can be replaced without touching it.
      */
     @ArchTest
     static void runtimeDependsOnNoOtherTopLevelPackage(JavaClasses classes) {
         noClasses().that().resideInAPackage(ROOT + ".runtime..")
                 .should().dependOnClassesThat().resideInAnyPackage(
+                        ROOT,
+                        ROOT + ".compiler..",
+                        ROOT + ".datapipeline..",
+                        ROOT + ".node..",
+                        ROOT + ".cli..",
+                        ROOT + ".util..")
+                .check(classes);
+    }
+
+    /**
+     * {@code util} references no other top-level package.
+     * <p>
+     * It sits below every part of Evochora, so that each of them may use it: a helper that needed
+     * one of them would make that part a dependency of all the others.
+     */
+    @ArchTest
+    static void utilDependsOnNoOtherTopLevelPackage(JavaClasses classes) {
+        noClasses().that().resideInAPackage(ROOT + ".util..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        ROOT + ".runtime..",
                         ROOT + ".compiler..",
                         ROOT + ".datapipeline..",
                         ROOT + ".node..",
@@ -118,7 +140,7 @@ class PackageDependencyRulesTest {
     /**
      * Every production class lives in one of the packages the graph describes.
      * <p>
-     * The rules above name the packages a given package may <em>not</em> reference. A sixth
+     * The rules above name the packages a given package may <em>not</em> reference. A further
      * top-level package would appear in none of those lists and could therefore be referenced from
      * anywhere unnoticed — the graph would silently stop describing the system. This rule forces a
      * new package to be admitted to the graph before any code can live in it.
@@ -131,14 +153,15 @@ class PackageDependencyRulesTest {
                         ROOT + ".compiler..",
                         ROOT + ".datapipeline..",
                         ROOT + ".node..",
-                        ROOT + ".runtime..")
+                        ROOT + ".runtime..",
+                        ROOT + ".util..")
                 .check(classes);
     }
 
     /**
      * The top-level packages form no cycle.
      * <p>
-     * While the four rules above hold, this one cannot fail: the permitted graph is acyclic. It
+     * While the rules above hold, this one cannot fail: the permitted graph is acyclic. It
      * guards a different moment — an edit to this class that adds an edge and closes a cycle
      * without anyone noticing.
      */
