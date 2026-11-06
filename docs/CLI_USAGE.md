@@ -69,7 +69,7 @@ The node will:
 
 - Load the configuration from the specified file  
   - With `--config`: the file you pass (e.g. `config/my-config.conf`)  
-  - Without `--config`: `config/evochora.conf` in the working directory, else in the installation directory
+  - Without `--config`: `config/evochora.conf` of the installation that runs
 - Start all configured services (simulation engine, persistence, indexers, HTTP server, etc.)
 - Expose the HTTP API for monitoring and control
 - Run until interrupted (Ctrl+C)
