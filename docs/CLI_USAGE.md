@@ -23,10 +23,20 @@ The start script reads two environment variables:
   ```bash
   EVOCHORA_OPTS="-Xmx16g" bin/evochora node run
   ```
+  On Windows, in the command prompt and in PowerShell:
+  ```bat
+  set EVOCHORA_OPTS=-Xmx16g
+  bin\evochora.bat node run
+  ```
+  ```powershell
+  $env:EVOCHORA_OPTS = "-Xmx16g"
+  bin\evochora.bat node run
+  ```
 - **`EVOCHORA_JAVA_HOME`**: the installation directory of a Java 25 or newer to run Evochora on, instead of the Java the archive brings:
   ```bash
   EVOCHORA_JAVA_HOME=/opt/jdk-25 bin/evochora node run
   ```
+  On Windows, `set EVOCHORA_JAVA_HOME=C:\jdk-25` in the command prompt or `$env:EVOCHORA_JAVA_HOME = "C:\jdk-25"` in PowerShell, as for `EVOCHORA_OPTS`.
 
 ---
 
