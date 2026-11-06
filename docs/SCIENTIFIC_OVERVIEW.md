@@ -8,7 +8,7 @@ Researchers can shape the environment the organisms live in: its dimensionality,
 
 Every run is deterministic, runs at millions of instructions per second on a workstation, has reached billions of ticks, and can be resumed or re-recorded in any detail; a web visualizer follows a selected organism instruction by instruction and marks where its lineage mutated; run data are exported as Parquet files for standard analysis tools.
 
-Of the runs made so far, three are published as citable experiment records, each tracing a selective sweep to the single instruction that caused it; researchers are invited to run their own experiments or to join them.
+The first experiment records are published and citable. Each traces a selective sweep to the instructions that caused it. None of the evolved bodies or behaviors were designed or rewarded: parents came to build their children far away, a dispersal that loosened the kin structure of the population; the shell around a child changed to cheaper matter; and the rule for when to reproduce settled in opposite directions in two runs, one with plentiful energy and one with little.
 
 This document describes the platform's physics, the tools for observing and analyzing a run, the first results, the research directions it is built for, its architecture, and its limitations.
 
@@ -60,7 +60,7 @@ Evochora's organisms are programs, they consist of the same material as their en
 
 These conditions were not designed in one piece. They entered one after another, each when a run showed that something was missing: entropy, for instance, after the first populations had copied over one another into an error catastrophe [(Eigen, 1971)](#ref-eigen-1971). [Energy sources, thermodynamic policies, mutation operators and death handlers](#24-plugin-interfaces) are plugins, components that can be exchanged or added without touching the rest. The question of what an environment has to provide can thereby be asked one condition at a time.
 
-What exists today is a platform on which populations sustain themselves over billions of ticks, and three published runs in which the change of a single instruction swept to fixation and could be traced to its mechanism. The rise of complexity has not been shown in Evochora yet; the platform is built to look for it one condition at a time.
+What exists today is a platform on which populations sustain themselves over billions of ticks, and [published runs](PUBLISHED_EXPERIMENTS.md) in which a change of the program swept to fixation and could be traced to its mechanism. The rise of complexity has not been shown in Evochora yet; the platform is built to look for it one condition at a time.
 
 The platform consists of a runtime that runs the simulation, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the environment, the tools for observing and analyzing a run, the first results, the research directions, the architecture and the limitations. A running simulation can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
 
