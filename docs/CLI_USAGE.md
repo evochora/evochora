@@ -125,7 +125,7 @@ Starts the node without simulating: the HTTP server serves the runs already in t
 The `compile` command translates EvoASM source files into a JSON `ProgramArtifact` that contains machine code layout, labels, procedures, source mapping and more.
 
 ```bash
-# Basic compilation (for the simulation's default environment)
+# Basic compilation (for the environment of the configuration)
 bin/evochora compile --source-root assembly/examples --file=simple.evo
 
 # With custom environment
@@ -178,7 +178,7 @@ Syntax:
 - `dimensions`: environment dimensions, e.g. `128x128`, `2048x2048`, `1024x1024x128`
 - `topology`: `torus` or `bound`, as in the simulation's configuration; it cannot be left out
 
-Without `--env`, the program is laid out for the simulation's default environment, the one `reference.conf` declares. `compile` reads no configuration: a `--config` before it is rejected.
+Without `--env`, the program is laid out for the environment of the configuration: the file a `--config` before `compile` names, else `config/evochora.conf` of the project folder. Nothing else is read from the configuration; source roots, flags and values come from the command line.
 
 Examples:
 

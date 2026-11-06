@@ -3,7 +3,7 @@ package org.evochora.cli.commands;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import org.evochora.cli.CommandLineInterface;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
@@ -20,6 +20,7 @@ import org.evochora.runtime.model.Topology;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ParentCommand;
 
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -37,8 +38,9 @@ import java.util.concurrent.Callable;
  * A successful run returns exit code 0; a compilation or I/O failure prints its message to the
  * command's error stream and returns exit code 1.
  * <p>
- * The command reads no configuration: the program and the environment it is laid out for are
- * named on the command line, so a {@code --config} of the root command is a usage error.
+ * Of the configuration the command reads only the environment, as the default of {@code --env}:
+ * the file a {@code --config} of the root command names, else {@code config/evochora.conf} of the
+ * project folder. The program, its source roots, flags and values are named on the command line.
  * <p>
  * The options mean:
  * <ul>
@@ -48,8 +50,8 @@ import java.util.concurrent.Callable;
  *       shape and the topology, for example {@code 1024x1024:bound}. The shape is a list of
  *       extents in cells, one per dimension, separated by {@code x}; the topology is
  *       {@code torus} or {@code bound}, ignoring case, as in the simulation's configuration, and
- *       cannot be left out. Without the option, the artifact is laid out for the simulation's
- *       default environment, the one {@code reference.conf} declares.</li>
+ *       cannot be left out. Without the option, the artifact is laid out for the environment of
+ *       the configuration.</li>
  *   <li>{@code --source-root} — any number of roots against which the source file and its imported
  *       modules are resolved, each written as a plain path or as {@code path:PREFIX} to give the
  *       root a name. A trailing segment counts as a prefix only if it starts with an uppercase
@@ -87,7 +89,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the environment of reference.conf"
+        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the environment of the configuration (--config, else config/evochora.conf of the project folder)"
     )
     private String env;
 
@@ -115,12 +117,11 @@ public class CompileCommand implements Callable<Integer> {
     @CommandLine.Spec
     CommandLine.Model.CommandSpec spec;
 
+    @ParentCommand
+    private CommandLineInterface parent;
+
     @Override
     public Integer call() throws Exception {
-        if (spec.root().commandLine().getParseResult().hasMatchedOption("--config")) {
-            throw new CommandLine.ParameterException(spec.commandLine(),
-                    "compile reads no configuration; name the environment with --env");
-        }
         Instruction.init();
 
         Map<String, FlagSetting> defines;
@@ -280,17 +281,17 @@ public class CompileCommand implements Callable<Integer> {
 
     /**
      * Reads --env: the environment's shape, and its topology in the words of the simulation's
-     * configuration, {@code torus} or {@code bound}. Without --env, the simulation's default
-     * environment from {@code reference.conf}.
+     * configuration, {@code torus} or {@code bound}. Without --env, the environment of the
+     * configuration the root command loads.
      *
      * @throws IllegalArgumentException if a dimension is not a number, or the topology is missing
      *                                  or another word
      */
     private EnvironmentProperties parseEnvironmentProperties(String env) {
         if (env == null || env.isEmpty()) {
-            Config defaults = ConfigFactory.defaultReference().getConfig("pipeline.services.simulation-engine.options");
-            int[] shape = defaults.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
-            return new EnvironmentProperties(shape, Topology.parse(defaults.getString("environment.topology")).isToroidal());
+            Config environment = parent.getConfig().getConfig("pipeline.services.simulation-engine.options.environment");
+            int[] shape = environment.getIntList("shape").stream().mapToInt(i -> i).toArray();
+            return new EnvironmentProperties(shape, Topology.parse(environment.getString("topology")).isToroidal());
         }
 
         String[] parts = env.split(":", -1);

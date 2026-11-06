@@ -1,5 +1,6 @@
 package org.evochora.cli.commands;
 
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.evochora.cli.CommandLineInterface;
 import org.evochora.compiler.api.FlagSetting;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -25,9 +27,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Smoke tests for the compile command.
  * Tests basic functionality: parsing, compilation of simple programs.
  * <p>
- * Every call that reaches the compilation names its environment with {@code -e}: without it the
- * command lays the program out for the default environment of {@code reference.conf}, and a test
- * must not depend on the configuration.
+ * Every call that reaches the compilation names its environment with {@code -e}, except those that
+ * test the default: without it the command lays the program out for the environment of the
+ * configuration, and a test must not depend on the configuration of the checkout.
  */
 @Tag("unit")
 public class CompileCommandTest {
@@ -152,19 +154,60 @@ public class CompileCommandTest {
     }
 
     /**
-     * The command reads no configuration, so a configuration named for it would be ignored
-     * without notice; it is rejected instead.
+     * Without {@code -e} the program is laid out for the environment of the configuration that
+     * {@code --config} names.
      */
     @Test
-    void aConfigurationNamedForCompileIsAUsageError() {
+    void withoutEnvTheEnvironmentOfTheNamedConfigurationHolds() throws Exception {
+        Path sourceFile = tempDir.resolve("test.evo");
+        Files.writeString(sourceFile, "NOP\n");
+        Path experiment = experimentWithEnvironment();
         CommandLine cmdLine = CommandLineInterface.createCommandLine();
+        StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
+        cmdLine.setOut(new PrintWriter(out));
         cmdLine.setErr(new PrintWriter(err));
 
-        int exitCode = cmdLine.execute("--config", "experiment.conf", "compile", "-f", "main.evo", "-e", "50x50:torus");
+        int exitCode = cmdLine.execute("--config", experiment.toString(), "compile", "-f", sourceFile.toString());
 
-        assertThat(exitCode).isEqualTo(2);
-        assertThat(err.toString()).contains("--env");
+        assertThat(exitCode).describedAs("stderr: %s", err).isEqualTo(0);
+        JsonObject envProps = JsonParser.parseString(out.toString()).getAsJsonObject().getAsJsonObject("envProps");
+        assertThat(envProps.get("worldShape").toString()).isEqualTo("[64,32]");
+        assertThat(envProps.get("isToroidal").getAsBoolean()).isFalse();
+    }
+
+    /**
+     * {@code -e} wins over the environment of the configuration.
+     */
+    @Test
+    void envWinsOverTheEnvironmentOfTheConfiguration() throws Exception {
+        Path sourceFile = tempDir.resolve("test.evo");
+        Files.writeString(sourceFile, "NOP\n");
+        Path experiment = experimentWithEnvironment();
+        CommandLine cmdLine = CommandLineInterface.createCommandLine();
+        StringWriter out = new StringWriter();
+        StringWriter err = new StringWriter();
+        cmdLine.setOut(new PrintWriter(out));
+        cmdLine.setErr(new PrintWriter(err));
+
+        int exitCode = cmdLine.execute("--config", experiment.toString(), "compile", "-f", sourceFile.toString(),
+                "-e", "50x50:torus");
+
+        assertThat(exitCode).describedAs("stderr: %s", err).isEqualTo(0);
+        JsonObject envProps = JsonParser.parseString(out.toString()).getAsJsonObject().getAsJsonObject("envProps");
+        assertThat(envProps.get("worldShape").toString()).isEqualTo("[50,50]");
+        assertThat(envProps.get("isToroidal").getAsBoolean()).isTrue();
+    }
+
+    private Path experimentWithEnvironment() throws IOException {
+        Path experiment = tempDir.resolve("experiment.conf");
+        Files.writeString(experiment, """
+            pipeline.services.simulation-engine.options.environment {
+              shape = [64, 32]
+              topology = "BOUND"
+            }
+            """);
+        return experiment;
     }
 
     @Test
