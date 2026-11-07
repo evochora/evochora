@@ -12,8 +12,7 @@ This guide takes you through an experiment with Evochora, from starting a simula
 - [7. Analyze the Data](#7-analyze-the-data)
 - [8. Reproduce a Run](#8-reproduce-a-run)
 - [9. Cite and Share](#9-cite-and-share)
-- [10. Work with AI](#10-work-with-ai)
-- [11. Extend Evochora with Plugins](#11-extend-evochora-with-plugins)
+- [10. Extend Evochora with Plugins](#10-extend-evochora-with-plugins)
 
 ## Key Concepts
 
@@ -49,7 +48,7 @@ To write your own ancestor, copy an existing one and change it. Ancestors are wr
 
 An experiment is set up in a configuration file of its own. Create it next to [`config/evochora.conf`](../config/evochora.conf), begin it with `include required("evochora.conf")` and set only what this experiment changes. Your file then shows at a glance what makes the experiment different. Settings that all your experiments share belong in `evochora.conf` itself, which lists the most common settings. All settings with their full explanations are in [`reference.conf`](../src/main/resources/reference.conf), which also supplies the default for everything neither file sets.
 
-The settings cover the size of the environment and whether its edges wrap around, the seed for random numbers, the ancestors and how the simulation works: where energy comes from, what actions cost in energy and entropy, how organisms mutate when they reproduce and what happens to an organism that dies. These parts of the simulation are plugins, and the ones that come with Evochora have options you set in the configuration. If none of them fits your experiment, you can write your own; [Extend Evochora with Plugins](#11-extend-evochora-with-plugins) describes how.
+The settings cover the size of the environment and whether its edges wrap around, the seed for random numbers, the ancestors and how the simulation works: where energy comes from, what actions cost in energy and entropy, how organisms mutate when they reproduce and what happens to an organism that dies. These parts of the simulation are plugins, and the ones that come with Evochora have options you set in the configuration. If none of them fits your experiment, you can write your own; [Extend Evochora with Plugins](#10-extend-evochora-with-plugins) describes how.
 
 A run's sampling is set by its tuning profile, which the configuration selects with `pipeline.tuning`. The default, `sparse`, records every ten-thousandth tick and suits most runs. `sampled` records every hundredth tick and simulates hardly slower, but its recording takes far more disk space. `detailed` records every tick, and the simulation then waits for the disk; it serves to record a stretch of a run again tick by tick, as [Record a Stretch in Full](#6-record-a-stretch-in-full) shows. Profiles are ordinary blocks of the configuration, so you can also define your own; [`reference.conf`](../src/main/resources/reference.conf) lists the existing ones under `profiles`.
 
@@ -119,7 +118,7 @@ The node takes up the run from the last state it recorded before `--from`, simul
 
 ## 7. Analyze the Data
 
-The first place to analyze a run is the [analyzer](#5-observe-a-run). It shows the metrics of a run on population, evolution and ecology while the run is still going. Plugins can add metrics of your own, which are computed during the run like the others; [Extend Evochora with Plugins](#11-extend-evochora-with-plugins) describes how.
+The first place to analyze a run is the [analyzer](#5-observe-a-run). It shows the metrics of a run on population, evolution and ecology while the run is still going. Plugins can add metrics of your own, which are computed during the run like the others; [Extend Evochora with Plugins](#10-extend-evochora-with-plugins) describes how.
 
 For analyses beyond the analyzer, Evochora keeps the data of a run in standard formats, so you can analyze it with common tools, such as Python or R in a Jupyter notebook. The analysis notebook is an example of how this works. It shows the usual analyses, from population dynamics and genome diversity to phylogenetic trees, and documents each way to the data. Download it from your running node at `http://localhost:8081/notebooks/data_analysis_guide.ipynb`, or open [it in the repository](../notebooks/data_analysis_guide.ipynb) and run it in Colab or locally, as the [notebooks README](../notebooks/README.md) describes. Its first code cell names the node it reads from; set it to your own.
 
@@ -135,7 +134,7 @@ If you use Evochora in your research, cite the version that produced your runs. 
 
 To share an experiment, publish its [project folder](#1-install-and-start): it holds the configuration, the ancestors and the data of the runs together with the version of Evochora that recorded them and its sources, so that others can inspect the runs and reproduce them. The [published experiments](PUBLISHED_EXPERIMENTS.md) are examples of such records, each with a notebook that documents its finding.
 
-## 11. Extend Evochora with Plugins
+## 10. Extend Evochora with Plugins
 
 Most experiments need no code. The plugins that come with Evochora have many settings, and the configuration combines them. If you need something that none of them provides and would rather not write it yourself, describe it in the [Discussions](https://github.com/evochora/evochora/discussions); we can help or add it. The rest of this section is for writing a plugin yourself.
 
@@ -153,6 +152,6 @@ A plugin is a Java class that implements one of Evochora's plugin interfaces:
 
 The plugins that come with Evochora are the best starting point. Those for energy sources, mutation and death are in [`runtime/worldgen`](../src/main/java/org/evochora/runtime/worldgen/), the thermodynamic policies in [`runtime/thermodynamics/impl`](../src/main/java/org/evochora/runtime/thermodynamics/impl/), label matching in [`runtime/label`](../src/main/java/org/evochora/runtime/label/) and the analytics plugins in [`datapipeline/services/analytics/plugins`](../src/main/java/org/evochora/datapipeline/services/analytics/plugins/). Copy the one closest to your idea, including its constructor, because Evochora creates a plugin through the constructor its kind expects.
 
-Compile your class against the libraries in the archive's `lib/` directory, for example with `javac -cp "lib/*"`, package it as a jar and put the jar into the archive's `plugins/` directory. Then name your class in your configuration file in place of the plugin it replaces or next to the ones it joins, and start the node as usual.
+Compile your class with a JDK of Java 25 or newer against the libraries in the `lib/` directory of your [project folder](#1-install-and-start), for example with `javac -cp "lib/*"`, package it as a jar and put the jar into the project folder's `plugins/` directory. Then name your class in your configuration file in place of the plugin it replaces or next to the ones it joins, and start the node as usual.
 
 If your plugin needs a library that Evochora also uses, Evochora's version is the one that loads.
