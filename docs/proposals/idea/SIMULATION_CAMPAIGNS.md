@@ -129,8 +129,9 @@ hub's broker and receive the notifications that were still open.
   - Parquet files written before their batches were acknowledged: the analytics indexer names its
     files by the tick range of its session, and the redelivered batches may be grouped into a
     different range on the new worker. Two overlapping files then exist, and a reader that adds
-    the rows of a range counts `SUM` columns twice. Remedy: file names that depend only on the
-    batches, not on how a session grouped them.
+    the rows of a range counts `SUM` columns twice. The defect exists without campaigns as well
+    and is tracked in [#227](https://github.com/evochora/evochora/issues/227); campaigns make it
+    more likely.
 - **Notice periods differ by provider.** AWS announces two minutes ahead. A Google Cloud spot VM
   gets no dedicated notice by default; it can be set to 120 seconds when the VM is created, and
   after the notice the soft-off shutdown period is up to 30 seconds. OCI announces through instance
