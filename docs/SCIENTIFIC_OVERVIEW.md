@@ -34,10 +34,10 @@ Researchers can set the conditions of a run: the environment's dimensions and la
     - [5.7 A Digital Eukaryogenesis](#57-a-digital-eukaryogenesis)
     - [5.8 Toward Multicellularity](#58-toward-multicellularity)
     - [5.9 Metabolism and Food Webs](#59-metabolism-and-food-webs)
-6. [Architecture, Reproducibility and Scale](#6-architecture-reproducibility-and-scale)
-    - [6.1 Architecture](#61-architecture)
-    - [6.2 Reproducibility](#62-reproducibility)
-    - [6.3 Performance and Scale](#63-performance-and-scale)
+6. [Reproducibility and Resources](#6-reproducibility-and-resources)
+    - [6.1 Reproducibility](#61-reproducibility)
+    - [6.2 Resources](#62-resources)
+    - [6.3 Direction](#63-direction)
 7. [Limitations](#7-limitations)
 8. [Conclusion](#8-conclusion)
 9. [Getting Involved](#9-getting-involved)
@@ -50,17 +50,17 @@ Biology shows that evolution can produce complexity, but also that this takes co
 
 The later part has not been reproduced yet: after an initial burst of innovation, the rate at which new adaptations appear levels off in the systems Bedau and colleagues measured [(Bedau et al., 1998)](#ref-bedau-1998). What is missing has been debated for three decades under the name of open-ended evolution. Several of the conditions proposed concern the organism's body: that it should consist of the same material as its environment, that energy should be something it has to collect rather than processor time it is given, and that it should have to maintain itself against entropy [(Taylor, 2014](#ref-taylor-2014), [2015)](#ref-taylor-2015). Both Tierra and Avida were built around the program. In Tierra an organism is a sequence of instructions in a shared memory that contains nothing else, in Avida a program running on a virtual CPU of its own, and a body in this sense was not part of either design. Artificial chemistries [(Dittrich et al., 2001)](#ref-dittrich-2001) approached the body from the other side. In Squirm3 self-replicating molecules arise from a random soup and matter is conserved, but nothing executes [(Hutton, 2002)](#ref-hutton-2002); in Stringmol, built for questions of this kind, the molecules are programs that act on one another, but a molecule has no extent in space [(Hickinbotham et al., 2016)](#ref-hickinbotham-2016).
 
-Evochora's organisms are programs, they consist of the same material as their environment, and they have extent in space. The material itself does not react; it is what programs read, write and consume. The body is defined by ownership. The environment is a grid, and each of its cells holds one molecule of a few kinds: code, which organisms execute; data, which they read and write; structure, which cannot be passed but only removed at a cost; and energy, which they collect and can store. An organism is the set of cells it owns, and in the environment there is nothing else of it. It has to assemble this body itself. An offspring is not a copy that the system places somewhere, but a structure the parent writes into free cells with its own pointers, at whatever place it can reach. That individuals make such decisions themselves is one of the conditions Soros and Stanley propose for open-endedness [(Soros & Stanley, 2014)](#ref-soros-2014). The child inherits those of these cells the parent has marked for it, together with the energy the parent hands over. Every molecule written costs energy, and what one organism has built, a neighbor can take apart again. The three conditions named above are thus met in the physics: the body is made of the environment's material, which the organism writes out of energy and which is gone when taken up, energy is a molecule the organism has to find and collect, and since instructions produce entropy that only writing into the environment sheds, an organism has to keep changing the environment to stay alive; the idea behind this rule is Schrödinger's [(Schrödinger, 1944)](#ref-schrodinger-1944). Form, size, place and inheritance are decided by the program rather than by the system, and so they are exposed to selection.
+Evochora's organisms are programs, they consist of the same material as their environment, and they have extent in space. The material itself does not react; it is what programs read, write and consume. The body is defined by ownership. The environment is a grid, and each of its cells holds one molecule of a few kinds: code, which organisms execute; data, which they read and write; structure, which cannot be passed but only removed at a cost; and energy, which they collect and can store. An organism is the set of cells it owns, and in the environment there is nothing else of it. It has to assemble this body itself. An offspring is not a copy that the system places somewhere, but a structure the parent writes into free cells with its own pointers, at whatever place it can reach. That individuals make such decisions themselves is one of the conditions Soros and Stanley propose for open-endedness [(Soros & Stanley, 2014)](#ref-soros-2014). The child inherits those of these cells the parent has marked for it, together with the energy the parent hands over. Every molecule written costs energy, and what one organism has built, a neighbor can take apart again. The three conditions named above are thus met in the physics: the body is made of the environment's material, which the organism writes out of energy and which is gone when taken up, energy is a molecule the organism has to find and collect, and since instructions produce entropy that only writing into the environment sheds, an organism has to keep changing the environment to stay alive; the idea behind this rule is Schrödinger's [(Schrödinger, 1944)](#ref-schrodinger-1944). Form, size, place, inheritance and the timing of reproduction are decided by the program rather than by the system, and so they are exposed to selection.
 
 These conditions were not designed in one piece. They entered one after another, each when a run showed that something was missing: entropy, for instance, after the first populations had copied over one another into an error catastrophe [(Eigen, 1971)](#ref-eigen-1971). [Energy sources, thermodynamic policies, mutation operators and death handlers](#24-plugin-interfaces) are plugins, components that can be exchanged or added without touching the rest. The question of what an environment has to provide can thereby be asked one condition at a time.
 
 What exists today is a platform on which populations sustain themselves over billions of ticks, and [published runs](PUBLISHED_EXPERIMENTS.md) in which a change of the program swept to fixation and could be traced to its mechanism. The rise of complexity has not been shown in Evochora yet; the platform is built to look for it one condition at a time.
 
-The platform consists of a runtime that runs the simulation, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the environment, the tools for observing and analyzing a run, the first results, the research directions, the architecture and the limitations. A running simulation can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
+The platform consists of a runtime that runs the simulation, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the environment, the tools for observing and analyzing a run, the first results, the research directions, its reproducibility and the resources a run needs, and the limitations. A running simulation can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
 
 ### 1.1 Evochora among related systems
 
-The table reads along the lines of the introduction: what an organism is and what its environment holds, what resources it lives on, how offspring arise and what they inherit, where selection and variation come from, and how organisms reach one another. Lenia and Flow-Lenia are included for a case the introduction leaves out: creatures that are bodies in a medium but not programs.
+The table reads along the lines of the introduction: what an organism is and what its environment holds, what resources it lives on, how offspring arise and what they inherit, where selection and variation come from, and how organisms reach one another. Lenia and Flow-Lenia are included for a case beyond the introduction's lines: creatures that are bodies in a medium but not programs.
 
 | System | The organism | Resources | Offspring | Selection | Variation | Interaction |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -161,11 +161,11 @@ An experiment in Evochora is a configuration file and one or more ancestors. Thi
 
 A run is described by a configuration file. The file that comes with Evochora, [`config/evochora.conf`](../config/evochora.conf), is the template: copy it, change what the experiment needs, and start Evochora with it, as the [Quick Start](../README.md#quick-start) of the README and the [CLI usage](CLI_USAGE.md#start-simulation-node) describe. The file sets the environment, its dimensions, size and topology; the ancestors, each with its program, its starting position and its initial energy; the plugins ([Plugin Interfaces](#24-plugin-interfaces)) with their options; and the seed. A program can take settings from the configuration as well, as [flags](CLI_USAGE.md#flags---define) and [values](CLI_USAGE.md#values---value). Every setting is documented where it is defined, in the [reference configuration](../src/main/resources/reference.conf).
 
-A run does not record every tick. A recording profile sets the sampling interval, the number of ticks between two recorded states, and nothing downstream sees finer than that: the standard profiles record every tick, every hundredth or every ten-thousandth. The interval is a choice between detail and cost. An environment of millions of cells recorded every tick fills storage fast, and writing it slows the simulation down until the disk, not the processor, sets the pace. Long runs in large environments are therefore usually recorded sparsely, and a stretch that turns out to matter can be recorded again in detail afterwards ([Resuming and Re-recording a Run](#34-resuming-and-re-recording-a-run)).
+A run records a sample of its ticks. A recording profile sets the sampling interval, the number of ticks between two recorded states, and nothing downstream sees finer than that: the standard profiles record every tick, every hundredth or every ten-thousandth. The interval is a choice between detail and cost. An environment of millions of cells recorded every tick fills storage fast, and writing it slows the simulation down until the disk, not the processor, sets the pace. Long runs in large environments are therefore usually recorded sparsely, and a stretch that turns out to matter can be recorded again in detail afterwards ([Resuming and Re-recording a Run](#34-resuming-and-re-recording-a-run)).
 
 ### 3.2 Observing a Run
 
-The visualizer shows a run in the browser, recorded tick by recorded tick, while the run is going on or afterwards. It draws the environment as a two-dimensional grid; a run in more dimensions is recorded and analyzed like any other, but it cannot be drawn. For a selected organism it shows the registers, the stacks, energy and entropy, the instruction being executed and the next one, and the line of the ancestor's source this code came from, where the code has not mutated. The mutations in the organism's lineage are marked in the grid, and its ancestry is drawn as a strip from the founder to its parent. A public instance at [evochora.org](https://evochora.org/) shows a recorded run.
+The visualizer shows a run in the browser, recorded tick by recorded tick, while the run is going on or afterwards. It draws the environment as a two-dimensional grid; a run in more dimensions is recorded and analyzed like any other; only the drawing is two-dimensional. For a selected organism it shows the registers, the stacks, energy and entropy, the instruction being executed and the next one, and the line of the ancestor's source this code came from, where the code has not mutated. The mutations in the organism's lineage are marked in the grid, and its ancestry is drawn as a strip from the founder to its parent. A public instance at [evochora.org](https://evochora.org/) shows a recorded run.
 
 ![The visualizer: the environment with organisms, and the state of a selected organism](https://github.com/user-attachments/assets/3bf0aa8e-f2bd-4b98-a03f-dd33d449ed93)
 
@@ -181,15 +181,15 @@ Analysis is not limited to these tools. The same Parquet files can be loaded int
 
 Phylogenies, Muller plots and genome comparison all rest on one question: what counts as a genome. Organisms in Evochora have no genome in the biological sense: there is no separation of genotype and phenotype, the body is the program, and what a child inherits is whatever its parent marked for it. The platform does not define a genome; it records what an organism is born with. For analysis, a genome is therefore an operational definition: the cells a newborn owns, normalized for its label namespace (see label matching under [Plugin Interfaces](#24-plugin-interfaces)), minus the molecules a run declares to be the organism's own work rather than its inheritance. By default these are its STATE cells and the STRUCTURE shell the ancestor builds around every child: both differ between copies of one genome without a change in the code, and counting them would make such copies look like mutants. The definition is a parameter of the run and is recorded with it. Within it, a change in any cell, damage included, counts as a change of genome. A separation of genotype and phenotype, a region of data that steers the behavior, read by logic the mutation operators do not touch, is something an organism could implement itself; whether it evolves or is designed is an experimental question, not a rule of the environment.
 
-Evochora does not try to be an analysis suite. The possible analyses range from phylogenetic trees and Muller plots to fitness landscapes and complexity measures such as assembly theory [(Sharma et al., 2023)](#ref-sharma-2023). Rather than implementing each of them, the platform provides the data in a form that lets researchers bring their own methods.
+The data are open to any method of the field. The possible analyses range from phylogenetic trees and Muller plots to fitness landscapes and complexity measures such as assembly theory [(Sharma et al., 2023)](#ref-sharma-2023); the platform delivers the data in a form that lets researchers bring their own methods to each.
 
 ### 3.4 Resuming and Re-recording a Run
 
-A run that was stopped can be continued with `node resume` from a recorded state near its end. The ticks between that state and the stop are computed again, identically ([Reproducibility](#62-reproducibility)), so a sparse recording loses nothing of the run. A stretch of a run can be recorded again with `node fork`: Evochora replays the run from a recorded state before the chosen tick and records the stretch as a new run, with a sampling interval of its own, every tick if needed. This is how an event found in the sparse record of a long run can be examined in detail ([CLI usage](CLI_USAGE.md#fork-a-run-node-fork)).
+A run that was stopped can be continued with `node resume` from a recorded state near its end. The ticks between that state and the stop are computed again, identically ([Reproducibility](#61-reproducibility)), so a sparse recording loses nothing of the run. A stretch of a run can be recorded again with `node fork`: Evochora replays the run from a recorded state before the chosen tick and records the stretch as a new run, with a sampling interval of its own, every tick if needed. This is how an event found in the sparse record of a long run can be examined in detail ([CLI usage](CLI_USAGE.md#fork-a-run-node-fork)).
 
 ## 4. First Results
 
-The project publishes its results as experiment records, packages on Zenodo under a CC0 license. A record holds the run's recorded data, the build that wrote them, and an executed notebook with the question, the evidence, the interpretation and the limits. Anyone can read the finding, run the analysis again, browse the run in the visualizer without the project's servers, and execute the run again from any stored state with the same result ([Reproducibility](#62-reproducibility)). [Published Experiments](PUBLISHED_EXPERIMENTS.md) lists the records with their DOIs. This chapter says what they show about the platform.
+The project publishes its results as experiment records, packages on Zenodo under a CC0 license. A record holds the run's recorded data, the build that wrote them, and an executed notebook with the question, the evidence, the interpretation and the limits. Anyone can read the finding, run the analysis again, browse the run in the visualizer without the project's servers, and execute the run again from any stored state with the same result ([Reproducibility](#61-reproducibility)). [Published Experiments](PUBLISHED_EXPERIMENTS.md) lists the records with their DOIs. This chapter says what they show about the platform.
 
 The populations behind these findings sustained themselves for hundreds of millions to billions of ticks. The organisms in them were given no task and no reward. Lineages still arose that built differently from their ancestor and replaced the population. Nothing in the system was written to favor them, and they spread faster than the neutral expectation the records compute. Where a child is built, what it is made of and when a parent reproduces are decisions of the program, and in these runs evolution changed all three. A lineage came to build its children far from the parent, and the kin structure of the population loosened. Another changed the material of the shell around its children to a cheaper one. The same rule for when to reproduce settled in opposite directions in two runs, under plentiful and under scarce energy; whether the energy supply alone decides it is a question for an experiment.
 
@@ -289,89 +289,33 @@ The idea is a metabolism. Energy would come in substrates, molecules ([The Envir
 
 This would add to the platform a molecule type, a reservoir in the virtual machine, instructions for digestion, and sources that lay substrates in patches. The questions a first run could put are whether chains of digesters and digesters of their leftovers arise, at which composition of the supply specialists displace generalists, and whether a world fills with leftovers before anything learns to use them, or whether a slow decay of substrates has to stand in for the weathering that nature provides.
 
-## 6. Architecture, Reproducibility and Scale
+## 6. Reproducibility and Resources
 
-<!-- To be restructured into two parts with subsections: first what matters for experiments (determinism, resume, sampling and fork, world size, technical limits, benchmarks), then the architecture. -->
+### 6.1 Reproducibility
 
-The grand scientific ambitions of Evochora are predicated on the ability to run large-scale experiments that are both computationally feasible and scientifically rigorous. Unlike many prototype simulations, Evochora is built on a mature software engineering foundation designed for long-term stability and distributed execution. This section outlines the computational framework, addressing its performance architecture, data handling capabilities, and the provisions for reproducible analysis.
-For a detailed technical breakdown of the engineering choices behind this performance (e.g., why standard GPU kernels were avoided), see the **[Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md)** document.
+A run is determined by its seed, its configuration and the build that executes it. With the same three it takes the same course on any machine, cell for cell, on Linux, Windows and macOS alike; a test of the project checks this on all three. A run that was paused and resumed from a stored state continues as an uninterrupted run would have. Randomness is part of the state. The only data of a run that vary between two executions are the wall-clock times of its capture, and they are metadata.
 
-### Engineering Maturity Status
+A run is recorded as a sequence of full snapshots with the changes between them. How dense the recording is, every tick or every ten-thousandth, is a setting of the run and the lever between resolution and storage; the [User Guide](USER_GUIDE.md) describes the profiles. Because a run is deterministic, a sparse recording loses nothing for good. Any stretch can be recorded again from the stored state before it, at any density, with the same course ([Record a Stretch in Full](USER_GUIDE.md#6-record-a-stretch-in-full)). This is how the sweeps of [First Results](#4-first-results) were read: the runs were recorded sparsely, and the stretches that mattered were re-recorded instruction by instruction afterwards. The density of the recording does not change the run; it changes what is kept of it. Events are kept whatever the density: every birth, death and mutation is written once, in the next recorded tick, with the newborn's genome and parent. What a sparser recording loses is the state between two recorded ticks, the bodies as they were and the instructions executed, and the curves the analytics plugins compute from the recorded ticks have fewer points. Two recordings of one run at different densities therefore give different tables of the same course.
 
-| Component | Status | Feature Highlights |
-| :--- | :--- | :--- |
-| **Virtual Machine** | ✔ Functional | Full register set, 3 stacks, dual-pointer architecture, procedural calls. |
-| **Determinism** | ✔ Verified | Identical simulation state and trajectory from seed and configuration, independent of thread count and of pause/resume; conflict resolution by computed per-tick priority. |
-| **Compiler** | ✔ Functional | Multi-phase immutable pipeline with high-level assembly, procedures, macros and source-map generation. |
-| **Data Pipeline** | ✔ Functional | Decoupled architecture with resume capability and delta compression (Queue -> Persistence -> Indexer -> DB). |
-| **Visualizer** | ✔ Live | Web-based, tick-by-tick inspection, memory layout visualization and assembly debugger. |
-| **Primordial Organism** | ✔ Viable | Self-replicating ancestor with metabolic loop and spatial replication logic. |
+### 6.2 Resources
 
-The following diagram illustrates the high-level data flow architecture:
-```
-┌────────────────────────────┐
-│      SimulationEngine      │
-└─────────────┬──────────────┘
-              │ (TickData)
-              ▼
-┌────────────────────────────┐
-│        Tick Queue          │
-└─────────────┬──────────────┘
-              │ (Batches)
-              ▼
-┌────────────────────────────┐
-│    Persistence Service     │ (Competing Consumers)
-└─┬─────────────────────┬────┘
-  │ (Data)       (BatchInfo Event)
-  │                     │
-  ▼                     ▼
-┌───────────┐    ┌───────────┐
-│  Storage  │    │  Topics   │
-└─────┬─────┘    └──────┬────┘
-      │ (Reads)    (Triggers)
-      │                 │
-      └────────┬────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│      Indexer Services      │ (Competing Consumer Groups)
-└─────────────┬──────────────┘
-              │ (Indexed Data)
-              ▼
-┌────────────────────────────┐
-│          Database          │
-└─────┬───────────────┬──────┘
-      │               │ (Queries)
-      ▼               ▼
-┌────────────┐  ┌────────────┐
-│ Visualizer │  │  Analyzer  │ (Web based)
-└────────────┘  └────────────┘
-```
+What a run needs depends on its configuration. The default configuration that comes with Evochora is kept small on purpose, so that it runs on most machines: an environment of 2048 × 1152 cells with a population of under a hundred organisms, recorded at every ten-thousandth tick. The figures below refer to it. On a current laptop with eight cores it runs about 3 × 10⁹ ticks a day, 10⁶ to 10⁷ instructions per second. With the default ancestor, a program of some thousand cells, that is several thousand generations; a smaller ancestor copies itself in fewer ticks and yields more. The run needs about two gigabytes of memory, and its recording grows by about 150 gigabytes a day. The environments behind the published records were ten to a hundred times larger. Time, memory and disk depend on different things.
 
-### 6.1 Architecture
+#### Time
 
-The core simulation is optimized for throughput. The raw, in-memory simulation engine achieves hundreds of thousands of instructions per second on standard consumer hardware. However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, sustainable throughput is constrained by I/O and varies significantly with environment size, population density, and plugin configuration. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster.
+Every living organism executes one instruction per tick, so the time a tick takes grows with the population. A larger environment with more energy sustains thousands of organisms, and a day then yields proportionally fewer ticks. How many generations those ticks are depends on the ancestor. A generation of the ancestors that come with Evochora takes 10⁵ to 10⁶ ticks, measured in the recorded runs as the mean age of a parent at a birth. A population of several thousand organisms thus still comes to several hundred generations a day. A small population yields many generations and strong drift; the published runs traded generations for populations of several hundred to over a thousand organisms.
 
-The primary computational load (CPU) scales linearly with the number of active organisms (O(N)). The data pipeline load (I/O) is dominated by periodic full environment snapshots whose size scales with the environment, while incremental updates between snapshots use delta compression and scale only with the number of changes per tick.
+#### Memory
 
-The simulation tick has snapshot semantics — every organism acts against the world as it was at the start of the tick — and is executed in two waves:
+Memory grows with the size of the environment and with how full it becomes. The largest environment behind a published record, 19200 × 12416 cells, ran on the same laptop. When a run starts, the node logs an estimate of what it will need and warns if the configured memory is lower; the estimate is conservative, and a run usually needs less than it says. How the memory is configured is in the [User Guide](USER_GUIDE.md).
 
-1.  **Plan and local execution**: All organisms determine their next instruction and, if it only changes their own state (arithmetic, jumps, reads), execute it immediately. This wave runs on a configurable number of worker threads over disjoint subsets of the population.
-2.  **Resolve and write**: Environment-modifying instructions pass a conflict resolver that mediates competing claims on the same Molecule, then execute sequentially in organism order. The winner of a contested cell is chosen by a priority computed per tick from seed and organism identity, so no organism is favored by its age or ID and every contender is expected to win a contested cell equally often over time; a loser pays the cost of a failed instruction and retries.
+#### Disk
 
-The thread count is an execution resource, not part of the simulated physics: a run produces the same trajectory whether it uses one thread or many, and whether it was paused and resumed. For massive-scale experiments, a long-term vision involves partitioning the world into spatial regions managed by separate, distributed compute nodes. While this introduces synchronization challenges at the boundaries, the principle of locality inherent to organism behavior is expected to minimize inter-node communication, following the principles of **Indefinite Scalability** demonstrated by the **Moveable Feast Machine** [(Ackley, 2013)](#ref-ackley-2013), making this a viable path for future scaling.
+The recording grows with the size of the environment, which bounds how many cells can be occupied, and with the density of the recording. With every ten-thousandth tick recorded, an environment of 7680 × 4320 cells took about 250 gigabytes for 3.5 × 10⁸ ticks. The largest, 19200 × 12416 cells, took about a terabyte for 10⁹ ticks. A denser recording grows in proportion, which is why a run is recorded sparsely and the stretches that matter are recorded again ([Record a Stretch in Full](USER_GUIDE.md#6-record-a-stretch-in-full)).
 
-### 6.2 Reproducibility
+### 6.3 Direction
 
-Large-scale simulations generate substantial data volumes, varying widely with environment size, snapshot frequency, and delta compression settings. The Evochora data pipeline is a decoupled, asynchronous system built on a foundation of abstract **Resources** to handle this throughput. The flow is designed for scalability: the `SimulationEngine` writes `TickData` messages to a queue. Multiple `PersistenceService` instances can act as competing consumers on this queue, writing data in batches to a durable storage resource. Downstream, various `IndexerService` types consume this stored data—again as competing consumer groups to build specialized indexes that are written to a database. This data powers the web-based visualizer. A key architectural principle is that all services are written against abstract resource interfaces (e.g., for queues and storage), allowing the underlying implementation to be seamlessly swapped from a high-performance in-process setup to a cloud-native, distributed one (e.g., message buses and object storage) without changing any service code. The indexing process is computationally intensive but parallelizable, and configurable sampling intervals allow researchers to trade temporal resolution for storage efficiency when running long simulations.
-
-Scientific rigor is ensured through **full determinism**. Randomness consumed by the sequential parts of a tick comes from one seeded, checkpointed generator; randomness consumed while organisms execute concurrently is computed from seed, tick, organism identity and the position of the draw within the tick rather than drawn from shared state, so it depends neither on thread scheduling nor on anything that would have to be persisted. Together with the computed conflict priority this guarantees that an experiment reproduces the identical simulation state and trajectory from seed and configuration, on any number of cores and across pauses (persisted records additionally carry wall-clock capture times, which are metadata, not state).
-
-Resume from any persisted state and delta compression for reducing data volume without sacrificing replayability are both fully implemented, enabling the use of cost-effective spot instances for very long-running experiments.
-
-### 6.3 Performance and Scale
-
-<!-- To be written: the cost model per organism, the benchmark figures with their conditions, world size as a question of memory, population as the measure. -->
+Evochora runs on one machine today. The recording and the indexing of a run are separate services behind replaceable interfaces, so moving them to other machines would mean new implementations of those interfaces, not a new design. Distributing the simulation itself, by partitioning the environment across nodes, is not designed. The direction such a partition would take is the one Ackley demonstrated with the Moveable Feast Machine [(Ackley, 2013)](#ref-ackley-2013). Organisms interact only with their neighborhood, so nodes would exchange little. It is named here as a direction, not a plan. Why Evochora is written in Java, with an assembly language of its own and as a set of services, is explained in [Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md).
 
 ## 7. Limitations
 
@@ -447,4 +391,3 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 - <a id="ref-wagner-2005"></a>Wagner, A. (2005). *Robustness and Evolvability in Living Systems*. Princeton University Press.
 - <a id="ref-wagner-2013"></a>Wagner, A. P., Zaman, L., Dworkin, I., & Ofria, C. (2013). Behavioral strategy chases promote the evolution of prey intelligence. Preprint: [https://arxiv.org/abs/1310.1369](https://arxiv.org/abs/1310.1369)
 - <a id="ref-zaman-2014"></a>Zaman, L., Meyer, J. R., Devangam, S., Bryson, D. M., Lenski, R. E., & Ofria, C. (2014). Coevolution drives the emergence of complex traits and promotes evolvability. *PLOS Biology*, 12(12), e1002023.
-- <a id="ref-moreno-2022"></a>Moreno, F., & Ofria, C. (2022). Exploring the Fraternal Transitions to Multicellularity in Digital Evolution. *Artificial Life*, 28(1), 1-24.
