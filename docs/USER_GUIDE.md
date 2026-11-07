@@ -33,11 +33,11 @@ This guide takes you through an experiment with Evochora, from starting a simula
 
 ## 1. Install and Start
 
-Download the archive for your system from the [releases page](https://github.com/evochora/evochora/releases), unpack it and start a node as described in the [Quick Start](../README.md#quick-start). The node starts a run with the default ancestor in the default environment. Open the visualizer and you can watch the ancestor copy itself.
+Download the archive for your system from the [releases page](https://github.com/evochora/evochora/releases), unpack it and start a node as described in the [Quick Start](../README.md#quick-start). The node starts a run with the default ancestor in the default environment. Open the visualizer and you can watch the ancestor copy itself. [Choose or Write an Ancestor](#2-choose-or-write-an-ancestor) shows how to start another one or write your own.
 
-You normally work in your project folder. By default, this is the installation folder: your configuration, your ancestors and the data of your runs are kept in it, next to Evochora itself and its sources. That way the whole folder can be published as an experiment, and the runs come with the exact software that produced them.
+The releases page offers numbered releases and a nightly build of the current development state. For experiments you mean to publish, a numbered release is the usual choice, because it has a DOI to cite it by; the nightly carries the newest changes and has none. A Docker image is published as well, but the archives are the recommended way to run Evochora.
 
-A Docker image is published as well, but the archives are the recommended way to run Evochora. [Choose or Write an Ancestor](#2-choose-or-write-an-ancestor) shows how to choose another ancestor or write your own.
+Whichever release you use, you normally work in your project folder. By default, this is the installation folder: your configuration, your ancestors and the data of your runs are kept in it, next to Evochora itself and its sources. That way the whole folder can be published as an experiment, and the runs come with the exact software that produced them.
 
 ## 2. Choose or Write an Ancestor
 
@@ -83,7 +83,7 @@ You can stop a run at any time with Ctrl+C and continue it later:
 bin/evochora -c config/my-experiment.conf node resume
 ```
 
-The run continues from the last full state it recorded. Without further options, `node resume` takes the newest run in your [project folder](#1-install-and-start). To continue another one, give its ID with `--run <id>`; the visualizer shows the ID of every run, as [Observe a Run](#5-observe-a-run) describes.
+The run continues from the last full state it recorded. Without further options, `node resume` takes the newest run in your [project folder](#1-install-and-start). To continue another one, give its ID with `--run <id>`, as the [CLI Usage Guide](CLI_USAGE.md#continue-a-run-node-resume) describes.
 
 ### Look at recorded runs
 
@@ -98,6 +98,42 @@ It serves the recorded runs to the visualizer and the analyzer. Because nothing 
 ### Clean up
 
 Runs you no longer need take up disk space. `bin/evochora -c config/my-experiment.conf cleanup` deletes them: it first shows what it would delete and acts only with `--force`. The [CLI Usage Guide](CLI_USAGE.md#clean-up-simulation-runs) explains how to select runs by their IDs.
+
+## 5. Observe a Run
+
+Two views in your browser show a run: the visualizer looks at single ticks, the analyzer at the whole run. While a node is running, the visualizer is at `http://localhost:8081/visualizer/` and the analyzer at `http://localhost:8081/analyzer/` in your browser.
+
+The visualizer shows the environment at a recorded tick, the molecules in its cells and all its organisms, colored by the lineage they descend from. For any organism it shows its details, such as its internal state, its energy and entropy, the mutations it carries, the instructions it executes and its line of descent. It knows only the ticks that were recorded; to see a stretch of a run tick by tick, follow [Record a Stretch in Full](#6-record-a-stretch-in-full).
+
+The analyzer shows how the run develops over time, in charts grouped into population, evolution and ecology: for example the size and age of the population, its births and deaths, the diversity of its genomes and the depth of its generations, which instructions the organisms use and what the environment is made of.
+
+## 6. Record a Stretch in Full
+
+A run is usually recorded with the `sparse` [tuning profile](#3-configure-an-experiment), so the visualizer shows only every ten-thousandth tick of it. When you find a stretch in the visualizer or the analyzer that you want to follow tick by tick, record it again as a fork, a new run that repeats a stretch of an existing one and records it more densely:
+
+```bash
+bin/evochora -c config/my-experiment.conf node fork --from 150000 --to 200000 --profile detailed
+```
+
+The node takes up the run from the last state it recorded before `--from`, simulates from there and records the ticks from `--from` to `--to` as a run with an ID of its own, which the visualizer and the analyzer show like any other. After the stretch the simulation pauses, and Ctrl+C stops the node. With `--run <id>` you fork a run other than the newest; the [CLI Usage Guide](CLI_USAGE.md#fork-a-run-node-fork) lists the other options. The fork shows exactly the same course as the original run, which [Reproduce a Run](#8-reproduce-a-run) explains.
+
+## 7. Analyze the Data
+
+The first place to analyze a run is the [analyzer](#5-observe-a-run). It shows the metrics of a run on population, evolution and ecology while the run is still going. Plugins can add metrics of your own, which are computed during the run like the others; [Extend Evochora with Plugins](#11-extend-evochora-with-plugins) describes how.
+
+For analyses beyond the analyzer, Evochora keeps the data of a run in standard formats, so you can analyze it with common tools, such as Python or R in a Jupyter notebook. The analysis notebook is an example of how this works. It shows the usual analyses, from population dynamics and genome diversity to phylogenetic trees, and documents each way to the data. Download it from your running node at `http://localhost:8081/notebooks/data_analysis_guide.ipynb`, or open [it in the repository](../notebooks/data_analysis_guide.ipynb) and run it in Colab or locally, as the [notebooks README](../notebooks/README.md) describes. Its first code cell names the node it reads from; set it to your own.
+
+## 8. Reproduce a Run
+
+A run is determined by the build of Evochora that runs it, by its configuration and by the seed for random numbers. The run records all three with its data, together with the programs of its ancestors, so the same project folder and the same experiment file give the same run again, on another computer and with any number of processor cores. Continuing a run and forking a stretch of it rely on this: both take exactly the course the original takes. The seed is part of the configuration; a run with the same seed takes the same course, and a different seed gives a run of its own.
+
+A run belongs to the version of Evochora that recorded it. Another version can read it but warns, because only the version that recorded a run reproduces it exactly. To continue a run later or to reproduce it, keep the [project folder](#1-install-and-start) it was recorded in, which holds that version next to the run.
+
+## 9. Cite and Share
+
+If you use Evochora in your research, cite the version that produced your runs. `bin/evochora --version` names it: the version with its DOI for a numbered release, and the commit it was built from for a nightly, which is cited by that commit. The repository's [`CITATION.cff`](../CITATION.cff) gives the reference, and GitHub shows it under "Cite this repository".
+
+To share an experiment, publish its [project folder](#1-install-and-start): it holds the configuration, the ancestors and the data of the runs together with the version of Evochora that recorded them and its sources, so that others can inspect the runs and reproduce them. The [published experiments](PUBLISHED_EXPERIMENTS.md) are examples of such records, each with a notebook that documents its finding.
 
 ## 11. Extend Evochora with Plugins
 
