@@ -189,7 +189,7 @@ public final class LayoutContext {
             case EvaluationResult.Error error -> throw new CompilationException(SourceInfo.locate(at, error.reason()));
             case EvaluationResult.Partial partial -> throw new IllegalStateException(
                     "A computation still needs a later phase after the layout: " + partial.expression().text());
-            case EvaluationResult.Reported reported -> throw new IllegalStateException(
+            case EvaluationResult.Reported _ -> throw new IllegalStateException(
                     "A computation whose error was reported reached the layout.");
         };
     }

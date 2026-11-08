@@ -712,7 +712,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             } finally {
                 // 6. Release token (always, even on exception)
                 // Token is released HERE — BEFORE iteration/processing
-                releaseToken(token);
+                releaseToken();
             }
         }
     }
@@ -774,7 +774,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * Releases the drain token back to the token queue.
      */
-    private void releaseToken(jakarta.jms.Message token) {
+    private void releaseToken() {
         if (Thread.currentThread().isInterrupted()) {
             return;
         }

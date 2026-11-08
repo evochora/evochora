@@ -77,7 +77,7 @@ public class Emitter {
         int address = 0;
         for (IrItem item : program.items()) {
             switch (item) {
-                case IrDirective directive -> {
+                case IrDirective _ -> {
                     // A directive occupies no cell; the contributors above have read it.
                 }
                 case IrLabelDef lbl -> {

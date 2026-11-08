@@ -65,7 +65,7 @@ public class PlaceAnalysisHandler implements IAnalysisHandler {
                 arguments.expectNumber(stepped.step(), symbolTable, diagnostics);
                 arguments.expectNumber(stepped.end(), symbolTable, diagnostics);
             }
-            case WildcardValueComponent wildcard -> {
+            case WildcardValueComponent _ -> {
                 // Every cell along the axis; the layout knows how many
             }
         }

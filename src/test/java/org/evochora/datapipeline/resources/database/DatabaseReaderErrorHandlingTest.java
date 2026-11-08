@@ -145,7 +145,7 @@ class DatabaseReaderErrorHandlingTest {
             // Then: Pool should still be usable (connection returned)
             // This test verifies that failed createReader() doesn't leak connections
             assertDoesNotThrow(() -> {
-                try (IDatabaseReader reader = limitedDb.createReader("valid_run")) {
+                try (IDatabaseReader _ = limitedDb.createReader("valid_run")) {
                     // Just create and immediately close to test pool health
                 }
             });
