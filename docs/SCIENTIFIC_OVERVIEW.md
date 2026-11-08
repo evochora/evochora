@@ -40,7 +40,7 @@ Researchers can set the conditions of a run: the environment's dimensions and la
 7. [Limitations](#7-limitations)
 8. [Conclusion](#8-conclusion)
 9. [Getting Involved](#9-getting-involved)
-10. [Acknowledgements](#10-acknowledgements)
+10. [Disclosure](#10-disclosure)
 11. [References](#11-references)
 
 ## 1. Introduction
@@ -291,6 +291,7 @@ This would add to the platform a molecule type, a reservoir in the virtual machi
 ### 6.1 Reproducibility
 
 A run is determined by its seed, its configuration and the build that executes it. With the same three it takes the same course on any machine, cell for cell, on Linux, Windows and macOS alike; a test of the project checks this on all three. A run that was paused and resumed from a stored state continues as an uninterrupted run would have. Randomness is part of the state. The only data of a run that vary between two executions are the wall-clock times of its capture, and they are metadata.
+
 ### 6.2 Resources
 
 What a run needs depends on its configuration. The default configuration that comes with Evochora is kept small on purpose, so that it runs on most machines: an environment of 2048 × 1152 cells with a population of under a hundred organisms, recorded at every ten-thousandth tick. The figures below refer to it. On a current laptop with eight cores it runs about 3 × 10⁹ ticks a day, 10⁶ to 10⁷ instructions per second. With the default ancestor, a program of some thousand cells, that is several thousand generations; a smaller ancestor copies itself in fewer ticks and yields more. The run needs about two gigabytes of memory, and its recording grows by about 150 gigabytes a day. The environments behind the published records were ten to a hundred times larger. Time, memory and disk depend on different things.
@@ -329,7 +330,7 @@ Matter is not conserved. An organism writes molecules out of energy, and what be
 
 #### Thermodynamics
 
-The thermodynamics is an accounting, not a physics of heat. Energy and entropy are two registers. The machine acts on them only at their limits, where an organism dies; the plugins that come with Evochora do not make use of them. A graded effect, such as a mutation rate that rises with the organism's entropy, can be added as a plugin ([The Structure of Variation](#55-the-structure-of-variation)).
+The thermodynamics is an accounting, not a physics of heat. Energy and entropy are two registers. The thermodynamic policies set what each instruction adds to them or takes from them, and the machine acts on their level only at the limits, where an organism dies; no plugin that comes with Evochora reads the level. A graded effect, such as a mutation rate that rises with the organism's entropy, can be added as a plugin ([The Structure of Variation](#55-the-structure-of-variation)).
 
 #### Scale
 
@@ -337,25 +338,21 @@ By the measures of population genetics the runs are small. A body of thousands o
 
 ## 8. Conclusion
 
-Evochora is an open-source digital evolution platform designed to make the physics of a simulated world a first-class experimental variable. Its architecture — spatially distributed code in a configurable n-dimensional grid, a two-axis thermodynamic economy, fuzzy label matching for mutation-resilient genomes, and a modular plugin system for mutation, resource distribution, and death mechanics — provides researchers with a flexible testbed for a range of evolutionary experiments.
-
-The platform has demonstrated its viability through long-running simulations sustaining stable populations over billions of ticks. Four configurable mutation operators, label namespace rewriting, a defensive primordial organism, and a fully deterministic, resumable data pipeline provide the foundation for reproducible research.
-
-The research directions outlined in this document — from replicator ecology and environmental heterogeneity to digital eukaryogenesis, multicellularity, and reaction-based chemistry — represent a broad program of testable hypotheses. Some are immediately accessible with the current implementation; others require extensions that the architecture is designed to support. Researchers, students, and engineers are invited to use this platform, challenge its assumptions, and contribute to its development. The source code, documentation, and community channels are available at [https://github.com/evochora/evochora](https://github.com/evochora/evochora).
+Evochora is a young platform and not yet widely used. Its findings come from single runs, and what a platform lacks shows only once others work with it. What the runs so far have shown is set out above. Populations sustain themselves over billions of ticks, and a run takes the same course on any machine ([Reproducibility](#61-reproducibility)). Evolution changed body, behavior and the structure of the population without reward from outside, and each change could be read down to the single molecule, in runs that were made to test the platform, not to produce findings ([First Results](#4-first-results)). The project reads this as a sign that the physics is sound enough to carry experiments designed around a question. It expects the questions of [Research Directions](#5-research-directions) to be askable here in a form other systems were not built for: with the body as the object of selection and every step of a run on record. Whether they are answered that way is for the experiments to show. The platform was built to be used by others, and the next chapter says how.
 
 ## 9. Getting Involved
 
-Evochora is open source under the MIT License. Contributions of all kinds are welcome — from running experiments and reporting results to extending the plugin ecosystem or improving the data pipeline (see the [Contribution Guide](https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md) for details). Anyone interested in using the platform, whether for research, exploration, or development, is encouraged to reach out — questions are answered promptly.
+Evochora is open source under the MIT License, and it will grow with the people who use it. If you want to see it run, the [live demo](https://evochora.org/) shows a simulation in the browser, and the [User Guide](USER_GUIDE.md) takes you from the first start to an experiment of your own. If you bring a question from your field that one of the [research directions](#5-research-directions) could carry, or an objection to a rule of the physics, raise it in the [discussions](https://github.com/evochora/evochora/discussions) or talk it through on [Discord](https://discord.gg/t9yEJc4MKX). If you want to work on the code or the documents, the [Contribution Guide](https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md) says how researchers and developers can contribute. Results are welcome in every form, and a run that contradicts this document is at least as useful as one that confirms it.
 
-- **Source code and documentation:** [GitHub Repository](https://github.com/evochora/evochora)
-- **Published experiment records:** [Published Experiments](PUBLISHED_EXPERIMENTS.md)
-- **Live demo and simulation video:** [https://evochora.org/](https://evochora.org/)
-- **Questions and discussion:** [GitHub Discussions](https://github.com/evochora/evochora/discussions)
-- **Community chat:** [Discord Server](https://discord.gg/t9yEJc4MKX)
+- Live demo: [evochora.org](https://evochora.org/)
+- Source code and documentation: [GitHub](https://github.com/evochora/evochora)
+- Published experiment records: [Published Experiments](PUBLISHED_EXPERIMENTS.md)
+- Questions and discussion: [GitHub Discussions](https://github.com/evochora/evochora/discussions)
+- Chat: [Discord](https://discord.gg/t9yEJc4MKX)
 
-## 10. Acknowledgements
+## 10. Disclosure
 
-_Full disclosure: AI tools were used to assist in the writing and editing of this document. The scientific content — the design decisions, hypotheses, and experimental directions — is the author's original work._
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.
 
 ## 11. References
 
