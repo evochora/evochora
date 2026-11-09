@@ -310,7 +310,7 @@ The recording grows with the size of the environment, which bounds how many cell
 
 ### 6.3 Direction
 
-Evochora runs on one machine today. The recording and the indexing of a run are separate services behind replaceable interfaces, so moving them to other machines would mean new implementations of those interfaces, not a new design. Distributing the simulation itself, by partitioning the environment across nodes, is not designed. The direction such a partition would take is the one Ackley demonstrated with the Moveable Feast Machine [(Ackley, 2013)](#ref-ackley-2013). Organisms interact only with their neighborhood, so nodes would exchange little. It is named here as a direction, not a plan. Why Evochora is written in Java, with its own assembly language and as a set of services, is explained in [Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md).
+Evochora runs on one machine today. The recording and the indexing of a run are separate services behind replaceable interfaces, so moving them to other machines would mean new implementations of those interfaces, not a new design. Distributing the simulation itself, by partitioning the environment across nodes, is not designed. The direction such a partition would take is the one Ackley demonstrated with the Moveable Feast Machine [(Ackley, 2013)](#ref-ackley-2013). Organisms interact only with their neighborhood, so nodes would exchange little. It is named here as a direction, not a plan. Why Evochora is written in Java, with its own assembly language and as a set of services, is explained in [Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md); how it is built is described in [Architecture](dev/ARCHITECTURE.md).
 
 ## 7. Limitations
 
