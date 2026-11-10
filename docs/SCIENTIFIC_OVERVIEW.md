@@ -97,21 +97,22 @@ A molecule has one more property, the marker. It belongs to ownership and is int
 Each organism runs on its own virtual machine. The machine executes the code that lies in the grid and acts on the grid through pointers; it sees nothing of the environment beyond the cells around its pointers. See the [Assembly Specification](ASSEMBLY_SPEC.md) for all details of the machine, its instruction set and the language.
 
 ### Fig. 1: An organism's virtual machine and its environment
-```
-   +-------------------------------------------------------------+
-   |               Environment: n-dimensional grid               |
-   |       [CODE] [DATA] [STATE] [ENERGY] [STRUCTURE] [...]      |
-   +--------------^----------------------------^-----------------+
-                  |                            |
-            execute code             read, write, consume
-                  |                            |
-   +--------------|------- Virtual machine ----|-----------------+
-   |     +--------v--------+        +----------v----------+      |
-   |     | Instruction     |        | Data pointers       |      |
-   |     | pointer         | ------>| DP0 ... DPn         |      |
-   |     +-----------------+        +---------------------+      |
-   |         registers, stacks, energy (ER), entropy (SR)        |
-   +-------------------------------------------------------------+
+```text
+ ┌───────────────────────────────────────────────────────────────────────┐
+ │                    Environment: n-dimensional grid                    │
+ │                                                                       │
+ │              [CODE]    [DATA]    [ENERGY]    [STRUCTURE]    [...]     │
+ └─────────────────▲───────────────────────────────────▲─────────────────┘
+                   │ execute code                      │
+                   │              read, write, consume │
+ ┌─────────────────┼───────────────────────────────────┼─────────────────┐
+ │                 │             Organism              │                 │
+ │     ┌───────────┴───────────┐           ┌───────────┴───────────┐     │
+ │     │  Instruction pointer  │─ moves ──▶│     Data pointers     │     │
+ │     └───────────────────────┘           └───────────────────────┘     │
+ │                                                                       │
+ │              registers, stacks, energy (ER), entropy (SR)             │
+ └───────────────────────────────────────────────────────────────────────┘
 ```
 
 The **instruction pointer** executes an instruction with its arguments and goes on to the next; it skips empty cells. The next instruction lies in the direction of the **direction vector**, which the program can set, so a program is a line of cells through the grid. The **data pointers** are where the organism touches the environment: every molecule it reads, writes or consumes lies at a data pointer or one step from it. A data pointer moves one cell at a time; it cannot jump freely, only to positions the organism has stored before.
