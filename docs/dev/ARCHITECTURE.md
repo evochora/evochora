@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes how Evochora is built: its packages, the role each of them plays, and how they depend on each other. Why the packages were built this way is the subject of [Architecture & Design Decisions](ARCHITECTURE_DECISIONS.md).
+This document describes how Evochora is built: its packages, the role each of them plays, and how they depend on each other. Why the main choices were made is the subject of [Architecture & Design Decisions](ARCHITECTURE_DECISIONS.md).
 
 1. [Overview](#1-overview)
 2. [The compiler](#2-the-compiler)
