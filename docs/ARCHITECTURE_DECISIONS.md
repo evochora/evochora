@@ -1,76 +1,23 @@
 # Architecture & Design Decisions
 
-> "Architectural sophistication serves solely to enable unguided emergent evolutionary complexity"
+This document answers the questions that readers and contributors ask about Evochora's design: why a part of the system was built the way it was, and what else was considered. How the system is built is described in [Architecture](ARCHITECTURE.md).
 
-Evochora is not a typical physics simulation or a simple cellular automaton. It is a foundational Artificial Life system designed to discover evolutionary emergent complexity.
-The architecture is defined by two non-negotiable requirements: the safe execution of self-modifying code (Mutability) and the asynchronous processing of high-frequency telemetry (Observability).
+## Why not build on Tierra or Avida?
 
-This document outlines the **"Why"** behind the engineering choices.
+The [Scientific Overview](../SCIENTIFIC_OVERVIEW.md#11-evochora-among-related-systems) compares Evochora with Tierra, Avida and other systems. They are built around the program: in Tierra an organism is a program in a shared memory, in Avida a program on a processor per cell. Evochora is built around a body in its environment, because its question, what an environment must provide for complexity to arise, is a question about that body. It therefore gives the organism a body of typed matter: cells it owns, energy it has to find, entropy it has to shed, children it builds where it chooses. That is the core of the system, not a feature beside the program model, and so it needed a system built around it.
 
----
+## Why a new assembly language and a compiler for it?
 
-## 1. The Core: Why Custom Assembly (EvoASM)?
+Evochora is built for evolution to be able to produce complex organisms, and so complex organisms must also be writable by hand. An ancestor has a body in an environment: it harvests, stores energy, builds its children and decides when to reproduce, and all of that is its code. Behavior of that size makes behavior itself the subject of an experiment. The machine this code runs on is new: code lies in an n-dimensional grid of typed molecules, every instruction costs energy and entropy, and a jump finds its target by a label, so that mutated code still runs. The language is therefore new as well. It stays an assembly language, because mutation acts on the molecules and an author should read what evolution changes, line for line. It has a compiler because behavior is written once and reused across ancestors, which takes modules, procedures with parameters, macros and placement directives. None of that exists for a new machine until someone builds it. Whoever runs the ancestors that come with Evochora never needs the language. Whoever wants to change what an organism does has it.
 
-**The Alternative:** Using standard scripting languages (like Python or Lua) or compiling agents to native code (C++/CUDA).
+## Why Java?
 
-**The Decision:**
-Use a custom Virtual Machine and a dedicated Assembly Language (EvoASM).
+What this system needs comes together in Java and its libraries. Plugins are classes that the configuration names. A new energy source, mutation operator or thermodynamic policy is a class and a line of configuration, loaded when the run starts. Rust and C++ load nothing by name: a plugin there is compiled in, or it is a dynamic library behind a hand-written interface. The pipeline is built from embedded Java libraries, the message broker, the index database, the analytics engine and the data contract, so a run on one machine needs no server beside the node. One distribution runs on Linux, Windows and macOS with the same results. Java defines every integer operation and, with its strict mathematics, the floating-point functions, and that is what the reproducibility across platforms rests on. The type system catches most mistakes before a run does. The first version, in Python, did not survive its own growth. Rust or C++ would probably run a tick faster, by a margin that has not been measured, and would give up the plugin loading and the libraries. Garbage collection, the usual objection to Java in a simulation, costs about one percent of the simulation's time.
 
-**The Reasoning:**
-1.  **Mutability:** In this Artificial Life simulation, code is the genome. It must be capable of handling random mutations (bit-flips, insertions, deletions) at runtime. Standard interpreters or compiled binaries are brittle; they typically crash or throw syntax errors when their bytecode is randomly altered.
-2.  **Extensibility:** To manage the growing complexity of the language, the implementation of a multi-phase compiler (Frontend, IR, Backend) is needed. As seen in `org.evochora.compiler`, this isolates parsing (`frontend`), intermediate representation (`ir`), and machine code generation (`backend`). Using registries like `DirectiveHandlerRegistry` and `EmissionRegistry` allows to extend the language features without modifying the core compiler pipeline.
+## Why a pipeline of services, brokers and topics for a tool that runs on one machine?
+
+Because this simulation produces data faster than anything can store or index it. The first versions ran the simulation, the storing and the display in one loop, and the slowest step set the pace of all three. A tick-by-tick recording of a small environment came to tens of gigabytes an hour, and the loop spent its time writing and drawing instead of simulating. The pipeline separates these steps so that each runs at its own speed. The simulation hands recorded ticks to a queue and goes on. A persistence service writes them in batches and announces each batch on a topic, and the indexers read the topic, each at its own pace. A single writer behind a bounded queue would separate the pace as well, but not the indexing. The topics let a recording be indexed later, again under a new consumer group, or on another machine. They also let several instances of a service share the work, which is why every service writes idempotently. An earlier design handed batches to indexers through a coordination table in the database, with claims and gap detection, and was dropped for the topics, which do the same with less machinery. The price is more moving parts than a loop: brokers, services and resources, each with its configuration. On one machine all of them run embedded in the node. That the same services can run on several machines was not the goal, but it follows.
 
 ---
 
-## 2. The Language: Why Java?
-
-**The Alternative:** Python (standard for research) or Rust/C++ (standard for high-performance simulations).
-
-**The Decision:**
-The core simulation was migrated from Python to **Java**.
-
-**The Reasoning:**
-1.  **Refactoring & Type Safety:** Early prototypes in Python became unmanageable as the architecture grew. A strictly typed language to safely refactor the complex interactions within the VM and the compiler pipeline without introducing regression bugs was required.
-2.  **Performance Strategy:** While Java has trade-offs compared to native code, modern JIT compilers provide sufficient performance for the current simulation complexity.
-3.  **The Rust Option:** The core simulation logic can be treated as a candidate for a Rust rewrite. However, this is currently not prioritized because the profiling showed that **CPU usage is not the primary bottleneck** (see Section 3).
-
----
-
-## 3. The Architecture: Distributed Services & Scalability
-
-**The Alternative:** A monolithic application where simulation, data processing, and UI run in a tightly coupled loop.
-
-**The Decision:**
-The system evolved from a simple monolith into a **Service-Oriented Architecture** (SOA) with a dedicated Data Pipeline.
-
-**The Evolution & Reasoning:**
-1.  **The "I/O Wall":** I learned the hard way that a tightly coupled approach fails at scale. In dense environments, the simulation generates **megabytes of state data per tick**, accumulating to **terabytes** of telemetry over long evolutionary runs. Even with delta compression applied, writing this synchronously to disk or processing it for the UI stalls the simulation thread.
-2.  **Horizontal Scalability:** To manage this throughput, the **"Hot Path"** (Simulation Engine) needed to be decoupled from the **"Cold Path"** (Data Analysis). The simulation dumps raw binary data into a high-throughput buffer, while separate consumer services process, index, and store the data asynchronously.
-3.  **Cloud Readiness:** All system resources (Queues, Storage, Databases) are designed as abstract interfaces (e.g., `IInputQueueResource`, `IBatchStorageWrite`). This abstraction allows to seamlessly swap local in-memory implementations with cloud-native services (like SQS, Kafka, or S3), enabling the system to scale horizontally in a cloud environment without changing the core application logic.
-
----
-
-## 4. The Data Protocol: Why Protocol Buffers?
-
-**The Alternative:** JSON or XML.
-
-**The Decision:**
-**Protocol Buffers (Protobuf)** is used for inter-service communication and storage.
-
-**The Reasoning:**
-1.  **Storage Efficiency:** With telemetry data accumulating to terabytes, text-based formats like JSON are wasteful. Protobuf's binary format, combined with our delta-compression strategy, reduces storage requirements and disk I/O significantly.
-2.  **Performance:** Serialization and deserialization of binary data is orders of magnitude faster than parsing JSON, freeing up CPU cycles for the actual simulation.
-3.  **Schema Evolution:** Scientific data formats change. Protobuf allows to add new biological properties to organisms without breaking backward compatibility with datasets from previous evolutionary runs.
-
----
-
-## Summary for Contributors
-
-Evochora’s architecture is not complex for the sake of complexity. It is **purpose-built** to solve specific scaling problems inherent to high-fidelity Artificial Life research:
-
-* Custom Assembly is necessary for mutable genomes.
-* Java provides the refactoring safety for a large codebase.
-* Distributed Services are required to handle massive I/O throughput.
-
-**You don't need to understand the whole stack to contribute.**
-You are invited to contribute to the parts that interest you — whether it's optimizing the VM, writing new analysis plugins, or designing new EvoASM organisms — without needing to understand the entire infrastructure stack.
+Written with AI assistance under the project's [AI Policy](../../AI_POLICY.md). The author reviewed it and is responsible for its content.
