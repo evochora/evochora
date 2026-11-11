@@ -16,11 +16,21 @@ with `organisms` copies of one assembly program and runs ticks back to back.
 | `assembly` | `REALISTIC`, `PROC_CALL` | `REALISTIC` is a general instruction mix (arithmetic, conditionals, environment access, jumps). `PROC_CALL` is a tight `CALL`/`RET` loop with `REF` and `VAL` parameters and stresses the procedure-frame path. |
 | `organisms` | `100`, `500`, `2000` | Population size; larger values shift the profile from per-tick overhead towards per-organism work and cache pressure. |
 | `parallelism` | `4` (default) | Threads executing the parallel wave of a tick, the main thread included (`1` = main thread alone). Override on the command line (see below). |
-| `selectionSpread` | `0` (default) | Selection spread of the label-matching strategy. `0` takes the nearest of several own labels on the best Hamming stage; a positive value (production default `50`) draws one of them by lottery, exercising the organism's random source on the control-flow path. A jump with a single own candidate draws nothing either way. Override on the command line, e.g. `-p selectionSpread=0,50`. |
-| `orphanedPercent` | `0` (default) | Share of the organisms placed without their `LABEL` molecules, spread evenly among the others. Their references have no own match, so every jump and call of theirs runs the foreign search and resolves to a neighbour's label; all organisms carry the same label values. Select with e.g. `-p orphanedPercent=50`. |
+| `selectionSpread` | `0` (default) | Selection spread of the label-matching strategy (see below). |
+| `orphanedPercent` | `0` (default) | Share of the organisms placed without their `LABEL` molecules (see below). |
 
-`ARITHMETIC`, `ENVIRONMENT`, `LOCATION`, `NEIGHBOURS` and `SKIP` are defined but outside the
-default set; select one with `-p assembly=LOCATION`. `LOCATION` executes nothing but
+`selectionSpread`: `0` takes the nearest of several own labels on the best Hamming stage. A
+positive value draws one of them by lottery, which exercises the organism's random source on the
+control-flow path; the production default is `50`. A jump with a single own candidate draws
+nothing either way. Override it on the command line, for example `-p selectionSpread=0,50`.
+
+`orphanedPercent`: the organisms placed without their `LABEL` molecules are spread evenly among
+the others. Their references have no own match, so every jump and call of theirs runs the
+foreign search and resolves to a neighbour's label; all organisms carry the same label values.
+Select it with, for example, `-p orphanedPercent=50`.
+
+`ARITHMETIC`, `BITWISE`, `VECTOR`, `ENVIRONMENT`, `LOCATION`, `NEIGHBOURS` and `SKIP` are defined but
+outside the default set; select one with `-p assembly=LOCATION`. `LOCATION` executes nothing but
 location-register and location-stack instructions, which no other program touches;
 `NEIGHBOURS` reads and tests the cells around the data pointer; `SKIP` executes conditions
 that are all false, so each skips the instruction behind it.
@@ -51,14 +61,21 @@ values — and reports nanoseconds per call:
 | Parameter | Values | Meaning |
 |---|---|---|
 | `labelsPerValue` | `200`, `2000`, `10000` | Number of organisms, and with it the number of labels that carry one value. |
-| `namespacePerOrganism` | `false` (default), `true` | `false`: all organisms share their label values, and a value's labels are as many as the population. `true`: every organism carries its values in a namespace of its own, as a high namespace flip rate over many bits leaves a population; the values in use are as many as the labels, and a foreign search finds most of the neighbour values it probes in use. A caller of `FOREIGN_NEAR` then stands near the one organism that carries the value it searches. |
+| `namespacePerOrganism` | `false` (default), `true` | Whether every organism carries its label values in a namespace of its own (see below). |
 | `scenario` | `OWN`, `OWN_FUZZY`, `FOREIGN_NEAR`, `FOREIGN_MISS` | `OWN`: an organism looks up a label of its own, the regular case. `OWN_FUZZY`: the same with one bit of the searched value flipped, as a mutation leaves it. `FOREIGN_NEAR`: a caller without labels in an evenly populated world reaches the nearest label of another organism. `FOREIGN_MISS`: all labels lie in a band of rows and the callers stand beyond the foreign reach in the same columns, so the search has labels nearby in one direction and finds none. |
+
+`namespacePerOrganism`: with `false`, all organisms share their label values, and a value's
+labels are as many as the population. With `true`, every organism carries its values in a
+namespace of its own, as a high namespace flip rate over many bits leaves a population. The
+values in use are then as many as the labels, and a foreign search finds most of the neighbour
+values it probes in use; a caller of `FOREIGN_NEAR` stands near the one organism that carries
+the value it searches.
 
 The setup fails when a lookup does not end the way its scenario says, so a scenario that a
 change to the strategy has made meaningless cannot be measured unnoticed. The lookups jump
 between organisms at random, which keeps less of the index in the processor cache than a tick
 does; a change that touches the label index is measured with this benchmark and confirmed with
-the tick benchmark and the real-run comparison.
+the tick benchmark.
 
 ## Benchmarks are relative measurements
 
@@ -183,3 +200,7 @@ The JSON files produced by `-rf json` are working data; the table is the result.
 values belong to the change that was verified with them. They are not maintained as a
 project-wide reference, because no later measurement on a different machine or day could be
 compared with them.
+
+---
+
+Written with AI assistance under the project's [AI Policy](../../AI_POLICY.md). The author reviewed it and is responsible for its content.
