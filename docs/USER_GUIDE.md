@@ -155,3 +155,7 @@ The plugins that come with Evochora are the best starting point. Those for energ
 Compile your class with a JDK of Java 25 or newer against the libraries in the `lib/` directory of your [project folder](#1-install-and-start), for example with `javac -cp "lib/*"`, package it as a jar and put the jar into the project folder's `plugins/` directory. Then name your class in your configuration file in place of the plugin it replaces or next to the ones it joins, and start the node as usual.
 
 If your plugin needs a library that Evochora also uses, Evochora's version is the one that loads.
+
+---
+
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

@@ -446,3 +446,7 @@ The configuration file uses HOCON format (`.conf` extension). See `config/evocho
 - Check that the specified tick number exists in the batch files
 - Ensure the storage resource is properly configured
 - Use `--format=summary` for human-readable output or `--format=json` for detailed inspection
+
+---
+
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

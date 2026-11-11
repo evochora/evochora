@@ -1131,3 +1131,7 @@ bin/evochora --config assembly/example.conf node run
 What the specification does not cover, how to leave room for evolution, how to act among other
 organisms, what a procedure has to do for its caller, is in the
 [EvoASM Guidelines](EVOASM_GUIDELINES.md).
+
+---
+
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.
