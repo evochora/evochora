@@ -102,7 +102,7 @@ class ResumeEndToEndTest {
         CapturingQueue<SimulationMetadata> metadataQueue = new CapturingQueue<>();
 
         // Phase 1: Run initial simulation
-        String runId = runSimulationAndCapture(tickQueue, metadataQueue, 100);
+        String runId = runSimulationAndCapture(tickQueue, metadataQueue);
 
         // Verify we captured data
         assertThat(metadataQueue.getCaptured()).hasSize(1);
@@ -223,12 +223,11 @@ class ResumeEndToEndTest {
     }
 
     /**
-     * Runs a simulation for the specified number of ticks and captures output.
+     * Runs a simulation until its output holds an accumulated delta, and returns the run ID.
      */
     private String runSimulationAndCapture(
             CapturingQueue<TickDataChunk> tickQueue,
-            CapturingQueue<SimulationMetadata> metadataQueue,
-            int targetTicks) throws Exception {
+            CapturingQueue<SimulationMetadata> metadataQueue) throws Exception {
 
         SimulationEngine engine = createNormalEngine(tickQueue, metadataQueue);
 

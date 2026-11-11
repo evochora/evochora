@@ -143,7 +143,7 @@ class AnalyticsIndexerEndToEndTest {
 
         // Write one chunk with 10 ticks (with organisms for population metrics)
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 10);
-        StoragePath key = writeChunkBatch(runId, batch, 0, 9);
+        StoragePath key = writeChunkBatch(runId, batch);
 
         // Create AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId, 10);
@@ -189,9 +189,9 @@ class AnalyticsIndexerEndToEndTest {
         List<TickData> batch2 = createTestTicksWithOrganisms(runId, 25, 25);
         List<TickData> batch3 = createTestTicksWithOrganisms(runId, 50, 25);
 
-        StoragePath key1 = writeChunkBatch(runId, batch1, 0, 24);
-        StoragePath key2 = writeChunkBatch(runId, batch2, 25, 49);
-        StoragePath key3 = writeChunkBatch(runId, batch3, 50, 74);
+        StoragePath key1 = writeChunkBatch(runId, batch1);
+        StoragePath key2 = writeChunkBatch(runId, batch2);
+        StoragePath key3 = writeChunkBatch(runId, batch3);
 
         // Create AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId, 25);
@@ -243,7 +243,7 @@ class AnalyticsIndexerEndToEndTest {
 
         // Write one chunk
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 5);
-        StoragePath key = writeChunkBatch(runId, batch, 0, 4);
+        StoragePath key = writeChunkBatch(runId, batch);
 
         // Create and start AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId, 5);
@@ -283,7 +283,7 @@ class AnalyticsIndexerEndToEndTest {
 
         // Write chunk starting at tick 0 (should be in 000/000/ folder)
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 10);
-        StoragePath key = writeChunkBatch(runId, batch, 0, 9);
+        StoragePath key = writeChunkBatch(runId, batch);
 
         // Create AnalyticsIndexer with folder structure
         indexer = createAnalyticsIndexer("test-indexer", runId, 10);
@@ -317,7 +317,7 @@ class AnalyticsIndexerEndToEndTest {
 
         // Write one chunk with 100 ticks (to have data in lod1 which samples every 10th tick)
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 100);
-        StoragePath key = writeChunkBatch(runId, batch, 0, 99);
+        StoragePath key = writeChunkBatch(runId, batch);
 
         // Create AnalyticsIndexer with 2 LOD levels
         indexer = createAnalyticsIndexerWithLodLevels("test-indexer", runId, 2, 100);
@@ -365,8 +365,8 @@ class AnalyticsIndexerEndToEndTest {
         List<TickData> batch1 = createTestTicksWithOrganisms(runId, 0, 10);
         List<TickData> batch2 = createTestTicksWithOrganisms(runId, 10, 10);
 
-        StoragePath key1 = writeChunkBatch(runId, batch1, 0, 9);
-        StoragePath key2 = writeChunkBatch(runId, batch2, 10, 19);
+        StoragePath key1 = writeChunkBatch(runId, batch1);
+        StoragePath key2 = writeChunkBatch(runId, batch2);
 
         // Create and start AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId, 10);
@@ -402,7 +402,7 @@ class AnalyticsIndexerEndToEndTest {
 
         // Ticks 1..10 contain no multiple of 100, so no metric row can come from this batch
         List<TickData> batch = createTestTicksWithOrganisms(runId, 1, 10);
-        StoragePath key = writeChunkBatch(runId, batch, 1, 10);
+        StoragePath key = writeChunkBatch(runId, batch);
 
         indexer = createAnalyticsIndexerWithSamplingInterval("test-indexer", runId, 100);
         indexer.start();
@@ -432,7 +432,7 @@ class AnalyticsIndexerEndToEndTest {
         indexMetadata(runId, createTestMetadata(runId, 1));
 
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 10);
-        StoragePath key = writeChunkBatch(runId, batch, 0, 9);
+        StoragePath key = writeChunkBatch(runId, batch);
 
         indexer = createAnalyticsIndexerWithSamplingInterval("test-indexer", runId, 100);
         indexer.start();
@@ -691,7 +691,7 @@ class AnalyticsIndexerEndToEndTest {
         return ticks;
     }
 
-    private StoragePath writeChunkBatch(String runId, List<TickData> ticks, long firstTick, long lastTick) throws Exception {
+    private StoragePath writeChunkBatch(String runId, List<TickData> ticks) throws Exception {
         // Convert each tick to its own chunk (each chunk has tickCount=1)
         // This matches production behavior where each tick gets its own snapshot in test scenarios
         List<TickDataChunk> chunks = new ArrayList<>();
@@ -787,7 +787,7 @@ class AnalyticsIndexerEndToEndTest {
     void aFailedAnalyticsWriteLeavesTheBatchUnacknowledged() throws Exception {
         String runId = "20251201-170000-" + UUID.randomUUID();
         indexMetadata(runId, createTestMetadata(runId, 10));
-        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 0, 10), 0, 9);
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 0, 10));
 
         indexer = createIndexerWithFailingAnalyticsWrites("failing-indexer", runId);
         indexer.start();
@@ -886,7 +886,7 @@ class AnalyticsIndexerEndToEndTest {
         indexMetadata(runId, createTestMetadata(runId, 1));
 
         // 25 recordings, ticks 1..25; lod1 takes every tenth of them
-        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 25), 1, 25);
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 25));
         indexer = createSummingIndexer("test-indexer", runId, 25, 2, "");
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS)
@@ -918,8 +918,8 @@ class AnalyticsIndexerEndToEndTest {
         String runId = "20251201-181000-" + UUID.randomUUID();
         indexMetadata(runId, createTestMetadata(runId, 1));
 
-        StoragePath first = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 15), 1, 15);
-        StoragePath second = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 16, 15), 16, 30);
+        StoragePath first = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 15));
+        StoragePath second = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 16, 15));
 
         indexer = createSummingIndexer("test-indexer", runId, 15, 2, "");
         indexer.start();
@@ -957,7 +957,7 @@ class AnalyticsIndexerEndToEndTest {
         indexMetadata(runId, createTestMetadata(runId, 1));
 
         // Ticks 10 and 20 produce no row, which is where lod1 would close its window
-        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 25), 1, 25);
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 25));
         indexer = createSummingIndexer("test-indexer", runId, 25, 2, "skipMultiplesOf = 10");
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS)
@@ -993,7 +993,7 @@ class AnalyticsIndexerEndToEndTest {
         String runId = "20251201-183000-" + UUID.randomUUID();
         indexMetadata(runId, createTestMetadata(runId, 1));
 
-        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 5), 1, 5);
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 5));
         indexer = createSummingIndexer("test-indexer", runId, 5, 1, "rowsPerRecording = 2");
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS)

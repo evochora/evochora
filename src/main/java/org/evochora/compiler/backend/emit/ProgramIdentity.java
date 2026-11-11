@@ -100,7 +100,7 @@ public final class ProgramIdentity {
             update(digest, name.length);
             digest.update(name);
             switch (flag.getValue()) {
-                case FlagSetting.Off off -> {
+                case FlagSetting.Off _ -> {
                     update(digest, 0);
                     update(digest, 0L);
                 }

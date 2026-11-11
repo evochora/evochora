@@ -59,7 +59,7 @@ public final class Evaluator {
             case NameAnswer.Value value -> new EvaluationResult.Value(value.value());
             case NameAnswer.Later later -> new EvaluationResult.Partial(
                     new NameExpression(later.qualifiedName(), name.sourceInfo(), name.end()), later.kind());
-            case NameAnswer.Reported reported -> new EvaluationResult.Reported();
+            case NameAnswer.Reported _ -> new EvaluationResult.Reported();
             case NameAnswer.NotUsable notUsable -> new EvaluationResult.Error(notUsable.explanation(), name.sourceInfo());
         };
     }
@@ -110,7 +110,7 @@ public final class Evaluator {
                 }
                 yield new EvaluationResult.Value(value.value());
             }
-            case OperationResult.NotYet notYet -> remaining(expression, results, kind);
+            case OperationResult.NotYet _ -> remaining(expression, results, kind);
             case OperationResult.Error error -> new EvaluationResult.Error(error.reason(), expression.sourceInfo());
         };
     }
@@ -146,8 +146,8 @@ public final class Evaluator {
             operands.add(switch (results.get(i)) {
                 case EvaluationResult.Value value -> new LiteralExpression(value.value(), original.sourceInfo(), original.end());
                 case EvaluationResult.Partial rest -> rest.expression();
-                case EvaluationResult.Error error -> throw new IllegalStateException("An operand that failed stays in no tree.");
-                case EvaluationResult.Reported reported -> throw new IllegalStateException("An operand that failed stays in no tree.");
+                case EvaluationResult.Error _ -> throw new IllegalStateException("An operand that failed stays in no tree.");
+                case EvaluationResult.Reported _ -> throw new IllegalStateException("An operand that failed stays in no tree.");
             });
         }
         return new EvaluationResult.Partial(

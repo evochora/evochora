@@ -1,388 +1,408 @@
-# Evochora: Making the Physics of Digital Evolution an Experimental Variable
+# Evochora: A Simulation Platform for Digital Evolution Research
 
 ## Abstract
 
-A persistent challenge in digital evolution research is that the physical laws governing a simulation — how energy works, how mutation operates, how organisms interact with space — are typically fixed by the designer. Organisms evolve within these rules, but the rules themselves cannot be varied experimentally. This makes it difficult to disentangle which evolutionary dynamics are consequences of the physics and which are genuine emergent properties of evolution itself.
+Evochora is an open-source platform for digital evolution research in which a program is a body. The environment of its organisms is a space made of typed matter, and their logic and behavior are made of the same. They find their energy there, build and place their offspring there, and reshape their surroundings. A neighbor can dismantle them molecule by molecule. Survival is thermodynamic: every instruction costs energy and produces entropy. Harvesting replenishes energy, and only what the organism writes into the environment carries entropy away. The organism dies when it runs out of energy or fills up with entropy. No fitness function rewards it from outside. The platform is built to study what only a body of matter has: material, shape, territory, metabolism, and what of these a parent passes on. The question behind them is what an environment must provide for complexity to keep arising.
 
-Evochora is an open-source platform designed to make the physics of a digital world a first-class experimental variable. Its plugin architecture allows researchers to swap out thermodynamic models, mutation operators, and resource distribution strategies without modifying the core simulation. Organisms exist as spatially distributed code in a configurable n-dimensional grid, navigating it through local pointers — there are no global views, no external rewards, and no predefined fitness functions. Genomes are inherently resilient to structural mutations through fuzzy label matching, preserving neutral space for evolutionary exploration. A deterministic, decoupled data pipeline persists complete simulation state and exports metrics as Parquet files for analysis with standard scientific tools.
+The first experiment records are published and citable. In them, each selective sweep was traced to the change that caused it, down to the single molecule. None of the evolved bodies or behaviors were designed or rewarded: parents came to build their children far away, a dispersal that loosened the kin structure of the population; the shell around a child changed to cheaper matter; and the rule for when to reproduce settled in opposite directions in two runs, one with plentiful energy and one with little.
 
-This document describes the scientific motivation behind these design choices, the observation and analysis tools available for working with simulation data, and the research directions the platform is built to support — from replicator ecology and evolvability to digital eukaryogenesis, multicellularity, and reaction-based chemistry.
-
-**Live visualization:** [http://evochora.org/](http://evochora.org/)
+Researchers can set the conditions of a run: the environment's dimensions and landscape, its energy supply, the thermodynamics, and the structure-aware mutation plugins. They write the ancestors it begins from in EvoASM, Evochora's spatial assembly language, from scratch or from a library of behaviors. A run can start from one ancestor or from several that compete. A web visualizer follows a selected organism instruction by instruction, and run data are exported as Parquet files for standard analysis tools. Every run is deterministic, runs at millions of instructions per second on a workstation, and can be resumed or re-recorded in any detail. Runs have reached billions of ticks.
 
 ## Table of Contents
 
 1. [Introduction](#1-introduction)
+    - [1.1 Evochora among related systems](#11-evochora-among-related-systems)
 2. [The Digital Physics of Evochora](#2-the-digital-physics-of-evochora)
-    - [2.1 The N-Dimensional World and Typed Molecules](#21-the-n-dimensional-world-and-typed-molecules)
-    - [2.2 The Virtual Machine and Spatial Code Execution](#22-the-virtual-machine-and-spatial-code-execution)
-    - [2.3 Metabolism, Survival, and Ownership](#23-metabolism-survival-and-ownership)
-    - [2.4 Extensible by Design: The Plugin Architecture](#24-extensible-by-design-the-plugin-architecture)
-    - [2.5 The Primordial Organism: A Case Study in Viability](#25-the-primordial-organism-a-case-study-in-viability)
-3. [From Simulation to Science](#3-from-simulation-to-science)
-    - [3.1 Visualization](#31-visualization)
-    - [3.2 Data Export and Analysis with Standard Tools](#32-data-export-and-analysis-with-standard-tools)
-4. [Scientific Avenues: From Theory to Experiment](#4-scientific-avenues-from-theory-to-experiment)
-    - [4.1 Replicator Ecology](#41-replicator-ecology)
-    - [4.2 Environmental Heterogeneity and Dynamic Worlds](#42-environmental-heterogeneity-and-dynamic-worlds)
-    - [4.3 Evolvability and Mutation Regimes](#43-evolvability-and-mutation-regimes)
-    - [4.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis](#44-the-bioenergetics-of-complexity-a-digital-eukaryogenesis)
-    - [4.5 From Internal Coordination to Multicellularity](#45-from-internal-coordination-to-multicellularity)
-    - [4.6 Digital Chemistry and Reaction Networks](#46-digital-chemistry-and-reaction-networks)
-5. [Scalability and Reproducibility](#5-scalability-and-reproducibility)
-    - [5.1 Performance and Scalability Architecture](#51-performance-and-scalability-architecture)
-    - [5.2 Data Pipeline and Reproducibility](#52-data-pipeline-and-reproducibility)
-6. [Conclusion](#6-conclusion)
-7. [Getting Involved](#7-getting-involved)
-8. [Acknowledgements](#8-acknowledgements)
-9. [References](#9-references)
+    - [2.1 The Environment and Its Molecules](#21-the-environment-and-its-molecules)
+    - [2.2 The Virtual Machine](#22-the-virtual-machine)
+    - [2.3 Ownership and Thermodynamics](#23-ownership-and-thermodynamics)
+    - [2.4 Plugin Interfaces](#24-plugin-interfaces)
+    - [2.5 The Ancestor](#25-the-ancestor)
+3. [Running Experiments](#3-running-experiments)
+    - [3.1 An Experiment](#31-an-experiment)
+    - [3.2 What a Run Records](#32-what-a-run-records)
+    - [3.3 Analyzing a Run](#33-analyzing-a-run)
+4. [First Results](#4-first-results)
+5. [Research Directions](#5-research-directions)
+    - [5.1 Replicator Ecology](#51-replicator-ecology)
+    - [5.2 Predators and Prey](#52-predators-and-prey)
+    - [5.3 Host–Parasite Coevolution](#53-hostparasite-coevolution)
+    - [5.4 Heterogeneous and Dynamic Environments](#54-heterogeneous-and-dynamic-environments)
+    - [5.5 The Structure of Variation](#55-the-structure-of-variation)
+    - [5.6 Genotype and Phenotype](#56-genotype-and-phenotype)
+    - [5.7 A Digital Eukaryogenesis](#57-a-digital-eukaryogenesis)
+    - [5.8 Toward Multicellularity](#58-toward-multicellularity)
+    - [5.9 Metabolism and Food Webs](#59-metabolism-and-food-webs)
+6. [Reproducibility and Resources](#6-reproducibility-and-resources)
+    - [6.1 Reproducibility](#61-reproducibility)
+    - [6.2 Resources](#62-resources)
+    - [6.3 Direction](#63-direction)
+7. [Limitations](#7-limitations)
+8. [Conclusion](#8-conclusion)
+9. [Getting Involved](#9-getting-involved)
+10. [Disclosure](#10-disclosure)
+11. [References](#11-references)
 
 ## 1. Introduction
 
-Digital evolution platforms allow researchers to study evolutionary dynamics in controlled, reproducible environments. Since Tom Ray's Tierra [(Ray, 1991)](#ref-ray-1991), the field has produced a range of systems with fundamentally different approaches: Avida introduced task-based fitness rewards to drive the evolution of complex logic functions [(Ofria & Wilke, 2004)](#ref-ofria-2004); Lenia explored continuous dynamics and self-organizing morphology [(Chan, 2019)](#ref-chan-2019); systems like Karl Sims' virtual creatures demonstrated that complex body plans could emerge from evolutionary optimization [(Sims, 1994)](#ref-sims-1994).
+Biology shows that evolution can produce complexity, but also that this takes conditions which were a long time coming. Life on Earth remained microbial for most of its history before complex organisms appeared, late and in bursts. Digital evolution has reproduced the early part of this history. In Tierra, the system the field was built on, self-replicating programs gave rise to parasites and to defenses against them within a few million instructions, without any fitness measure imposed from outside [(Ray, 1991)](#ref-ray-1991). In Avida, the field's main experimental system since, complex functions evolve when the environment rewards them, with results that reached the biological literature [(Ofria & Wilke, 2004)](#ref-ofria-2004).
 
-A common constraint across these platforms, however, is that their physical laws — how organisms acquire resources, how mutation works, how space is structured — are fixed at design time. Researchers can vary parameters within these rules, but cannot systematically compare *different sets of rules*. This limits the ability to ask a class of questions that is central to evolutionary theory: how do the physical constraints of a world shape the evolutionary dynamics within it?
+The later part has not been reproduced yet. After an initial burst of innovation, the rate at which new adaptations appear levels off in the systems Bedau and colleagues measured [(Bedau et al., 1998)](#ref-bedau-1998). What is missing has been debated for three decades under the name of open-ended evolution. Several of the conditions proposed concern the organism's body: that it should consist of the same material as its environment, that energy should be something it has to collect rather than processor time it is given, and that it should have to maintain itself against entropy ([Taylor, 2014](#ref-taylor-2014); [Taylor, 2015](#ref-taylor-2015)). Both Tierra and Avida were built around the program. In Tierra an organism is a sequence of instructions in a shared memory that contains nothing else. In Avida it is a program running on a virtual CPU of its own. A body in this sense was not part of either design. Artificial chemistries [(Dittrich et al., 2001)](#ref-dittrich-2001) approached the body from the other side. In Squirm3 self-replicating molecules arise from a random soup and matter is conserved, but nothing executes [(Hutton, 2002)](#ref-hutton-2002). In Stringmol, built for questions of this kind, the molecules are programs that act on one another, but a molecule has no extent in space [(Hickinbotham et al., 2016)](#ref-hickinbotham-2016).
 
-Evochora is designed to address this gap. It provides a configurable, extensible simulation environment where the physics themselves are experimental variables. This document describes the platform's architecture and the scientific questions it enables. For the personal history of the project, see the [Origin Story](ORIGIN_STORY.md).
+Evochora's organisms are programs that consist of the same material as their environment and have extent in space. The material itself does not react; it is what programs read, write and consume. The body is defined by ownership. The environment is a grid, and each of its cells holds one molecule of a few kinds: code, which organisms execute; data, which they read and write; structure, which cannot be passed but only removed at a cost; and energy, which they collect and can store. An organism is the set of cells it owns, and in the environment there is nothing else of it. It has to assemble this body itself. An offspring is not a copy that the system places somewhere, but a structure the parent writes into free cells with its own pointers, at whatever place it can reach. That individuals make such decisions themselves is one of the conditions Soros and Stanley propose for open-endedness [(Soros & Stanley, 2014)](#ref-soros-2014). The child inherits the cells the parent has marked for it, together with the energy the parent hands over. Every molecule written costs energy, and a neighbor can take apart what another has built. The three conditions named above are met in the physics. The body is made of the environment's material, which the organism writes out of energy and which is gone when taken up. Energy is a molecule the organism has to find and collect. Instructions produce entropy that only writing into the environment sheds, so an organism has to keep changing the environment to stay alive. The idea behind this rule is Schrödinger's [(Schrödinger, 1944)](#ref-schrodinger-1944). Form, size, place, inheritance, the timing of reproduction and the behavior that leads to them are decided by the program rather than by the system, and so they are exposed to selection.
 
-### Comparison of Landmark Digital Evolution Platforms
+These conditions were not designed in one piece. They entered one after another, each when a run showed that something was missing: entropy, for instance, after the first populations had copied over one another into an error catastrophe [(Eigen, 1971)](#ref-eigen-1971). [Energy sources, thermodynamic policies, mutation operators and death handlers](#24-plugin-interfaces) are plugins, components that can be exchanged or added without touching the rest. The question of what an environment has to provide can thereby be asked one condition at a time.
 
-The following table contextualizes Evochora within the history of major A-Life systems, highlighting the different scientific questions and design trade-offs each system explores.
+What exists today is a platform on which populations sustain themselves over billions of ticks, and [published runs](PUBLISHED_EXPERIMENTS.md) in which a change of the program swept to fixation and could be traced to its mechanism. The rise of complexity has not been shown in Evochora yet; the platform is built to look for it.
 
-| Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | Evochora |
-| :--- | :--- | :--- | :--- | :--- |
-| **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | Spatial code execution in n-Dimensional grid |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (Thermodynamics, Resource Distribution) |
-| **Organism Body** | Disembodied (Code string only) | Disembodied (CPU + Memory buffer) | Morphological patterns (solitons) | IP + DPs navigating spatial grid |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs); Planned: Signaling |
-| **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Metabolic & spatial constraints |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Sequential; Planned: Intra-organism parallelism (multiple execution threads) |
-| **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | User-defined evolution experiments |
+The platform consists of a runtime that runs the simulation, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the environment, the tools for observing and analyzing a run, the first results, the research directions, its reproducibility and the resources a run needs, and the limitations. A running simulation can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
+
+### 1.1 Evochora among related systems
+
+The table reads along the lines of the introduction: what an organism is and what its environment holds, what resources it lives on, how offspring arise and what they inherit, where selection and variation come from, and how organisms reach one another. Lenia and Flow-Lenia are included for a case beyond the introduction's lines: creatures that are bodies in a medium but not programs.
+
+| System | The organism | Resources | Offspring | Selection | Variation | Interaction |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Tierra** [(Ray, 1991)](#ref-ray-1991) | Executes programs in a shared memory | CPU time, memory space | Parent copies into allocated memory | Reaper; faster copying wins | Bit flips, copy errors | Others' code readable and executable, write-protected |
+| **Avida** [(Ofria & Wilke, 2004)](#ref-ofria-2004) | Executes a program per cell | CPU cycles by merit; resources as numbers | Parent copies, system places the child | Replacement; rewarded tasks | Copy errors, indels | Little; messaging, predation, host-parasite coevolution in extensions |
+| **Squirm3** [(Hutton, 2002)](#ref-hutton-2002) | Bonds atoms into chains | Atoms, conserved | Template replication from free atoms | Competition for free atoms | Interactions between replicators | Shared atoms |
+| **Stringmol** [(Hickinbotham et al., 2016)](#ref-hickinbotham-2016) | Reacts strings in a container or on a grid [(Hickinbotham et al., 2021)](#ref-hickinbotham-2021) | Energy to execute opcodes in the original model; strings decay | One string copies another when bound | Decay, binding | Copy errors | Binding |
+| **Lenia** [(Chan, 2019)](#ref-chan-2019) | Forms patterns in a continuous field | None | Not built in | None; the user selects | Parameters set by the experimenter | Collision, fusion |
+| **Flow-Lenia** [(Plantec et al., 2023)](#ref-plantec-2023) | Flows conserved mass into patterns that carry their rule parameters | Mass, conserved | Not built in; patterns divide and merge | Species displace one another over mass | Parameters mix on contact; mutations added by the experimenter | Flows of mass between patterns |
+| **Evochora** | Executes a spatial body as a program | Energy molecules from sources; space | Parent assembles and places; marked cells inherited | Death by energy or entropy; space | Structure-aware mutation plugins; imperfect copies | Through the environment: consume, replace, execute others' code |
 
 ## 2. The Digital Physics of Evochora
 
-The Evochora platform is designed to serve as a flexible testbed for digital evolution research. Its design is guided by the principles of modularity, extensible physics, and spatially distributed code execution. This section details the core, currently implemented components of the system.
-
-### Fig. 1: Conceptual Architecture of an Evochora Organism
-```
-         +---------------------------------------------------------------+
-         |                 Evochora "World" (n-D Grid)                   |
-         |                                                               |
-         |   [ ENERGY ]      [ STRUCTURE ]      [ CODE ]      [ DATA ]   |
-         +-------^-----------------^----------------^-------------^------+
-                 |                 |                |             |
-    Interaction: |                 |                |             |
-             (HARVEST)          (BLOCK)         (EXECUTE)      (READ)
-                 |                 |                |             |
-                 |                 |                |             |
-         +-------|-----------------|----------------|-------------|------+
-         |       |    ORGANISM     |                |             |      |
-         |       |                 |                |             |      |
-         |   +---v-----------------v----+      +----v-------------v----+ |
-         |   |    Data Pointers (DPs)   |      |   Inst. Pointer (IP)  | |
-         |   | [DP 0] [DP 1] ... [DP n] |<-----|                       | |
-         |   +--------------------------+      +-----------------------+ |
-         |                 ^                                  ^          |
-         |         (Move/Read/Write)                      (Control)      |
-         |                 |                                  |          |
-         |   +-------------v----------------------------------v------+   |
-         |   |                  Virtual Machine                      |   |
-         |   |                                                       |   |
-         |   |  Registers: [DRs] [LRs] [PDRs] [PLRs]                 |   |
-         |   |             [FDRs] [FLRs] [SDRs] [SLRs]               |   |
-         |   |                                                       |   |
-         |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
-         |   |                                                       |   |
-         |   |  Metabolism: [Thermodynamics (ER/SR)] --(Cost)--> 0   |   |
-         |   +-------------------------------------------------------+   |
-         +---------------------------------------------------------------+
-```
-
-### 2.1 The N-Dimensional World and Typed Molecules
-
-The foundation of Evochora is a world defined by an n-dimensional grid of fundamental units called **Molecules**. The number of dimensions (n) is fully configurable, allowing for experimentation in spatial environments from 2D planes to higher-dimensional spaces. The world's topology is also configurable and can be set to be either bounded or toroidal. Each Molecule is represented by a 32-bit integer, with a configurable number of bits allocated to its type and its value. This extensible type system forms the basis of the world's physics. The five primary types are:
-
-- **CODE**: A Molecule whose value represents a virtual machine instruction. A value of 0 corresponds to the NOP (No Operation) instruction and represents empty space.
-- **DATA**: A Molecule whose value serves as a numerical argument for CODE instructions.
-- **STATE**: A DATA value an organism has written for its own use — working memory rather than code, so that a value an organism keeps changing can be told from the code it carries. It behaves like DATA in arithmetic and comparisons; Section 2.3 says how a write becomes STATE.
-- **ENERGY**: A resource Molecule whose value represents a quantity of energy an organism can absorb.
-- **STRUCTURE**: A Molecule that acts as a physical obstacle, costing energy to interact with.
-
-Additional molecule types (LABEL, LABELREF, REGISTER) serve the compiler and virtual machine internally — for example, enabling fuzzy jump resolution and bank-aware mutation strategies — but are not an integral part of the world's physics.
-
-This core system is designed for expansion. The ability to introduce new Molecule types opens up significant research avenues, such as evolving a complex "chemistry" where Molecules must be combined to create higher-order resources, or a concept of "waste" that could be recycled by other organisms.
-
-### 2.2 The Virtual Machine and Spatial Code Execution
-
-Organisms in Evochora are spatially distributed code, not abstract computational entities. Each organism is governed by a spatial Virtual Machine (VM) that endows it with a rich internal state and a unique model for interacting with the world. A complete specification of the virtual machine, its instruction set, and the assembly language is provided in the [Assembly Specification](https://github.com/evochora/evochora/blob/main/docs/ASSEMBLY_SPEC.md).
-
-The VM separates an organism's "processor" from its "actuators":
-
-- The **Instruction Pointer (IP)** executes the CODE Molecule at its current position. It moves "forward" according to a local Direction Vector (DV), which the organism can modify at runtime, allowing for complex, n-dimensional code layouts.
-- **Data Pointers (DPs)** are the organism's "limbs" used for all direct world interactions, like reading (PEEK) and writing (POKE) Molecules.
-
-To support complex behaviors, the VM provides a rich set of internal components, whose counts and sizes are configurable:
-
-**Registers**: 8 register banks organized by scope (Global, Proc-Local, Formal, Static) and type (Data, Location). Data registers (`*DR`) hold any value; Location registers (`*LR`) hold only vectors and have dedicated instructions for moving the Data Pointer to stored positions with ownership enforcement.
-- **Global**: **DRs** and **LRs** — persist across procedure calls
-- **Proc-Local**: **PDRs** and **PLRs** — automatically saved/restored on CALL/RET
-- **Formal**: **FDRs** and **FLRs** — used for procedure parameter passing (REF/VAL/LREF/LVAL)
-- **Static**: **SDRs** and **SLRs** — persistent per-procedure state, enabling procedures to function as stateful "organs" with internal memory
-
-**Stacks**: Three distinct stacks manage program flow and memory:
-- **Data Stack (DS)** for general computation
-- **Call Stack (CS)** for procedure calls
-- **Location Stack (LS)** dedicated to storing coordinates
-
-This architecture provides evolution with a powerful but low-level toolkit. Higher-order behaviors are not predefined; they must emerge from the combination of these fundamental capabilities. A key innovation enabled by this design is the organism's navigation model. While basic DP movement is local and step-wise (SEEK), an organism can store its current DP coordinates in its LRs or push them onto the LS. These stored locations can then be jumped to directly. This design elegantly solves a key challenge: it allows for efficient, non-linear movement patterns and complex spatial routines without breaking the fundamental principle of locality, as organisms can only jump to places they have physically visited before.
-
-These design choices enforce a strong principle of **locality and physical immobility**. An organism has no internal knowledge of its absolute coordinates, only its local surroundings. Furthermore, Evochora deliberately omits a high-level instruction for moving an organism's entire physical footprint (CODE, DATA and STRUCTURE Molecules). This omission is a conscious design choice that focuses the evolutionary dynamics on spatially fixed organisms and their local interactions — a constraint that may prove particularly relevant for investigating the origins of aggregation and cooperation. The instruction set is extensible, so researchers who need mobile organisms for a specific research question can add a movement instruction without modifying the core runtime. But the default constraint of immobility is expected to create more interesting evolutionary pressure, which is why it is not included out of the box.
-
-Unlike classical von Neumann architectures, jump instructions in Evochora do not target exact memory addresses. Instead, they resolve targets through **fuzzy label matching** based on Hamming distance. The organism's code contains label molecules that act as named anchors; a jump instruction searches for a matching label within a configurable tolerance — among the organism's own labels first, and among the labels of other organisms only when none of its own matches, and then only within a configurable reach. This means that mutations which insert, delete, or shift code do not break control flow — as long as the label pattern is approximately preserved, the jump still resolves. This makes genomes inherently resilient to structural mutations, preserving a large neutral space in the fitness landscape where genetic drift can occur without immediate lethality. When gene duplication produces multiple identical labels, target selection is stochastic rather than deterministic: closer labels are more likely to be selected, but distant copies still have a nonzero probability. This allows duplicated code regions to diverge independently — one copy can accumulate mutations while the other remains conserved, a mechanism analogous to subfunctionalization in biological gene duplication. Fuzzy addressing is a prerequisite for meaningful evolution in a system where code *is* the genome.
-
-### 2.3 Metabolism, Survival, and Ownership
-
-Survival in Evochora is governed by a configurable thermodynamic economy with two independent axes: **energy** and **entropy**. Every instruction can be assigned energy costs and entropy production, both fully configurable — including zero. For environment interactions (PEEK, POKE), costs can additionally depend on the type and value of the molecule being read or written. In the default configuration, reading an ENERGY molecule via PEEK adds its value to the organism's internal Energy Register (ER), while writing molecules via POKE reduces the organism's entropy register (SR). Writing STATE, the organism's own working memory, does not, so that only writing genome dissipates entropy. Writing ENERGY does not either, because an organism can take it back unchanged. An organism dies when its energy is depleted (ER reaches zero) or its entropy exceeds its threshold (SR exceeds maximum). This two-axis model reflects a foundational idea in theoretical biology: that living systems maintain themselves by exporting entropy to their environment [(Schrödinger, 1944)](#ref-schrodinger-1944), formalized more recently as thermodynamic agents where computation and thermodynamic work are fundamentally coupled [(Gebhardt et al., 2019)](#ref-gebhardt-2019). This creates a configurable selection pressure whose shape — harsh, permissive, or anywhere in between — is itself an experimental variable.
-
-This dynamic is further enriched by a **molecule ownership model**. DPs can only move through empty space or molecules owned by the organism itself. This makes self-replication a non-trivial challenge, as an organism must not only copy its code but also manage the space it occupies. Ownership transfer from parent to child is handled through a **Marker Register (MR)**: during replication, the parent marks molecules via POKE, and upon reproduction (FORK) all marked molecules are transferred to the child. This gives organisms explicit control over which parts of their spatial footprint they bequeath to their offspring. The marker also decides what a written DATA value becomes: written with marker zero it is stored as STATE, the organism's working memory; written with any other marker it stays DATA. Molecules of every other type keep their type whatever the marker, so an organism that rewrites its own code changes what it hands on. A reproduction transfers STATE cells like any other marked cell, with the values they hold at that moment. Reproduction with a marker of zero fails.
-
-### 2.4 Extensible by Design: The Plugin Architecture
-
-A core design philosophy of Evochora is that the fundamental rules of the world should be modular and themselves subject to scientific investigation. This is implemented via a **plugin architecture** that covers four aspects of the simulation:
-
-**Resource distribution** — How does energy enter the world? Built-in models include continuous probabilistic spawning (analogous to solar radiation), periodic eruptions at fixed locations (geysers), and one-time seeding. Researchers can replace or combine these to create entirely different resource landscapes.
-
-**Mutation** — What happens to an organism's genome during reproduction? Four built-in mutation operators cover gene insertion, substitution, deletion, and duplication. Each operates at the structural level — respecting molecule types and instruction syntax — rather than performing blind bit-flips. Label values pass unchanged from parent to child, so relatives share their addresses; an optional namespace flip at birth lets lineages drift apart in them. Researchers can configure, combine, or replace these operators to study how different mutation regimes affect evolvability.
-
-**Death and recycling** — What happens when an organism dies? The default behavior converts dead organisms into energy molecules, creating a nutrient cycle. Alternative rules could leave corpses as inert structure or produce different molecule types.
-
-**Instruction interception** — An extension point for modifying instructions before execution, enabling future research into environmental effects on organism behavior (e.g., simulating localized "radiation" that corrupts instructions in specific regions).
-
-All plugins operate on deterministic, seeded randomness, ensuring full reproducibility. Researchers can swap, combine, or replace any of these without modifying the core simulation.
-
-### 2.5 The Primordial Organism: A Case Study in Viability
-
-The successful implementation of a viable, self-replicating primordial organism serves as a practical demonstration of the architecture's capabilities. The primordial solves the intertwined challenges of metabolism, replication, and spatial management: it uses a STRUCTURE shell as a physical boundary and termination signal for its copying algorithm, gathers energy to maintain a net-positive metabolic loop, and manages ownership of its spatial footprint via the marker register.
-
-A key insight from early development was the role of entropy in population stability. Without entropy constraints, corrupted organisms that had lost the ability to replicate could still survive indefinitely by harvesting energy — while continuing to damage their neighbors' code. This created a chain reaction leading to error catastrophe [(Eigen, 1971)](#ref-eigen-1971). The solution was thermodynamic: since replication involves writing molecules (POKE), it is the primary mechanism for reducing an organism's entropy. Organisms that stop replicating — whether by corruption or by choice — accumulate entropy and eventually die. This makes replication not just a reproductive strategy but a thermodynamic necessity, elegantly coupling survival to functional behavior without imposing artificial penalties.
-
-The current primordial is a defensive replicator that aborts copying when it encounters foreign code rather than overwriting it. In long-running simulations spanning billions of ticks, it sustains stable populations with millions of organisms born across the simulation's lifetime. With mutation plugins enabled, the population exhibits dynamic behavior — periodic crashes and recoveries, genome diversification, and heritable structural variants, one of which rose to fixation in a completed selective sweep (see Section 4).
-
-## 3. From Simulation to Science
-
-Running a simulation is only the first step. The scientific value of a digital evolution platform depends on the ability to observe, record, and analyze what happens inside it. Evochora addresses this through a modular, scalable data pipeline that persists complete simulation state and feeds both a visual inspection tool and a standardized data export for offline analysis (see Section 5 for the pipeline architecture).
-
-### 3.1 Visualization
-
-The primary observation tool is a web-based visualizer, a live demo of which is available at [http://evochora.org/](http://evochora.org/). It allows researchers to step through a simulation tick-by-tick, visualizing the state of the world and inspecting the internal state (registers, stacks, energy, entropy) of every organism. For primordial organisms created with the provided compiler, the visualizer provides source-level inspection capabilities, linking the executing machine code back to the original, human-readable assembly language. While the simulation runtime is fully n-dimensional, the current visualizer is limited to 2D worlds. Additionally, the platform can render simulation runs as videos, providing a powerful tool for observing long-term dynamics.
-
-### 3.2 Data Export and Analysis with Standard Tools
-
-Alongside the visualizer, the data pipeline feeds an analytics indexer that orchestrates a set of configurable **analytics plugins**, each exporting its metrics as **Parquet files** — the standard columnar format used throughout data science — compressed with ZSTD and organized hierarchically by tick range.
-
-Built-in analytics plugins cover fundamental metrics: population dynamics, birth and death rates, generation depth, instruction usage profiles, and environment composition. Each plugin exports its metrics as self-describing Parquet files at multiple levels of detail. Crucially, researchers can define custom analytics plugins that are automatically integrated into the same export pipeline.
-
-This means that analysis is not limited to Evochora's built-in tools. Researchers can load simulation data directly into **Python, R, Jupyter notebooks, or DuckDB** and apply their own analytical methods — phylogenetic reconstruction, diversity indices, survival analysis, genome comparison, or any other technique from their methodological toolkit. A [ready-to-use Jupyter notebook](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb) demonstrates this workflow with phylogenetic trees, Muller plots, and cross-metric analysis using pandas, networkx, and DuckDB. The simulation produces the data; the researcher chooses how to analyze it.
-
-Phylogenies, Muller plots and genome comparison all rest on one question: what counts as a genome. Organisms in Evochora have no genome in the biological sense: there is no separation of genotype and phenotype, the body is the program, and what a child inherits is whatever its parent copied. The platform does not define a genome; it records what an organism is born with. For analysis, a genome is therefore an operational definition — the cells a newborn owns, normalised for its label namespace, minus molecules a run declares to be the organism's own work rather than its inheritance: by default its STATE cells and the STRUCTURE shell the primordial builds around every child. The definition is a parameter of the run and is recorded with it, so that a change in any inherited cell, damage included, counts as a change of genome. A separation of genotype and phenotype — a region of data that steers the behaviour, read by logic the mutation operators do not touch — is something an organism could implement itself; whether it evolves or is designed is an experimental question, not a rule of the world.
-
-This design deliberately avoids building a monolithic analysis suite. The space of possible analyses is vast — from phylogenetic tree reconstruction and Muller plots to fitness landscape visualization and complexity metrics like Assembly Theory [(Sharma et al., 2023)](#ref-sharma-2023). Rather than implementing each of these within the platform, Evochora provides the data in a format that lets the research community bring its own expertise.
-
-## 4. Scientific Avenues: From Theory to Experiment
-
-The stability mechanisms described in Section 2 — thermodynamic coupling, fuzzy addressing, and defensive replication — have produced viable populations sustaining themselves over billions of ticks. Whether a simulation produces genuine evolutionary dynamics or merely random variation has to be established case by case; for Evochora, a first documented instance exists — a completed selective sweep of a heritable variant, published as the platform's first experiment record [(Evochora Project, 2026)](#ref-evochora-2026). Frameworks for classifying long-term evolutionary behavior [(Bedau et al., 2000)](#ref-bedau-2000) provide a broader lens for this question; the research directions below provide others. Some are already experimentally accessible with the current implementation; others require additional development. Each represents a testable hypothesis enabled by the platform's architecture.
-
-### 4.1 Replicator Ecology
-
-In biological ecosystems, the balance between cooperative and competitive strategies is shaped by environmental constraints — resource density, spatial structure, and the cost of conflict [(Maynard Smith & Price, 1973)](#ref-maynard-smith-price-1973). In spatially structured populations, even simple local interactions can shift this balance toward cooperation [(Nowak & May, 1992)](#ref-nowak-may-1992). Digital evolution platforms offer the unique opportunity to vary these constraints systematically and observe which replicator ecologies emerge.
-
-Evochora's current primordial organism is a single defensive strategy: it aborts replication when it encounters foreign code. But this is only one point in a vast space of possible behaviors. What happens when the environment is seeded with multiple competing primordial designs — defensive, aggressive, and opportunistic replicators — under different thermodynamic regimes? The configurable cost of aggression (the energy penalty for modifying foreign-owned molecules) acts as a tunable dial between a lawless free-for-all and strict territorial enforcement.
-
-Beyond replication strategy, behavioral enrichment of the primordial organism opens a second experimental axis. Routines such as shell repair, energy stockpiling, or territorial patrolling are unlikely to evolve spontaneously at current timescales, but they can be hand-coded into primordial variants. Comparing populations seeded with behaviorally enriched primordials against the baseline reveals which routines confer selective advantage — and whether evolution preserves, modifies, or discards them over time.
-
-### 4.2 Environmental Heterogeneity and Dynamic Worlds
-
-In biological evolution, environmental heterogeneity is a primary driver of diversification. Geographic barriers create isolated populations that diverge independently [(Mayr, 1963)](#ref-mayr-1963), resource gradients produce niche specialization, and catastrophic events reset ecological landscapes, opening opportunities for adaptive radiation [(Schluter, 2000)](#ref-schluter-2000).
-
-Evochora's current environment is largely homogeneous — energy is distributed uniformly, and the spatial landscape does not change over time. Introducing heterogeneity along both spatial and temporal axes opens a rich experimental space. Spatial heterogeneity can be created using STRUCTURE molecules as impassable barriers (rivers, mountain ranges), defining resource-rich and resource-poor regions, or establishing isolated "islands" connected by narrow corridors. Temporal dynamics can range from gradual environmental shifts — slow migration of resource zones — to sudden catastrophes that destroy local populations and reset regions to empty space.
-
-The scientific question is direct: does environmental structure alone drive diversification in digital organisms, as it does in biological evolution? Can geographic isolation produce divergent lineages from a single ancestor? Do populations recover differently after catastrophic events depending on their mutation regime or replication strategy? These experiments require no changes to the core runtime — only configuration of the existing plugin architecture for resource distribution and STRUCTURE placement.
-
-### 4.3 Evolvability and Mutation Regimes
-
-Mutation is the ultimate source of evolutionary innovation, yet its implementation in most artificial life platforms remains surprisingly simplistic — typically a single, globally applied mechanism such as random bit-flips at a fixed rate [(Ray, 1991)](#ref-ray-1991). This ignores both the concept of evolvability — the capacity of a system for adaptive evolution, which itself evolves [(Wagner, 2005)](#ref-wagner-2005) — and the role of non-adaptive forces such as drift and mutation pressure in shaping genome architecture [(Lynch, 2007)](#ref-lynch-2007). By hard-coding a specific mutation model, simulations inadvertently fix the topology of the fitness landscape, potentially blocking routes to higher complexity.
-
-Evochora treats mutation as a first-class experimental variable. Four independent mutation operators act at the moment of reproduction, each with distinct configurable parameters:
-
-- **Gene insertion** places syntactically valid instruction chains into empty genome regions, with configurable instruction filters, register bank restrictions, and label mutation rates.
-- **Gene substitution** mutates individual molecules in place, with a separate weight and strategy per molecule type — opcodes can be mutated at the operation, family, or variant level, while numeric values undergo scale-proportional perturbation. Every registered molecule type carries a weight, so which parts of a body are exposed to substitution is itself an experimental parameter; an organism's own state (STATE) is excluded by default.
-- **Gene deletion** removes code blocks between labels, with configurable bias toward duplicate regions (mimicking tandem repeat instability in biological genomes).
-- **Gene duplication** copies labeled code blocks into empty regions, providing raw material for subfunctionalization.
-
-A separate, non-mutational mechanism — the **namespace flip** — XORs all labels and label references of a newborn with a mask of one bit, at a configurable rate. Inside the organism nothing changes, because internal Hamming distances are preserved; between lineages the difference in addresses grows with genealogical distance. With a rate of zero, all descendants of a founder share one address space.
-
-Complementing these operators, the fuzzy label matching system adds a further dimension: tolerance (how many bit errors a jump can absorb), the reach within which a reference without an own match resolves to a foreign label — from never to anywhere in the world, shortened by every differing bit — and the stochastic spread when multiple matching own labels exist. Together, these parameters define a high-dimensional space of mutation regimes.
-
-The experimental program is straightforward: by systematically varying these parameters — individually and in combination — researchers can ask how the structure of variation shapes evolutionary outcomes. Does higher insertion rate accelerate innovation or destabilize populations? Does biased deletion of duplicate regions prevent or promote genome expansion? Does increasing fuzzy jump tolerance create a wider neutral network, allowing populations to cross fitness valleys that trap organisms with stricter matching? These are empirical questions that the platform is built to answer.
-
-Additional mutation mechanisms not yet implemented but architecturally straightforward could further expand this space: environment-driven mutation ("cosmic radiation") that decouples variation from reproduction, copy-error mutation tied to the POKE instruction rather than birth, or somatic mutation affecting an organism's runtime state (registers, stacks) without altering its heritable genome.
-
-### 4.4 The Bioenergetics of Complexity: A Digital Eukaryogenesis
-
-A central puzzle in evolutionary biology is why life on Earth remained microscopic and relatively simple for billions of years before the sudden explosion of complex eukaryotic life. The leading hypothesis, the **"Energetics of Genome Complexity"** [(Lane & Martin, 2010)](#ref-lane-martin-2010), posits that prokaryotes are fundamentally constrained by their bioenergetics: a single cell cannot expand its genome size (and thus complexity) significantly because its energy generation is limited by its surface area. The transition to complexity (Eukaryogenesis) was only possible through endosymbiosis—the internalization of energy-producing bacteria (mitochondria)—which broke this barrier by internalizing the surface area for energy production.
-
-Evochora is uniquely architected to test if a similar **"Processing Power Constraint"** exists in digital life. A traditional single-threaded digital organism faces a trade-off analogous to the prokaryotic constraint: a single Instruction Pointer (IP) must be shared between "metabolic" maintenance (foraging for energy) and "complex" behaviors (navigation, construction). As the genome grows more complex, the cost of maintaining it (execution cycles) outstrips the organism's ability to gather energy sequentially.
-
-The basic mechanism already exists: Evochora's `FORK` instruction can spawn a secondary, fully independent VM context — complete with its own registers, stacks, and data pointers — within the same organism body. However, without coordination, two execution contexts on shared code are merely co-located competitors, not cooperating subsystems. The real scientific challenge is the evolution of coordination: how do two threads within the same body synchronize their actions? One approach, already possible with the current instruction set, is indirect signaling via molecules placed in the shared environment. A more structured approach — direct messaging channels between co-located execution contexts — would require extending the runtime. Whether coordination emerges through existing mechanisms or requires new instructions is itself an open question. The hypothesis is that this internal parallelization, once coordinated, is not just a performance optimization but a necessary prerequisite for the evolution of higher-order complexity.
-
-### 4.5 From Internal Coordination to Multicellularity
-
-The coordination challenge described in the previous section has implications beyond individual organisms. If internal parallelism requires signaling between co-located execution contexts, the same mechanisms could be externalized for communication between neighboring organisms. This leads to a hypothesis about the **Major Transition to Multicellularity** [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995): the signaling machinery evolved for *internal* coordination acts as a **pre-adaptation (exaptation)** for *external* cooperation.
-
-The predicted trajectory follows three stages:
-
-1. **Prokaryotic**: Simple, single-threaded organisms limited by the processing power constraint (one IP).
-2. **Eukaryotic**: Internal parallelism via `FORK` breaks the energy constraint, requiring coordination — initially through molecules deposited in the shared environment, potentially through dedicated signaling channels.
-3. **Multicellular**: The same coordination mechanisms are externalized. Genetically related neighbors — siblings from the same parent, where kin selection [(Hamilton, 1964)](#ref-hamilton-1964) favors cooperation — begin to coordinate, forming higher-level units of individuality through a **Fraternal Transition** [(Moreno & Ofria, 2022)](#ref-moreno-2022).
-
-With the current instruction set, inter-organism signaling is already possible in principle: organisms can deposit and read molecules in the environment, functioning as a primitive broadcast mechanism analogous to biological quorum sensing [(Bonabeau et al., 1999)](#ref-bonabeau-1999). Whether this is sufficient for the emergence of cooperation, or whether dedicated signaling instructions are needed to enable richer coordination — targeted messaging, persistent bonds between neighbors, or direct resource transfer — is an open experimental and design question.
-
-Acknowledging that the spontaneous evolution of such complex architectures could take prohibitively long (mirroring the "Boring Billion" stasis in Earth's history), researchers can seed experiments with engineered multi-threaded primordials that already possess internal coordination, testing directly whether pre-existing signaling channels accelerate the transition to multicellularity.
-
-### 4.6 Digital Chemistry and Reaction Networks
-
-Evochora's current thermodynamic model — with its two-axis energy/entropy economy — already provides meaningful selection pressure. But the resource landscape remains simple: organisms harvest a single type of energy molecule. Biological ecosystems, by contrast, are driven by complex chemical reaction networks where the waste products of one metabolic pathway become resources for another, giving rise to trophic webs and circular economies.
-
-A natural extension of Evochora's physics is the introduction of a **reaction system**. Instead of a single ENERGY molecule, the environment could contain multiple substrate types — either as new molecule types or encoded in the value bits of existing types. Energy acquisition would no longer be a simple PEEK operation but a **reaction** catalyzed by the organism: combining specific substrates (A + B → C + Energy + Entropy) to unlock energy. This creates the possibility of **reaction chains**, where complex metabolic pathways must evolve to access high-yield energy sources, while simpler reactions yield less [(Dittrich et al., 2001)](#ref-dittrich-2001).
-
-This approach offers an intriguing parallel to Avida's task-based fitness rewards [(Ofria & Wilke, 2004)](#ref-ofria-2004) — but with a crucial difference. In Avida, the reward structure (which logic functions earn resources) is externally defined by the researcher. In a reaction-based chemistry, the "fitness landscape" emerges intrinsically from the physics of the world itself. Organisms that evolve more sophisticated metabolic pathways gain access to richer energy sources, much as biological evolution produced photosynthesis and aerobic respiration — not because an external reward function demanded it, but because the chemistry of the environment made it possible.
-
-Such a system naturally leads to **niche construction** [(Odling-Smee et al., 2003)](#ref-odling-smee-2003). Reactions produce byproducts that accumulate in the environment, altering it over time. A "waste" product might become the substrate for a new mutant that evolves the machinery to consume it — closing the loop and creating a new ecological niche. This echoes the dynamics observed in **Chromaria** [(Soros & Stanley, 2014)](#ref-soros-2014), where the physical remains of organisms reshape the evolutionary landscape for subsequent generations. The death handler plugin already demonstrates this principle in miniature: it can be configured to convert dead organisms into energy molecules or other substrates, creating a basic nutrient cycle. A full reaction system would extend this into a rich chemical ecology where food webs and metabolic specialization can emerge.
-
-## 5. Scalability and Reproducibility
-
-The grand scientific ambitions of Evochora are predicated on the ability to run large-scale experiments that are both computationally feasible and scientifically rigorous. Unlike many prototype simulations, Evochora is built on a mature software engineering foundation designed for long-term stability and distributed execution. This section outlines the computational framework, addressing its performance architecture, data handling capabilities, and the provisions for reproducible analysis.
-For a detailed technical breakdown of the engineering choices behind this performance (e.g., why standard GPU kernels were avoided), see the **[Architecture & Design Decisions](ARCHITECTURE_DECISIONS.md)** document.
-
-### Engineering Maturity Status
-
-| Component | Status | Feature Highlights |
-| :--- | :--- | :--- |
-| **Virtual Machine** | ✔ Functional | Full register set, 3 stacks, dual-pointer architecture, procedural calls. |
-| **Determinism** | ✔ Verified | Identical simulation state and trajectory from seed and configuration, independent of thread count and of pause/resume; conflict resolution by computed per-tick priority. |
-| **Compiler** | ✔ Functional | Multi-phase immutable pipeline with high-level assembly, procedures, macros and source-map generation. |
-| **Data Pipeline** | ✔ Functional | Decoupled architecture with resume capability and delta compression (Queue -> Persistence -> Indexer -> DB). |
-| **Visualizer** | ✔ Live | Web-based, tick-by-tick inspection, memory layout visualization and assembly debugger. |
-| **Primordial Organism** | ✔ Viable | Self-replicating ancestor with metabolic loop and spatial replication logic. |
-
-The following diagram illustrates the high-level data flow architecture:
-```
-┌────────────────────────────┐
-│      SimulationEngine      │
-└─────────────┬──────────────┘
-              │ (TickData)
-              ▼
-┌────────────────────────────┐
-│        Tick Queue          │
-└─────────────┬──────────────┘
-              │ (Batches)
-              ▼
-┌────────────────────────────┐
-│    Persistence Service     │ (Competing Consumers)
-└─┬─────────────────────┬────┘
-  │ (Data)       (BatchInfo Event)
-  │                     │
-  ▼                     ▼
-┌───────────┐    ┌───────────┐
-│  Storage  │    │  Topics   │
-└─────┬─────┘    └──────┬────┘
-      │ (Reads)    (Triggers)
-      │                 │
-      └────────┬────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│      Indexer Services      │ (Competing Consumer Groups)
-└─────────────┬──────────────┘
-              │ (Indexed Data)
-              ▼
-┌────────────────────────────┐
-│          Database          │
-└─────┬───────────────┬──────┘
-      │               │ (Queries)
-      ▼               ▼
-┌────────────┐  ┌────────────┐
-│ Visualizer │  │  Analyzer  │ (Web based)
-└────────────┘  └────────────┘
+In Evochora, the environment is a grid of cells, each holding one molecule. An organism is a virtual machine with an instruction pointer, which executes those molecules as code, and data pointers, which read and write them. Its actions cost energy, which it has to gather, and produce entropy, which it has to shed. The body of an organism is the cells it owns. [Energy sources, thermodynamic policies, mutation operators and death handlers](#24-plugin-interfaces) are configured for each run and define the physics of the environment. This chapter describes these parts in turn, and the ancestor every run begins from.
+
+### 2.1 The Environment and Its Molecules
+
+The environment is an n-dimensional grid. A run configures how many dimensions it has, how large it is in each, and whether its edges wrap around as a torus or bound it. Every cell of the grid holds one molecule. A molecule has a type and a value: the type says what the molecule is to an organism, the value what it carries. There are eight types:
+
+- **CODE**: an instruction of the virtual machine. The value 0 is the NOP instruction and stands for an empty cell.
+- **DATA**: a number, used as an argument of instructions.
+- **STATE**: a DATA value an organism has written for its own use. It is working memory, not code, so that a value an organism keeps changing can be told from the code it carries. In arithmetic and comparisons it behaves like DATA. Section 2.3 says how a write becomes STATE.
+- **ENERGY**: a quantity of energy an organism can take up.
+- **STRUCTURE**: an obstacle. Removing it costs energy, the more the higher its value (Section 2.3).
+- **LABEL**: a mark in the code that jumps aim at. Section 2.2 says how a jump finds it.
+- **LABELREF**: the argument of a jump, naming the label it aims at.
+- **REGISTER**: the argument of an instruction, naming a register of the virtual machine.
+
+All eight are read, written and consumed alike. The last three differ from the first five only in what they mean to a program.
+
+A molecule has one more property, the marker. It belongs to ownership and is introduced with it in Section 2.3.
+
+### 2.2 The Virtual Machine
+
+Each organism runs on its own virtual machine. The machine executes the code that lies in the grid and acts on the grid through pointers. It sees nothing of the environment beyond the cells around its pointers. See the [Assembly Specification](ASSEMBLY_SPEC.md) for all details of the machine, its instruction set and the language.
+
+### Fig. 1: An organism's virtual machine and its environment
+```text
+ ┌───────────────────────────────────────────────────────────────────────┐
+ │                    Environment: n-dimensional grid                    │
+ │                                                                       │
+ │              [CODE]    [DATA]    [ENERGY]    [STRUCTURE]    [...]     │
+ └─────────────────▲───────────────────────────────────▲─────────────────┘
+                   │ execute code                      │
+                   │              read, write, consume │
+ ┌─────────────────┼───────────────────────────────────┼─────────────────┐
+ │                 │             Organism              │                 │
+ │     ┌───────────┴───────────┐           ┌───────────┴───────────┐     │
+ │     │  Instruction pointer  │─ moves ──▶│     Data pointers     │     │
+ │     └───────────────────────┘           └───────────────────────┘     │
+ │                                                                       │
+ │              registers, stacks, energy (ER), entropy (SR)             │
+ └───────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.1 Performance and Scalability Architecture
+The **instruction pointer** executes an instruction with its arguments and goes on to the next. It skips empty cells. The next instruction lies in the direction of the **direction vector**, which the program can set, so a program is a line of cells through the grid. The **data pointers** are where the organism touches the environment: every molecule it reads, writes or consumes lies at a data pointer or one step from it. A data pointer moves one cell at a time. It cannot jump freely, only to positions the organism has stored before.
 
-The core simulation is optimized for throughput. The raw, in-memory simulation engine achieves hundreds of thousands of instructions per second on standard consumer hardware. However, in a typical local setup where the entire data pipeline (persistence, indexing) shares the same machine resources, sustainable throughput is constrained by I/O and varies significantly with environment size, population density, and plugin configuration. This bottleneck is an artifact of the single-node configuration; the decoupled architecture is designed to overcome this by distributing services across a cloud cluster.
+The machine has registers for numbers, vectors and positions, in several banks so that procedures can keep their own values, and three stacks, for data, for calls and for positions. See [Registers](ASSEMBLY_SPEC.md#registers) and [Stacks](ASSEMBLY_SPEC.md#stacks) in the specification.
 
-The primary computational load (CPU) scales linearly with the number of active organisms (O(N)). The data pipeline load (I/O) is dominated by periodic full environment snapshots whose size scales with the environment, while incremental updates between snapshots use delta compression and scale only with the number of changes per tick.
+The machine is built to run damaged code. An instruction checks its operands only as far as its execution requires and otherwise reads what it finds. One that cannot execute fails, costs an energy penalty, and the organism goes on with the next ([Error Penalty](ASSEMBLY_SPEC.md#energy-register-er)). Mutation produces code nobody wrote, and this is what lets such code do something rather than nothing.
 
-The simulation tick has snapshot semantics — every organism acts against the world as it was at the start of the tick — and is executed in two waves:
+Jumps do not target addresses. A jump names a **label**, and the machine searches the grid for a LABEL molecule with that value. The search tolerates small differences, so a label with a mutated value is still found. It can also reach into the code of other organisms, so one organism can execute another's code. How tolerant the search is and how far it reaches is set for each run. See [Fuzzy label matching](ASSEMBLY_SPEC.md#fuzzy-label-matching) in the specification.
 
-1.  **Plan and local execution**: All organisms determine their next instruction and, if it only changes their own state (arithmetic, jumps, reads), execute it immediately. This wave runs on a configurable number of worker threads over disjoint subsets of the population.
-2.  **Resolve and write**: Environment-modifying instructions pass a conflict resolver that mediates competing claims on the same Molecule, then execute sequentially in organism order. The winner of a contested cell is chosen by a priority computed per tick from seed and organism identity, so no organism is favoured by its age or ID and every contender is expected to win a contested cell equally often over time; a loser pays the cost of a failed instruction and retries.
+### 2.3 Ownership and Thermodynamics
 
-The thread count is an execution resource, not part of the simulated physics: a run produces the same trajectory whether it uses one thread or many, and whether it was paused and resumed. For massive-scale experiments, a long-term vision involves partitioning the world into spatial regions managed by separate, distributed compute nodes. While this introduces synchronization challenges at the boundaries, the principle of locality inherent to organism behavior is expected to minimize inter-node communication, following the principles of **Indefinite Scalability** demonstrated by the **Moveable Feast Machine** [(Ackley, 2013)](#ref-ackley-2013), making this a viable path for future scaling.
+An organism owns cells of the grid, and the cells it owns are its body. Empty cells belong to nobody. A cell becomes the organism's when it writes a molecule into it. Its data pointers can only move through empty cells and through its own cells. They cannot enter the cells of other organisms. What an organism can do with a neighboring cell is inspect its molecule or take the molecule up, which empties the cell and ends the neighbor's ownership of it. When an organism dies, all its cells become free. A death handler, a plugin described in [Section 2.4](#24-plugin-interfaces), decides what happens to the molecules in them. Details are in the specification under [Ownership](ASSEMBLY_SPEC.md#ownership).
 
-### 5.2 Data Pipeline and Reproducibility
+Ownership also decides what a child inherits. When an organism reproduces, the child receives cells from the parent's body and energy from the parent's account. The parent controls which cells: it can mark the molecules it writes, and the marked cells are the ones that pass to the child. It can mark a wall of STRUCTURE around its body, ENERGY it has put aside in its cells, or a copy of its code, and it leaves unmarked what it wants to keep. A DATA value written without a mark becomes STATE, the organism's private working memory, and is never inherited. Details are in the specification under [Molecule Marker](ASSEMBLY_SPEC.md#molecule-marker). Which of the inherited cells count as the organism's genome is a definition for the analysis, not a rule of the physics ([Analyzing a Run](#33-analyzing-a-run)).
 
-Large-scale simulations generate substantial data volumes, varying widely with environment size, snapshot frequency, and delta compression settings. The Evochora data pipeline is a decoupled, asynchronous system built on a foundation of abstract **Resources** to handle this throughput. The flow is designed for scalability: the `SimulationEngine` writes `TickData` messages to a queue. Multiple `PersistenceService` instances can act as competing consumers on this queue, writing data in batches to a durable storage resource. Downstream, various `IndexerService` types consume this stored data—again as competing consumer groups to build specialized indexes that are written to a database. This data powers the web-based visualizer. A key architectural principle is that all services are written against abstract resource interfaces (e.g., for queues and storage), allowing the underlying implementation to be seamlessly swapped from a high-performance in-process setup to a cloud-native, distributed one (e.g., message buses and object storage) without changing any service code. The indexing process is computationally intensive but parallelizable, and configurable sampling intervals allow researchers to trade temporal resolution for storage efficiency when running long simulations.
+Everything an organism does costs it something, in two accounts, the energy register (ER) and the entropy register (SR): instructions cost energy and produce entropy. An organism gathers energy from the environment and sheds entropy by writing molecules into it. It dies when its energy is used up or its entropy exceeds the limit. So an organism that only takes up and destroys dies of its entropy, while one that builds can live on. The idea comes from Schrödinger, who described living systems as keeping themselves up by passing entropy on to their surroundings [(Schrödinger, 1944)](#ref-schrodinger-1944). What an instruction costs is set by thermodynamic policies, which are configured for a run. For reading and writing, a policy can depend on the type and value of the molecule and on whether the cell is the organism's own, foreign or unowned. Details are in the specification under [Thermodynamic Configuration](ASSEMBLY_SPEC.md#thermodynamic-configuration).
 
-Scientific rigor is ensured through **full determinism**. Randomness consumed by the sequential parts of a tick comes from one seeded, checkpointed generator; randomness consumed while organisms execute concurrently is computed from seed, tick, organism identity and the position of the draw within the tick rather than drawn from shared state, so it depends neither on thread scheduling nor on anything that would have to be persisted. Together with the computed conflict priority this guarantees that an experiment reproduces the identical simulation state and trajectory from seed and configuration, on any number of cores and across pauses (persisted records additionally carry wall-clock capture times, which are metadata, not state).
+In Evochora's default configuration, taking up an ENERGY molecule credits its value to the energy account. Writing a molecule lowers the entropy account, with two exceptions: STATE, because it is the organism's own memory and not something built into the environment, and ENERGY, because the organism can take it back unchanged. Taking a molecule up from a foreign cell costs far more than from an own or unowned cell, so that taking a neighbor's body apart is expensive. ENERGY is the exception and credits its value whoever owns the cell. Taking up STRUCTURE costs an amount that grows with the molecule's value, where other molecules cost a flat amount, so a wall is as expensive to remove as its builder made it. A run can set each of these differently.
 
-Resume from any persisted state and delta compression for reducing data volume without sacrificing replayability are both fully implemented, enabling the use of cost-effective spot instances for very long-running experiments.
+### 2.4 Plugin Interfaces
 
-## 6. Conclusion
+The physics is modular, so that its parts can themselves be the subject of an experiment. For each of the following aspects there is a plugin interface, with standard plugins that come with Evochora. A different behavior can be implemented in Java.
 
-Evochora is an open-source digital evolution platform designed to make the physics of a simulated world a first-class experimental variable. Its architecture — spatially distributed code in a configurable n-dimensional grid, a two-axis thermodynamic economy, fuzzy label matching for mutation-resilient genomes, and a modular plugin system for mutation, resource distribution, and death mechanics — provides researchers with a flexible testbed for a range of evolutionary experiments.
+**Resource distribution**: How does energy enter the environment? Built-in models include continuous probabilistic spawning (analogous to solar radiation), periodic eruptions at fixed locations (geysers), one-time seeding, and vaults of energy behind walls of STRUCTURE that are refilled. A run can replace or combine them. All of them are tick plugins, which run once every tick with full access to the environment and the organisms. Anything that changes the environment over time, a landscape, a season, a catastrophe, can be written as one.
 
-The platform has demonstrated its viability through long-running simulations sustaining stable populations over billions of ticks. Four configurable mutation operators, label namespace rewriting, a defensive primordial organism, and a fully deterministic, resumable data pipeline provide the foundation for reproducible research.
+**Thermodynamic costs**: What does an action cost? Thermodynamic policies set the energy and entropy of each instruction, and for reading and writing they can depend on the molecule and on who owns the cell ([Section 2.3](#23-ownership-and-thermodynamics)). A run can change them or use new ones.
 
-The research directions outlined in this document — from replicator ecology and environmental heterogeneity to digital eukaryogenesis, multicellularity, and reaction-based chemistry — represent a broad program of testable hypotheses. Some are immediately accessible with the current implementation; others require extensions that the architecture is designed to support. Researchers, students, and engineers are invited to use this platform, challenge its assumptions, and contribute to its development. The source code, documentation, and community channels are available at [https://github.com/evochora/evochora](https://github.com/evochora/evochora).
+**Mutation**: What happens to an organism's genome during reproduction? Four built-in mutation operators insert, substitute, delete and duplicate code. They are structure-aware: they read the body as the machine would, so what they insert is executable and what they duplicate or delete is a whole block of code. A run can configure, combine or replace them.
 
-## 7. Getting Involved
+**Death and recycling**: What happens when an organism dies? Without a death handler, its molecules stay where they are and belong to nobody. The standard plugin replaces them with one configured molecule. By default that is the empty cell, so the body disappears. Configured as ENERGY, the dead become food for others.
 
-Evochora is open source under the MIT License. Contributions of all kinds are welcome — from running experiments and reporting results to extending the plugin ecosystem or improving the data pipeline (see the [Contribution Guide](https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md) for details). Anyone interested in using the platform, whether for research, exploration, or development, is encouraged to reach out — questions are answered promptly.
+**Label matching**: How does a jump find its label? The standard strategy matches by Hamming distance, own labels first ([Section 2.2](#22-the-virtual-machine)), and passes label values unchanged from parent to child, so that relatives share their addresses. An optional namespace flip at birth lets lineages drift apart in them.
 
-- **Source code and documentation:** [GitHub Repository](https://github.com/evochora/evochora)
-- **Published experiment records:** [Published Experiments](PUBLISHED_EXPERIMENTS.md)
-- **Live demo and simulation video:** [http://evochora.org/](http://evochora.org/)
-- **Questions and discussion:** [GitHub Discussions](https://github.com/evochora/evochora/discussions)
-- **Community chat:** [Discord Server](https://discord.gg/t9yEJc4MKX)
+**Instruction interception**: An interface for changing instructions before they execute, for example to let a region of the environment corrupt them like radiation. No standard plugin uses it yet.
 
-## 8. Acknowledgements
+### 2.5 The Ancestor
 
-_Full disclosure: AI tools were used to assist in the writing and editing of this document. The scientific content — the design decisions, hypotheses, and experimental directions — is the author's original work._
+An ancestor is a self-replicating program written by hand, and a run starts from one or several of them. Several come with Evochora, in [`assembly/ancestors`](../assembly/ancestors). The default one is put together from the [library of behaviors](../assembly/lib/behavior), reusable modules an organism can be built from, and does three things in a loop. It harvests: a data pointer walks through the surroundings and takes up the energy it finds. It hoards: it keeps a store of energy inside its body, filled in good times and drawn on when energy runs low. And it reproduces when it has energy to spare or entropy to shed: it builds the child's shell of STRUCTURE first, then the body row by row, and marks both for the child. It gives up when the place for the shell turns out to be taken by someone else. A flag makes it aggressive instead: it then takes up what lies in the way, as long as its energy and entropy allow. The others are earlier designs kept for comparison. The header of each ancestor's program says what it does. What an ancestor brings along is the starting point of a run, not a bound on what evolves in it: a run can seed another ancestor, or several, and leaves the rest to evolution.
 
-## 9. References
+## 3. Running Experiments
+
+An experiment in Evochora is a configuration file and one or more ancestors, and a run is what the node makes of them. This chapter says what an experiment consists of, what a run records, and what can be read from the record. How each step is done is in the [User Guide](USER_GUIDE.md).
+
+### 3.1 An Experiment
+
+An experiment is set up in a configuration file. The file describes the environment: how many dimensions it has, how large it is, and whether its edges wrap around. It names the ancestors the run starts with, says where each of them is placed and how much energy it begins with, and sets the seed of the random numbers. It also chooses the plugins that make up the physics of the run: the energy sources, the thermodynamic costs, the mutation operators, and what happens to the dead ([Plugin Interfaces](#24-plugin-interfaces)). Every setting is documented where it is defined, in the [reference configuration](../src/main/resources/reference.conf), and the [User Guide](USER_GUIDE.md#3-configure-an-experiment) shows how such a file is written.
+
+The ancestors are programs in EvoASM, the assembly language of the virtual machine ([Assembly Specification](ASSEMBLY_SPEC.md)). An experiment can use the ancestors that come with Evochora, assemble one from the [library of behaviors](../assembly/lib/behavior), or start from a program written for the purpose. An ancestor is more than a copy routine. Where it finds energy, when it reproduces, and where and from what it builds its child are decisions in its code, because the system makes none of them. Which behavior an organism performs, and under which conditions, is written in its code and evolves with it. A question about behavior can therefore be written into an ancestor, and the run shows what selection makes of it. Such a program is written and read like software. EvoASM has modules, procedures with parameters, macros, and directives that place code and molecules in the grid, so that a behavior is written once and an ancestor is put together from such parts. The compiler resolves them into cells. The default ancestor is a main file of about a hundred lines that takes its behaviors from the library as modules. Compiled, the file and its modules come to a few thousand cells. The ancestor of Tierra was a program of 80 instructions, written by its author [(Ray, 1991)](#ref-ray-1991). The default ancestors of Avida have 50 and 100. They copy themselves, and the system allots the memory or places the child. Here that work is the program's.
+
+Many variants need no new program at all: an ancestor can read flags and values from the configuration, so a variant is often a line in that file ([The Ancestor](#25-the-ancestor)). A new ancestor can be checked in the visualizer before a run is built on it. Beside the code being executed, the visualizer shows the line of the assembly source it came from, annotated with the values of that moment. The author can follow step by step what the program does ([Choose or Write an Ancestor](USER_GUIDE.md#2-choose-or-write-an-ancestor)).
+
+Together, the configuration, the ancestors and the build of Evochora determine the run. The same three produce the same run on any machine, and that is what makes a run reproducible ([Reproducibility](#61-reproducibility)).
+
+### 3.2 What a Run Records
+
+A run is recorded while it is simulated, and the recording is what every later step works on. How densely it is recorded is a setting: a recording profile sets how many ticks lie between two recorded states. The profiles that come with Evochora record every tick, every hundredth tick or every ten-thousandth, and further profiles can be defined in the configuration. The density of the recording does not change the run; it changes what is kept of it. A recorded state holds the environment with every occupied cell, and every organism with its registers, stacks, pointers, energy and entropy. Three kinds of event are recorded at any interval alike, because each is written with the next recorded state. A birth is recorded with the newborn's genome, its parent and the kind of variation that produced it: a faithful copy, a flawed one or a mutation operator. A death is recorded with its tick, a mutation with the cells it changed. Between two recorded states nothing is kept. So a sparse recording shows every birth and every death, but not what an organism did in between. The charts computed from the recorded states have fewer points the sparser the recording is. Two recordings of one run at different densities therefore give different tables of the same course.
+
+A sparse recording can be made dense afterwards. Because a run is deterministic, any stretch of it can be computed again from the recorded state before it and recorded at a finer interval, down to every tick ([Record a Stretch in Full](USER_GUIDE.md#6-record-a-stretch-in-full)). This way a long run can be recorded sparsely, and a stretch that turns out to matter can be recorded again in full.
+
+The recording is read in the browser, during the run or after it. The visualizer shows one recorded state at a time: the environment with its molecules and its organisms, colored by lineage. For a chosen organism it shows the registers, stacks and pointers, the instruction being executed, the mutations its lineage has accumulated and its line of descent. The analyzer shows the whole run as charts: the size of the population, births and deaths, the genomes and their diversity, the instructions used and the composition of the environment. Analytics plugins compute these charts, and an experiment can add plugins for further metrics ([Observe a Run](USER_GUIDE.md#5-observe-a-run)). A recorded run can also be rendered into a video.
+
+![The visualizer: the environment with organisms, and the state of a selected organism](https://github.com/user-attachments/assets/3bf0aa8e-f2bd-4b98-a03f-dd33d449ed93)
+
+![The analyzer: charts of a run's metrics](https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3)
+
+### 3.3 Analyzing a Run
+
+Analysis of genomes rests on a definition. Organisms in Evochora have no genome in the biological sense: the body is the program, and what a child inherits is whatever its parent marked for it. The platform records what a newborn owns and does not say which part of it is genotype. For analysis, a genome is therefore an operational definition. It is the cells a newborn owns, normalized for its label namespace (see label matching under [Plugin Interfaces](#24-plugin-interfaces)), minus the molecules a run declares to be the organism's own work rather than its inheritance. By default these are its STATE cells and the STRUCTURE shell the ancestor builds around every child. Both differ between copies of one genome without a change in the code, and counting them would make such copies look like mutants. The definition is a parameter of the run and is recorded with it. Within it, a change in any cell, damage included, counts as a change of genome. A separation of genotype and phenotype, a region of data read by logic the mutation operators do not touch, is something an organism could implement itself. Whether it evolves or is designed is an experimental question.
+
+The record answers questions at three levels. For a lineage, the table of births holds every birth with its parent, the parent's age at it, the generation, and the class of variation that made the newborn: an unchanged copy, a flawed one, or the work of a mutation operator. From it, the life history of a lineage can be read, its generation time and its reproduction against that of its contemporaries. For a population, the abundance of every genome at every recorded tick and the descent of every genome from its parent are recorded. They give the spread of a lineage against what a neutral one would do, the diversity of the population and its phylogeny. For an organism, its body stands in every recorded state cell by cell, so a newborn can be compared with its parent. In a stretch recorded every tick, the visualizer shows what a changed instruction does when it executes. The tables are Parquet files, the standard columnar format of data science. Phylogenetic trees, Muller plots, survival analysis, the field's measures of evolutionary activity or complexity measures such as assembly theory [(Sharma et al., 2023)](#ref-sharma-2023) are computed on them with Python, R or DuckDB. A notebook that comes with Evochora shows the way to each table ([Analyze the Data](USER_GUIDE.md#7-analyze-the-data)).
+
+## 4. First Results
+
+The project publishes its results as experiment records, packages on Zenodo under a CC0 license. A record holds the run's recorded data, the build that wrote them, and an executed notebook with the question, the evidence, the interpretation and the limits. Anyone can read the finding, run the analysis again, browse the run in the visualizer without the project's servers, and execute the run again from any stored state with the same result ([Reproducibility](#61-reproducibility)). [Published Experiments](PUBLISHED_EXPERIMENTS.md) lists the records with their DOIs. This chapter says what they show about the platform.
+
+The populations behind the published findings sustained themselves for hundreds of millions to billions of ticks. The organisms in them were given no task and no reward. Lineages still arose that built differently from their ancestor and replaced the population. Nothing in the system was written to favor them, and they spread faster than the neutral expectation the records compute. Where a child is built, what it is made of and when a parent reproduces are decisions of the program, and in these runs evolution changed all three. A lineage came to build its children far from the parent, and the kin structure of the population loosened. Another changed the material of the shell around its children to a cheaper one. The same rule for when to reproduce settled in opposite directions in two runs, under plentiful and under scarce energy. Whether the energy supply alone decides it is a question for an experiment.
+
+Because the body is the program and every cell of it is recorded, the cause of each sweep could be read off the run itself, down to the single molecule. The record of the shell shows how far that reaches. An inserted instruction removed one cell of the organism's own body during a harvest. The machine read the missing operand as another register, one that held the energy level ([The Virtual Machine](#22-the-virtual-machine)). The loop that builds the shell took its material from that register and wrote the shell at a twentieth of the price. Each step stands in the recorded execution. A rule written for one purpose was used by evolution for another, as rules have been in digital systems since their beginning [(Lehman et al., 2020)](#ref-lehman-2020). The record of the far-built children also measures evolutionary activity after Bedau, Snyder and Packard [(Bedau et al., 1998)](#ref-bedau-1998), the field's test of whether new adaptations keep arising.
+
+These findings are observations, not experiments. The runs behind them were made to test the platform while it was built. None was designed around a question, and the sweeps were found afterwards. What a trace shows is the mechanism; that the mechanism caused the advantage is a further claim. Other changes rode along with the ones that mattered, as they do in any population that reproduces by copying. Where the carrier and the cause arose in one organism, observation alone cannot separate them. An experiment could separate them: one run seeded with an ancestor that carries the change, beside one seeded with the ancestor without it. The records of these findings therefore say "consistent with selection" and no more. Whether any organism became more complex was not measured. In the run that was measured, evolutionary activity stayed bounded, the class in which Bedau and colleagues found the artificial systems of their time. Whether a run can be made to raise it is an open question. Measured in generations the runs are short, a few thousand at most with the ancestors used. [Limitations](#7-limitations) returns to these limits. What a run designed around a question could show is the subject of the next chapter.
+
+## 5. Research Directions
+
+A research direction here is a question that Evochora's physics makes askable. Some can be put as experiments today, from a configuration and ancestors. Others would first need a change to the physics, and each section says which. The sections are ordered from the first kind toward the second. They are examples. The same parts, energy sources, thermodynamic policies, death handlers, mutation plugins, label matching and the ancestor's library of behaviors ([The Ancestor](#25-the-ancestor)), can be combined into experiments beyond them.
+
+The question the introduction began with stands behind all of them: whether complexity keeps arising, and what an environment has to provide for it. The field measures it with Bedau's statistics of evolutionary activity, which levelled off in the systems Bedau and colleagues measured [(Bedau et al., 1998)](#ref-bedau-1998). The workshop in York asked that the observable hallmarks of a system be kept apart from the mechanisms thought to produce them [(Taylor et al., 2016)](#ref-taylor-2016).
+
+Evochora's answer is this chapter: the conditions the field suspects are plugins and ancestors here, added or removed one at a time, so that a run can ask which condition makes which hallmark respond. The abundance and the descent of every genome are in the data, so the field's measures can be computed from a run ([Analyzing a Run](#33-analyzing-a-run)).
+
+### 5.1 Replicator Ecology
+
+A replicator ecology arises when several kinds of self-replicating programs live in one environment on the same supply of resources. Can two strategies that live on the same resource coexist, or does one exclude the other? What does space change? When does conflict pay? Theory has answers that experiments with living organisms can test only indirectly. Where individuals stay in place and meet only their neighbors, peaceful strategies can survive in patches that a mixed population would lose [(Nowak & May, 1992)](#ref-nowak-may-1992). Whether aggression pays depends on the cost of a fight set against the value of what is fought over, and a population often settles on a mixture of strategies [(Maynard Smith & Price, 1973)](#ref-maynard-smith-price-1973). In nature, the cost of a fight cannot be set.
+
+Digital systems have produced such ecologies. In Tierra, an ecology of parasites, immune hosts and hyperparasites arose within a few million instructions [(Ray, 1991)](#ref-ray-1991) ([Host–Parasite Coevolution](#53-hostparasite-coevolution)). In Avida, predators were added as an extension ([Predators and Prey](#52-predators-and-prey)). In Evochora, strategies compete for energy and for space in one currency. Harvesting, hoarding, a child's body and its shell all cost energy, and so does aggression: taking up a cell that belongs to a neighbor costs what the run's thermodynamic policy sets for it. Defense is construction, paid before any attacker comes. Organisms meet only as neighbors, and a body blocks the pointers of others, so a place is a resource too.
+
+Evochora can turn these questions into experiments through its ancestors and its configuration. A run can be seeded with several strategies, and the cost of a fight is a setting of the run. Since the default ancestor is assembled from a library of behaviors ([The Ancestor](#25-the-ancestor)), a strategy can be a variant of it: a behavior exchanged, a flag set, a threshold changed ([An Experiment](#31-an-experiment)), as in its aggressive variant. Conceivable experiments start with two strategies on the same energy supply, to see whether they coexist or one excludes the other, and whether the density and the arrangement of the energy sources decide it. The cost of aggression can be varied between runs, to find the price at which aggressors lose. The shell the ancestor builds around each child can be tested in populations with and without aggressors, to see whether the defense pays. Long runs can show whether evolution alters the strategies or makes them converge. Every organism's record names the ancestor program it descends from, so the fate of each strategy can be read from the data, and the visualizer colors organisms by lineage. An experiment of this kind can be set up today from a configuration and its ancestors. The analytics count the population by genome, so comparing strategies is a query on the recorded data. A metric by ancestor program, a small addition, would make it a chart of the analyzer.
+
+Coexistence through niches lies one step further. Two strategies that live on different things need a second kind of energy or a molecule only some can use, which is the subject of [Metabolism and Food Webs](#59-metabolism-and-food-webs).
+
+### 5.2 Predators and Prey
+
+Where one organism lives on another, their numbers chase each other: predators grow while prey is plentiful and starve when they have eaten it down. The cycles that Lotka and Volterra wrote down for this are among the oldest results of theoretical ecology ([Lotka, 1925](#ref-lotka-1925); [Volterra, 1926](#ref-volterra-1926)). Digital evolution has reached them by construction: in Avida, predators that consume other organisms were introduced as an extension, and the prey evolved to escape them [(Wagner et al., 2013)](#ref-wagner-2013).
+
+In Evochora a body is matter, and matter has a price. Today a cell of CODE or DATA costs little to write, and taking one from a neighbor costs the taker energy and entropy and yields nothing but the place. Only stored ENERGY yields its value to a thief ([Replicator Ecology](#51-replicator-ecology)). A run can change that with the thermodynamic policy alone ([Ownership and Thermodynamics](#23-ownership-and-thermodynamics)): it can make such a cell expensive to write and credit whoever takes a foreign one with somewhat less than it cost. Then no energy is created anywhere, a body is worth about what a child costs, and a body is prey. STRUCTURE keeps its price, so a shell stays what it is, armor that a predator has to pay to breach. A body with damaged code runs differently, in most cases worse or not at all.
+
+What this needs is a predator: an ancestor that searches for bodies the way the harvester searches for energy, breaks a shell and takes what lies behind it. Beside it a prey, the harvester as it is, perhaps with a behavior that spends on its shell what a predator would have to pay to get through. Both with their decisions, when to go out and when to reproduce, set to the prices of such a world. The experiment is their numbers over time, and whether they cycle.
+
+One question comes before all others. Nothing in Evochora tells an organism whether the body beside it is kin, and the ancestors build their children beside themselves, so a predator would eat its own descendants first. Whether a predator lineage can persist at all, and whether it comes to spare its kin, is a question of kin recognition. A new instruction that tells kin from stranger would be the one addition this direction asks of the platform.
+
+### 5.3 Host–Parasite Coevolution
+
+Parasites appear wherever a replicator can use another's machinery. In Tierra they arose in the first runs: programs that had lost their copy routine and used a neighbor's, hosts immune to them, and hyperparasites that turned the parasites' processing to their own reproduction [(Ray, 1991)](#ref-ray-1991). In Stringmol they arise almost at once. A mixed population dies of them, while a spatial one forms waves in which hosts and parasites pursue one another and both persist. Under that pursuit the replicators evolve ways to tell their own copies from parasites, the parasites evolve around them, and when parasites become rare the hosts shed their defenses again [(Hickinbotham et al., 2021)](#ref-hickinbotham-2021). In Avida, where every organism runs on its own processor, parasites had to be introduced. Hosts that coevolved with them developed more complex functions and more evolvable genomes than hosts without them [(Zaman et al., 2014)](#ref-zaman-2014). Parasitism is among the few mechanisms for which a drive toward complexity has been shown in digital systems.
+
+In Evochora, how a jump finds its label is a plugin of the run. The standard label matching ([Plugin Interfaces](#24-plugin-interfaces)) takes a neighbor's label only when none of the organism's own matches. The instruction pointer executes what stands in a cell, whoever owns it. The data pointers never enter another's cells ([Ownership and Thermodynamics](#23-ownership-and-thermodynamics)), so a neighbor's body can be read only from outside, and written into only by exchanging a cell at its edge. Organisms that jump to a neighbor's label and execute its code have been observed in many runs. Under the standard strategy this happens when an organism's own label is missing or changed, by a flawed copy or by a mutation. What it executes then is a relative's routine in place of the one it lost.
+
+Whether that becomes a way of life is the question. A lineage that lives on a neighbor's routine needs a relative with matching labels within reach, generation after generation. Whether it can keep one, and what follows if it does, waves, defenses and their loss as in Stringmol, is open. The conditions are settings of a run: the reach and tolerance of the label search, where the ancestor places its children, the price of a foreign read, and the namespace flip. The flip is a plugin option that changes every label of a newborn by one bit, so that the addresses of lineages drift apart with the generations and out of a parasite's tolerance. Which organism executed whose code stands in the record at every recorded tick, as the position of its instruction pointer against the owner of the cell. Counted over a whole run, it would be a metric, computed by a query on the record or by a new analytics plugin.
+
+Two things lie beyond what arises by itself. A parasite ancestor could be written by hand with the system as it is: a program that exchanges cells of a neighbor's body for its own, so that the neighbor's instruction pointer executes logic that serves the parasite, paid with the neighbor's energy. The second would require an instruction added to the system: a jump with a tolerance and a reach the program sets itself would place the search under selection. Whether selection widens it toward exploitation or narrows it is a question only such an instruction can put.
+
+### 5.4 Heterogeneous and Dynamic Environments
+
+Biology explains much of diversification by the structure of the environment. Populations separated by a barrier diverge [(Mayr, 1963)](#ref-mayr-1963), gradients of resources make specialists, and after a catastrophe the emptied space fills with radiations of new forms [(Schluter, 2000)](#ref-schluter-2000). In nature all of this is observed after the fact, and in the laboratory over short spans and in simple environments. A bacterium, for example, diversified into niche specialists within days in an unshaken flask [(Rainey & Travisano, 1998)](#ref-rainey-travisano-1998). In a simulation the structure is a choice. Avida has resources that can be confined to places and an event system that disturbs a run at set times, with extinctions or changed mutation rates [(Ofria & Wilke, 2004)](#ref-ofria-2004).
+
+In Evochora, the structure of the environment is matter. A barrier can be a wall of STRUCTURE molecules, and crossing it costs what the run charges for taking a cell apart, so isolation has a price rather than a rule. A gradient, a season or a zone of energy that drifts across the environment can be made of where and when ENERGY molecules are placed. A lineage passes a gap only by building its children on the other side, so migration can be read from the record as the spread of a lineage, cell by cell. The dimensions, size and topology of the grid, a torus or a bounded box, are settings of a run.
+
+Conceivable experiments start with one ancestor on both sides of a wall, to see whether isolation alone makes the lineages diverge in what they do, not only in their genomes. Once the wall is opened, they show whether one side displaces the other. Islands joined by narrow corridors can show whether they hold a diversity an open environment loses. A region emptied at a chosen tick can show how populations return, and whether the return depends on their mutation regime or their strategy. A gradient of energy can show whether sparing strategies settle the poor part and fast ones the rich.
+
+The energy sources that come with Evochora place energy evenly at random, at fixed points at intervals, or in vaults behind walls ([Plugin Interfaces](#24-plugin-interfaces)), and size, dimensions and topology are configuration. Walls, regions, gradients, seasons and catastrophes would each be a small tick plugin ([Plugin Interfaces](#24-plugin-interfaces)), and a landscape that changes over time needs no more than one of them. One idea goes further, a molecule a pointer cannot simply take apart: the instruction that tries fails, and the molecule loses one of its value with every attempt until it dissolves at zero, or never, if its value is negative. A barrier would then be measured in attempts rather than in energy, and an experiment could separate the two.
+
+### 5.5 The Structure of Variation
+
+What evolution can find depends on what variation offers it. The capacity of a system to produce useful variation, its evolvability, is itself shaped by evolution [(Wagner, 2005)](#ref-wagner-2005), and forces that select nothing, drift and mutation pressure, shape the architecture of genomes [(Lynch, 2007)](#ref-lynch-2007). Digital systems make the structure of variation a setting. Avida has copy mutations that always yield a legal instruction, insertions and deletions at division, point mutations in running programs, and implicit mutations from a parent's flawed copy algorithm, which an experimenter cannot control but can suppress [(Ofria & Wilke, 2004)](#ref-ofria-2004). Aevol models genomes as sequences with genes and non-coding stretches and applies the full spectrum of rearrangements, duplication, deletion, inversion and translocation, at rates per base [(Batut et al., 2013)](#ref-batut-2013). In Stringmol only point mutations are defined, and yet the evolving replicators change their own mutation rates and produce larger changes by mechanisms of their own [(Hickinbotham et al., 2021)](#ref-hickinbotham-2021).
+
+In Evochora, variation has two channels. The first is the copy itself: a parent writes its child cell by cell, and the copy can be incomplete, or a neighbor can have taken or overwritten cells of it before the birth. The write of a cell is exact, but the routine that copies is part of the body and inherited with it. What it skips, doubles or displaces is exposed to mutation and selection like any other trait, as the replication strategies of Stringmol are. One of the runs described in [First Results](#4-first-results) shows this channel at work: two labels lost during a copy were inherited and became part of the change that spread.
+
+The second channel is the mutation plugins, which act on the newborn's body at birth. The four that come with Evochora insert, substitute, delete and duplicate ([Plugin Interfaces](#24-plugin-interfaces)). They read the body as the machine does, so what they insert is executable and what they duplicate or delete is a whole block between labels. They know the syntax of a body, not its function, and evaluate nothing. Their rates and biases are settings. By default, deletion takes only a block with a label the body carries twice, so it removes what a duplication left, though both copies may have changed in the meantime. This follows the route by which new genes arise in biology, duplication, divergence of the copies and the loss of one of them [(Ohno, 1970)](#ref-ohno-1970). Deleting a block the body has only once would mostly destroy working code. Substitution weights each molecule type for how exposed it is, and one of the runs described in [First Results](#4-first-results) shows what that weight does: when a lineage changed the material of its shell from a type the substitution never touches to one it does, a quarter of all substitutions moved from the code into the shell. How neutral a mutation of a label is, the label search decides: its tolerance is the width of the neutral network for label mutations. Every birth is sorted by what made its genome, an unchanged copy, a flawed one, or the events of which operator, and every cell an operator changed is recorded ([Analyzing a Run](#33-analyzing-a-run)). The fate of each class of variation can be read against births and offspring.
+
+Conceivable experiments vary the rates of the operators one at a time and together. Deletion can be let loose on unique blocks, to compare deletion confined to duplicated blocks with deletion of any block. The plugins can be switched off entirely, to see what the copy channel alone sustains, the mirror image of Avida's option, which suppresses the implicit mutations and keeps the explicit ones. The tolerance of the label search can be widened, to see whether populations cross valleys that stricter matching bars. And the robustness of a program against each class of variation can be measured, because the analytics sort every birth by class.
+
+All of this is configuration. The operators are plugins of the birth with full access to the newborn's body, and others can be written against the same interface. Three ideas lie beyond them. Mutation during life rather than at birth, Avida's cosmic ray, would be an interceptor plugin, for which the interface exists but no plugin yet. Copy errors at the instruction that writes a cell, rather than at the child, would make mutation part of the copy itself. And a mutation rate that depends on the organism's own energy or entropy would give Evochora a counterpart of stress-induced mutagenesis, where bacteria raise their mutation rate when they are poorly adapted [(Galhardo et al., 2007)](#ref-galhardo-2007). Whether such a rule helps a population out of a poor environment or hastens its end is a question that rule would allow.
+
+### 5.6 Genotype and Phenotype
+
+In biology, hereditary information and the body it describes are separate, and the machinery between them, which reads the one and builds the other, is itself a product of evolution. Von Neumann held such a separation, a description and a constructor, to be the condition for complexity to evolve [(von Neumann, 1966)](#ref-von-neumann-1966). Tierra showed that a program which copies itself instruction by instruction evolves without it [(Ray, 1991)](#ref-ray-1991). Taylor names the limit: where the machinery that reads the genotype cannot evolve, as Tierra's processor cannot, evolution cannot find new ways of representing a phenotype [(Taylor, 2014)](#ref-taylor-2014). That a separation can evolve has been shown in Stringmol, where description, copier and constructor evolved together from a chemistry that had none [(Clark et al., 2017)](#ref-clark-2017). Aevol has a designed and explicit map from sequence to function [(Batut et al., 2013)](#ref-batut-2013). Flow-Lenia carries the parameters of its rule in the mass of a creature [(Plantec et al., 2023)](#ref-plantec-2023). Many simulations of evolution vary a vector of traits and nothing else. Under what conditions a separation arises, and what it changes, is open. Evochora leaves it to the organism: the platform records what a newborn owns and does not say which part of it is genotype. That is why a genome is a definition of the analysis ([Analyzing a Run](#33-analyzing-a-run)), and why the separation is an experiment.
+
+In Evochora, the body is the program, and the numbers in a program are DATA cells: every threshold, every child's dowry, every width stands as a literal in an instruction. The substitution plugin weights molecules by type and, on top, by the slot they stand in, literals above the rest ([Plugin Interfaces](#24-plugin-interfaces)). With the weights of CODE and LABEL at zero and that of DATA above it, a run varies only the numbers and leaves the logic alone: the evolution of traits that simple simulations perform, by configuration, with the full variation beside it for comparison. One step further, an ancestor can keep its parameters in one region of its body, read by its logic, and a plugin can confine variation to that region. The organism then has a designed genotype, and what reads it is not the machine but its own code. The machine beneath stays fixed, in Evochora as in Tierra, but the layer above it can evolve.
+
+Conceivable experiments set the evolution of traits against the full variation, to see which adapts faster, which stays stable, and whether the full variation finds behavior that the variation of traits cannot. A designed genotype can hold the size of the shell as one of its fields, to see whether size responds to selection when only it varies. All of this is configuration and an ancestor. The plugin for a region would be a small addition.
+
+### 5.7 A Digital Eukaryogenesis
+
+Life on Earth stayed small and simple for most of its history, and one explanation is energetic. Lane and Martin argue from the energy a cell can spend per gene: more genes and more proteins per cell were, for a prokaryote, more than it could pay for. The step to complex cells came when energy production moved inside, with the mitochondria, engulfed bacteria that kept their own membranes and part of their own genome [(Lane & Martin, 2010)](#ref-lane-martin-2010). The hypothesis is contested [(Lynch & Marinov, 2015)](#ref-lynch-marinov-2015). The part of it that has a counterpart in Evochora is geometric: a cell gains its energy at its membrane, and a membrane grows more slowly than the volume it has to supply. Tierra, Avida and Aevol are built around the program, and a body with an edge is not part of their design, so that part has had no test. In Evochora it has both: an area of cells and an edge.
+
+Today the two sides of the account are uneven. A child costs its parent one write per cell, so the price of a body grows with its area. A larger body carries more code and more behavior, and where that behavior pays, it pays for the copying too. But the intake of energy does not grow with size: energy lies where it falls, and a pointer walks to it. An energy source that places energy alongside an organism's shell, together with a harvest that walks along it, would change that: intake would grow with the perimeter while cost grows with the area, linearly and quadratically with the body's extent, which is the prokaryote's constraint in two dimensions. Whether size and form would then come under selection at all is open. Ancestors of different sizes and shapes can be seeded and compared, to see whether there is a body size no lineage sustains, and what becomes of programs that need more code than their edge can feed. Both pieces, the source and the harvest, would be a plugin ([Plugin Interfaces](#24-plugin-interfaces)) and a behavior ([The Ancestor](#25-the-ancestor)), written against what exists. The analogy could be carried one step further with a cost of upkeep for every cell an organism owns, charged each tick by a plugin. A cell's volume costs it continuously, while a body in Evochora costs once, when it is copied.
+
+The way out, in the analogy, is to move energy production inside. The biology sits between two designs: a mitochondrion has its own body and its own reproduction, but most of its machinery comes from the host. In Evochora the simpler half can be built today: a parent can fork a child that has no body of its own. Its instruction pointer runs one routine of the parent, a harvest, say, and leaves what it gathers where the parent takes it up, and the parent decides how many such helpers it keeps. Such a helper tests whether an inner supply of energy pays, not how it arose. Endosymbiosis began with two lineages. The fuller forms would need a runtime extension: a body within the body, or execution contexts that share ownership with the organism, so that each part could copy itself and the organism divide like a cell. Whether a body with a helper sustains more code than one without, and whether coordination between them can arise from the cells they share or needs its own instructions, are the questions this direction would put.
+
+### 5.8 Toward Multicellularity
+
+The transitions that made cells into organisms, and organisms into colonies, are the major transitions of evolution [(Maynard Smith & Szathmáry, 1995)](#ref-maynard-smith-1995). The first multicellular forms are thought to have arisen from cells that stayed together after dividing rather than by aggregating [(Tarnita et al., 2013)](#ref-tarnita-2013), long before any of them specialized. In the laboratory yeast took that step within weeks: cells that stayed attached formed clusters, and the clusters multiplied by breaking apart [(Ratcliff et al., 2012)](#ref-ratcliff-2012). Cooperation among such cells pays where they are kin [(Hamilton, 1964)](#ref-hamilton-1964). Digital systems have studied the later steps with the group given. In Avida, groups that reproduce as a unit evolve a division of labor when switching tasks costs something, and a separation of germ and soma when work is mutagenic ([Goldsby et al., 2012](#ref-goldsby-2012); [Goldsby et al., 2014](#ref-goldsby-2014)). In DISHTINY, cells with signaling and resource sharing built in form kin groups and evolve multicellular strategies ([Moreno & Ofria, 2019](#ref-moreno-2019); [Moreno & Ofria, 2022](#ref-moreno-2022)).
+
+In Evochora nothing gives a group. The ancestors that come with it build each child beside its parent, so kin lie together, and that is where the first step can be tested. An organism enclosed by its own descendants is in trouble: its data pointers reach no energy outside, it has no room for a child, and it can shed entropy only by writing, which costs energy it cannot replace. A group in which the outer members pass energy inward, by laying ENERGY cells where the inner ones take them up, could keep its interior alive. The giver pays what it gives, the taker gains it whole, and the taking costs no entropy ([Ownership and Thermodynamics](#23-ownership-and-thermodynamics)). Whether such a group outgrows one that does not is an experiment of two ancestors and no extension. It would spread as a patch of kin, as the first clusters did. Whether it comes to reproduce as a unit is the question. Staying together is itself a trait: the nearness of kin is the ancestor's doing, not a rule of the run, and in one of the runs described in [First Results](#4-first-results) evolution loosened it.
+
+Specialization within such a group is the mechanism of [A Digital Eukaryogenesis](#57-a-digital-eukaryogenesis) applied to kin: a parent that gives its children bodies of their own but one role each, a harvester here, a builder there, has a division of labor by design. That tests whether the division pays, not whether it arises, and an experiment can ask whether a group of specialists outgrows a group of equals. Whether it arises can be asked too, once the ancestors share: a single mutation that takes a child's reproduction and leaves its harvest makes a sterile provider of it. The record shows whether such providers persist in patches of kin more often than outside them, and whether the patches that have them grow.
+
+Beyond that, three things would have to be added. The instruction that tells kin from stranger, which [Predators and Prey](#52-predators-and-prey) asks for first. A unit above the organism that the platform can represent once organisms form one, the shared ownership named in [A Digital Eukaryogenesis](#57-a-digital-eukaryogenesis), as distinct from a group the experimenter sets up. And a way to send a signal to the members of such a unit: a label value that the receivers answer by calling the label of their own that matches it best, which the label search already knows how to find ([Fuzzy label matching](ASSEMBLY_SPEC.md#fuzzy-label-matching)). With those, the questions of Avida and DISHTINY could be asked without a group being given: whether a group comes to reproduce as a unit, and whether one of its members comes to carry the information for the whole and build it anew, a germ.
+
+### 5.9 Metabolism and Food Webs
+
+In the biosphere matter is conserved, so what one organism leaves behind is what another lives on. Food chains, cycles and the interconnection of species follow from that. Taylor names the absence of this as a cause of the low diversity of digital evolution: where a copy arises out of thin air, organisms are not resources for one another, and no food chain can form [(Taylor, 2014)](#ref-taylor-2014). Microbial theory says how such chains come about: a strain that degrades a resource only partly and excretes the intermediate saves enzymes, and a second strain lives on what it excretes [(Pfeiffer & Bonhoeffer, 2004)](#ref-pfeiffer-bonhoeffer-2004). Avida has reactions that consume one resource and produce another, and chains of them, defined by the experimenter, sustain communities of coexisting types [(Ofria & Wilke, 2004)](#ref-ofria-2004). In Evochora, what one organism leaves behind feeds another only where a run turns the dead into energy ([Plugin Interfaces](#24-plugin-interfaces)). The chain this section proposes carries energy, not the matter of bodies.
+
+The idea is a metabolism. Energy would come in substrates, molecules ([The Environment and Its Molecules](#21-the-environment-and-its-molecules)) with a pattern of positions as their value, laid by the energy sources ([Plugin Interfaces](#24-plugin-interfaces)) in patches rather than scattered. An organism takes a substrate into its own reservoir and digests it there with the enzymes it inherits: each enzyme answers to one position and releases the energy that position holds, and each costs time and energy as every instruction does, whether it finds its position or not. What the enzymes do not answer to stays in the reservoir as leftover, until the organism excretes it by writing it back into the environment, which, like every write, sheds entropy ([Ownership and Thermodynamics](#23-ownership-and-thermodynamics)). Positions arise only in the sources and vanish only in digestion. Nothing else creates or destroys them. The leftover of one organism is a substrate to another organism with enzymes for the remaining positions, and that is a food chain. An enzyme applied to a position the substrate lacks costs the same and yields nothing, so an organism with many enzymes pays for all of them on every molecule: where each source lays substrates with its own few positions, specialists win, where substrates are rich, generalists do, as the theory of optimal foraging predicts [(MacArthur & Pianka, 1966)](#ref-macarthur-pianka-1966). Leftovers that nobody can digest accumulate, and what accumulates becomes the niche of whoever learns to use it [(Odling-Smee et al., 2003)](#ref-odling-smee-2003).
+
+This would add to the platform a molecule type, a reservoir in the virtual machine, instructions for digestion, and sources that lay substrates in patches. The questions a first run could put are whether chains of digesters and digesters of their leftovers arise, and at which composition of the supply specialists displace generalists. A further question is whether a world fills with leftovers before anything learns to use them, or whether a slow decay of substrates has to stand in for the weathering that nature provides.
+
+## 6. Reproducibility and Resources
+
+### 6.1 Reproducibility
+
+A run is determined by its seed, its configuration and the build that executes it. With the same three it takes the same course on any machine, cell for cell, on Linux, Windows and macOS alike. A test of the project checks this on all three. A run that was paused and resumed from a stored state continues as an uninterrupted run would have. Randomness is part of the state. The only data of a run that vary between two executions are the wall-clock times of its capture, and they are metadata.
+
+### 6.2 Resources
+
+What a run needs depends on its configuration. The default configuration that comes with Evochora is kept small on purpose, so that it runs on most machines: an environment of 2048 × 1152 cells with a population of under a hundred organisms, recorded at every ten-thousandth tick. The figures below refer to it. On a current laptop with eight cores it runs about 3 × 10⁹ ticks a day, 10⁶ to 10⁷ instructions per second. With the default ancestor, a program of a few thousand cells, that is several thousand generations. A smaller ancestor copies itself in fewer ticks and yields more. The run needs about two gigabytes of memory, and its recording grows by about 150 gigabytes a day. The environments behind the published records were ten to a hundred times larger. Time, memory and disk depend on different things.
+
+#### Time
+
+Every living organism executes one instruction per tick, so the time a tick takes grows with the population. A larger environment with more energy sustains thousands of organisms, and a day then yields proportionally fewer ticks. How many generations those ticks are depends on the ancestor. A generation of the ancestors that come with Evochora takes 10⁵ to 10⁶ ticks, measured in the recorded runs as the mean age of a parent at a birth. A population of several thousand organisms thus still comes to several hundred generations a day. A small population yields many generations and strong drift. The published runs traded generations for populations of several hundred to over a thousand organisms.
+
+#### Memory
+
+Memory grows with the size of the environment and with how full it becomes. The largest environment behind a published record, 19200 × 12416 cells, ran on the same laptop. When a run starts, the node logs an estimate of what it will need and warns if the configured memory is lower. The estimate is conservative, and a run usually needs less than it says. How the memory is configured is in the [User Guide](USER_GUIDE.md).
+
+#### Disk
+
+The recording grows with the size of the environment, which bounds how many cells can be occupied, and with the density of the recording. With every ten-thousandth tick recorded, an environment of 7680 × 4320 cells took about 250 gigabytes for 3.5 × 10⁸ ticks. The largest, 19200 × 12416 cells, took about a terabyte for 10⁹ ticks. A denser recording grows in proportion, which is why a run can be recorded sparsely and a stretch that matters recorded again ([Record a Stretch in Full](USER_GUIDE.md#6-record-a-stretch-in-full)).
+
+### 6.3 Direction
+
+Evochora runs on one machine today. The recording and the indexing of a run are separate services behind replaceable interfaces, so moving them to other machines would mean new implementations of those interfaces, not a new design. Distributing the simulation itself, by partitioning the environment across nodes, is not designed. The direction such a partition would take is the one Ackley demonstrated with the Moveable Feast Machine [(Ackley, 2013)](#ref-ackley-2013). Organisms interact only with their neighborhood, so nodes would exchange little. It is named here as a direction, not a plan. Why Evochora is written in Java, with its own assembly language and as a set of services, is explained in [Architecture & Design Decisions](dev/ARCHITECTURE_DECISIONS.md). How it is built is described in [Architecture](dev/ARCHITECTURE.md).
+
+## 7. Limitations
+
+The limits named here are the ones that constrain an experiment today. Each comes with what would lift it: a setting, a plugin, or a piece of work.
+
+#### Replicates
+
+The findings so far come from single runs, made while the platform was being tested. No experiment with replicates has been run yet, which is why the records stop at "consistent with selection" ([First Results](#4-first-results)). What it would take is a series of runs under one configuration that differ only in their seed.
+
+#### Complexity
+
+Whether complexity keeps arising has not been measured yet. One record measured evolutionary activity after Bedau and found it bounded ([First Results](#4-first-results)), over a run of a few thousand generations. Whether that holds over many more has not been tested so far. A measure of complexity itself has still to be chosen for a body of typed molecules. The measures the field uses rest on data the runs record. With a measure in hand, the question of [Research Directions](#5-research-directions) can be tested in runs: which conditions let complexity keep rising.
+
+#### Matter
+
+Matter is not conserved. An organism writes molecules out of energy. What becomes of a dead body is a setting of the run: its molecules can stay where they are, be removed, or be replaced by energy or any other molecule ([Plugin Interfaces](#24-plugin-interfaces)). Food chains in the sense of ecology, where one organism's leftovers are another's resource, need a conserved substrate. [Metabolism and Food Webs](#59-metabolism-and-food-webs) describes what that would take.
+
+#### Thermodynamics
+
+The thermodynamics is an accounting, not a physics of heat. Energy and entropy are two registers. The thermodynamic policies set what each instruction adds to them or takes from them, and the machine acts on their level only at the limits, where an organism dies. No plugin that comes with Evochora reads the level. A graded effect, such as a mutation rate that rises with the organism's entropy, can be added as a plugin ([The Structure of Variation](#55-the-structure-of-variation)).
+
+#### Scale
+
+By the measures of population genetics the runs are small. A body of thousands of cells leaves room for hundreds to a few thousand organisms in the environments used so far. A generation takes 10⁵ to 10⁶ ticks, so a run of a billion ticks is a few thousand generations ([Resources](#62-resources)). Smaller ancestors, longer runs and campaigns across machines would raise both numbers.
+
+## 8. Conclusion
+
+Evochora is a young platform and not yet widely used. Its findings come from single runs, and what a platform lacks shows only once others work with it. Populations sustain themselves over billions of ticks, and a run takes the same course on any machine ([Reproducibility](#61-reproducibility)). Evolution changed body, behavior and the structure of the population without reward from outside, and each change could be read down to the single molecule. The runs were made to test the platform, not to produce findings ([First Results](#4-first-results)). The project reads this as a sign that the physics is sound enough to carry experiments designed around a question. It expects the questions of [Research Directions](#5-research-directions) to be askable here in a form other systems were not built for: with the body as the object of selection and every step of a run on record. Whether they are answered that way is for the experiments to show. The platform was built to be used by others, and the next chapter says how.
+
+## 9. Getting Involved
+
+Evochora is open source under the MIT License, and it will grow with the people who use it. If you want to see it run, the [live demo](https://evochora.org/) shows a simulation in the browser, and the [User Guide](USER_GUIDE.md) takes you from the first start to an experiment of your own. If you bring a question from your field that one of the [research directions](#5-research-directions) could carry, or an objection to a rule of the physics, raise it in the [discussions](https://github.com/evochora/evochora/discussions) or talk it through on [Discord](https://discord.gg/t9yEJc4MKX). For work on the code or the documents, the [Contribution Guide](https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md) says how researchers and developers can contribute. Results are welcome in every form, and a run that contradicts this document is at least as useful as one that confirms it.
+
+- Live demo: [evochora.org](https://evochora.org/)
+- Source code and documentation: [GitHub](https://github.com/evochora/evochora)
+- Published experiment records: [Published Experiments](PUBLISHED_EXPERIMENTS.md)
+- Questions and discussion: [GitHub Discussions](https://github.com/evochora/evochora/discussions)
+- Chat: [Discord](https://discord.gg/t9yEJc4MKX)
+
+## 10. Disclosure
+
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.
+
+## 11. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
-- <a id="ref-bedau-2000"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (2000). A classification of long-term evolutionary dynamics. In *Artificial Life VII* (pp. 228-237). MIT Press.
-- <a id="ref-bonabeau-1999"></a>Bonabeau, E., Dorigo, M., & Theraulaz, G. (1999). *Swarm Intelligence: From Natural to Artificial Systems*. Oxford University Press.
+- <a id="ref-batut-2013"></a>Batut, B., Parsons, D. P., Fischer, S., Beslon, G., & Knibbe, C. (2013). In silico experimental evolution: a tool to test evolutionary scenarios. *BMC Bioinformatics*, 14(Suppl 15), S11.
+- <a id="ref-bedau-1998"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (1998). A classification of long-term evolutionary dynamics. In *Artificial Life VI* (pp. 228–237). MIT Press.
 - <a id="ref-chan-2019"></a>Chan, B. W.-C. (2019). Lenia: Biology of Artificial Life. *Complex Systems*, 28(3), 251-286.
+- <a id="ref-clark-2017"></a>Clark, E. B., Hickinbotham, S. J., & Stepney, S. (2017). Semantic closure demonstrated by the evolution of a universal constructor architecture in an artificial chemistry. *Journal of the Royal Society Interface*, 14(130), 20161033.
 - <a id="ref-dittrich-2001"></a>Dittrich, P., Ziegler, J., & Banzhaf, W. (2001). Artificial chemistries—a review. *Artificial Life*, 7(3), 225-275.
 - <a id="ref-eigen-1971"></a>Eigen, M. (1971). Selforganization of matter and the evolution of biological macromolecules. *Naturwissenschaften*, 58(10), 465-523.
-- <a id="ref-evochora-2026"></a>Evochora Project. (2026). A completed selective sweep in an Evochora run: the restrictive setting of a reproduction switch displaces the permissive one (Version 1) [Data set]. Zenodo. [https://doi.org/10.5281/zenodo.22081453](https://doi.org/10.5281/zenodo.22081453)
-- <a id="ref-gebhardt-2019"></a>Gebhardt, G. H., & Polani, D. (2019). The thermodynamic cost of interacting with the environment. In *Artificial Life Conference Proceedings* (pp. 535-542). MIT Press.
+- <a id="ref-galhardo-2007"></a>Galhardo, R. S., Hastings, P. J., & Rosenberg, S. M. (2007). Mutation as a stress response and the regulation of evolvability. *Critical Reviews in Biochemistry and Molecular Biology*, 42(5), 399–435.
+- <a id="ref-goldsby-2012"></a>Goldsby, H. J., Dornhaus, A., Kerr, B., & Ofria, C. (2012). Task-switching costs promote the evolution of division of labor and shifts in individuality. *Proceedings of the National Academy of Sciences*, 109(34), 13686–13691.
+- <a id="ref-goldsby-2014"></a>Goldsby, H. J., Knoester, D. B., Ofria, C., & Kerr, B. (2014). The evolutionary origin of somatic cells under the dirty work hypothesis. *PLOS Biology*, 12(5), e1001858.
 - <a id="ref-hamilton-1964"></a>Hamilton, W. D. (1964). The genetical evolution of social behaviour. I. *Journal of Theoretical Biology*, 7(1), 1-16.
+- <a id="ref-hickinbotham-2016"></a>Hickinbotham, S., Clark, E., Nellis, A., Stepney, S., Clarke, T., & Young, P. (2016). Maximizing the adjacent possible in automata chemistries. *Artificial Life*, 22(1), 49-75.
+- <a id="ref-hickinbotham-2021"></a>Hickinbotham, S., Stepney, S., & Hogeweg, P. (2021). Nothing in evolution makes sense except in the light of parasitism: Evolution of complex replication strategies. *Royal Society Open Science*, 8(8), 210441.
+- <a id="ref-hutton-2002"></a>Hutton, T. J. (2002). Evolvable self-replicating molecules in an artificial chemistry. *Artificial Life*, 8(4), 341-356.
 - <a id="ref-lane-martin-2010"></a>Lane, N., & Martin, W. (2010). The energetics of genome complexity. *Nature*, 467(7318), 929–934.
+- <a id="ref-lehman-2020"></a>Lehman, J., Clune, J., Misevic, D., et al. (2020). The surprising creativity of digital evolution: A collection of anecdotes from the evolutionary computation and artificial life research communities. *Artificial Life*, 26(2), 274–306.
+- <a id="ref-lotka-1925"></a>Lotka, A. J. (1925). *Elements of Physical Biology*. Williams & Wilkins.
 - <a id="ref-lynch-2007"></a>Lynch, M. (2007). *The Origins of Genome Architecture*. Sinauer Associates.
+- <a id="ref-lynch-marinov-2015"></a>Lynch, M., & Marinov, G. K. (2015). The bioenergetic costs of a gene. *Proceedings of the National Academy of Sciences*, 112(51), 15690–15695.
+- <a id="ref-macarthur-pianka-1966"></a>MacArthur, R. H., & Pianka, E. R. (1966). On optimal use of a patchy environment. *The American Naturalist*, 100, 603–609.
 - <a id="ref-mayr-1963"></a>Mayr, E. (1963). *Animal Species and Evolution*. Harvard University Press.
 - <a id="ref-maynard-smith-price-1973"></a>Maynard Smith, J., & Price, G. R. (1973). The logic of animal conflict. *Nature*, 246(5427), 15-18.
 - <a id="ref-maynard-smith-1995"></a>Maynard Smith, J., & Szathmáry, E. (1995). *The Major Transitions in Evolution*. Oxford University Press.
+- <a id="ref-moreno-2019"></a>Moreno, M. A., & Ofria, C. (2019). Toward open-ended fraternal transitions in individuality. *Artificial Life*, 25(2), 117–133.
+- <a id="ref-moreno-2022"></a>Moreno, M. A., & Ofria, C. (2022). Exploring evolved multicellular life histories in a open-ended digital evolution system. *Frontiers in Ecology and Evolution*, 10, 750837.
 - <a id="ref-nowak-may-1992"></a>Nowak, M. A., & May, R. M. (1992). Evolutionary games and spatial chaos. *Nature*, 359(6398), 826-829.
 - <a id="ref-odling-smee-2003"></a>Odling-Smee, F. J., Laland, K. N., & Feldman, M. W. (2003). *Niche Construction: The Neglected Process in Evolution*. Princeton University Press.
 - <a id="ref-ofria-2004"></a>Ofria, C., & Wilke, C. O. (2004). Avida: A software platform for research in digital evolution. *Artificial Life*, 10(2), 191-229.
+- <a id="ref-ohno-1970"></a>Ohno, S. (1970). *Evolution by Gene Duplication*. Springer-Verlag. https://doi.org/10.1007/978-3-642-86659-3
+- <a id="ref-pfeiffer-bonhoeffer-2004"></a>Pfeiffer, T., & Bonhoeffer, S. (2004). Evolution of cross-feeding in microbial populations. *The American Naturalist*, 163(6), E126–E135.
+- <a id="ref-plantec-2023"></a>Plantec, E., Hamon, G., Etcheverry, M., Oudeyer, P.-Y., Moulin-Frier, C., & Chan, B. W.-C. (2023). Flow-Lenia: Towards open-ended evolution in cellular automata through mass conservation and parameter localization. In *Proceedings of the Artificial Life Conference 2023*. MIT Press. Preprint: [https://arxiv.org/abs/2212.07906](https://arxiv.org/abs/2212.07906)
+- <a id="ref-rainey-travisano-1998"></a>Rainey, P. B., & Travisano, M. (1998). Adaptive radiation in a heterogeneous environment. *Nature*, 394(6688), 69–72.
+- <a id="ref-ratcliff-2012"></a>Ratcliff, W. C., Denison, R. F., Borrello, M., & Travisano, M. (2012). Experimental evolution of multicellularity. *Proceedings of the National Academy of Sciences*, 109(5), 1595–1600.
 - <a id="ref-ray-1991"></a>Ray, T. S. (1991). An approach to the synthesis of life. In *Artificial Life II* (pp. 371-408). Addison-Wesley.
 - <a id="ref-schluter-2000"></a>Schluter, D. (2000). *The Ecology of Adaptive Radiation*. Oxford University Press.
 - <a id="ref-schrodinger-1944"></a>Schrödinger, E. (1944). *What is Life? The Physical Aspect of the Living Cell*. Cambridge University Press.
 - <a id="ref-sharma-2023"></a>Sharma, A., Czégel, D., Lachmann, M., Kempes, C. P., Walker, S. I., & Cronin, L. (2023). Assembly theory explains and quantifies selection and evolution. *Nature*, 622(7982), 321–328.
-- <a id="ref-sims-1994"></a>Sims, K. (1994). Evolving virtual creatures. In *Proceedings of the 21st annual conference on Computer graphics and interactive techniques* (pp. 15-22).
 - <a id="ref-soros-2014"></a>Soros, L. B., & Stanley, K. O. (2014). Identifying necessary conditions for open-ended evolution through the artificial life world of Chromaria. In *Artificial Life 14* (pp. 793-800). MIT Press.
+- <a id="ref-tarnita-2013"></a>Tarnita, C. E., Taubes, C. H., & Nowak, M. A. (2013). Evolutionary construction by staying together and coming together. *Journal of Theoretical Biology*, 320, 10–22.
+- <a id="ref-taylor-2014"></a>Taylor, T. (2014). Evolution in virtual worlds. In M. Grimshaw (Ed.), *The Oxford Handbook of Virtuality*. Oxford University Press. Preprint: [https://arxiv.org/abs/1710.06055](https://arxiv.org/abs/1710.06055)
+- <a id="ref-taylor-2015"></a>Taylor, T. (2015). Requirements for open-ended evolution in natural and artificial systems. arXiv:1507.07403. [https://arxiv.org/abs/1507.07403](https://arxiv.org/abs/1507.07403)
+- <a id="ref-taylor-2016"></a>Taylor, T., Bedau, M., Channon, A., et al. (2016). Open-ended evolution: Perspectives from the OEE workshop in York. *Artificial Life*, 22(3), 408–423.
+- <a id="ref-volterra-1926"></a>Volterra, V. (1926). Fluctuations in the abundance of a species considered mathematically. *Nature*, 118, 558–560.
+- <a id="ref-von-neumann-1966"></a>von Neumann, J. (1966). *Theory of Self-Reproducing Automata*. Edited and completed by A. W. Burks. University of Illinois Press.
 - <a id="ref-wagner-2005"></a>Wagner, A. (2005). *Robustness and Evolvability in Living Systems*. Princeton University Press.
-- <a id="ref-moreno-2022"></a>Moreno, F., & Ofria, C. (2022). Exploring the Fraternal Transitions to Multicellularity in Digital Evolution. *Artificial Life*, 28(1), 1-24.
+- <a id="ref-wagner-2013"></a>Wagner, A. P., Zaman, L., Dworkin, I., & Ofria, C. (2013). Behavioral strategy chases promote the evolution of prey intelligence. Preprint: [https://arxiv.org/abs/1310.1369](https://arxiv.org/abs/1310.1369)
+- <a id="ref-zaman-2014"></a>Zaman, L., Meyer, J. R., Devangam, S., Bryson, D. M., Lenski, R. E., & Ofria, C. (2014). Coevolution drives the emergence of complex traits and promotes evolvability. *PLOS Biology*, 12(12), e1002023.

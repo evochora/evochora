@@ -164,6 +164,16 @@ The energy costs and entropy changes for all instructions are configurable throu
 
 For detailed configuration examples and available policy options, refer to the `evochora.conf` configuration file.
 
+### Running mutated code
+
+The machine executes what it finds. Code that has been changed, by mutation or by an organism, is not checked against any program. Each cell is read when the instruction pointer or an argument reaches it, and only what cannot be done fails. The rules are:
+
+* **At the instruction pointer.** A `CODE` molecule with a known opcode is executed. A molecule of any other type is passed over like a `NOP`. An empty cell is skipped, up to a configured number of empty cells per tick (`max-skips-per-tick`). Beyond that the instruction fails. A `CODE` molecule with an unknown opcode fails and is treated as a `NOP`.
+* **Operands.** The argument cells are read as they are, whatever type they hold. A register operand takes the cell's value as a register number, a literal takes the molecule as it is, type and value, a vector takes the values of the following cells, a label takes the value as the label to search for. An operand fails only where it cannot be used. That is a number that names no register, a location operand that names no location register, a stack operand without a value on the stack, or an argument cell beyond the edge of a bounded world. Operand types that a value operation does not accept fail as well (see [Types in value operations](#types-in-value-operations)).
+* **A failed instruction** is not executed. It pays its base cost and the error penalty (see [Energy Register (ER)](#energy-register-er)), and the instruction pointer moves on. A condition that cannot be tested does not hold. A jump finds its label with tolerance (see [Fuzzy label matching](#fuzzy-label-matching)). When no label matches, the jump fails.
+
+Nothing in this stops the organism. A body with mutated code runs on, pays for what fails, and lives or dies by the result.
+
 ---
 
 ## 4. Basic Syntax
