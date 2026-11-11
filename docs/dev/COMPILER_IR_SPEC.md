@@ -1,128 +1,196 @@
-# Compiler Intermediate Representation (IR) Specification
+# Compiler IR Specification
 
-## 1. Introduction
+The IR (intermediate representation) is the form of a program between the frontend and the backend of the EvoASM compiler. The IR generator produces it from the syntax tree; the rewriting, the layout, the linker and the emitter work on it and on nothing else. This document specifies what the IR contains. Where it sits among the compiler's phases is described in [Architecture](ARCHITECTURE.md#2-the-compiler). The types live in `compiler/model/ir`.
 
-This document specifies the Intermediate Representation (IR) used by the Evochora compiler. The IR serves as a bridge between the frontend (parsing, semantic analysis) and the backend (code generation, layout) of the compiler. It is a structured representation of the program that the backend lays out, links and emits; before that, the IR rewriter lets the features rewrite it (section 6).
+- [The Program](#the-program)
+- [Items](#items)
+- [Operands](#operands)
+- [Directive Values](#directive-values)
+- [Layout Terms](#layout-terms)
+- [Directives](#directives)
+- [Rewriting](#rewriting)
+- [Example](#example)
 
-The IR is designed as a collection of objects, where each object represents a fundamental element of the source program, such as an instruction, a directive, or a piece of data.
+## The Program
 
----
+An `IrProgram` has three parts:
 
-## 2. Core IR Structure: `IrProgram`
+- `programName`: the name of the program.
+- `items`: the items of the whole program in emission order. The backend keeps this order.
+- `debugInfo`: what a debugger and a source view need besides the items. No phase of the backend reads or changes it, and the emitter copies it into the artifact. It holds:
+  - the text of the program's files,
+  - the classification of its tokens,
+  - the values of the computations the frontend computed,
+  - the defines and values of the compilation's options.
 
-The root of the IR is the `IrProgram` record.
+## Items
 
--   **`programName`**: The name of the program.
--   **`items`**: The `IrItem` objects of the whole program in emission order, which the backend preserves.
--   **`debugInfo`**: What a debugger and a source view need besides the items: the text of the program's files, the classification of its tokens, the values of the computations the frontend computed, and the defines and values of the compilation's options. No backend phase reads or changes it; the emitter copies it into the artifact.
+`IrItem` is a sealed interface with exactly three kinds. Every item carries a `SourceInfo`, the place in the source it comes from.
 
----
+**`IrInstruction`** is an instruction of the organisms' instruction set.
 
-## 3. Basic Building Block: `IrItem`
+- `opcode`: the name of the instruction, such as `SETI` or `ADDR`.
+- `operands`: its operands, a list of `IrOperand`.
+- `synthetic`: `true` for an instruction the compiler generated rather than one written in the source. The emitter writes it into the artifact with the instruction, so that generated code can be told apart from written code.
 
-`IrItem` is the sealed interface of everything that can appear in an `IrProgram`; it has exactly three kinds: `IrInstruction`, `IrDirective` and `IrLabelDef`. Every line or statement in the source code that has a semantic meaning is converted into items of these kinds. Each item stores `SourceInfo` to map it back to its original location in the source code for error reporting.
+`IrInstruction` is the one kind a feature may extend. The `proc` feature does so with `IrCallInstruction`, the instruction of a `CALL`. Besides its `operands`, it carries the parameters of the call in four lists of `IrOperand`: `refOperands`, `valOperands`, `lrefOperands` and `lvalOperands`.
 
----
+**`IrLabelDef`** defines a label. It occupies one cell and is a target of jumps.
 
-## 4. IR Item Types
+- `name`: the name of the label, qualified for a label written in the source.
 
-### 4.1. Instructions: `IrInstruction`
+**`IrDirective`** tells the backend something about the program. It takes no place in the program's code. A feature registers the handlers that act on it in the backend phases.
 
-This represents a processor instruction.
+- `namespace`: the namespace of the directive, such as `core`.
+- `name`: its name within the namespace, such as `org`.
+- `args`: its arguments, a map from names to [directive values](#directive-values).
 
--   **`opcode`**: A `String` holding the instruction's name (e.g., "SETI", "ADDR").
--   **`operands`**: A list of `IrOperand` objects that are the arguments to the instruction.
--   **`synthetic`**: `true` for an instruction the compiler generated rather than one written in the source; it is carried into the debug information so that generated code can be told apart from written code.
+## Operands
 
-`IrInstruction` is the one kind a feature may extend. The `proc` feature does so with `IrCallInstruction`, the instruction of a `CALL`, which carries the parameters of the call besides its `operands`: `refOperands`, `valOperands`, `lrefOperands` and `lvalOperands`, each a list of `IrOperand`.
+`IrOperand` is a sealed interface with exactly three forms:
 
-### 4.2. Directives: `IrDirective`
+- `IrReg`: a register, with its `name`, such as `%DR0`.
+- `IrLiteral`: a literal, carried as one `Value` of `compiler/model/expression`. A `Value` is a number, a typed value, a vector, a molecule type or a position.
+- `IrLabelRef`: a reference to a label, with the label's qualified name as `labelName`. The label may be defined before or after the reference.
 
-This represents a compiler directive, which provides instructions to the compiler itself rather than generating machine code directly. Directives are namespaced to avoid collisions.
+## Directive Values
 
--   **`namespace`**: A `String` identifying the origin of the directive (e.g., "core").
--   **`name`**: A `String` for the directive's name (e.g., "org", "place").
--   **`args`**: A map from `String` argument names to `IrValue` objects.
+`IrValue` is a sealed interface with exactly six forms:
 
-#### Core Directives
+- `Literal`: a `Value`, as an `IrLiteral` carries one.
+- `Expression`: a computation that only the layout can compute. Every name in it is qualified.
+- `Str`: a string, such as a qualified name.
+- `Bool`: a boolean.
+- `ListVal`: a list of `IrValue`.
+- `MapVal`: a map from names to `IrValue`.
 
--   `core:org`: Sets the layout origin. Its `args` map holds `components`, a `ListVal` with one value per component, `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module, and `backward`, a `ListVal` of `Bool` with one entry per component: `true` where the marker was `@-` and the component, as written, counts backwards. Each component is a `Literal`, a `Str` (a qualified name) or an `Expression`, which the layout computes at the directive; each is a number, except that a directive of one component may give the whole origin as a vector, counted from the base position (or, marked, from the cursor), or as a position, which becomes the cursor as it is.
--   `core:dir`: Sets the layout direction. Either `direction`, a `Literal`, `Str` or `Expression` whose value is the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) spanning the plane it turns in.
--   `core:place`: Places a molecule at one or more locations. Its `args` map contains the molecule as `value`, a typed value given as a `Literal`, a `Str` or an `Expression`, and the locations as `placements`: a `ListVal` of placements, each a `ListVal` of components, each component a `MapVal` whose `kind` (`Str`) names its form and whose other entries are its operands, each a `Literal`, a `Str` or an `Expression`: `single` with `value`, `range` with `start` and `end`, `stepped` with `start`, `step` and `end`, `wildcard` with nothing else. Every operand is a number, except that a placement of one `single` component may give the whole place as a vector, counted from the base position of the enclosing module, or as a position, a place of the program.
--   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
--   `core:proc_enter` / `core:proc_exit`: Mark the boundaries of a procedure. Both carry the same `args`: `name` (`Str`, the qualified name), `exported` (`Bool`), the parameter names as `refParams`, `valParams`, `lrefParams` and `lvalParams` (each a `ListVal` of `Str`, empty when the procedure has none of that kind), and `lrefArity` and `lvalArity` (`Literal` numbers).
+## Layout Terms
 
-#### Feature Directives
+The directives of the layout use these terms, which [Layout Control](../ASSEMBLY_SPEC.md#layout-control) and [Positions](../ASSEMBLY_SPEC.md#positions) in the Assembly Specification explain for the language:
 
-A feature emits directives in its own namespace:
+- **Cursor**: the cell the next code is placed in, the one after the cell placed last.
+- **Direction**: the vector along which the layout places the code.
+- **Base position**: the origin of the file being laid out. In the main file it is the origin of the program; in a file that `.IMPORT` or `.SOURCE` includes, it is the cursor where the include stands.
+- **Marker**: `@+` or `@-` before a component of `.ORG`. A marked component counts from the cursor instead of from the base position, and `@-` counts backwards.
+- **Position**: a place of the program, counted from the origin of the program.
 
--   `constdir:const_value`: A constant. `name` (`Str`) is its qualified name, `value` an `Expression` when the constant's value is a computation, otherwise a `Str` holding the operand as written.
--   `importdir:value`: A value a module requires. `name` (`Str`) is its qualified name, `value` as for `const_value`.
--   `importdir:bound_value`: Emitted at an import line for a `USING VALUE` binding that is a computation. `name` (`Str`) is the qualified name of the requirement it binds, `value` the `Expression`.
--   `reg:reg_alias`: A register alias. `name` (`Str`) is the alias's qualified name, `register` (`Str`) the register it stands for.
+## Directives
 
-### 4.3. Label Definitions: `IrLabelDef`
+The namespace does not name the feature that emits a directive: the features `org`, `dir`, `place`, `ctx` and `proc` emit theirs in the namespace `core`. Each directive is acted on by the feature that emits it.
 
-This represents the definition of a label within the code.
+**`core:org`** moves the cursor. Its arguments are three lists with one entry per component:
 
--   **`name`**: A `String` containing the name of the label. This is used as a target for jumps and other control flow instructions.
+- `components` (`ListVal`): the components, each a `Literal`, a `Str` holding a qualified name or an `Expression`.
+- `relative` (`ListVal` of `Bool`): `true` where the component is marked, and so counts from the cursor.
+- `backward` (`ListVal` of `Bool`): `true` where the marker is `@-`.
 
----
+Each component is a number. A directive with a single component may instead give the whole new cursor:
 
-## 5. Operands and Values
+- A vector counts from the base position, or from the cursor where it is marked, and backwards after `@-`.
+- A position becomes the cursor unchanged.
 
-Operands and values are the data components used by instructions and directives. They are represented by a hierarchy of classes.
+**`core:dir`** sets the direction of the layout. It carries one of two forms:
 
-### 5.1. `IrOperand`
+- `direction`: the direction vector, as a `Literal`, a `Str` holding a qualified name or an `Expression`.
+- A rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) that span the plane it turns in.
 
-This is the base interface for all instruction operands.
+**`core:place`** places a molecule at one or more locations.
 
-### 5.2. `IrValue`
+- `value`: the molecule, as a `Literal`, a `Str` holding a qualified name or an `Expression`.
+- `placements` (`ListVal`): one entry per placement. A placement is a `ListVal` with one component per axis.
 
-This is a sealed interface for typed values used in directive arguments. It allows for structured, type-safe data to be passed to backend phases.
+Each component is a `MapVal`. Its entry `kind` (`Str`) names the form of the component, and its other entries are the operands of that form:
 
-### 5.3. Concrete Operand/Value Types
+| `kind` | Operands |
+|---|---|
+| `single` | `value` |
+| `range` | `start`, `end` |
+| `stepped` | `start`, `step`, `end` |
+| `wildcard` | none |
 
--   **`IrReg`**: Represents a machine register.
-    -   **`name`**: The `String` name of the register (e.g., "%DR0", "%PR1").
+Each operand is a number, given as a `Literal`, a `Str` holding a qualified name or an `Expression`. A placement with a single `single` component may instead give the whole location:
 
--   **`IrLiteral`**: Represents a literal operand, carried as one `Value` of `model/expression`: a `Number` (a `long`), a `Typed` value (a type name such as "DATA" and a `long`), or a `Vector` (a list of `long` components). The layout checks that a vector argument of an instruction has one component per dimension of the world, and the emitter checks a number against the range of a cell where it encodes it.
+- A vector counts from the base position.
+- A position is taken unchanged.
 
--   **`IrLabelRef`**: Represents a reference to a previously defined label. This is used as an operand for control flow instructions.
-    -   **`labelName`**: The `String` name of the label being referenced.
+**`core:push_ctx`** and **`core:pop_ctx`** enclose the content of a file that `.SOURCE` or `.IMPORT` includes. `push_ctx` saves the base position and the direction of the layout and makes the cursor the new base position; `pop_ctx` restores both. Neither has arguments.
 
--   **`IrValue` Subtypes**:
-    -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
-    -   `Expression(Expression)`: a computation only the layout can compute, every name in it qualified, every node of it carrying where it begins and ends in the source; `const_value` carries one for a constant whose value is such a computation, and `core:org`, `core:dir` and `core:place` for an argument that needs the cursor or the origin of the line. The layout computes it where the directive stands: a `const_value` (`constdir`) and an `importdir` `value` record the result in the layout's named values under the directive's `name`, and an `importdir` `bound_value`, emitted at an import line for a `USING VALUE` binding that is a computation, records it under the qualified name of the requirement it binds; a `value` whose expression is only the requirement's own name records nothing, because the import line recorded the value already. The emitter hands the named values to the emission contributors, which write `constantValues` from them
-    -   `Str(String)`
-    -   `Bool(boolean)`
-    -   `ListVal(List<IrValue>)`
-    -   `MapVal(Map<String, IrValue>)`
+**`core:proc_enter`** and **`core:proc_exit`** mark the start and the end of a procedure. Both carry the same arguments:
 
----
+- `name` (`Str`): the qualified name of the procedure.
+- `exported` (`Bool`): whether the procedure is exported.
+- `refParams`, `valParams`, `lrefParams` and `lvalParams` (each a `ListVal` of `Str`): the names of the parameters of each kind, empty when the procedure has none of that kind.
+- `lrefArity` and `lvalArity` (`Literal` numbers): the number of `LREF` and of `LVAL` parameters.
 
-## 6. Rewriting
+The four directives that follow produce no code themselves. They are used in two ways:
 
-After the IR is generated, the IR rewriter hands the whole item list to every rewrite rule the features registered, in registration order; the rewriter itself knows no rule. The `proc` feature registers two. One inserts the instructions that pass the parameters around every `CALL` that has parameters, and turns a condition that guards a `CALL` into a jump around it, so that the condition skips the whole call. The other inserts, after every `core:proc_enter`, the instructions that take the parameters into the procedure's registers, before every `RET` of the procedure the instructions that hand the `REF` and `LREF` parameters back, and turns a condition that guards a `RET` into a jump around both. The instructions they insert are marked `synthetic`. Layout, linking and emission work on the rewritten IR.
+- Where the value of a constant or of a required value is an `Expression`, the layout computes it at the directive and records it under the qualified name. A later computation that names it gets that value.
+- The artifact carries the values and the register aliases, so that a debugger and the visualizer can show them where they are used.
 
-## 7. Example IR Representation
+**`constdir:const_value`** defines a constant.
 
-Consider the following assembly code snippet:
+- `name` (`Str`): its qualified name.
+- `value`: an `Expression` when the value is a computation, otherwise a `Str` holding what the frontend resolved it to: a literal as text, or the qualified name of a label.
 
-```assembly
+**`importdir:value`** is a value that a module requires. Its arguments are those of `const_value`. Where its `Expression` is only the requirement's own qualified name, the layout records nothing at it: the import line bound the value, and its `importdir:bound_value` recorded it already.
+
+**`importdir:bound_value`** stands at an import line for each `USING VALUE` binding that is a computation.
+
+- `name` (`Str`): the qualified name of the requirement it binds.
+- `value` (`Expression`): the computation.
+
+**`reg:reg_alias`** defines a register alias.
+
+- `name` (`Str`): the qualified name of the alias.
+- `register` (`Str`): the register it stands for.
+
+## Rewriting
+
+Between the IR generator and the layout, the IR rewriter applies every rewrite rule the features registered, in the order they registered them, each to the items the one before returned. The rewriter knows no rule of its own. The `proc` feature registers two:
+
+- The first inserts, after every `core:proc_enter`, the instructions that take the parameters into the procedure's registers. Before every `RET` of the procedure, it inserts the instructions that hand the `REF` and `LREF` parameters back. A conditional instruction directly before a `RET` is replaced by its negation and a jump, which skips the handing back and the `RET`.
+- The second inserts, around every `CALL` that has parameters, the instructions that pass them. A conditional instruction directly before a `CALL` is replaced the same way, and the jump skips the whole call.
+
+Every instruction a rule inserts is `synthetic`. The target of each of these jumps is an `IrLabelDef` the rule inserts after what the jump skips, with a generated name such as `_safe_ret_0` or `_safe_call_0`.
+
+## Example
+
+This program:
+
+```
 EXPORT .PROC MY_FUNC REF A
   RET
 .ENDPROC
 
-start:
+.ORG 0|@+2
+START:
   CALL MY_FUNC REF %DR0
 ```
 
-Generated from it, before rewriting, the IR is an `IrProgram` containing a sequence of `IrItem`s like this:
+becomes these items:
 
-1.  An `IrLabelDef` with `name` = `"MY_FUNC"`.
-2.  An `IrDirective` (`core:proc_enter`) with `name`="MY_FUNC", `exported`=true, `refParams`=`["A"]`, empty `valParams`, `lrefParams` and `lvalParams`, and `lrefArity`=0, `lvalArity`=0.
-3.  An `IrInstruction` with `opcode`="RET".
-4.  An `IrDirective` (`core:proc_exit`) with the same arguments as `core:proc_enter`.
-5.  An `IrLabelDef` with `name` = `"start"`.
-6.  An `IrCallInstruction`, the `IrInstruction` of the `proc` feature, with `opcode`="CALL", `operands`=`[IrLabelRef{labelName="MY_FUNC"}]` and `refOperands`=`[IrReg{name="%DR0"}]`; its `valOperands`, `lrefOperands` and `lvalOperands` are empty.
+1. `IrLabelDef` with `name` `MY_FUNC`.
+2. `IrDirective` `core:proc_enter` with `name` `MY_FUNC`, `exported` `true`, `refParams` `[A]`, empty `valParams`, `lrefParams` and `lvalParams`, and `lrefArity` and `lvalArity` `0`.
+3. `IrInstruction` with `opcode` `RET`.
+4. `IrDirective` `core:proc_exit` with the same arguments as `core:proc_enter`.
+5. `IrDirective` `core:org` with `components` `[0, 2]` (`Literal` numbers), `relative` `[false, true]` and `backward` `[false, false]`: the next code starts in column 0, counted from the base position, two rows below the cursor.
+6. `IrLabelDef` with `name` `START`.
+7. `IrCallInstruction` with `opcode` `CALL`, `operands` `[IrLabelRef MY_FUNC]` and `refOperands` `[IrReg %DR0]`; its other three lists are empty.
+
+The rewriting inserts synthetic instructions for the parameter `A`, which passes through the data stack:
+
+1. `IrLabelDef` `MY_FUNC`.
+2. `core:proc_enter`.
+3. `POP %FDR0`, synthetic: the procedure takes the parameter into its first register.
+4. `PUSH %FDR0`, synthetic: it hands the parameter back before it returns.
+5. `RET`.
+6. `core:proc_exit`.
+7. `core:org`.
+8. `IrLabelDef` `START`.
+9. `PUSH %DR0`, synthetic: the caller passes the parameter.
+10. `CALL MY_FUNC`, the same `IrCallInstruction`.
+11. `POP %DR0`, synthetic: the caller takes the parameter back.
+
+---
+
+Written with AI assistance under the project's [AI Policy](../../AI_POLICY.md). The author reviewed it and is responsible for its content.
