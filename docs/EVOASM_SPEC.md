@@ -1,41 +1,33 @@
 # Evochora Assembly: Language Reference
 
-## 1. Introduction & Overview
+## 1. Introduction
 
-Evochora is a digital ecosystem designed to simulate the evolution of simple, programmable organisms. At its core, it provides a playground for exploring concepts of artificial life, emergent behavior, and evolutionary strategies. The simulation takes place in a customizable, n-dimensional world where organisms must compete for resources, primarily energy and computing time, to survive and reproduce. Each organism is an autonomous agent controlled by a program written in a custom assembly language. This language is the key to defining an organism's behavior—from basic movement and environmental interaction to complex decision-making and replication strategies.
-
-This document serves as the official reference for the Evochora assembly language. It provides the necessary details to understand the virtual machine that powers each organism, the syntax of the language, and the full instruction set available for programming their actions and logic. Whether you are designing a simple energy-seeker or a complex replicating creature, this guide contains the information needed to bring your digital life-forms into existence.
+EvoASM is the assembly language in which the programs of Evochora's organisms are written; each organism runs its program on its own virtual machine. This document is the reference for the language. It describes the environment and the virtual machine (sections 2 and 3), the syntax and the literals (4 and 5), the instruction set (6), the directives of the compiler (7) and the expressions the compiler computes (8), and it ends with example programs (9). How to write programs that hold up in the simulation is described in the [EvoASM Guidelines](EVOASM_GUIDELINES.md).
 
 ---
 
 ## 2. The Simulation Environment
 
-The world of Evochora is a discrete, n-dimensional grid where all interactions take place. The size and properties of this grid are defined in the simulation's configuration.
-
-### The Grid
-
-The environment is structured as a grid with configurable dimensions. Each point on this grid, identified by its coordinates, can hold a single "Molecule".
-
-**Note on Dimensionality Limits**: Some instructions that use bitmasks for direction encoding (such as SPNP, SNT*, B2V, and V2B) are limited to worlds with **n ≤ Config.VALUE_BITS/2 dimensions** due to register size constraints. Each dimension requires 2 bits in the direction bitmask (one for +1, one for -1 direction), limiting the total to half the available value bits.
+The environment is a grid of cells in as many dimensions as the simulation's configuration sets. Each cell is identified by its coordinates.
 
 ### Topology
 
-The world is toroidal unless the simulation's configuration makes it bounded. A toroidal world wraps around at the edges: an organism moving past the right edge will reappear on the left, and one moving past the top will reappear on the bottom.
+The environment is toroidal unless the simulation's configuration makes it bounded. A toroidal environment wraps around at the edges: an organism moving past the right edge reappears on the left, and one moving past the top reappears at the bottom. In a bounded environment a cell beyond the edge does not exist.
 
 ### Molecules
 
-Every cell in the grid contains a **Molecule**, which is the fundamental unit of information and matter. A molecule has three properties: a **type**, a **value**, and a **marker**. The type determines its function and how organisms interact with it. The marker is a 4-bit value (0-15) used for ownership transfer during reproduction. The types are:
+Every cell holds one molecule, the unit of information and matter. A molecule has a type, a value and a marker (see [Molecule Marker](#molecule-marker)). The type determines what the molecule is and how organisms interact with it:
 
-* **`CODE`**: an executable instruction of the organism's virtual machine.
-* **`DATA`**: a numeric value. As an instruction operand it is a constant of the program; instructions can also read and write it in the grid.
-* **`STATE`**: a numeric value an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see [Types in value operations](#types-in-value-operations)).
-* **`ENERGY`**: a resource organisms consume to replenish their energy reserves (ER).
+* **`CODE`**: an instruction of the virtual machine. Its value, the *opcode*, says which instruction it is; the cells after it hold its *operands*, the values the instruction works with (see [Instruction Set](#6-instruction-set)).
+* **`DATA`**: a number. As an instruction operand it is a constant of the program; instructions can also read and write it in the environment.
+* **`STATE`**: a number an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see [Types in value operations](#types-in-value-operations)).
+* **`ENERGY`**: a resource; an organism that takes it up adds its value to its energy (see [Energy Register (ER)](#energy-register-er)).
 * **`STRUCTURE`**: physical matter, such as the shell of an organism's body.
-* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see [Fuzzy label matching](#fuzzy-label-matching)).
-* **`LABELREF`**: an instruction operand naming a label by its hash.
-* **`REGISTER`**: an instruction operand naming a register.
+* **`LABEL`**: a jump target, the anchor that fuzzy label matching finds (see [Fuzzy label matching](#fuzzy-label-matching)).
+* **`LABELREF`**: an instruction operand that names a label by its value.
+* **`REGISTER`**: an instruction operand that names a register (see [Registers](#registers)).
 
-`LABEL` is placed in the grid by the compiler as the anchor a jump resolves to; `LABELREF` and `REGISTER` are emitted as instruction operands. All three are read by the virtual machine; organisms scan and copy them like any other molecule.
+The compiler places `LABEL` molecules as the anchors that jumps find, and emits `LABELREF` and `REGISTER` molecules as instruction operands. The virtual machine reads all three; organisms scan and copy them like any other molecule.
 
 #### Types in value operations
 
@@ -43,133 +35,90 @@ Two scalar values are *value-compatible* if their types are equal, or if one is 
 
 #### Value width and range
 
-A molecule's value is `VALUE_BITS` bits wide: this is the *value width*. Read as a number, it is signed, and the numbers that fit are the *value range*. Arithmetic saturates: a result that would leave the range is held at the nearest end, and no instruction fails for it. Bitwise instructions work on the pattern within the width; a bit shifted past the edge is gone. The instructions are described in [Arithmetic Operations](#arithmetic-operations) and [Bitwise Operations](#bitwise-operations).
+A molecule's value is `Config.VALUE_BITS` bits wide: this is the *value width*. Read as a number, it is signed, and the numbers that fit are the *value range*. Arithmetic saturates: a result that would leave the range is held at the nearest end, and no instruction fails for it. Bitwise instructions work on the pattern within the width; a bit shifted past the edge is gone. The instructions are described in [Arithmetic Operations](#arithmetic-operations) and [Bitwise Operations](#bitwise-operations).
+
+A direction mask, as the instructions `SPN*`, `SNT*`, `B2V*` and `V2B*` use it (see [Instruction Set](#6-instruction-set)), takes two bits per dimension, one for each direction along it. These instructions therefore work in environments of at most `Config.VALUE_BITS` / 2 dimensions.
 
 ### Ownership
 
-Any grid cell can be "owned" by an organism. This ownership is tracked separately from the molecule in the cell and is crucial for certain instructions like `SEEK` or `PEEK`, which behave differently depending on whether the target cell is owned by the acting organism, a foreign organism, or is unowned. Movement treats an occupied unowned cell like a foreign one; costs are configured separately for all three cases.
+A cell can be owned by an organism. Ownership is kept apart from the molecule in the cell. Instructions that act on a cell behave differently depending on whether the cell is owned by the acting organism (*own*), by another organism (*foreign*) or by none (*unowned*). Movement treats an occupied unowned cell like a foreign one; costs are configured separately for all three cases.
 
 ### Molecule Marker
 
-Each molecule carries a 4-bit marker value (0-15). When an organism writes a molecule to the environment using `POKE` or similar instructions, the current value of the organism's Molecule Marker Register (`MR`) is embedded into the molecule. This marker is used during `FORK` to transfer ownership of specific molecules to the offspring (see `FORK` in [State and Location Operations](#state-and-location-operations)).
+Each molecule carries a marker of `Config.MARKER_BITS` bits. When an organism writes a molecule into a cell, the molecule takes the current value of the organism's Molecule Marker Register (`MR`, see [Registers](#registers)).
 
-The marker separates soma from genome. What an organism writes with `MR` 0 is soma: it belongs to no genome, and `DATA` written this way is stored as `STATE`. What it writes with any other marker is genome: it keeps its type and is handed to a child by a `FORK` executed with that marker. `FORK`, `FRKI` and `FRKS` fail when `MR` is 0.
+The marker separates soma from genome. What an organism writes with `MR` 0 is soma: it belongs to no genome, and `DATA` written this way is stored as `STATE`. What it writes with any other marker is genome: it keeps its type and is handed to a child by a `FORK` executed with that marker (see `FORK` in [State and Location Operations](#state-and-location-operations)). `FORK`, `FRKI` and `FRKS` fail when `MR` is 0.
 
 ---
 
 ## 3. The Organism's Virtual Machine
 
-Each organism operates like a simple computer, equipped with its own set of registers, pointers, and stacks. This internal architecture, or virtual machine (VM), executes the machine code that dictates the organism's state and actions. This machine code, stored as `CODE` and `DATA` molecules in the environment's grid, can be written by the user in the Evochora assembly language.
+Each organism has its own virtual machine, with pointers, registers and stacks. The machine executes the organism's code where it lies in the environment, as `CODE` molecules and their operands; EvoASM is the language that code is written in.
+
+The simulation advances in *ticks*. In each tick every organism executes one instruction, and all of them act on the environment as it was at the start of the tick.
 
 ### Pointers
 
-Pointers are special-purpose registers that define an organism's position and orientation in the world.
+Pointers define where the organism acts and in which direction it runs.
 
-* **Instruction Pointer (`IP`)**: An absolute coordinate in the grid that points to the next `CODE` molecule the organism will execute.
-
-* **Data Pointers (`DPx`)**: A set of absolute coordinates used as the base for all world-interaction instructions. An organism has multiple DPs (e.g., `%DP0`, `%DP1`), but only one is "active" at a time to serve as the origin for instructions like `PEEK` and `SEEK`.
-
-* **Direction Vector (`DV`)**: A unit vector that determines the direction in which the `IP` advances after executing an instruction.
+* **Instruction Pointer (`IP`)**: the coordinate of the next `CODE` molecule the organism executes.
+* **Data Pointers (`DP`)**: coordinates from which the instructions that act on the environment count. An organism has several `DP`s; one of them is active and is the origin of instructions such as `PEEK` and `SEEK`.
+* **Direction Vector (`DV`)**: a unit vector, the direction in which the `IP` advances after an instruction.
 
 ### Registers
 
-Registers are the primary working memory of the organism. They can hold either scalar values (any molecule type like `CODE`, `DATA`, `ENERGY`, or `STRUCTURE`) or vector values (e.g., `1|0`).
+Registers are the organism's working memory. They hold scalar values of any molecule type, such as `CODE`, `DATA`, `ENERGY` or `STRUCTURE`, or vector values such as `1|0` (see [Vector Literals](#vector-literals)).
 
-The register architecture uses 8 banks organized by scope (Global, Proc-Local, Formal, Static) and type (Data, Location). 
+The registers form eight banks, by scope (Global, Proc-Local, Formal, Static) and by type (Data, Location). Data registers (`*DR`) hold any value, a scalar or a vector. Location registers (`*LR`) hold a *position*, a coordinate in the environment, or are empty, and dedicated location instructions (`SKLR`, `DPLR`, `PUSL` and others) move the active `DP` to the stored position. A location register starts out empty, and `CRLR` empties it again. The `DP` can reach only positions the organism has visited or that a label named (see [Labels](#labels)).
 
-Data registers (`*DR`) can hold any value — scalars or vectors. Location registers (`*LR`) hold a position or are empty, and have dedicated location instructions (`SKLR`, `DPLR`, `PUSL`, etc.) that can move the active Data Pointer directly to the stored position. A register starts out empty and `CRLR` empties it again. The DP can only reach positions the organism has visited or that a label named.
-
-**Global Registers** — persist across procedure calls, always available:
+**Global Registers** persist across calls of procedures, the subroutines a program defines with `.PROC` (see [`.PROC`](#proc)), and are always available:
 * **Data Registers (`%DRx`)**: 8 general-purpose registers (`%DR0` to `%DR7`).
 * **Location Registers (`%LRx`)**: 4 registers (`%LR0` to `%LR3`).
 
-**Proc-Local Registers** — automatically saved on `CALL` and restored on `RET`, only available inside `.PROC` blocks:
+**Proc-Local Registers** are saved on `CALL` and restored on `RET`, and are available only inside `.PROC` blocks:
 * **Proc-Local Data Registers (`%PDRx`)**: 8 registers (`%PDR0` to `%PDR7`).
 * **Proc-Local Location Registers (`%PLRx`)**: 4 registers (`%PLR0` to `%PLR3`).
 
-**Formal Registers** — used for parameter passing in procedures (REF/VAL/LREF/LVAL), automatically saved on `CALL` and restored on `RET`. Cannot be accessed directly by name — the compiler maps procedure parameter names to these registers:
-* **Formal Data Registers (`%FDRx`)**: 8 registers (`%FDR0` to `%FDR7`) for REF/VAL parameters.
-* **Formal Location Registers (`%FLRx`)**: 4 registers (`%FLR0` to `%FLR3`) for LREF/LVAL parameters.
+**Formal Registers** carry the parameters of procedures (`REF`, `VAL`, `LREF`, `LVAL`) and are saved on `CALL` and restored on `RET`. A program cannot name them; the compiler maps the parameter names of a procedure to them:
+* **Formal Data Registers (`%FDRx`)**: 8 registers (`%FDR0` to `%FDR7`) for `REF` and `VAL` parameters.
+* **Formal Location Registers (`%FLRx`)**: 4 registers (`%FLR0` to `%FLR3`) for `LREF` and `LVAL` parameters.
 
-**Static Registers** — persistent across procedure calls with per-procedure backing store. Each procedure has its own independent copy that is saved/restored when entering/leaving the procedure:
+**Static Registers** persist across procedure calls. Each procedure has its own copy of them, which is saved and restored when the procedure is entered and left:
 * **Static Data Registers (`%SDRx`)**: 8 registers (`%SDR0` to `%SDR7`).
 * **Static Location Registers (`%SLRx`)**: 4 registers (`%SLR0` to `%SLR3`).
 
-* **Molecule Marker Register (`MR`)**: A 4-bit register (values 0-15) that determines the marker value embedded into molecules when the organism writes them to the environment. The marker is used during `FORK` to selectively transfer ownership of molecules to offspring.
+The **Molecule Marker Register (`MR`)**, `Config.MARKER_BITS` bits wide, holds the marker of every molecule the organism writes (see [Molecule Marker](#molecule-marker)).
 
 ### Stacks
 
-The VM includes three distinct stacks to manage data and control flow.
+The machine has three stacks.
 
-* **Data Stack (`DS`)**: A last-in, first-out (LIFO) stack for temporary data storage. It is used by `PUSH`/`POP` instructions and the stack-based variants of arithmetic and logic instructions (e.g., `ADDS`).
-
-* **Location Stack (`LS`)**: A dedicated LIFO stack for storing vector values, separate from the `DS`.
-
-* **Call Stack (`CS`)**: This stack is managed automatically by `CALL` and `RET` instructions. It stores return addresses, the state of all proc-local and formal registers (`%PDRx`, `%PLRx`, `%FDRx`, `%FLRx`), and parameter bindings, enabling structured programming with nested procedure calls.
+* **Data Stack (`DS`)**: a last-in, first-out stack for values. `PUSH`, `POP` and the stack variants of the arithmetic and logic instructions, such as `ADDS`, use it.
+* **Location Stack (`LS`)**: a last-in, first-out stack for positions, apart from the `DS`.
+* **Call Stack (`CS`)**: managed by `CALL` and `RET`. It holds the return addresses, the proc-local and formal registers (`%PDRx`, `%PLRx`, `%FDRx`, `%FLRx`) and the parameter bindings, so that procedure calls can be nested.
 
 ### Thermodynamic Selection Pressure
 
-Evochora models two fundamental thermodynamic constraints that create evolutionary pressure: **Energy** and **Entropy**. These constraints reward efficient, well-adapted behaviors and limit organism lifespan.
+An organism pays for what it does in two accounts, energy and entropy.
 
 #### Energy Register (ER)
 
-The Energy Register (`ER`) holds the organism's life force. Energy is consumed by actions and must be replenished from the environment.
-
-* **Instruction Cost**: Every instruction an organism executes consumes energy, which is deducted from the `ER`. The energy cost for each instruction is configurable via thermodynamic policies.
-
-* **Action-Specific Costs**: More complex actions may have additional costs based on their parameters. For example, `POKE` costs may depend on the molecule type and value being written, and `PEEK` costs may depend on the molecule type and ownership status. These costs are configured via thermodynamic policies.
-
-* **Error Penalty**: An invalid operation (like dividing by zero, or a stack underflow or overflow) will cause the instruction to fail and incur an additional energy penalty, which is configurable in the simulation configuration.
-
-* **Gaining Energy**: Organisms can replenish their energy by consuming `ENERGY` molecules from the environment using the `PEEK` instruction.
-
-* **Checking Energy**: The `NRG` and `NRGS` instructions allow an organism to check its current energy level.
-
-* **Checking Entropy**: The `NTR` and `NTRS` instructions allow an organism to check its current entropy level.
-
-* **Death by Starvation**: If an organism's `ER` drops to zero or below, it dies and is removed from the simulation.
+The Energy Register (`ER`) holds the organism's energy. Every instruction it executes costs energy, and some actions cost more, depending on what they do: writing a molecule depends on its type and value, reading one on its type and on who owns the cell. An instruction that fails, such as a division by zero or a stack underflow or overflow, costs an additional penalty, the *error penalty*. The organism gains energy by taking up `ENERGY` molecules with `PEEK`, and reads its energy with `NRG` and `NRGS`. When its energy drops to zero or below, it dies and is removed from the simulation.
 
 #### Entropy Register (SR)
 
-The Entropy Register (`SR`) tracks the organism's accumulated entropy. Entropy represents disorder and waste generated by the organism's actions. Unlike energy, entropy accumulates and must be actively dissipated.
-
-* **Entropy Generation**: Instructions generate entropy, which is added to the `SR`. The amount of entropy generated per instruction is configurable via thermodynamic policies.
-
-* **Entropy Dissipation**: Organisms can reduce their entropy through certain actions (e.g., `POKE` operations). The amount of entropy dissipated is configurable via thermodynamic policies.
-
-* **Entropy Limit**: The simulation defines a maximum entropy threshold. If an organism's `SR` exceeds this limit, it dies.
-
-* **Death by Entropy**: If an organism's `SR` exceeds the maximum entropy limit, it dies and is removed from the simulation.
-
-This dual-constraint system ensures that organisms must balance efficiency (minimizing energy consumption) with order (managing entropy accumulation), mirroring fundamental thermodynamic principles.
+The Entropy Register (`SR`) holds the entropy the organism has accumulated. Entropy is generated by the organism's actions. Unlike energy, it accumulates and must be actively dissipated. Instructions add entropy, and some actions, such as writing molecules with `POKE`, dissipate it. The organism reads its entropy with `NTR` and `NTRS`. When its entropy exceeds the limit the simulation's configuration sets, it dies and is removed from the simulation.
 
 #### Thermodynamic Configuration
 
-The energy costs and entropy changes for all instructions are configurable through the simulation's thermodynamic policy system. This allows fine-grained control over the thermodynamic behavior of the simulation without modifying the instruction set implementation.
-
-**Configuration Location**: The thermodynamic policies are configured in `evochora.conf` under `pipeline.services.simulation-engine.options.runtime.thermodynamics`.
-
-**Policy System**: Each instruction can have its own thermodynamic policy, which determines:
-- **Energy Cost**: How much energy is consumed (positive) or gained (negative) when executing the instruction
-- **Entropy Delta**: How much entropy is generated (positive) or dissipated (negative) when executing the instruction
-
-**Universal Thermodynamic Policy**: All instructions use the `UniversalThermodynamicPolicy`, which supports flexible configuration through:
-- **Base Values**: `base-energy` and `base-entropy` applied to all executions
-- **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`, or `_default`)
-- **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`) and resolved for the molecule as it is stored
-
-**Default Behavior**: If no specific policy is configured for an instruction, a default policy applies. The default policy applies a base energy cost and a base entropy generation, configured independently of each other.
-
-**Configuration Format**: Rules can specify both fixed values (`energy`, `entropy`) and permille-based proportional values (`energy-permille`, `entropy-permille`). When both are specified, they are added together. Permille values are calculated as a fraction of the magnitude of the molecule's value (e.g., `energy-permille = 1000` means 100% of that value, `-1000` the same amount as a gain).
-
-For detailed configuration examples and available policy options, refer to the `evochora.conf` configuration file.
+What each instruction costs in energy and adds to or removes from entropy is set in the simulation's configuration under `pipeline.services.simulation-engine.options.runtime.thermodynamics`; the error penalty and the entropy limit are set under `pipeline.services.simulation-engine.options.runtime.organism`. The comments in [`reference.conf`](../src/main/resources/reference.conf) describe these settings and their defaults.
 
 ### Running mutated code
 
-The machine executes what it finds. Code that has been changed, by mutation or by an organism, is not checked against any program. Each cell is read when the instruction pointer or an argument reaches it, and only what cannot be done fails. The rules are:
+The machine executes what it finds. Code that has been changed, by mutation or by an organism, is not checked against any program. Each cell is read when the instruction pointer or an operand reaches it, and only what cannot be done fails. The rules are:
 
 * **At the instruction pointer.** A `CODE` molecule with a known opcode is executed. A molecule of any other type is passed over like a `NOP`. An empty cell is skipped, up to a configured number of empty cells per tick (`max-skips-per-tick`). Beyond that the instruction fails. A `CODE` molecule with an unknown opcode fails and is treated as a `NOP`.
-* **Operands.** The argument cells are read as they are, whatever type they hold. A register operand takes the cell's value as a register number, a literal takes the molecule as it is, type and value, a vector takes the values of the following cells, a label takes the value as the label to search for. An operand fails only where it cannot be used. That is a number that names no register, a location operand that names no location register, a stack operand without a value on the stack, or an argument cell beyond the edge of a bounded world. Operand types that a value operation does not accept fail as well (see [Types in value operations](#types-in-value-operations)).
+* **Operands.** The operand cells are read as they are, whatever type they hold. A register operand takes the cell's value as a register number, a literal takes the molecule as it is, type and value, a vector takes the values of the following cells, a label takes the value as the label to search for. An operand fails only where it cannot be used. That is a number that names no register, a location operand that names no location register, a stack operand without a value on the stack, or an operand cell beyond the edge of a bounded environment. Operand types that a value operation does not accept fail as well (see [Types in value operations](#types-in-value-operations)).
 * **A failed instruction** is not executed. It pays its base cost and the error penalty (see [Energy Register (ER)](#energy-register-er)), and the instruction pointer moves on. A condition that cannot be tested does not hold. A jump finds its label with tolerance (see [Fuzzy label matching](#fuzzy-label-matching)). When no label matches, the jump fails.
 
 Nothing in this stops the organism. A body with mutated code runs on, pays for what fails, and lives or dies by the result.
@@ -178,14 +127,14 @@ Nothing in this stops the organism. A body with mutated code runs on, pays for w
 
 ## 4. Basic Syntax
 
-The syntax of Evochora assembly is designed to be simple and readable. It follows standard conventions for assembly languages.
+This section describes how a program is written: statements, comments, labels, case and whitespace.
 
 ### Statement Structure
 
-A typical line of code consists of an optional label, followed by an instruction or a directive, and then its arguments. Each component is separated by whitespace. Statements are terminated by a newline character or a semicolon (`;`). Empty lines are ignored.
+A typical line of code consists of an optional label, followed by an instruction with its operands or a directive with its arguments. Each component is separated by whitespace. Statements are terminated by a newline character or a semicolon (`;`). Empty lines are ignored.
 
 ```
-OPCODE ARGUMENT1 ARGUMENT2  # Comment
+OPCODE OPERAND1 OPERAND2  # Comment
 ```
 
 #### Multiple Instructions Per Line
@@ -200,7 +149,7 @@ This is equivalent to writing each instruction on its own line. Semicolons and n
 
 ### Comments
 
-Any text following a hash symbol (`#`) is treated as a comment and is ignored by the compiler. This is useful for documenting code.
+Any text following a hash symbol (`#`) is treated as a comment and is ignored by the compiler.
 
 ```
 # This is a full-line comment.
@@ -221,13 +170,13 @@ START_LOOP:
 
 A label is not an address. The compiler gives every label a value derived from its name; the `LABEL` molecule it places carries that value, and an instruction that names the label carries the same value as its operand. The label is looked up by its value when the instruction runs, so a jump goes to wherever a matching `LABEL` molecule stands at that moment.
 
-A `LABEL` molecule matches when its value differs from the one looked up in at most a few bits; how many is set by the label-matching strategy of the simulation configuration. The organism's own labels come first, and among them those that differ in the fewest bits; where several of its own differ equally, one of them is chosen, by default the nearer ones more likely. Only when none of its own matches can a label of another organism or an unowned one be taken, and only within a reach that shrinks with every differing bit. A label in cells the organism is building for a child, written with a non-zero marker (see [Molecule Marker](#molecule-marker)), is never found.
+A `LABEL` molecule matches when its value differs from the one looked up in at most a few bits; how many is set by the label-matching strategy of the simulation configuration. The organism's own labels come first, and among them those that differ in the fewest bits; where several of them differ equally, one of them is chosen, by default the nearer ones more likely. Only when none of the organism's labels matches can a label of another organism or an unowned one be taken, and only within a reach that shrinks with every differing bit. A label in cells the organism is building for a child, written with a non-zero marker (see [Molecule Marker](#molecule-marker)), is never found.
 
-A jump continues with the instruction behind the label it found. When no label matches, the instruction fails (see *Error Penalty* in [Energy Register (ER)](#energy-register-er)) and execution runs on with the next instruction.
+A jump continues with the instruction behind the label it found. When no label matches, the instruction fails (see the *error penalty* in [Energy Register (ER)](#energy-register-er)) and execution runs on with the next instruction.
 
 ### Case-Insensitivity
 
-Instructions, directives, and register names are case-insensitive. `SETI`, `seti`, and `SeTi` are all treated as the same instruction. Similarly, `%DR0` is the same as `%dr0`. Label names are also case-insensitive.
+Instructions, directives, and register names are case-insensitive. `SETI`, `seti`, and `SeTi` are all treated as the same instruction. Similarly, `%DR0` is the same as `%dr0`. Names, of labels, constants, procedures and aliases, are case-insensitive as well.
 
 ### Whitespace
 
@@ -237,11 +186,11 @@ Spaces and tabs are used to separate elements in a statement. Multiple whitespac
 
 ## 5. Data Types and Literals
 
-All values in Evochora are fundamentally represented as **Molecules**, but the assembly language provides several convenient ways to write them in code. These are known as literals. Where a literal stands, the compiler can also compute the value (see [Compile-Time Expressions](#8-compile-time-expressions)).
+A program writes the type and the value of a molecule as a literal. Where a literal stands, the compiler can also compute the value (see [Compile-Time Expressions](#8-compile-time-expressions)).
 
 ### Typed Literals
 
-A typed literal explicitly specifies both the type and the value of a molecule. This is the standard way to provide immediate values to instructions.
+A typed literal specifies both the type and the value of a molecule.
 
 * **Syntax**: `TYPE:VALUE`
 * **Examples**:
@@ -253,33 +202,31 @@ A typed literal explicitly specifies both the type and the value of a molecule. 
 
 ### Vector Literals
 
-A vector literal is used to define coordinates or direction vectors. The components are separated by a pipe (`|`). The number of components must match the dimensions of the world. Each component can be specified in any of the supported number formats.
+A vector literal is used to define coordinates or direction vectors. The components are separated by a pipe (`|`). The number of components must match the dimensions of the environment. Each component can be specified in any of the supported number formats.
 
 * **Syntax**: `VALUE1|VALUE2|...`
 * **Examples**:
-    * `1|0` (A vector pointing right in a 2D world)
+    * `1|0` (A vector pointing right in a 2D environment)
     * `10|-5` (A vector pointing to the relative coordinate (10, -5))
     * `0xFF|0b1010` (A valid vector using mixed number formats)
 
+---
+
 ## 6. Instruction Set
 
-The instruction set defines the fundamental operations an organism can perform. Many instructions come in three variants, identified by the last letter of their opcode:
+Many instructions come in variants that differ in where their main operand, usually the value they work with, comes from. The last letter of the opcode names it:
 
-* `...R` (**Register**): The operation uses two registers.
-* `...I` (**Immediate**): The operation uses a register and a literal value.
-* `...S` (**Stack**): The operation uses values from the Data Stack (`DS`).
+* `...R` (Register): from a register.
+* `...I` (Immediate): from a literal in the program.
+* `...S` (Stack): from the Data Stack (`DS`), which also supplies the other values of these instructions.
 
 ### Data and Memory Operations
 
-* `SETI %REG <Literal>`: Sets `<%REG>` to the immediate `<Literal>`.
-* `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`.
-* `SETV %REG <Vector>`: Sets `<%REG>` to the specified vector.
+* `SETR %DEST_REG %SRC_REG`, `SETI %REG <Literal>`, `SETV %REG <Vector>`: Sets the first register to the value of `<%SRC_REG>`, to the immediate `<Literal>` or to the specified vector.
 * `XCHG %REG1 %REG2`: Exchanges (swaps) the contents of two registers atomically.
 * `TYPR %REG1 %REG2`, `TYPI %REG1 <Literal>`, `TYPS`: Gives the first value the type of the second and keeps its number.
-* `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack.
+* `PUSH %REG`, `PUSI <Literal>`, `PUSV <Vector>`: Pushes the value of `<%REG>`, the immediate `<Literal>` or the vector `<Vector>` onto the Data Stack.
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`.
-* `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack.
-* `PUSV <Vector>`: Pushes the vector `<Vector>` onto the Data Stack.
 * `DUP`: Duplicates the top value on the Data Stack.
 * `SWAP`: Swaps the top two values on the Data Stack.
 * `DROP`: Discards the top value on the Data Stack.
@@ -317,8 +264,8 @@ These instructions operate on the bit pattern of a scalar within the value width
 * `ADNR %REG1 %REG2`, `ADNI %REG1 <Literal>`, `ADNS`: Bitwise AND-NOT (`a & ~b`). Clears bits in first operand that are set in second.
 * `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
-* `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
-* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Arithmetic shift right, the sign is kept. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+* `SHLR %VAL_REG %AMT_REG`, `SHLI %VAL_REG <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+* `SHRR %VAL_REG %AMT_REG`, `SHRI %VAL_REG <Literal>`, `SHRS`: Arithmetic shift right, the sign is kept. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
   - The amount is taken literally: a shift by the value width or more moves every bit out, leaving zero (left) or the sign fill (right). A negative amount shifts the other way.
 
 #### Rotation and Bit Utilities
@@ -327,28 +274,28 @@ These operate on the bit pattern of the scalar within the value width and preser
 
 * `ROTR %VAL_REG %AMT_REG`, `ROTI %VAL_REG <Amount>`, `ROTS`: Rotate bits.
   - The signed amount determines direction: positive rotates left, negative rotates right.
-  - `ROTS` pops `<Amt>` then `<Val>` from the Data Stack and pushes the rotated result. All stack ops are destructive.
+  - `ROTS` pops `<Amount>` then `<Value>` from the Data Stack and pushes the rotated result. All stack ops are destructive.
   - The amount is taken modulo the value width: rotations by 0 or by the full width leave the value unchanged.
 * `PCNR %DEST_REG %SRC_REG`, `PCNS`: Population count (number of set bits within the value width).
   - `PCNR` writes the count into `%DEST_REG` with the same type as `%SRC_REG`.
   - `PCNS` pops a scalar and pushes the count with the type of that scalar.
 * `BSNR %DEST_REG %SRC_REG %N_REG`, `BSNI %DEST_REG %SRC_REG <N>`, `BSNS`: Bit Scan N-th.
-  - Finds the n-th set bit in `%SRC` and writes a bitmask with only that bit set.
+  - Finds the n-th set bit in `%SRC_REG` and writes a bitmask with only that bit set.
   - N is 1-based. Positive N scans from LSB to MSB; negative N scans from MSB to LSB. N=0 is invalid.
   - Failure conditions: N=0 or fewer than |N| set bits. On failure, the instruction fails and `%DEST_REG` (or the stack result for `BSNS`) is set to 0.
 
 #### Random Bit Selection
 
-Selects a single set bit from a source mask at random. If the source mask is 0, the result is 0. Randomness is provided by the simulation's seeded RNG for reproducibility.
+Selects a single set bit from a source mask at random. If the source mask is 0, the result is 0.
 
-* `RBIR %DEST_REG %SOURCE_REG`, `RBII %DEST_REG <Mask_Lit>`, `RBIS`
+* `RBIR %DEST_REG %SRC_REG`, `RBII %DEST_REG <Mask>`, `RBIS`
   - From the source bitmask, randomly selects one of the set bits and writes a mask containing only that bit.
   - Register variants preserve the molecule type of the source; immediates use `DATA`.
   - Stack variant pops the source mask and pushes the result.
 
 #### Scan Passable Neighbors (SPNP)
 
-Scans axis-aligned neighbors around the active DP and returns a bitmask of passable directions. A neighbor is passable if the cell is empty or owned by self. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. **Supports up to n ≤ Config.VALUE_BITS/2 dimensions due to bitmask size limitations.**
+Scans axis-aligned neighbors around the active `DP` and returns a bitmask of passable directions. A neighbor is passable if the cell is empty or owned by self. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. These instructions work only in environments whose dimensions fit into a mask (see [Value width and range](#value-width-and-range)).
 
 * `SPNR %MASK_REG`, `SPNS`
   - Register variant writes the mask to `%MASK_REG`.
@@ -357,28 +304,26 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask of passa
 
 #### Scan Neighbors by Type (SNT*)
 
-Scans axis-aligned neighbors around the active DP and returns a bitmask indicating where neighbors match a specific molecule type. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. **Supports up to n ≤ Config.VALUE_BITS/2 dimensions due to bitmask size limitations.**
+Scans axis-aligned neighbors around the active `DP` and returns a bitmask indicating where neighbors match a specific molecule type. For dimension d (0-indexed), bit 2·d indicates the +1 direction, bit 2·d+1 indicates the −1 direction. These instructions work only in environments whose dimensions fit into a mask (see [Value width and range](#value-width-and-range)).
 
-* `SNTR %DEST_REG %TYPE_REG`, `SNTI %DEST_REG <Type_Lit>`, `SNTS`
+* `SNTR %DEST_REG %TYPE_REG`, `SNTI %DEST_REG <Type>`, `SNTS`
   - Compares only the molecule type of the neighbor cell; the VALUE is ignored.
   - The type match is exact, without the `DATA`/`STATE` compatibility of value operations: a scan for `DATA` does not report `STATE` neighbors, and `SNTI %M STATE:0` is the scan that finds them.
-  - `<Type_Lit>` is any typed literal; only its type component is used (e.g., `ENERGY:0` selects ENERGY).
+  - `<Type>` is any typed literal; only its type component is used (e.g., `ENERGY:0` selects ENERGY).
   - Register variants write the `DATA`-typed mask into `%DEST_REG`; stack variant pushes it.
   - If no neighbors match, the mask is `DATA:0`.
 
 ### Control Flow
 
-* `JMPI <Label>`: Jumps to `<Label>`, found by fuzzy label matching; fails when no label matches.
-* `JMPR %REG`: Jumps to the label whose value is in `<%REG>`.
-* `JMPS`: Jumps to the label whose value is popped from the stack.
-  `CALL <Label> [REF %reg ...] [VAL %reg|Literal|Vector ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
+* `JMPI <Label>`, `JMPR %REG`, `JMPS`: Jumps to `<Label>`, to the label whose value is in `<%REG>`, or to the label whose value is popped from the stack, found by fuzzy label matching; fails when no label matches.
+* `CALL <Label> [REF %REG ...] [VAL %REG|<Literal>|<Vector> ...] [LREF %LOC_REG ...] [LVAL %LOC_REG|<Label> ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
     - `VAL`: Passes registers, typed literals or vectors by value. Modifications are local.
     - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
     - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time, as `PSLI` does: a label that matches nothing, or whose cell belongs to another organism, is passed as no position.
     - **Example**:
       ```
-      CALL myProc REF %DR0 VAL %DR1 DATA:42 LREF %LR0 LVAL MY_LABEL
+      CALL MY_PROC REF %DR0 VAL %DR1 DATA:42 LREF %LR0 LVAL MY_LABEL
       ```
 * `RET`: Returns from a procedure.
 
@@ -389,33 +334,33 @@ A conditional instruction tests a condition and acts on the result. Every condit
 * A **conditional skip** runs on with the next instruction if the condition holds, and skips the next instruction if it does not. The skipped instruction costs no tick.
 * A **conditional jump** jumps to its label if the condition holds, and runs on with the next instruction if it does not. It takes the operands of its skip followed by a label, found by fuzzy label matching only when the condition holds; without a matching label it fails as `JMPI` does. `JFI %DR0 DATA:10 L` does what `IFI %DR0 DATA:10` followed by `JMPI L` does.
 
-A condition that cannot be tested does not hold, and its negation holds: an operand that names no register, a stack without a value for it, an argument cell beyond the edge of a bounded world, a cell test without a vector. The instruction fails as any instruction fails, with the error penalty and a reason, and decides in addition: `IFI` skips, `INI` runs on, `JFI` stays, `JNI` jumps. Of a conditional and its negation exactly one acts, whatever the operands hold. 
+A condition that cannot be tested does not hold, and its negation holds: an operand that names no register, a stack without a value for it, an operand cell beyond the edge of a bounded environment, a cell test without a vector. The instruction fails as any instruction fails, with the error penalty and a reason, and decides in addition: `IFI` skips, `INI` runs on, `JFI` stays, `JNI` jumps. Of a conditional and its negation exactly one acts, whatever the operands hold. 
 
 The lists below name each condition by its skips; the jumps are given beside them.
 
 #### Value comparisons
 
-Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector. Equality compares the molecule, order compares the number, and every negated form holds exactly when its counterpart does not; see [Types in value operations](#types-in-value-operations).
+Operands are values (register contents, the top of the stack, or literals), and a value may be a scalar or a vector. Equality compares the molecule, order compares the number, and every negated form holds exactly when its counterpart does not; see [Types in value operations](#types-in-value-operations).
 
 * `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS` (jumps `JFR`, `JFI`, `JFS`): If values are equal.
-* `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS` (jumps `JLTR`, `JLTI`, `JLTS`): If value of first argument is less than second.
-* `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS` (jumps `JGTR`, `JGTI`, `JGTS`): If value of first argument is greater than second.
-* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS` (jumps `QGTR`, `QGTI`, `QGTS`): If value of first argument is greater than a random value drawn below the second. See [Probabilistic conditionals](#probabilistic-conditionals).
-* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS` (jumps `QLTR`, `QLTI`, `QLTS`): If value of first argument is less than a random value drawn below the second. See [Probabilistic conditionals](#probabilistic-conditionals).
+* `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS` (jumps `JLTR`, `JLTI`, `JLTS`): If value of first operand is less than second.
+* `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS` (jumps `JGTR`, `JGTI`, `JGTS`): If value of first operand is greater than second.
+* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS` (jumps `QGTR`, `QGTI`, `QGTS`): If value of first operand is greater than a random value drawn below the second. See [Probabilistic conditionals](#probabilistic-conditionals).
+* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS` (jumps `QLTR`, `QLTI`, `QLTS`): If value of first operand is less than a random value drawn below the second. See [Probabilistic conditionals](#probabilistic-conditionals).
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS` (jumps `JFTR`, `JFTI`, `JFTS`): If molecule types are equal.
 * `IFER` (jump `JFER`): If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
 * `IFSL %LOC_REG` (jump `JFSL`): If the location register holds a position.
 
 #### Cell tests
 
-The vector is a displacement from the active `DP`, as in a world interaction: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell. The body test is the exception: its vector names a line through the `DP`, not a cell.
+The vector is a displacement from the active `DP`, as in an environment interaction: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell. The body test is the exception: its vector names a line through the `DP`, not a cell.
 
 * `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS` (jumps `JFMR`, `JFMI`, `JFMS`): If cell at `DP` + vector is owned by self.
 * `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS` (jumps `JFPR`, `JFPI`, `JFPS`): If cell at `DP` + vector is passable (empty or owned by self).
-* `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS` (jumps `JFFR`, `JFFI`, `JFFS`): If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id).
-* `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS` (jumps `JFVR`, `JFVI`, `JFVS`): If cell at `DP` + vector is vacant (has no owner, ownerId == 0). Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
+* `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS` (jumps `JFFR`, `JFFI`, `JFFS`): If cell at `DP` + vector is owned by a foreign organism.
+* `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS` (jumps `JFVR`, `JFVI`, `JFVS`): If cell at `DP` + vector is vacant (has no owner). "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
 * `IFXR %VEC_REG`, `IFXI <Vector>`, `IFXS` (jumps `JFXR`, `JFXI`, `JFXS`): If the cell at `DP` + vector exists. In a toroidal environment every cell exists; in a bounded one a cell beyond the edge does not. A cell that does not exist reads as empty and vacant but is not passable, so this is how a program tells the edge from a molecule it could clear.
-* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS` (jumps `JFBR`, `JFBI`, `JFBS`): If `DP` lies within the own body on the line along the vector's axis: between the outermost cells of that body there, gaps included. A cell belongs to the body when the organism owns it and it carries no marker, so cells set aside for a child count as outside. On a torus the widest gap between body cells is the outside, the world edge included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
+* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS` (jumps `JFBR`, `JFBI`, `JFBS`): If `DP` lies within the own body on the line along the vector's axis: between the outermost cells of that body there, gaps included. A cell belongs to the body when the organism owns it and it carries no marker, so cells set aside for a child count as outside. On a torus the widest gap between body cells is the outside, the edge of the environment included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
 
 #### Negated conditions
 
@@ -424,10 +369,10 @@ Every condition above has a negation that holds exactly when it does not. Its op
 Value comparisons:
 
 * `INR %REG1 %REG2`, `INI %REG1 <Literal>`, `INS` (jumps `JNR`, `JNI`, `JNS`): If values are **not** equal.
-* `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS` (jumps `JGER`, `JGEI`, `JGES`): If value of first argument is **greater than or equal to** second.
-* `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS` (jumps `JLER`, `JLEI`, `JLES`): If value of first argument is **less than or equal to** second.
-* `PLER %REG1 %REG2`, `PLEI %REG1 <Literal>`, `PLES` (jumps `QLER`, `QLEI`, `QLES`): If value of first argument is **less than or equal to** a random value drawn below the second. The negated form of `PGT*`.
-* `PGER %REG1 %REG2`, `PGEI %REG1 <Literal>`, `PGES` (jumps `QGER`, `QGEI`, `QGES`): If value of first argument is **greater than or equal to** a random value drawn below the second. The negated form of `PLT*`.
+* `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS` (jumps `JGER`, `JGEI`, `JGES`): If value of first operand is **greater than or equal to** second.
+* `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS` (jumps `JLER`, `JLEI`, `JLES`): If value of first operand is **less than or equal to** second.
+* `PLER %REG1 %REG2`, `PLEI %REG1 <Literal>`, `PLES` (jumps `QLER`, `QLEI`, `QLES`): If value of first operand is **less than or equal to** a random value drawn below the second. The negated form of `PGT*`.
+* `PGER %REG1 %REG2`, `PGEI %REG1 <Literal>`, `PGES` (jumps `QGER`, `QGEI`, `QGES`): If value of first operand is **greater than or equal to** a random value drawn below the second. The negated form of `PLT*`.
 * `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS` (jumps `JNTR`, `JNTI`, `JNTS`): If molecule types are **not** equal.
 * `INER` (jump `JNER`): If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
 * `INSL %LOC_REG` (jump `JNSL`): If the location register is empty. The negated form of `IFSL`.
@@ -436,8 +381,8 @@ Cell tests:
 
 * `INMR %VEC_REG`, `INMI <Vector>`, `INMS` (jumps `JNMR`, `JNMI`, `JNMS`): If cell at `DP` + vector is **not** owned by self.
 * `INPR %VEC_REG`, `INPI <Vector>`, `INPS` (jumps `JNPR`, `JNPI`, `JNPS`): If cell at `DP` + vector is **not** passable (not empty and not owned by self).
-* `INFR %VEC_REG`, `INFI <Vector>`, `INFS` (jumps `JNFR`, `JNFI`, `JNFS`): If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id).
-* `INVR %VEC_REG`, `INVI <Vector>`, `INVS` (jumps `JNVR`, `JNVI`, `JNVS`): If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0).
+* `INFR %VEC_REG`, `INFI <Vector>`, `INFS` (jumps `JNFR`, `JNFI`, `JNFS`): If cell at `DP` + vector is **not** owned by a foreign organism.
+* `INVR %VEC_REG`, `INVI <Vector>`, `INVS` (jumps `JNVR`, `JNVI`, `JNVS`): If cell at `DP` + vector is **not** vacant (has an owner).
 * `INXR %VEC_REG`, `INXI <Vector>`, `INXS` (jumps `JNXR`, `JNXI`, `JNXS`): If the cell at `DP` + vector does **not** exist: it lies beyond the edge of a bounded environment.
 * `INBR %VEC_REG`, `INBI <Vector>`, `INBS` (jumps `JNBR`, `JNBI`, `JNBS`): If `DP` does **not** lie within the own body on that line; with a vector of no non-zero component, if it lies outside on at least one axis.
 
@@ -477,37 +422,36 @@ A hard comparison becomes a soft one with the same operand: `GTI %ER DATA:50000`
 A soft comparison holds with some probability at every positive value. A decision that must not be taken below a minimum is composed like every conjunction, from the negated hard test and a jump away before the soft one:
 
 ```
+.REG %ER %DR0          # the register that holds the energy
+NRG %ER                # the energy
 LETI %ER MINIMUM       # at or below the minimum ...
 JMPI SKIP              # ... the decision is not taken
 PGTI %ER SCALE         # above it, chance decides
 JMPI TAKE
 ```
 
-### World Interaction
+### Environment Interaction
 
-These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument is a displacement: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
-Note on conflicts: A world interaction that loses conflict resolution for its target is not executed and touches no cell, so only its base cost and the error penalty apply.
+These instructions act on the environment relative to the active `DP`. The vector operand is a displacement: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
 
-* `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell.
-  - ENERGY molecules: Adds their value to `ER`. Energy costs and entropy generation depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
-  - STRUCTURE molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
-  - CODE/DATA/STATE molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
-  - Entropy generation is configured per molecule type and ownership status in the thermodynamic policy configuration.
+What reading or writing a molecule costs in energy and changes in entropy depends on the molecule's type, for a write the type as it is stored, for a read also on the ownership of the cell (see [Thermodynamic Configuration](#thermodynamic-configuration)).
+
+When several organisms aim an interaction at the same cell in one tick, the simulation's conflict resolution decides which one of them is executed. Every other one touches no cell: it fails, pays its base cost and the error penalty, and its organism executes it again in the next tick.
+
+* `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell. An `ENERGY` molecule adds its value to `ER`.
 * `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it.
 * `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership. The current `MR` is embedded into the written molecule; a `DATA` molecule written with `MR` 0 is stored as `STATE`.
-  - Energy costs depend on the type of the molecule as it is stored (ENERGY, STRUCTURE, CODE, DATA, STATE) and are configured via thermodynamic policies.
-  - Entropy dissipation is configured per molecule type in the thermodynamic policy configuration.
-  - Note: A write onto an occupied cell fails and stores nothing, so neither the energy cost nor the entropy dissipation of a write applies.
-* `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector into `%REG`, and writes new molecule that was in `%REG` or stack to the same cell, basically swaps molecule in cell with the one in register or stack. Sets the ownership.
+  - A write onto an occupied cell fails and stores nothing, so neither the energy cost nor the entropy dissipation of a write applies.
+* `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Swaps the molecule at `DP` + vector with the one in `%REG` or on the stack: reads and consumes the molecule in the cell into `%REG`, writes the one that was in `%REG` or on the stack into the cell and sets the ownership.
   - The written molecule follows the same rule as `POKE`: the current `MR` is embedded into it, and a `DATA` molecule written with `MR` 0 is stored as `STATE`.
-  - PEEK costs: Same as individual PEEK instruction, configured via thermodynamic policies.
-  - POKE costs: Same as individual POKE instruction, configured via thermodynamic policies, and resolved for the molecule as it is stored.
+  - It costs what a `PEEK` of the molecule it reads and a `POKE` of the molecule it stores cost.
   - If target cell is empty, stores empty molecule (CODE:0) in destination and proceeds with POKE.
 * `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or accessible (owned by self).
 
 ### State and Location Operations
 
-* `NOP`: No operation.
+* `NOP`: No operation. The instruction pointer passes over it in the same tick.
+* `WAIT`: No operation that is executed: it takes its tick like any other instruction and is not passed over.
 * `SYNC`: Sets active `DP` = `IP`.
 * `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the unit vector nearest to the specified vector. A vector with no non-zero component names no direction and leaves `DV` unchanged.
 * `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack.
@@ -516,10 +460,10 @@ Note on conflicts: A world interaction that loses conflict resolution for its ta
 * `NTR %REG`, `NTRS`: Stores current `SR` in `<%REG>` or on the stack.
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack.
 * `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack.
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. The delta is a displacement, as in a world interaction: it places the child on the cell the `DP` stands on or one adjacent to it, and a vector that would reach further is mapped to the nearest adjacent cell. The child's direction vector is mapped like any other direction, to the unit vector nearest to it; one that names no direction gives the child the parent's own. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
-* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`, including the failure with `MR` 0.
-* `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
-* `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. The delta is a displacement, as in an environment interaction: it places the child on the cell the `DP` stands on or one adjacent to it, and a vector that would reach further is mapped to the nearest adjacent cell. The child's direction vector is mapped like any other direction, to the unit vector nearest to it; one that names no direction gives the child the parent's own. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
+* `FRKI <DP_Vector> <Energy> <DV_Vector>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`, including the failure with `MR` 0.
+* `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the index of the active `DP`.
+* `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to `Config.MARKER_BITS` bits.
 * `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.
 * `CMR %REG`, `CMRI <Literal>`, `CMRS`: Removes all molecules owned by this organism that have a marker value matching the operand; their cells become empty and unowned. The operand must be of type `DATA` or `STATE`.
 
@@ -530,43 +474,37 @@ These instructions manage the Location Stack (`LS`) and location registers. All 
 An `LS` entry holds a position or is empty, like a location register.
 
 * `DUPL`, `SWPL`, `DRPL`, `ROTL`: Standard stack operations (Duplicate, Swap, Drop, Rotate) for the `LS`.
-* `DPLS`: Pushes the active `DP` onto the `LS`.
-* `SKLS`: Pops a position from `LS` and sets it as the active `DP`.
-* `LSDS`: Pops a position from `LS` and pushes it onto the `DS`.
-* `DPLR %LOC_REG`: Copies the active `DP` into the location register.
-* `SKLR %LOC_REG`: Sets the active `DP` to the position stored in the location register.
-* `PUSL %LOC_REG`: Pushes the contents of the location register onto the `LS`.
-* `PSLI <Label>`: Resolves a label position via fuzzy matching and pushes it onto the `LS`. If no label matches, or the target is owned by another organism, it pushes no position instead.
+* `DPLR %LOC_REG`, `DPLS`: Copies the active `DP` into the location register, or pushes it onto the `LS`.
+* `SKLR %LOC_REG`, `SKLS`: Sets the active `DP` to the position stored in the location register, or pops a position from `LS` and sets it as the active `DP`.
+* `PUSL %LOC_REG`, `PSLI <Label>`: Pushes the contents of the location register, or a label position resolved via fuzzy matching, onto the `LS`. If no label matches, or the target is owned by another organism, `PSLI` pushes no position instead.
 * `POPL %LOC_REG`: Pops an entry from `LS` into the location register.
-* `LRDR %DEST_REG %LOC_REG`: Copies the position from the location register into the data register.
-* `LRDS %LOC_REG`: Pushes the position from the location register onto the `DS`.
-* `LSDR %DEST_REG`: Copies the top position from `LS` into the data register without popping.
-* `LRLR %LOC_DEST %LOC_SRC`: Copies the contents of one location register to another.
-* `LRLI %LOC_REG <Label>`: Resolves a label position via fuzzy matching and stores it in the location register. If no label matches, or the target is owned by another organism, it empties the register instead.
+* `LRDR %DEST_REG %LOC_REG`, `LRDS %LOC_REG`: Copies the position from the location register into the data register, or pushes it onto the `DS`.
+* `LSDR %DEST_REG`, `LSDS`: Copies the top position from `LS` into the data register without popping, or pops a position from `LS` and pushes it onto the `DS`.
+* `LRLR %LOC_DEST_REG %LOC_SRC_REG`, `LRLI %LOC_REG <Label>`: Copies the contents of one location register to another, or resolves a label position via fuzzy matching and stores it in the location register. If no label matches, or the target is owned by another organism, `LRLI` empties the register instead.
 * `CRLR %LOC_REG`: Empties the location register.
 * `SKJI <Label>`, `SKJR %REG`, `SKJS`: Sets the active `DP` to a label position using fuzzy matching (like `JMPI`). Target must be unowned or owned by self.
 
 ### Vector Component Operations
 
-These instructions provide atomic control over the components of a vector, allowing for dynamic construction and manipulation of vectors at runtime.
+These instructions read and set the components of a vector and build a vector from components.
 
-* `VGTR %Dst_Reg %Src_Vec %Idx_Reg`, `VGTI %Dst_Reg %Src_Vec <Idx_Lit>`, `VGTS`: **V**ector **G**e**t**: Extracts a single scalar component from a source vector. The `R` variant uses a register for the index, `I` uses an immediate literal, and `S` operates entirely on the stack.
+* `VGTR %DEST_REG %VEC_REG %IDX_REG`, `VGTI %DEST_REG %VEC_REG <Index>`, `VGTS`: Vector Get. Extracts a single scalar component from a source vector. The `R` variant uses a register for the index, `I` uses an immediate literal, and `S` operates entirely on the stack.
 
-* `VSTR %Vec_Reg %Idx_Reg %Val_Reg`, `VSTI %Vec_Reg <Idx_Lit> <Val_Lit>`, `VSTS`:**V**ector **S**e**t**: Modifies a single scalar component within a target vector. The variants follow the same pattern as `VGET`. Note that the `I` variant for `VSTI` takes an immediate index but a register for the value.
+* `VSTR %VEC_REG %IDX_REG %VAL_REG`, `VSTI %VEC_REG <Index> <Value>`, `VSTS`: Vector Set. Modifies a single scalar component within a target vector. The `R` variant takes the index and the value from registers, `I` takes both as immediate literals, and `S` takes them from the stack.
 
-* `VBLD %Dest_Reg`, `VBLS`: **V**ector **B**ui**ld**: Constructs a new vector from N scalar values taken from the top of the Data Stack (where N is the dimensionality of the world). `VBLD` stores the result in a register, while `VBLS` pushes it back onto the stack.
+* `VBLD %DEST_REG`, `VBLS`: Vector Build. Constructs a new vector from N scalar values taken from the top of the Data Stack (where N is the dimensionality of the environment). `VBLD` stores the result in a register, while `VBLS` pushes it back onto the stack.
 
 #### Bit to Unit Vector (B2V)
 
-Converts a single-bit direction mask into an n-dimensional unit vector using the convention: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. **Supports up to n ≤ Config.VALUE_BITS/2 dimensions due to bitmask size limitations.**
+Converts a single-bit direction mask into an n-dimensional unit vector using the convention: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. These instructions work only in environments whose dimensions fit into a mask (see [Value width and range](#value-width-and-range)).
 
-* `B2VR %VEC_REG %MASK_REG`, `B2VI %VEC_REG <Mask_Lit>`, `B2VS`
+* `B2VR %VEC_REG %MASK_REG`, `B2VI %VEC_REG <Mask>`, `B2VS`
   - Fails if the mask is 0 or contains more than one set bit.
   - Immediate variant uses `DATA` for the literal; stack variant pops mask and pushes the vector.
 
 #### Unit Vector to Bit (V2B)
 
-Converts an n-dimensional unit vector into a single-bit direction mask using the same convention as `B2V`: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. **Supports up to bitmask size limitations.**
+Converts an n-dimensional unit vector into a single-bit direction mask using the same convention as `B2V`: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. These instructions work only in environments whose dimensions fit into a mask (see [Value width and range](#value-width-and-range)).
 
 * `V2BR %MASK_REG %VEC_REG`, `V2BI %MASK_REG <Vector>`, `V2BS`
   - The vector is mapped to the nearest unit vector, as a turn is; a vector naming no direction yields the mask of the current `DV`. The instruction fails only if the operand is not a vector, or if its axis lies beyond the mask, which covers `Config.VALUE_BITS / 2` axes.
@@ -582,44 +520,36 @@ Performs a 90° clockwise rotation of a vector within the plane defined by two a
 
 This does not require the vector to be a unit vector.
 
-Failure conditions: i or j out of bounds for the world's dimensionality, or i == j. On failure, the target vector remains unchanged.
+Failure conditions: i or j out of bounds for the environment's dimensionality, or i == j. On failure, the target vector remains unchanged.
 
-Opcodes:
-
-* `RTRR %VEC_IO %AXIS1_REG %AXIS2_REG`
-  - Rotates the vector in `%VEC_IO`. Reads axes from scalar registers. Writes back into `%VEC_IO`.
-
-* `RTRI %VEC_IO <Axis1_Lit> <Axis2_Lit>`
-  - Same as `RTRR`, but axis indices are immediate `DATA` literals (e.g., `DATA:0`, `DATA:1`).
-
-* `RTRS`
-  - Stack order (top to bottom): Axis2, Axis1, Vector. Pops all, pushes rotated vector back.
+* `RTRR %VEC_REG %AXIS1_REG %AXIS2_REG`, `RTRI %VEC_REG <Axis1> <Axis2>`, `RTRS`: Rotates the vector in `%VEC_REG` and writes it back there; the axes come from scalar registers or from immediate `DATA` literals (e.g., `DATA:0`, `DATA:1`).
+  - `RTRS` pops Axis2, Axis1 and the vector, in this order from the top of the stack, and pushes the rotated vector back.
 
 ---
 
 ## 7. Compiler Directives
 
-Directives are special commands that instruct the compiler on how to assemble the code. They are not executable instructions for the organism.
+Directives instruct the compiler on how to assemble the code. They are not executable instructions for the organism.
 
 ### Definitions and Aliases
 
-* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler replaces every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
+* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler replaces every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules (see [Modules and Procedures](#modules-and-procedures)).
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
 
 * `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file brought in with `.IMPORT` or `.SOURCE`, the coordinate is **relative** to the position where that directive was invoked. A component written with the marker `@+` or `@-` counts from the write cursor instead, the cell that follows the one placed last: `.ORG 0|@+2` starts a row two below the row before it whatever its length, and after an include it continues below the included code. The marker carries the sign and the number after it carries none, so `@-3` moves three back. Before a whole vector the marker counts every component from the cursor: `.ORG @+(0|2)` is `.ORG @+0|@+2`.
-* `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. A vector sets the direction outright. The form `.DIR @+<Axis>|<Axis>` turns the direction currently in effect by 90 degrees in the plane the two axes span — `@+0|1` turns the first axis towards the second, `@-0|1` the other way — and the plane is named in worlds of every dimensionality. When an included file finishes, the direction is restored to what it was before the include.
+* `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. A vector sets the direction outright. The form `.DIR @+<Axis>|<Axis>` turns the direction currently in effect by 90 degrees in the plane the two axes span (`@+0|1` turns the first axis towards the second, `@-0|1` the other way), and the plane is named in environments of every dimensionality. When an included file finishes, the direction is restored to what it was before the include.
 * `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the origin of the current file. Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
   * **Vector Literal**: A standard vector like `10|20` places a single molecule.
   * **Range**: A range like `1..10|20` places molecules along a line.
   * **2D Range**: A range like `1..10|20..30` places molecules in a rectangular area.
   * **Stepped Range**: A range like `10:2:20|5` places molecules at every second position.
-  * **Wildcard**: A wildcard `*` can be used to fill an entire dimension. For example, `*|5` places molecules in every cell of row 5. Using a wildcard requires a compilation context (i.e., compiling with `EnvironmentProperties`).
+  * **Wildcard**: A wildcard `*` can be used to fill an entire dimension. For example, `*|5` places molecules in every cell of row 5. Using a wildcard requires that the program is compiled for a given environment, whose size the wildcard fills.
 
 ### Macros
 
-* `.MACRO <Name> [PARAM1 ...] / .ENDMACRO`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, simply use its name followed by the arguments.
+* `.MACRO <Name> [PARAM1 ...] / .ENDMACRO`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, write its name followed by the arguments.
     ```
     .MACRO INCREMENT REG_TARGET
       ADDI REG_TARGET DATA:1
@@ -627,11 +557,11 @@ Directives are special commands that instruct the compiler on how to assemble th
     
     INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
     ```
-* **Scope**: A macro is local to the file that defines it. A file included with `.SOURCE` counts as part of the including file, so its macros can be used there. A module included with `.IMPORT` neither sees nor exports macros. A macro may be defined again — as happens when the file that defines it is sourced more than once — only with the same parameters and the same body word for word; a different definition under the same name is an error.
+* **Scope**: A macro is local to the file that defines it. A file included with `.SOURCE` counts as part of the including file, so its macros can be used there. A module included with `.IMPORT` neither sees nor exports macros. A macro may be defined again, as happens when the file that defines it is sourced more than once, only with the same parameters and the same body word for word; a different definition under the same name is an error.
 
 ### Repetition
 
-The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructions without writing them multiple times. This is particularly useful for adding NOP buffers or redundant safety jumps.
+The `.REPEAT` directive and its shorthand `^n` syntax repeat instructions without writing them multiple times, for example to pad code with `NOP` or to repeat a jump for safety.
 
 #### Directive Syntax
 
@@ -656,7 +586,7 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
     JMPI START; NOP^10; JMPI END  # Mixed with other instructions
     ```
 
-Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` … `.ENDREPEAT` internally before expansion.
+Both forms produce the same code: the shorthand stands for a `.REPEAT` … `.ENDREPEAT` block.
 
 ### Blocks
 
@@ -694,7 +624,7 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
     .ENDDEF
     ```
 * **A branch that is left out** is not assembled: no constant, label or macro in it exists, and no file named in it is read.
-* **Lines of their own**: the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
+* **Separate lines**: each directive of a conditional block must stand alone on its line, with no label before it and no statement after it.
 * **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
 * **Flags from outside**: The configuration of a simulation (`defines { … }` in the organism's entry) and `evochora compile --define` decide flags before the first line of the program is read: a flag is set, with or without a value, or switched off, which `.IFDEF` and `.IFNDEF` treat as not set; a `.DEFINE` of such a flag is an error, and `.UNDEF` frees it like any other. A flag they do not name is free, and a `.DEFINE DEFAULT` of it takes effect. The forms are in [CLI_USAGE.md](CLI_USAGE.md#flags---define).
 * **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by the directives that read the program; a flag is seen only by `.DEFINE`, `.IFDEF`, `.REPEAT` and `^` and cannot be used as an operand.
@@ -703,9 +633,9 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
 
 The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
 
-* **`.REQUIRE`** — declares what a module needs from its importer, a module or a value, without inlining anything.
-* **`.IMPORT`** — imports a module: inlines its code, supplies what it requires, and with the `EXPORT` prefix passes the import on to its own importers.
-* **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
+* **`.REQUIRE`**: declares what a module needs from its importer, a module or a value, without inlining anything.
+* **`.IMPORT`**: imports a module: inlines its code, supplies what it requires, and with the `EXPORT` prefix passes the import on to its own importers.
+* **`.SOURCE`**: includes raw source text (macros, constants) without creating a module relationship.
 
 None of the three may stand inside a macro or a repeat block, and `.IMPORT` and `.REQUIRE` stand only at the module level, outside every `.PROC`. Inside a conditional block they may: the file is read only when the branch is kept.
 
@@ -727,7 +657,7 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 #### `.SOURCE`
 
 * **Syntax**: `.SOURCE "<path>"`
-* **Effect**: Reads the file at `<path>` and inlines its tokens at the directive location. This is a pure text inclusion mechanism for sharing macros, constants, and other non-module code. `.SOURCE` files must **not** contain `.IMPORT` or `.REQUIRE` directives. Supports local paths, classpath resources, and HTTP/HTTPS URLs.
+* **Effect**: Reads the file at `<path>` and inlines its tokens at the directive location. It includes the text without creating a module, for sharing macros, constants and other code that is no module. `.SOURCE` files must **not** contain `.IMPORT` or `.REQUIRE` directives. Supports local paths, classpath resources, and HTTP/HTTPS URLs.
 
 #### Path Resolution
 
@@ -735,7 +665,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
 
 * **Unprefixed paths** (e.g., `"lib/energy.evo"`) resolve against the default (unprefixed) source root.
 * **Prefixed paths** use `PREFIX:path` syntax (e.g., `"PRED:lib/move.evo"`) to target a named source root. Prefixes must match `[A-Z][A-Z0-9_]+`, that is, at least two characters. The second character is required so that a Windows drive letter such as `C:\` is never read as a prefix.
-* **HTTP URLs** as source root paths are fully supported. A source root like `https://example.com/organisms` resolves `"lib/move.evo"` to `https://example.com/organisms/lib/move.evo`.
+* **HTTP URLs** can be source roots. A source root like `https://example.com/organisms` resolves `"lib/move.evo"` to `https://example.com/organisms/lib/move.evo`.
 * If no source roots are configured, the main file's directory is used as the default root.
 
 #### `.PROC`
@@ -749,11 +679,11 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
     - `LVAL`: Location **call-by-value** parameters (mapped to `%FLRx`). The caller can pass a location register or a label (resolved via fuzzy matching at call time; a label that cannot be resolved arrives as no position, which `IFSL`/`INSL` detect).
     - **Example**:
       ```
-      .PROC myProc REF reg_a VAL val_b LREF loc_c
-        SETI reg_a DATA:100             # Changes the caller's register for reg_a
-        SETI val_b DATA:200             # Only changes the local copy for val_b
-        SKLR loc_c                      # Moves DP to the passed location
-        CRLR loc_c                      # Clears FLR0 — written back to caller on RET
+      .PROC MY_PROC REF REG_A VAL VAL_B LREF LOC_C
+        SETI REG_A DATA:100             # Changes the caller's register for REG_A
+        SETI VAL_B DATA:200             # Only changes the local copy for VAL_B
+        SKLR LOC_C                      # Moves DP to the passed location
+        CRLR LOC_C                      # Clears FLR0, written back to the caller on RET
         RET
       .ENDPROC
       ```
@@ -775,20 +705,20 @@ Exported labels can be referenced from other files using qualified names (simila
 
 ```
 # In lib.evo
-EXPORT DATA_TABLE:
-  .PLACE DATA:42 0|0
+EXPORT ENTRY:
+  ADDI %DR0 DATA:1
 
 # In main.evo
 .IMPORT "lib.evo" AS LIB
 
 START:
-  JMPI LIB.DATA_TABLE  # Jump to the exported label
+  JMPI LIB.ENTRY       # Jump to the exported label
   ...
 ```
 
 #### Exported Constants
 
-Constants defined with `.CONST` can also be exported. This allows modules to expose configuration values as part of their API:
+Constants defined with `.CONST` can also be exported; an importer then reaches them as `<Alias>.<Name>`:
 
 ```
 # In lib.evo
@@ -803,7 +733,7 @@ SETI %DR0 LIB.MAX_ENERGY
 #### Example: Simple Module Import
 
 ```
-# lib.evo — a reusable library
+# lib.evo: a reusable library
 EXPORT .PROC DOUBLE REF X
   PUSH X
   PUSH X
@@ -814,7 +744,7 @@ EXPORT .PROC DOUBLE REF X
 ```
 
 ```
-# main.evo — imports the library
+# main.evo: imports the library
 .IMPORT "lib.evo" AS LIB
 
 START:
@@ -896,7 +826,7 @@ Inside `walk.evo`, `STEPS` is a constant like any other; each placement has its 
 `.SOURCE` is used for non-module includes like shared macros or constants. Unlike `.IMPORT`, it does not create module relationships.
 
 ```
-# constants.evo — shared constants (no .IMPORT or .REQUIRE allowed)
+# constants.evo: shared constants (no .IMPORT or .REQUIRE allowed)
 .CONST MAX_ENERGY DATA:1000
 .CONST STEP_SIZE 1|0
 ```
@@ -910,8 +840,6 @@ START:
   SETV %DR1 STEP_SIZE
 ```
 
----
-
 ### Control Blocks
 
 What other languages write as `if … else`, `switch`, `while` or `for` is written in a control block: a named stretch of code whose branches and whose end carry names the block provides, so that the conditionals and jumps inside it say in those names where the program goes. The block adds no instruction: what runs is exactly what stands between its directives.
@@ -922,7 +850,7 @@ What other languages write as `if … else`, `switch`, `while` or `for` is writt
 * **Effect**: Opens a block. The code up to the first `.CASE` is the head, where the conditions are tested; every `.CASE <Case>` begins a branch; `END` is the place behind the `.ENDCONTROL`. A conditional followed by `JMPI <Case>` is the `if` that enters a branch, `JMPI END` ends a branch or breaks out of a loop, `JMPI <Block>` is the `continue`: a block that jumps to its own name is a loop, a block whose head tests one value against several cases is a `switch`, a block whose cases hold the alternatives is an `if … elseif … else`.
     - What does not jump runs on: from the head into the first case, from one case into the next, from the last case out of the block. The compiler adds no instruction and checks no jump.
     - `<Block>`, `<Case>` and `END` are labels: `<Block>` on the level around the block, the others on the block's own level, meant inside by their plain names and from a block nested inside as `<Block>.<Case>` and `<Block>.END`. From outside the block a case or the end is reached only with `EXPORT` on it, from another module as `LIB.<Block>.<Case>` (see [Exported Labels](#exported-labels)). Names defined inside the block belong to it, as inside a procedure; `END` is taken, and `.PROC`, `.IMPORT` and `.REQUIRE` do not stand inside a block.
-    - A case that begins a row of its own has its `.ORG` before the `.CASE`.
+    - A case that begins a new row has its `.ORG` before the `.CASE`.
     - **Example**:
       ```
       .CONTROL ENERGY                    # if starving … else …
@@ -950,11 +878,11 @@ An expression works with five kinds of value:
 
 * **Number**: a whole number of 64 bits, written in any number format of [Typed Literals](#typed-literals), such as `100` or `0xFF`. A minus in front of it is its sign.
 * **Typed value**: a molecule type and a number, written as a typed literal, such as `DATA:42`.
-* **Vector**: a list of numbers, written as a vector literal, such as `1|0`. In an expression it may have any number of components; as an instruction argument it has one per dimension of the world.
+* **Vector**: a list of numbers, written as a vector literal, such as `1|0`. In an expression it may have any number of components; as an instruction operand it has one per dimension of the environment.
 * **Molecule type**: a type on its own, such as `DATA` or `ENERGY`, as `TYPE` gives it (see [Functions](#functions)).
 * **Position**: a place in the program (see [Positions](#positions)).
 
-A molecule type and a position never become a cell: they take part in further expressions, and an instruction argument that holds one is an error. A number is checked against what it becomes: the value of a cell in an instruction argument and in `.PLACE`, a coordinate in `.ORG`, `.DIR` and `.PLACE`, a count in `.REPEAT` and `^`. Where an instruction takes a typed literal, an expression has to give a typed value; a number alone is an error there, as a written number is.
+A molecule type and a position never become a cell: they take part in further expressions, and an instruction operand that holds one is an error. A number is checked against what it becomes: the value of a cell in an instruction operand and in `.PLACE`, a coordinate in `.ORG`, `.DIR` and `.PLACE`, a count in `.REPEAT` and `^`. Where an instruction takes a typed literal, an expression has to give a typed value; a number alone is an error there, as a written number is.
 
 ### Operators
 
@@ -1048,7 +976,7 @@ Every file has an origin: in the main file it is `0|0`, in a file brought in wit
     .ORG P
     ```
 * A position plus or minus a vector is a position: `(P + (1|0))` is the cell to the right of `P`. A position minus a position is the vector between them. Apart from these and the component `P[i]`, an operation on a position is an error.
-* A position, and a value computed from one, cannot be an instruction argument.
+* A position, and a value computed from one, cannot be an instruction operand.
 * An expression with `@` means the place where it is written: `.CONST HERE @` is the position of the `.CONST` line, wherever `HERE` is used.
 * A label in an expression must stand above that expression. So must a constant whose value is a position, or is computed from one or from `@`: it is used below its line, as a label is.
 * In `.ORG 0|@+2`, `@+` is the marker of `.ORG` (see [Layout Control](#layout-control)), not `@` plus 2; the same holds for `@-` and for the markers of `.DIR`.
@@ -1091,6 +1019,8 @@ Every file has an origin: in the main file it is `0|0`, in a file brought in wit
     .ENDDEF
     ```
 
+---
+
 ## 9. Examples
 
 Complete, compilable example programs are provided in [`assembly/examples/`](../assembly/examples/):
@@ -1108,7 +1038,7 @@ The module example consists of multiple files:
 |---|---|
 | [`modules/lib/constants.evo`](../assembly/examples/modules/lib/constants.evo) | Constants of the main program, loaded via `.SOURCE` |
 | [`modules/lib/math.evo`](../assembly/examples/modules/lib/math.evo) | Standalone math utilities (no dependencies) |
-| [`modules/lib/movement.evo`](../assembly/examples/modules/lib/movement.evo) | Movement procedures; requires a math module and the world's bounds, one with a default, one its importer must supply |
+| [`modules/lib/movement.evo`](../assembly/examples/modules/lib/movement.evo) | Movement procedures; requires a math module and the environment's bounds, one with a default, one its importer must supply |
 | [`modules/lib/navigation.evo`](../assembly/examples/modules/lib/navigation.evo) | Hands a required math module and a required value down to movement, and passes its own import of movement back up via `EXPORT .IMPORT` |
 
 To compile the examples using the CLI:
@@ -1121,7 +1051,7 @@ evochora compile --source-root assembly/examples/duplicate-shell --file=main.evo
 ```
 
 To run an example in the node, `assembly/example.conf` starts the one named by its
-`example-dir` in a small world without energy sources or mutation, and pauses after a fixed
+`example-dir` in a small environment without energy sources or mutation, and pauses after a fixed
 number of ticks:
 
 ```bash
