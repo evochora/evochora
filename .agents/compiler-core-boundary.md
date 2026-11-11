@@ -161,7 +161,3 @@ In the order in which they would be worth taking on. None is scheduled.
    three fixed IR item kinds any more.
 5. The module system, which is the largest block and the least likely to move: the symbol
    table would need to resolve names through a handler the module features register.
-
----
-
-Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

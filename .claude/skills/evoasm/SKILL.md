@@ -188,7 +188,3 @@ or the documentation would have helped in this session, concrete and from this s
   instruction, whose decision the next step cannot show.
 - Trace outputs belong in the session's scratchpad; the recorder's own README says what it
   writes and what it removes.
-
----
-
-Written with AI assistance under the project's [AI Policy](../../../AI_POLICY.md). The author reviewed it and is responsible for its content.
