@@ -2,8 +2,8 @@
 
 This document records where the core of the compiler still knows more about a feature than the
 rules in AGENTS.md allow. It describes the state as it is. The couplings listed here are
-accepted, not sanctioned: a change may not deepen them, and each is a candidate for a later
-decoupling.
+accepted, not sanctioned: a change may not widen them, a coupling enters this list only with the
+maintainer's explicit confirmation, and each is a candidate for a later decoupling.
 
 That the core and the features are kept apart otherwise is proven by
 `CompilerFeatureSeparationTest`: the reference program compiles without each feature once the
@@ -12,12 +12,12 @@ builds on, it declares in `ICompilerFeature.requires()`.
 
 ## What the core does on its own
 
-The core is the pipeline in `Compiler.java`, the eleven phases with their registries and
+The core is the pipeline in `Compiler.java`, the phases with their registries and
 contexts, the three data formats under `model/`, the symbol table, the flag stores of the two
 read-time phases, the instruction-set view and the machinery of computations in
 `compiler/expression`.
-Five phases are pure dispatch and hold no language logic: the preprocessor, the IR generator,
-the IR rewriter, the linker and the compiler itself.
+These phases are pure dispatch and hold no language logic: the preprocessor, the IR generator,
+the IR rewriter and the linker; so is `Compiler.java`, which runs them.
 
 The core does contain logic for four groups of concepts. None of them is declared a core
 concept in AGENTS.md; they are listed here because they are where the coupling lives.
@@ -77,13 +77,13 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    Which operations exist, and what they compute, is the `expression` feature's.
 
 Smaller instances: the tokenizer emits a colon token for `:` (label and typing); `Symbol.Type` is a closed
-enum whose eight members are named after individual features, mapped exhaustively in
+enum whose members are named after individual features, mapped exhaustively in
 `TokenKindMapper`.
 
 `CompilerOptions.defines`, the preprocessor flags of a compilation, is read by a feature and, in
-the core, by `ProgramIdentity` and by `Compiler.java`: `ProgramIdentity` takes the defines into
-the program's identity as a key of the compilation's variant and attaches no meaning to their
-names or values.
+the core, by `ProgramIdentity` and by `Compiler.java`: `ProgramIdentity` takes the defines and
+`CompilerOptions.values` into the program's identity as a key of the compilation's variant and
+attaches no meaning to their names or values.
 `sourceRoots` is read by the core. The core upper-cases the names, rejects two keys that are one
 name, reports a name that is no flag name or that nothing may define, seeds the two flag stores, one per read-time phase, from the defines without giving the
 flags a meaning, and hands the options to the contexts of Phases 1 and 2 as before.
@@ -118,7 +118,7 @@ feature registers through `IFeatureRegistrationContext.lexerSymbol`; the tokeniz
 `org` and `dir`, which read their marker `@+` or `@-` as the name `@` followed by `+` or the
 minus, `+`, `*` and `/` for `expression`, `^` for `repeat`. The tokenizer tries the registered symbols at the start of every token,
 longest first, before its fixed cases, so a symbol may consist only of the characters
-`! & * + , . / < = > ? ^ ~ -`, which cut into no identifier, number, register, string, comment
+`! & * + . / < = > ? ^ ~ -`, which cut into no identifier, number, register, string, comment
 or statement end. `|` and `:` stay fixed tokens, because the parser itself reads them in the
 vector and typed literals every operand may take; `( ) [ ]` and `,` are fixed tokens as well,
 and `@` alone is a name token. A symbol equal to one of the tokenizer's fixed characters
@@ -161,3 +161,7 @@ In the order in which they would be worth taking on. None is scheduled.
    three fixed IR item kinds any more.
 5. The module system, which is the largest block and the least likely to move: the symbol
    table would need to resolve names through a handler the module features register.
+
+---
+
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.
