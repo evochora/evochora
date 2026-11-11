@@ -1,6 +1,6 @@
 # EvoASM Guidelines
 
-The [Assembly Specification](ASSEMBLY_SPEC.md) says what the language and every instruction do.
+The [Assembly Specification](EVOASM_SPEC.md) says what the language and every instruction do.
 This document is about writing programs that hold up in the simulation: programs that leave
 room for evolution, that act sensibly in a world other organisms act in too, whose procedures
 can be relied on, and that can be checked. Each practice comes with its reason, so that a reader
@@ -274,3 +274,7 @@ loop. A case that begins a row of its own has its `.ORG` before the `.CASE`:
   CALL ABANDON; NOP^4                     # a defensive program stops here
 .ENDCONTROL
 ```
+
+---
+
+Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

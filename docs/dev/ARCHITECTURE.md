@@ -16,7 +16,7 @@ Evochora is one Java code base with five top-level packages under `org.evochora`
 
 **Runtime** (`runtime`, [section 3](#3-the-runtime)) is the simulation itself: the [environment](#the-environment), the [organisms](#the-organism), the instruction set and the [plugins](#plugins). `Simulation` advances the simulation [tick](#the-tick) by tick. The runtime computes and does nothing else. It reads no file and writes none, and it depends on no other package. Everything around it can therefore change without touching it.
 
-**Compiler** (`compiler`, [section 2](#2-the-compiler)) turns a program written in [EvoASM](../ASSEMBLY_SPEC.md) into the molecules that the runtime executes. Its result is a `ProgramArtifact`. It holds the machine code with the position of every molecule, and the maps that link each position back to the source line it came from. The compiler depends on the runtime, for the instruction set and for what else a program has to fit.
+**Compiler** (`compiler`, [section 2](#2-the-compiler)) turns a program written in [EvoASM](../EVOASM_SPEC.md) into the molecules that the runtime executes. Its result is a `ProgramArtifact`. It holds the machine code with the position of every molecule, and the maps that link each position back to the source line it came from. The compiler depends on the runtime, for the instruction set and for what else a program has to fit.
 
 **Data pipeline** (`datapipeline`, [section 4](#4-the-data-pipeline)) exists because the runtime does no input or output. The `SimulationEngine` drives the simulation, captures the state of each recorded tick and hands it to a queue. Behind the queue, separate services store the [recording](#the-recording), index it and compute the analytics. Nothing but the processor and the memory sets the pace of the simulation. Only a recording so dense that the storage cannot keep up with it binds the simulation to the storage. The pipeline depends on the runtime, because it drives the simulation and records its state. It depends on the compiler, because it compiles the ancestors of a run and keeps the compiled programs with it.
 
@@ -58,7 +58,7 @@ A sixth package, `util`, holds helpers that belong to no package in particular a
 
 ## 2. The compiler
 
-The compiler turns an EvoASM program ([Assembly Specification](../ASSEMBLY_SPEC.md)) into molecules, and molecules are all the runtime ever sees of it. The runtime executes what stands in the cells of the environment. It holds no symbol table, no procedure names and no source lines, and the dependency rules forbid it to reference the compiler at all. This is what lets mutated and self-modified code run. A program that evolution has changed has no source any more, and the runtime does not need one. Everything the compiler knows beyond the molecules is kept for people and tools in the run's [metadata](#the-recording): the names, the procedures, the line each molecule came from. The source view of the [visualizer](#5-the-node-and-the-frontends) reads it there and shows the source line next to the machine instruction compiled from it.
+The compiler turns an EvoASM program ([Assembly Specification](../EVOASM_SPEC.md)) into molecules, and molecules are all the runtime ever sees of it. The runtime executes what stands in the cells of the environment. It holds no symbol table, no procedure names and no source lines, and the dependency rules forbid it to reference the compiler at all. This is what lets mutated and self-modified code run. A program that evolution has changed has no source any more, and the runtime does not need one. Everything the compiler knows beyond the molecules is kept for people and tools in the run's [metadata](#the-recording): the names, the procedures, the line each molecule came from. The source view of the [visualizer](#5-the-node-and-the-frontends) reads it there and shows the source line next to the machine instruction compiled from it.
 
 The compiler's input is the source text of a program with the modules it imports. Its output is a `ProgramArtifact`. The artifact holds the machine code as molecules at relative positions and the molecules the program places in the environment around itself. It also holds the maps from every molecule back to its source line. `Compiler` produces it in phases, in a fixed order that only this class knows. The frontend reads the text into tokens, builds a syntax tree (AST) from them and checks it. The backend turns the tree into an intermediate representation (IR) of instructions and directives, lays it out in the grid and emits the molecules. The phases are the pipeline. The language itself is built from features: packages that each add one capability of the language by registering handlers with the phases they take part in.
 
@@ -104,11 +104,11 @@ What the language offers is organized by feature. There are features for procedu
 
 ## 3. The runtime
 
-The runtime is the simulation. It consists of an environment, the organisms in it, the machine that executes their instructions, and the loop that advances all of this one tick at a time. The rules of the simulation, what a molecule is, what an instruction does and what it costs, are laid down in the [Assembly Specification](../ASSEMBLY_SPEC.md). This section explains how the runtime is put together: what it consists of, how a tick proceeds, and where plugins take part.
+The runtime is the simulation. It consists of an environment, the organisms in it, the machine that executes their instructions, and the loop that advances all of this one tick at a time. The rules of the simulation, what a molecule is, what an instruction does and what it costs, are laid down in the [Assembly Specification](../EVOASM_SPEC.md). This section explains how the runtime is put together: what it consists of, how a tick proceeds, and where plugins take part.
 
 ### The environment
 
-The environment is a grid of cells in as many dimensions as the configuration sets. The edges either wrap around or bound the grid. Every cell holds exactly one molecule, and a molecule has a type and a value. A CODE molecule holds an instruction, a DATA molecule a number, an ENERGY molecule what an organism takes up to live on, and a STRUCTURE molecule matter that stands in the way. The [Assembly Specification](../ASSEMBLY_SPEC.md#molecules) lists the other types. Every cell is owned by one organism or by none. The environment holds nothing else: an organism is present in it only through the cells it owns.
+The environment is a grid of cells in as many dimensions as the configuration sets. The edges either wrap around or bound the grid. Every cell holds exactly one molecule, and a molecule has a type and a value. A CODE molecule holds an instruction, a DATA molecule a number, an ENERGY molecule what an organism takes up to live on, and a STRUCTURE molecule matter that stands in the way. The [Assembly Specification](../EVOASM_SPEC.md#molecules) lists the other types. Every cell is owned by one organism or by none. The environment holds nothing else: an organism is present in it only through the cells it owns.
 
 ### The organism
 
@@ -138,7 +138,7 @@ An organism is two things. In the environment it is the cells it owns, its body,
  └───────────────────────────────────────────────────────────────────────┘
 ```
 
-What the abbreviations stand for, and how each part of the state works, is laid down in the [Assembly Specification](../ASSEMBLY_SPEC.md#3-the-organisms-virtual-machine).
+What the abbreviations stand for, and how each part of the state works, is laid down in the [Assembly Specification](../EVOASM_SPEC.md#3-the-organisms-virtual-machine).
 
 ### The tick
 

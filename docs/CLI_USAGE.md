@@ -164,7 +164,7 @@ When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g.
 
 ### Flags (`--define`)
 
-Decides a flag for the conditional compilation directives (`.IFDEF` and its relatives, see [ASSEMBLY_SPEC.md](ASSEMBLY_SPEC.md#conditional-compilation)) before the first line of the program:
+Decides a flag for the conditional compilation directives (`.IFDEF` and its relatives, see [EVOASM_SPEC.md](EVOASM_SPEC.md#conditional-compilation)) before the first line of the program:
 
 - `--define NAME` or `--define NAME=true` — sets the flag without a value
 - `--define NAME=NUMBER` — sets it with that value; decimal, `0x…`, `0o…` and `0b…`, with an optional minus
@@ -174,7 +174,7 @@ A flag the option does not name is free, and the program's `.DEFINE DEFAULT` of 
 
 ### Values (`--value`)
 
-Sets a value of the main program, which nothing imports, so no `USING VALUE` can bind it: the main program's `.REQUIRE VALUE` of that name takes it in place of its default (see `ASSEMBLY_SPEC.md`):
+Sets a value of the main program, which nothing imports, so no `USING VALUE` can bind it: the main program's `.REQUIRE VALUE` of that name takes it in place of its default (see `EVOASM_SPEC.md`):
 
 - `--value NAME=TEXT` — the text is an operand as a `.CONST` takes it: a literal, a vector, a name of the main program or an expression with them, e.g. `--value STEPS=DATA:20` or `--value 'STEPS=DATA:(WIDTH/2)'`
 
@@ -429,7 +429,7 @@ The configuration file uses HOCON format (`.conf` extension). See `config/evocho
 ### Compilation fails
 - Verify the EvoASM source file exists.
 - Check for syntax errors in the assembly code
-- See `ASSEMBLY_SPEC.md` for assembly language documentation
+- See `EVOASM_SPEC.md` for assembly language documentation
 
 ### Configuration errors
 - Verify the configuration file uses valid HOCON syntax

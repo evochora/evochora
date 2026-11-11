@@ -66,7 +66,7 @@ An `IrProgram` has three parts:
 
 ## Layout Terms
 
-The directives of the layout use these terms, which [Layout Control](../ASSEMBLY_SPEC.md#layout-control) and [Positions](../ASSEMBLY_SPEC.md#positions) in the Assembly Specification explain for the language:
+The directives of the layout use these terms, which [Layout Control](../EVOASM_SPEC.md#layout-control) and [Positions](../EVOASM_SPEC.md#positions) in the Assembly Specification explain for the language:
 
 - **Cursor**: the cell the next code is placed in, the one after the cell placed last.
 - **Direction**: the vector along which the layout places the code.

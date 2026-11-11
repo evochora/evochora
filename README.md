@@ -167,7 +167,7 @@ To create your own organism:
 3. Run `bin/evochora node run` — the engine compiles automatically
 
 **Resources:**
-- **Language Reference:** [docs/ASSEMBLY_SPEC.md](docs/ASSEMBLY_SPEC.md)
+- **Language Reference:** [docs/EVOASM_SPEC.md](docs/EVOASM_SPEC.md)
 - **Syntax Highlighting:** VS Code/Cursor extension in [`extensions/vscode/`](extensions/vscode/README.md)
 
 ### Command Line Interface (CLI)
@@ -425,7 +425,7 @@ Evochora includes two web-based frontends for interacting with simulation data:
 
 ### Further Reading
 
-For more details, see the [Assembly Specification](docs/ASSEMBLY_SPEC.md), [Compiler IR Specification](docs/dev/COMPILER_IR_SPEC.md), [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md), and [Architecture Decisions](docs/dev/ARCHITECTURE_DECISIONS.md).
+For more details, see the [Assembly Specification](docs/EVOASM_SPEC.md), [Compiler IR Specification](docs/dev/COMPILER_IR_SPEC.md), [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md), and [Architecture Decisions](docs/dev/ARCHITECTURE_DECISIONS.md).
 
 <br>
 
@@ -477,7 +477,7 @@ For the current roadmap, see the [GitHub Project Board](https://github.com/orgs/
 - API Documentation: [http://evochora.org/api-docs/](http://evochora.org/api-docs/)
 - Key documentation:
     - [CLI Usage Guide](docs/CLI_USAGE.md)
-    - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM)
+    - [Assembly Specification](docs/EVOASM_SPEC.md) (EvoASM)
     - [Architecture Decisions](docs/dev/ARCHITECTURE_DECISIONS.md)
 
 <br>
@@ -501,6 +501,6 @@ If you use Evochora in your research, please cite:
 
 ---
 
-_Full disclosure: This project uses AI coding assistants. Humans define the architecture, write specifications, and review generated code to ensure correctness and maintain the overall design._
+Written with AI assistance under the project's [AI Policy](AI_POLICY.md). The author reviewed it and is responsible for its content.
 
 ---

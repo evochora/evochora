@@ -9,7 +9,7 @@ EvoASM is compiled to molecules laid out in the world, and an organism executes 
 tick. Nothing about it is in any training data; the references are in the repository, and the
 runtime source is the truth when the specification leaves a question open.
 
-- `docs/ASSEMBLY_SPEC.md`: the language and every instruction.
+- `docs/EVOASM_SPEC.md`: the language and every instruction.
 - `src/main/java/org/evochora/runtime/isa/instructions/`: what an instruction really does.
 - `assembly/ancestors/default/` and the behaviors in `assembly/lib/`: the self-replicator, the
   worked example for every idiom below.
@@ -188,3 +188,7 @@ or the documentation would have helped in this session, concrete and from this s
   instruction, whose decision the next step cannot show.
 - Trace outputs belong in the session's scratchpad; the recorder's own README says what it
   writes and what it removes.
+
+---
+
+Written with AI assistance under the project's [AI Policy](../../../AI_POLICY.md). The author reviewed it and is responsible for its content.

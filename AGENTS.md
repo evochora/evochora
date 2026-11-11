@@ -19,7 +19,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - `src/test/resources/` – Test resources and configurations
 - `src/test/web/` – Web frontend tests (vitest), laid out like `src/main/web/`
 - `src/testFixtures/` – JUnit extensions and test utilities
-- `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, proposals)
+- `docs/` – Documentation (EVOASM_SPEC.md, CLI_USAGE.md, proposals)
 - `assembly/` – Assembly code examples and test files
 - `config/` – User-facing configuration (evochora.conf, local.conf)
 - `build.gradle.kts` – Gradle build configuration
