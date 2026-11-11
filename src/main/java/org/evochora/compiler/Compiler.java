@@ -266,7 +266,7 @@ public class Compiler implements ICompiler {
         // Phase 9: Layout (assign addresses to instructions)
         LayoutDirectiveRegistry layoutRegistry = new LayoutDirectiveRegistry((directive, context) -> {
             // IR directives without a layout handler are silently skipped — not every
-            // directive needs layout-phase processing (e.g., core:proc_enter, core:org)
+            // directive needs layout-phase processing
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
         LayoutEngine layoutEngine = new LayoutEngine();
