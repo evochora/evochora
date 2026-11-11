@@ -1,97 +1,41 @@
 # Contributing to Evochora
 
-Contributions of any kind are welcome: running experiments, writing organisms, reporting problems, improving the code or the documentation, or simply telling us what you think.
+Contributions of any kind are welcome: running experiments, writing ancestors, reporting problems, improving the code or the documentation, or simply telling us what you think. No contribution is too small.
 
-A small, clear fix can come as a pull request right away. For anything larger, please open an issue or a discussion first, so that we can agree on the direction before you put work into it.
+Below you'll find where to get help and how to get started, whether you do research with Evochora or work on its code.
 
-Below you'll find how to get started, whether you want to run experiments or work on the code.
+How to use Evochora is described in the [User Guide](docs/USER_GUIDE.md).
 
-## Quick Start (How to Build)
+- [Getting Help and Reporting Problems](#getting-help-and-reporting-problems)
+- [For Researchers](#for-researchers)
+- [For Developers](#for-developers)
+- [Using AI Assistants](#using-ai-assistants)
+- [Code of Conduct and License](#code-of-conduct-and-license)
 
-You need **Java 25** and **Git**. The build fetches everything else itself, including the Node.js it uses for the web frontend's libraries; it is unpacked inside the project, not installed on your system.
+## Getting Help and Reporting Problems
 
-```bash
-# Clone the repository
-git clone https://github.com/evochora/evochora.git
-cd evochora
+If something doesn't work, if you have a question or an idea, write to us wherever it suits you: open an [issue](https://github.com/evochora/evochora/issues), start a [discussion](https://github.com/evochora/evochora/discussions), or ask on [Discord](https://discord.gg/t9yEJc4MKX).
 
-# Build & test
-./gradlew build
+## For Researchers
 
-# Run the node in dev mode (uses config/evochora.conf by default)
-./gradlew run --args="node run"
-```
+If your research needs something Evochora doesn't offer yet, or you have an idea for it, [tell us about it](#getting-help-and-reporting-problems).
 
-Open the web frontend in your browser:
-`http://localhost:8081/visualizer/`
+An ancestor you have written can become one that others start from. Show it to us first, and if it fits, it joins the others in [`assembly/ancestors/`](assembly/ancestors/README.md). If something in the documentation is wrong or unclear, you can fix it yourself. Both work in your browser, right on GitHub.
 
+## For Developers
 
-## Configuration Overview
+If you plan something larger, tell us about it first. Then we can help, and your work fits in from the start.
 
-Evochora is configured via HOCON configuration files. The experiment template [`config/evochora.conf`](./config/evochora.conf) contains the most common parameters; all defaults are defined in [`reference.conf`](./src/main/resources/reference.conf) (embedded in JAR).
+The [development guide](docs/dev/DEVELOPMENT.md) shows how to build, run and test Evochora and what a pull request needs. How Evochora is put together is described in its [architecture](docs/dev/ARCHITECTURE.md).
 
-## Writing Your Own Organisms
+## Using AI Assistants
 
-Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The default ancestor in `assembly/ancestors/default/main.evo`, with the behaviors it takes from `assembly/lib`, is a good starting point.
+AI assistants are welcome under the project's [AI Policy](AI_POLICY.md): say that you used one, understand what you contribute, and take responsibility for it. An assistant finds the project's rules in [AGENTS.md](AGENTS.md) by itself.
 
-**Quick Start:**
-1. Edit or create a `.evo` file in `assembly/`
-2. Configure it in `config/evochora.conf` (see `simulation-engine.options.organisms`)
-3. Run `./gradlew run --args="node run"` - the engine compiles the organisms evoASM code automatically
+## Code of Conduct and License
 
-**Resources:**
-- **Language Reference:** [docs/ASSEMBLY_SPEC.md](docs/ASSEMBLY_SPEC.md)
-- **Syntax Highlighting:** VS Code/Cursor extension in [`extensions/vscode/`](extensions/vscode/README.md)
+Everyone in the project follows our [Code of Conduct](CODE_OF_CONDUCT.md). By contributing, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
 
-## Command Line Interface (CLI)
+---
 
-The Evochora CLI is the main entry point for running simulations and tools.
-
-**Main commands:**
-
-- `node` – Run and control the simulation node (pipeline, services, HTTP API)
-- `compile` – Compile EvoASM (Evochora Assembly) programs for the Evochora VM
-- `inspect` – Inspect stored simulation data (ticks, runs, resources)
-- `video` – Render simulation runs into videos (requires `ffmpeg`)
-
-Further CLI documentation and fully worked examples:
-
-**[CLI Usage Guide](docs/CLI_USAGE.md)** – All commands, parameters, and usage examples (including `node`, `compile`, `inspect`, and `video`).
-
-
-## How can you help?
-
-1. **Code Contributions**: Fix bugs, add features, or improve the VM performance.
-2. **Scientific Discussion**: Propose new "laws of physics" for the simulation in our Discussions.
-3. **Ancestor Design**: Create efficient ancestors in Assembly (`.evo` files).
-
-
-## Where to start?
- * [Good First Issue](https://github.com/evochora/evochora/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22action%3A%20good%20first%20issue%22): Start here! Small tasks, minimal context needed.
- * [Help Wanted](https://github.com/evochora/evochora/issues?q=state%3Aopen%20label%3A%22action%3A%20help%20wanted%22): Slightly more complex, but we need hands on deck.
-
-## Questions?
- * Join the Evochora Discord (Community Chat): [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord)](https://discord.gg/t9yEJc4MKX)
- * Use GitHub Discussions: [Discussions](https://github.com/evochora/evochora/discussions)
-
-## Development Standards (Important!)
-
-We maintain strict architectural standards to keep the simulation deterministic and performant.
-
-If you are wondering why the project uses a custom Assembly language or a distributed microservice architecture instead of a simple Python script, please read **[Architecture & Design Decisions](docs/dev/ARCHITECTURE_DECISIONS.md)** first.
-
-Before writing code, please read **[AGENTS.md](AGENTS.md)**. It contains:
-* The architecture rules (Hexagonal Architecture).
-* Testing guidelines (Unit vs. Integration vs. Benchmark).
-* Coding style (Java/Kotlin standards).
-
-## Pull Request Process
-
-1. Create a new branch for your feature (`git checkout -b feature/my-feature`).
-2. Write tests for your changes (see `AGENTS.md`).
-3. Ensure `./gradlew test` passes.
-4. Submit a Pull Request targeting the `main` branch.
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
+Written with AI assistance under the project's [AI Policy](AI_POLICY.md). The author reviewed it and is responsible for its content.
