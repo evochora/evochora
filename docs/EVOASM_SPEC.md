@@ -1,12 +1,62 @@
 # Evochora Assembly: Language Reference
 
+1. [Introduction](#1-introduction)
+2. [Simulation Environment](#2-simulation-environment)
+   - [Topology](#topology)
+   - [Molecules](#molecules)
+   - [Ownership](#ownership)
+   - [Molecule Marker](#molecule-marker)
+3. [Virtual Machine](#3-virtual-machine)
+   - [Pointers](#pointers)
+   - [Registers](#registers)
+   - [Stacks](#stacks)
+   - [Thermodynamic Selection Pressure](#thermodynamic-selection-pressure)
+   - [Running mutated code](#running-mutated-code)
+4. [Basic Syntax](#4-basic-syntax)
+   - [Statement Structure](#statement-structure)
+   - [Comments](#comments)
+   - [Labels](#labels)
+   - [Case-Insensitivity](#case-insensitivity)
+   - [Whitespace](#whitespace)
+5. [Data Types and Literals](#5-data-types-and-literals)
+   - [Typed Literals](#typed-literals)
+   - [Vector Literals](#vector-literals)
+6. [Instruction Set](#6-instruction-set)
+   - [Data and Memory Operations](#data-and-memory-operations)
+   - [Arithmetic Operations](#arithmetic-operations)
+   - [Bitwise Operations](#bitwise-operations)
+   - [Control Flow](#control-flow)
+   - [Conditional Instructions](#conditional-instructions)
+   - [Environment Interaction](#environment-interaction)
+   - [State and Location Operations](#state-and-location-operations)
+   - [Location Stack and Register Operations](#location-stack-and-register-operations)
+   - [Vector Component Operations](#vector-component-operations)
+7. [Compiler Directives](#7-compiler-directives)
+   - [Definitions and Aliases](#definitions-and-aliases)
+   - [Layout Control](#layout-control)
+   - [Macros](#macros)
+   - [Repetition](#repetition)
+   - [Blocks](#blocks)
+   - [Conditional Compilation](#conditional-compilation)
+   - [Modules and Procedures](#modules-and-procedures)
+   - [Control Blocks](#control-blocks)
+8. [Compile-Time Expressions](#8-compile-time-expressions)
+   - [Values](#values)
+   - [Operators](#operators)
+   - [Functions](#functions)
+   - [Names](#names)
+   - [Where an Expression Stands](#where-an-expression-stands)
+   - [Positions](#positions)
+   - [Computing with Flags](#computing-with-flags)
+9. [Examples](#9-examples)
+
 ## 1. Introduction
 
 EvoASM is the assembly language in which the programs of Evochora's organisms are written; each organism runs its program on its own virtual machine. This document is the reference for the language. It describes the environment and the virtual machine (sections 2 and 3), the syntax and the literals (4 and 5), the instruction set (6), the directives of the compiler (7) and the expressions the compiler computes (8), and it ends with example programs (9). How to write programs that hold up in the simulation is described in the [EvoASM Guidelines](EVOASM_GUIDELINES.md).
 
 ---
 
-## 2. The Simulation Environment
+## 2. Simulation Environment
 
 The environment is a grid of cells in as many dimensions as the simulation's configuration sets. Each cell is identified by its coordinates.
 
@@ -51,7 +101,7 @@ The marker separates soma from genome. What an organism writes with `MR` 0 is so
 
 ---
 
-## 3. The Organism's Virtual Machine
+## 3. Virtual Machine
 
 Each organism has its own virtual machine, with pointers, registers and stacks. The machine executes the organism's code where it lies in the environment, as `CODE` molecules and their operands; EvoASM is the language that code is written in.
 
@@ -139,7 +189,7 @@ OPCODE OPERAND1 OPERAND2  # Comment
 
 #### Multiple Instructions Per Line
 
-You can place multiple instructions on a single line by separating them with semicolons:
+Several instructions can stand on one line, separated by semicolons:
 
 ```
 NOP; SETI %DR0 DATA:1; NOP
@@ -549,7 +599,7 @@ Directives instruct the compiler on how to assemble the code. They are not execu
 
 ### Macros
 
-* `.MACRO <Name> [PARAM1 ...] / .ENDMACRO`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, write its name followed by the arguments.
+* `.MACRO <Name> [PARAM1 ...] / .ENDMACRO`: Defines a macro, a template for code that is expanded inline. Parameters are optional. A macro is invoked by its name followed by the arguments.
     ```
     .MACRO INCREMENT REG_TARGET
       ADDI REG_TARGET DATA:1

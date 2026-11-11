@@ -138,7 +138,7 @@ An organism is two things. In the environment it is the cells it owns, its body,
  └───────────────────────────────────────────────────────────────────────┘
 ```
 
-What the abbreviations stand for, and how each part of the state works, is laid down in the [Assembly Specification](../EVOASM_SPEC.md#3-the-organisms-virtual-machine).
+What the abbreviations stand for, and how each part of the state works, is laid down in the [Assembly Specification](../EVOASM_SPEC.md#3-virtual-machine).
 
 ### The tick
 
