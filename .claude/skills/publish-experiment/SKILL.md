@@ -32,15 +32,16 @@ The Zenodo description holds three sentences: what the run is, the requirement (
 the packaged build was compiled for, which `languageVersion` in the `build.gradle.kts` of `src/`
 names), the start command.
 
-After them the description discloses the use of AI assistants, as `AI_POLICY.md` requires of a
-research output and as a journal the finding could go to expects of a paper: which assistant the
-author used, that the use included the analysis and the writing, that the author reviewed the
-results and takes full responsibility for the content, and a link to the policy. It states what is
-known and nothing beyond it. What lets a reader rely on the record follows in one sentence: the
-data and the video are output of the build in the package, and the notebook re-runs the analysis
-on the packaged data. That the run can be regenerated with the build is said only where the
-record's reproducibility test has shown it. The notebook carries the same disclosure in its
-provenance.
+The record discloses the use of AI assistants in its own field, the additional description of type
+Notes, which Zenodo shows as a block of its own below the description and which is where a paper's
+acknowledgements go. The disclosure is what `AI_POLICY.md` requires of a research output and what
+a journal the finding could go to expects of a paper: which assistant the author used, that the
+use included the analysis and the writing, that the author reviewed the results and takes full
+responsibility for the content, and a link to the policy. It states what is known and nothing
+beyond it. What lets a reader rely on the record follows in one sentence: the data and the video
+are output of the build in the package, and the notebook re-runs the analysis on the packaged
+data. That the run can be regenerated with the build is said only where the record's
+reproducibility test has shown it. The notebook carries the same disclosure in its provenance.
 
 The wording that was checked against the publishers' requirements serves as the template; a record
 departs from it only where its facts differ:
