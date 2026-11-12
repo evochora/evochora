@@ -72,7 +72,3 @@ there are the distance left. The order in which the distance closes follows the 
 artifact and the token map first (#153), because every feature with debug data touches them, the
 backend when a feature needs an item kind, the symbol kinds and the module system when a feature
 needs to define names of its own.
-
----
-
-Written with AI assistance under the project's [AI Policy](../../../AI_POLICY.md). The author reviewed it and is responsible for its content.

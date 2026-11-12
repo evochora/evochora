@@ -501,6 +501,6 @@ If you use Evochora in your research, please cite:
 
 ---
 
-Written with AI assistance under the project's [AI Policy](AI_POLICY.md). The author reviewed it and is responsible for its content.
+Evochora is developed with the assistance of AI under the project's [AI Policy](AI_POLICY.md). Every part of it has been reviewed by a person, who is responsible for it.
 
 ---

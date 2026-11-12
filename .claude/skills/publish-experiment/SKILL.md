@@ -32,6 +32,14 @@ The Zenodo description holds three sentences: what the run is, the requirement (
 the packaged build was compiled for, which `languageVersion` in the `build.gradle.kts` of `src/`
 names), the start command.
 
+After them the description discloses the use of AI assistants, as `AI_POLICY.md` requires of a
+research output and as a journal the finding could go to expects of a paper: which assistant was
+used, for what in general terms, that the author directed and supervised the work and is
+responsible for the findings, and a link to the policy. It states what is known and nothing beyond
+it. What lets a reader rely on the record belongs with it: the data come from the simulation, the
+video is rendered from them by Evochora, and every number can be recomputed from the notebook and
+the package. The notebook carries the same disclosure in its provenance.
+
 `experiment-<runId>.tar` unpacks to one directory:
 
 ```

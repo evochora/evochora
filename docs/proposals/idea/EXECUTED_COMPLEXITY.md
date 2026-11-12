@@ -83,7 +83,3 @@ lies above what actually runs.
 - **Where it belongs.** A function in the `analyze-run` script, an analytics plugin over the bodies
   at every recorded tick, or both; a plugin would make it visible in the Analyzer for every run but
   sees one recording at a time, which the static graph allows and the dynamic one does not.
-
----
-
-Written with AI assistance under the project's [AI Policy](../../../AI_POLICY.md). The author reviewed it and is responsible for its content.

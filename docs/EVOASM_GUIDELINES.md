@@ -274,7 +274,3 @@ loop. A case that begins a row of its own has its `.ORG` before the `.CASE`:
   CALL ABANDON; NOP^4                     # a defensive program stops here
 .ENDCONTROL
 ```
-
----
-
-Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

@@ -64,7 +64,3 @@ are born where more free energy lies and starve less often, and a remotely place
 better than its adjacently placed sibling by about what the energy in its nearest surrounding
 leads one to expect; consistent with selection on the energy the dispersal provides, not tested
 by intervention. The first published sweep that changed where an organism places its offspring.
-
----
-
-Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

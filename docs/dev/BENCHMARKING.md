@@ -200,7 +200,3 @@ The JSON files produced by `-rf json` are working data; the table is the result.
 values belong to the change that was verified with them. They are not maintained as a
 project-wide reference, because no later measurement on a different machine or day could be
 compared with them.
-
----
-
-Written with AI assistance under the project's [AI Policy](../../AI_POLICY.md). The author reviewed it and is responsible for its content.

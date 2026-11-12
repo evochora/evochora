@@ -53,7 +53,3 @@ Before you open a pull request, add tests for what you changed and run:
 `check` runs the Java tests, the web frontend tests and the architecture tests, lints the code, and checks the JavaDoc, the licenses of the dependencies and the test coverage.
 
 In the pull request, describe what you changed, why, and how you checked it. Once it is open, the CI runs the same checks on Linux, Windows and macOS, and automated reviews comment on it.
-
----
-
-Written with AI assistance under the project's [AI Policy](../../AI_POLICY.md). The author reviewed it and is responsible for its content.

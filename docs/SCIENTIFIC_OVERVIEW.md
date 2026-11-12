@@ -40,8 +40,7 @@ Researchers can set the conditions of a run: the environment's dimensions and la
 7. [Limitations](#7-limitations)
 8. [Conclusion](#8-conclusion)
 9. [Getting Involved](#9-getting-involved)
-10. [Disclosure](#10-disclosure)
-11. [References](#11-references)
+10. [References](#10-references)
 
 ## 1. Introduction
 
@@ -353,11 +352,7 @@ Evochora is open source under the MIT License, and it will grow with the people 
 - Questions and discussion: [GitHub Discussions](https://github.com/evochora/evochora/discussions)
 - Chat: [Discord](https://discord.gg/t9yEJc4MKX)
 
-## 10. Disclosure
-
-Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.
-
-## 11. References
+## 10. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
 - <a id="ref-batut-2013"></a>Batut, B., Parsons, D. P., Fischer, S., Beslon, G., & Knibbe, C. (2013). In silico experimental evolution: a tool to test evolutionary scenarios. *BMC Bioinformatics*, 14(Suppl 15), S11.

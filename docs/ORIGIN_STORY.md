@@ -79,7 +79,3 @@ The result is a platform that is, I think, genuinely solid, because every piece 
 A note on AI: I know how skeptically many people view AI-generated code today, and rightfully so: it has flooded the world with superficially impressive but ultimately hollow projects. But Evochora would not exist without AI coding assistants. Someone twenty years out of practice does not rebuild a multi-pass compiler, a distributed data pipeline, and a spatial VM from scratch in a few months on their own, let alone rewrite major components multiple times when the design turned out to be wrong. AI proposed a lot along the way, but the decisions and the physics were mine. And it gave me back the ability to code, and with it, the joy of building something I'd been thinking about for thirty years.
 
 Evochora is open source, and I hope it becomes useful to others: researchers who actually know the field, students who want to experiment, hobbyists who share the same fascination with digital evolution that grabbed me in the 1990s. It's not a finished product. It's a foundation, built the hard way, and an invitation to build on it. 
-
----
-
-Written with AI assistance under the project's [AI Policy](../AI_POLICY.md). The author reviewed it and is responsible for its content.

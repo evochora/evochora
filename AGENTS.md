@@ -133,7 +133,7 @@ System properties > Environment variables > User config file > reference.conf de
 The project's [AI Policy](AI_POLICY.md) binds the people who work with agents; the following rules make an agent's work comply with it:
 
 - **Act only on instruction.** An agent does what a person has asked for in this session and nothing beyond it; it opens no issue or pull request, posts no comment and makes no change that was not asked for. A decision about a contribution or a review is made by a person; the agent prepares it and does not take it.
-- **Disclose the work.** Everything an agent writes within the development process, a commit, a pull request, an issue, a comment, ends with a trailer line that names the assistant, `Co-Authored-By: <assistant>` or `Assisted-by: <assistant>`. Every document the project publishes that an agent writes or revises carries the policy's note, in its exact wording: "Written with AI assistance under the project's AI Policy. The author reviewed it and is responsible for its content." A document is one written for people to read, such as the README, the guides under `docs/`, a proposal or a notebook; instructions for agents, such as skills and the files under `.agents/`, count as source and are disclosed by the trailer of their commit.
+- **Disclose the work.** Everything an agent writes as a contribution, a commit, a pull request, an issue, a comment, ends with the trailer line `Assisted-by: <agent>:<model>`, for example `Assisted-by: Claude:claude-opus-5-5`. An agent never names itself in a `Co-Authored-By` line: an author is a person. A research output an agent helps to produce carries the disclosure the policy requires of it.
 - **Leave the work explainable.** An agent writes so that the person who contributes the work can read, understand and explain it.
 
 There is a central document for AI agent guidelines that defines architectural principles and review standards. All agents, automated workflows, and human developers should adhere to these rules.
@@ -552,5 +552,3 @@ approval for the next; each one is asked for separately.
    decision instead.
 7. Whether a change goes through a PR or is pushed directly is the maintainer's call.
 8. Merging happens only after the maintainer's approval.
-
-Written with AI assistance under the project's [AI Policy](AI_POLICY.md). The author reviewed it and is responsible for its content.

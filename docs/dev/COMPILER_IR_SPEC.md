@@ -190,7 +190,3 @@ The rewriting inserts synthetic instructions for the parameter `A`, which passes
 9. `PUSH %DR0`, synthetic: the caller passes the parameter.
 10. `CALL MY_FUNC`, the same `IrCallInstruction`.
 11. `POP %DR0`, synthetic: the caller takes the parameter back.
-
----
-
-Written with AI assistance under the project's [AI Policy](../../AI_POLICY.md). The author reviewed it and is responsible for its content.
