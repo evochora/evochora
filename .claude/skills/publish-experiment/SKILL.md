@@ -33,12 +33,25 @@ the packaged build was compiled for, which `languageVersion` in the `build.gradl
 names), the start command.
 
 After them the description discloses the use of AI assistants, as `AI_POLICY.md` requires of a
-research output and as a journal the finding could go to expects of a paper: which assistant was
-used, for what in general terms, that the author directed and supervised the work and is
-responsible for the findings, and a link to the policy. It states what is known and nothing beyond
-it. What lets a reader rely on the record belongs with it: the data come from the simulation, the
-video is rendered from them by Evochora, and every number can be recomputed from the notebook and
-the package. The notebook carries the same disclosure in its provenance.
+research output and as a journal the finding could go to expects of a paper: which assistant the
+author used, that the use included the analysis and the writing, that the author reviewed the
+results and takes full responsibility for the content, and a link to the policy. It states what is
+known and nothing beyond it. What lets a reader rely on the record follows in one sentence: the
+data and the video are output of the build in the package, and the notebook re-runs the analysis
+on the packaged data. That the run can be regenerated with the build is said only where the
+record's reproducibility test has shown it. The notebook carries the same disclosure in its
+provenance.
+
+The wording that was checked against the publishers' requirements serves as the template; a record
+departs from it only where its facts differ:
+
+```
+This record was produced with the assistance of AI: the author used <assistant> (<vendor>)
+throughout, including the analysis and the writing, reviewed the results, and takes full
+responsibility for the content. The data and the video are output of the Evochora build in the
+package and can be regenerated with it, and the notebook re-runs the analysis on the packaged data.
+See the project's AI Policy: https://github.com/evochora/evochora/blob/main/AI_POLICY.md
+```
 
 `experiment-<runId>.tar` unpacks to one directory:
 
@@ -254,8 +267,9 @@ The round ends when a pass brings no finding with substance.
 
 ## 6 · Zenodo
 
-- One record per experiment, license **CC0**, creator **Evochora Project**, in the community
-  `evochora`. A corrected package is a **new version** of the same record; old DOIs stay valid.
+- One record per experiment, license **CC0**, creator the record's author, a person named with their
+  ORCID and never the project, in the community `evochora`. A corrected package is a **new
+  version** of the same record; old DOIs stay valid.
 - Metadata are taken from the previous record and compared field by field: upload type dataset,
   version, license, access, language, the common keywords plus two on the record's topic, related
   identifiers (the repository as `isSupplementedBy` software, evochora.org as `references`, the

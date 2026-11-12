@@ -488,16 +488,7 @@ For the current roadmap, see the [GitHub Project Board](https://github.com/orgs/
 
 Evochora is open-source and available under the **MIT License** (see [`LICENSE`](./LICENSE)).
 
-If you use Evochora in your research, please cite:
-
-```bibtex
-@software{evochora2025,
-  title={Evochora: Simulation Platform for Digital Evolution Research},
-  author={{Evochora Project}},
-  url={https://github.com/evochora/evochora},
-  year={2025}
-}
-```
+If you use Evochora in your research, please cite it. The reference is in [`CITATION.cff`](./CITATION.cff), and GitHub offers it under "Cite this repository" on the project page.
 
 ---
 
