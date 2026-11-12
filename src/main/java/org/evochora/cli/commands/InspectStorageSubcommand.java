@@ -19,6 +19,7 @@ import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -311,9 +312,9 @@ public class InspectStorageSubcommand implements Callable<Integer> {
                 int type = moleculeInt & Config.TYPE_MASK;
                 String value = Molecule.formatValue(moleculeInt);
 
-                out.printf("  Index: %d, Type: %d, Value: %s, Owner: %d%n",
+                out.printf("  Index: %d, Type: %s, Value: %s, Owner: %d%n",
                     flatIndex,
-                    type,
+                    MoleculeTypeRegistry.typeToName(type),
                     value,
                     ownerId);
             }
