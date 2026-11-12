@@ -1,24 +1,25 @@
-# Evochora Assembly - VS Code Extension
+# VS Code Extension for EvoASM
 
-Syntax highlighting for Evochora Assembly (`.evo`) files.
+Syntax highlighting for EvoASM files (`.evo`) in Visual Studio Code and compatible editors such as Cursor.
 
 ## Installation
 
-1. Open VS Code or Cursor
-2. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
-3. Type "Install from VSIX" and select **"Extensions: Install from VSIX..."**
-4. Navigate to and select `evochora-syntax-0.2.3.vsix`
+The extension is the `.vsix` file in this directory. Download it, or use the one in your copy of the repository.
 
-That's it! Your `.evo` files now have syntax highlighting.
+1. Open the Command Palette with `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS).
+2. Run "Extensions: Install from VSIX...".
+3. Select the `.vsix` file.
 
-## Features
+Alternatively, install it from the command line:
 
-- Syntax highlighting for Evochora Assembly language
-- Support for all `.evo` files
-- Keyword highlighting, comments, strings, and more
+```bash
+code --install-extension evochora-syntax-<version>.vsix
+```
 
-## Version
+The editor lists the extension as "Evochora Assembly Syntax".
 
-Current version: **0.2.3**
+## What It Does
 
+In `.evo` files, the extension highlights instructions, directives, registers, labels, literals with their molecule type, vectors, strings and comments. It also lets the editor comment lines out with `#` and close brackets and quotes automatically.
 
+To change the extension, see [CONTRIBUTING.md](CONTRIBUTING.md).
