@@ -59,6 +59,6 @@ public class InspectCommandTest {
 
         String output = out.toString() + err.toString();
         assertThat(output).contains("storage");
-        assertThat(output).contains("--run-id");
+        assertThat(output).contains("--run");
     }
 }

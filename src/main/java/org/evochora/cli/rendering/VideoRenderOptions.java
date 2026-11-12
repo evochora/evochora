@@ -19,7 +19,7 @@ public class VideoRenderOptions {
      * When {@code null}, the storage is queried for all known run identifiers and the last one
      * is used; rendering stops with a failure exit code if the storage holds no run at all.
      */
-    @Option(names = "--run-id", description = "Simulation run ID to render. Defaults to the latest run.")
+    @Option(names = {"-r", "--run"}, description = "Simulation run ID to render. Defaults to the latest run.")
     public String runId;
 
     /**
@@ -68,7 +68,7 @@ public class VideoRenderOptions {
      * Rendering stops with a failure exit code if the configuration contains no resource of
      * that name.
      */
-    @Option(names = "--storage", description = "Storage resource name to use (default: tick-storage)", defaultValue = "tick-storage")
+    @Option(names = {"-s", "--storage"}, description = "Storage resource name to use (default: tick-storage)", defaultValue = "tick-storage")
     public String storageName;
 
     /**
@@ -77,7 +77,7 @@ public class VideoRenderOptions {
      * When {@code null}, rendering begins at tick 0 and therefore at the earliest tick the
      * storage holds for the run.
      */
-    @Option(names = "--start-tick", description = "Start rendering from this tick number (inclusive).")
+    @Option(names = "--from", description = "Start rendering from this tick number (inclusive).")
     public Long startTick;
 
     /**
@@ -86,7 +86,7 @@ public class VideoRenderOptions {
      * When {@code null}, rendering continues up to the latest tick the storage holds for the
      * run.
      */
-    @Option(names = "--end-tick", description = "Stop rendering at this tick number (inclusive).")
+    @Option(names = "--to", description = "Stop rendering at this tick number (inclusive).")
     public Long endTick;
 
     /**

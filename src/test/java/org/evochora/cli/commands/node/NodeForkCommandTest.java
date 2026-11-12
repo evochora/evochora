@@ -102,7 +102,7 @@ class NodeForkCommandTest {
     @Test
     void samplingWinsOverTheProfileItSitsOn() {
         NodeForkCommand command = CommandLine.populateCommand(
-            new NodeForkCommand(), "--from", "0", "--to", "10", "--profile", "sparse", "--sampling", "3");
+            new NodeForkCommand(), "--from", "0", "--to", "10", "--profile", "sparse", "--sampling-interval", "3");
 
         Config config = resolve(command.overrides(PARENT_RUN));
 
@@ -115,7 +115,7 @@ class NodeForkCommandTest {
     @Test
     void samplingAloneWinsOverTheConfiguredProfile() {
         NodeForkCommand command = CommandLine.populateCommand(
-            new NodeForkCommand(), "--from", "0", "--to", "10", "--sampling", "4");
+            new NodeForkCommand(), "--from", "0", "--to", "10", "--sampling-interval", "4");
 
         Config config = resolve(command.overrides(PARENT_RUN));
 
@@ -141,9 +141,9 @@ class NodeForkCommandTest {
     @Test
     void aSamplingBelowOneIsRefused() {
         NodeForkCommand command = CommandLine.populateCommand(new NodeForkCommand(),
-            "--from", "10", "--to", "20", "--sampling", "0");
+            "--from", "10", "--to", "20", "--sampling-interval", "0");
 
-        assertThat(command.rangeError()).contains("--sampling").contains("0");
+        assertThat(command.rangeError()).contains("--sampling-interval").contains("0");
     }
 
     @Test

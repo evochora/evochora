@@ -76,7 +76,7 @@ class VideoRenderEngineOptionValidationTest {
         options.endTick = 100L;
 
         String error = executeAndCaptureError(options);
-        assertThat(error).contains("--start-tick").contains("--end-tick");
+        assertThat(error).contains("--from").contains("--to");
     }
 
     @Test
@@ -154,6 +154,6 @@ class VideoRenderEngineOptionValidationTest {
         } finally {
             System.setErr(originalErr);
         }
-        assertThat(captured.toString()).doesNotContain("--start-tick");
+        assertThat(captured.toString()).doesNotContain("--from");
     }
 }

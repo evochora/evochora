@@ -678,7 +678,7 @@ public class VideoRenderEngine {
             return false;
         }
         if (options.startTick != null && options.endTick != null && options.startTick > options.endTick) {
-            System.err.println("--start-tick (" + options.startTick + ") must not be greater than --end-tick ("
+            System.err.println("--from (" + options.startTick + ") must not be greater than --to ("
                     + options.endTick + ")");
             return false;
         }
@@ -740,7 +740,7 @@ public class VideoRenderEngine {
     private String resolveRunId(IBatchStorageRead storage) throws java.io.IOException {
         if (options.runId != null) return options.runId;
 
-        System.out.println("No run-id specified, discovering latest run...");
+        System.out.println("No run specified, discovering latest run...");
         List<String> runIds = storage.listRunIds(java.time.Instant.EPOCH);
         if (runIds.isEmpty()) {
             System.err.println("No simulation runs found.");

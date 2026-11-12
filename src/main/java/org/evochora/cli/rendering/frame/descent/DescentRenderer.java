@@ -87,8 +87,8 @@ import picocli.CommandLine.Option;
  * <pre>
  *   evochora video descent --scale 0.3 --overlay info --out descent.mkv
  *   evochora video descent --root 1234 --glow-size 1.5 --out descent.mkv
- *   evochora video descent --unfold-frames 120 --keep-field-colour --out descent.mkv
- *   evochora video descent --shift-palette --keep-field-colour --out descent.mkv
+ *   evochora video descent --unfold-frames 120 --keep-field-color --out descent.mkv
+ *   evochora video descent --shift-palette --keep-field-color --out descent.mkv
  *   evochora video descent --ancestry run.ancestry --threads 8 --out descent.mkv
  *   evochora video descent --legend --overlay info,logo --out descent.mkv
  *   evochora video descent --shades --legend --out descent.mkv
@@ -174,7 +174,7 @@ public class DescentRenderer extends AbstractFrameRenderer {
                     + "layout or ends before the range does, instead of stopping")
     private boolean ancestryOverwrite;
 
-    @Option(names = "--keep-field-colour",
+    @Option(names = "--keep-field-color",
             description = "After a root jump, the largest line keeps the colour of the field "
                     + "instead of taking the first palette colour")
     private boolean keepFieldColour;

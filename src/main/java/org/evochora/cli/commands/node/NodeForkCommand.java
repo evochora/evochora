@@ -21,7 +21,7 @@ import picocli.CommandLine.Spec;
  * <p>
  * The simulation engine restores the parent run's checkpoint that holds the first tick of the
  * window and replays it; the recording intervals come from the current configuration, which
- * {@code --profile} and {@code --sampling} select from the command line. The new run gets an ID of
+ * {@code --profile} and {@code --sampling-interval} select from the command line. The new run gets an ID of
  * its own, which the indexers find because nothing pins them to the parent.
  */
 @Command(
@@ -61,7 +61,7 @@ public class NodeForkCommand implements Callable<Integer> {
     private String profile;
 
     @Option(
-        names = "--sampling",
+        names = "--sampling-interval",
         paramLabel = "<n>",
         description = "Ticks between two recorded ticks, in place of the profile's"
     )
@@ -126,7 +126,7 @@ public class NodeForkCommand implements Callable<Integer> {
                 + " while --from is " + fromTick + ".";
         }
         if (samplingInterval != null && samplingInterval < 1) {
-            return "--sampling must be at least 1, but is " + samplingInterval + ".";
+            return "--sampling-interval must be at least 1, but is " + samplingInterval + ".";
         }
         return null;
     }
