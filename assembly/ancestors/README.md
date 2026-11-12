@@ -49,5 +49,6 @@ a child on any side.
 1. Copy a directory.
 2. In its `main.evo`, change the import paths to the new directory's name. This is the step that is
    easy to forget: a path still naming the old directory keeps loading that ancestor's modules,
-   and the program compiles — with the wrong body. Paths into the library stay as they are.
+   and the program still compiles, but with the wrong body. Paths into the library stay as
+   they are.
 3. Add an organism entry with `program = "<name>/main.evo"`.
