@@ -1,25 +1,58 @@
 # Evochora CLI Usage Guide
 
-## Overview
+1. [Overview](#1-overview)
+   - [Environment Variables](#environment-variables)
+2. [Getting Help](#2-getting-help)
+3. [Configuration](#3-configuration)
+   - [Project Folder](#project-folder)
+   - [Configuration File](#configuration-file)
+   - [Configuration File Format](#configuration-file-format)
+4. [Start Simulation Node](#4-start-simulation-node)
+   - [Start a Run (`node run`)](#start-a-run-node-run)
+   - [Continue a Run (`node resume`)](#continue-a-run-node-resume)
+   - [Fork a Run (`node fork`)](#fork-a-run-node-fork)
+   - [View Indexed Runs (`node show`)](#view-indexed-runs-node-show)
+5. [Compile EvoASM (Evochora Assembly) Programs](#5-compile-evoasm-evochora-assembly-programs)
+   - [Source Roots (`--source-root`)](#source-roots---source-root)
+   - [Flags (`--define`)](#flags---define)
+   - [Values (`--value`)](#values---value)
+   - [Environment Parameters (`--env`)](#environment-parameters---env)
+   - [JSON Output (ProgramArtifact)](#json-output-programartifact)
+6. [Inspect Storage Data](#6-inspect-storage-data)
+7. [Render Simulation Videos](#7-render-simulation-videos)
+8. [Clean Up Simulation Runs](#8-clean-up-simulation-runs)
+9. [Exit Codes](#9-exit-codes)
+10. [Troubleshooting](#10-troubleshooting)
 
-The Evochora CLI (`bin/evochora`) is the main entry point for running the simulation node and tools:
+## 1. Overview
 
-- **Node**: start and control the simulation pipeline — start a new run (`node run`), continue an interrupted one (`node resume`), re-record a window of one as a new run (`node fork`), or serve the already indexed runs without simulating (`node show`).
-- **Compile**: compile EvoASM (Evochora Assembly) programs.
-- **Inspect**: inspect stored simulation data.
-- **Video**: render simulation runs into videos.
-- **Cleanup**: clean up old simulation runs from storage, database, and topics.
+`bin/evochora` is the command line interface of Evochora. It starts the node, the process that executes a run, records it and serves the web frontend, and it works on programs and on recorded runs. The [User Guide](USER_GUIDE.md#key-concepts) explains these terms.
 
-For day-to-day usage (including production deployments and release archives), the **start script** is the primary entry point:
+```
+bin/evochora [(-c | --config) <file>] [-h | --help] [-V | --version] <command> [<subcommand>] [<options>]
+```
 
-- On Linux/macOS: `bin/evochora`
-- On Windows: `bin\evochora.bat`
+On Windows, the start script is `bin\evochora.bat`.
+
+Global options, given before the command:
+
+- `-c`, `--config <file>`: Use this configuration file. See [Configuration](#3-configuration).
+- `-h`, `--help`: Show the commands, or after a command its options. See [Getting Help](#2-getting-help).
+- `-V`, `--version`: Print the version of the build and the commit it was made from. A numbered release also prints its DOI.
+
+Commands:
+
+- [`node`](#4-start-simulation-node): Start a node to start a new run (`node run`), continue an interrupted one (`node resume`), record a stretch of one again as a new run (`node fork`), or serve the recorded runs without simulating (`node show`).
+- [`compile`](#5-compile-evoasm-evochora-assembly-programs): Compile an EvoASM program.
+- [`inspect`](#6-inspect-storage-data): Print a recorded tick of a run.
+- [`video`](#7-render-simulation-videos): Render a recorded run into a video.
+- [`cleanup`](#8-clean-up-simulation-runs): Delete recorded runs.
 
 ### Environment Variables
 
 The start script reads two environment variables:
 
-- **`EVOCHORA_OPTS`**: options for the Java virtual machine, such as the maximum heap. The default heap is 8 GB:
+- `EVOCHORA_OPTS`: Options for the Java virtual machine, such as the maximum heap (default: 8 GB).
   ```bash
   EVOCHORA_OPTS="-Xmx16g" bin/evochora node run
   ```
@@ -32,7 +65,7 @@ The start script reads two environment variables:
   $env:EVOCHORA_OPTS = "-Xmx16g"
   bin\evochora.bat node run
   ```
-- **`EVOCHORA_JAVA_HOME`**: the installation directory of a Java 25 or newer to run Evochora on, instead of the Java the archive brings:
+- `EVOCHORA_JAVA_HOME`: The installation directory of a Java 25 or newer to run Evochora on, instead of the Java the archive brings.
   ```bash
   EVOCHORA_JAVA_HOME=/opt/jdk-25 bin/evochora node run
   ```
@@ -40,409 +73,389 @@ The start script reads two environment variables:
 
 ---
 
-## Getting Help
+## 2. Getting Help
+
+The built-in help is the authoritative source for all options and their defaults. This document describes what the commands do and how their options work together.
 
 ```bash
 # Show all available commands
 bin/evochora --help
 
-# Show help for a specific command
+# Show help for a command
 bin/evochora help node
 bin/evochora help compile
-bin/evochora help video
 bin/evochora help inspect
+bin/evochora help video
 bin/evochora help cleanup
 
-# Show help for a node subcommand
+# Show help for a subcommand
 bin/evochora node resume --help
 bin/evochora node fork --help
-
-# Show help for inspect storage subcommand
 bin/evochora inspect storage --help
+bin/evochora video lineage --help
 ```
-
-The built-in help is the authoritative source for all options and flags. This document focuses on the most common workflows and parameters.
 
 ---
 
-## Start Simulation Node
+## 3. Configuration
+
+### Project Folder
+
+The project folder is the folder with your configuration, your ancestors and the data of your runs. The node reads `config/evochora.conf` from it, and the configuration resolves its relative source roots and its data directory against it.
+
+By default, the project folder is the installation, the unpacked release archive. When Evochora runs from a build or an IDE instead, it is the working directory. To use another folder, pass the JVM option `-Devochora.home=<folder>` in `EVOCHORA_OPTS`. The [User Guide](USER_GUIDE.md#1-install-and-start) describes how to work in the project folder.
+
+### Configuration File
+
+`--config` names the configuration file, relative to the working directory. It must come before the command:
 
 ```bash
-# Start the node with default configuration
-bin/evochora node run
-
-# Start with a custom configuration file
-bin/evochora --config config/my-config.conf node run
+bin/evochora --config config/my-experiment.conf node run
 ```
 
-The node will:
+Without `--config`, the configuration file is `config/evochora.conf` of the [project folder](#project-folder). If the project folder has no such file, only the defaults of `reference.conf` apply, and a warning says so. If the file `--config` names does not exist, or if a configuration file has invalid syntax, the command logs an error and exits.
 
-- Load the configuration from the specified file  
-  - With `--config`: the file you pass (e.g. `config/my-config.conf`)  
-  - Without `--config`: `config/evochora.conf` of the installation that runs
-- Start all configured services (simulation engine, persistence, indexers, HTTP server, etc.)
-- Expose the HTTP API for monitoring and control
-- Run until interrupted (Ctrl+C)
+### Configuration File Format
+
+Configuration files are written in [HOCON](https://github.com/lightbend/config/blob/main/HOCON.md). [`config/evochora.conf`](../config/evochora.conf) is the configuration of the project folder. An experiment has a file of its own next to it, which begins with `include required("evochora.conf")` and sets only what the experiment changes. The [User Guide](USER_GUIDE.md#3-configure-an-experiment) describes how to set one up. [`reference.conf`](../src/main/resources/reference.conf) explains every setting and supplies the default for everything the other files do not set.
+
+---
+
+## 4. Start Simulation Node
+
+Every `node` subcommand starts a node. Ctrl+C stops the node. A run that was stopped this way can be continued later with [`node resume`](#continue-a-run-node-resume).
+
+Unless the configuration says otherwise, the node serves the visualizer at `http://localhost:8081/visualizer/`, the analyzer at `http://localhost:8081/analyzer/` and the HTTP API, which is documented at `http://localhost:8081/api-docs/`. It also opens the database to SQL tools and logs the connection URL at startup. What the node runs, and on which ports, is part of the configuration. [`reference.conf`](../src/main/resources/reference.conf) explains these settings under `processes`.
+
+### Start a Run (`node run`)
+
+Starts a new run. The node compiles the ancestors named in the configuration, places them in the environment, simulates and records the run.
+
+```
+bin/evochora node run
+```
 
 ### Continue a Run (`node resume`)
 
+Continues an interrupted run from the last full state it recorded.
+
+```
+bin/evochora node resume [(-r | --run) <run-id>] [(-s | --storage) <name>]
+```
+
+Options:
+
+- `-r`, `--run <run-id>`: ID of the run to continue (default: the newest run in storage).
+- `-s`, `--storage <name>`: Storage resource the run is read from, one of the resources under `pipeline.resources` in the configuration (default: `tick-storage`).
+
+Examples:
+
 ```bash
-# Continue the newest run in storage
+# Continue the newest run
 bin/evochora node resume
 
 # Continue a named run
 bin/evochora node resume --run <run-id>
 ```
 
-**Parameters:**
-- `--run, -r`: Run ID to continue (default: the newest run in storage)
-- `--storage, -s`: Storage resource the run is read from (default: tick-storage)
-
-Continues an interrupted run where its recorded data ends.
-
 ### Fork a Run (`node fork`)
 
+Records a stretch of an existing run again as a new run, typically more densely than the original. The new run may begin a little before `--from` and end a little after `--to`. The more densely it records, the closer to `--from` it begins. After its last tick the simulation pauses. A `POST` request to `/pipeline/api/service/simulation-engine/resume` of the HTTP API continues it.
+
+```
+bin/evochora node fork --from <tick> --to <tick> [(-r | --run) <run-id>]
+    [(-p | --profile) <name>] [--sampling-interval <n>] [(-s | --storage) <name>]
+```
+
+Options:
+
+- `--from <tick>`: First tick that must be recorded (required).
+- `--to <tick>`: Last tick that must be recorded (required).
+- `-r`, `--run <run-id>`: ID of the run to fork (default: the newest run in storage).
+- `-p`, `--profile <name>`: Tuning profile the fork is recorded with (default: the configured one). The [User Guide](USER_GUIDE.md#3-configure-an-experiment) explains the profiles.
+- `--sampling-interval <n>`: Number of ticks from one recorded tick to the next, in place of the profile's.
+- `-s`, `--storage <name>`: Storage resource the run is read from (default: `tick-storage`).
+
+Examples:
+
 ```bash
-# Re-record ticks 150000..200000 of the newest run with the "detailed" profile
+# Record ticks 150000..200000 of the newest run again with the detailed profile
 bin/evochora node fork --from 150000 --to 200000 --profile detailed
 
 # Fork a named run and record every 10th tick
-bin/evochora node fork --run <run-id> --from 150000 --to 200000 --sampling 10
+bin/evochora node fork --run <run-id> --from 150000 --to 200000 --sampling-interval 10
 ```
-
-**Parameters:**
-- `--run, -r`: Run ID to fork from (default: the newest run in storage)
-- `--from <tick>`: First tick that must be recorded (required)
-- `--to <tick>`: Last tick that must be recorded (required)
-- `--profile, -p <name>`: Tuning profile from the configuration (`detailed`, `sampled`, `sparse`; default: the configured one)
-- `--sampling <n>`: Ticks between two recorded ticks, in place of the profile's
-- `--storage, -s`: Storage resource the run is read from (default: tick-storage)
-
-Records a stretch of an existing run again as a new run, typically more densely than the original. The recorded window may begin a little before `--from` and end a little after `--to`; the more densely the new run records, the closer to `--from` it begins. After the last tick of the window the simulation pauses; `POST /pipeline/api/service/simulation-engine/resume` continues it.
 
 ### View Indexed Runs (`node show`)
 
-```bash
+Starts the node without simulating. It serves the runs already in the database to the visualizer and the analyzer.
+
+```
 bin/evochora node show
 ```
 
-Starts the node without simulating: the HTTP server serves the runs already in the database to the visualizer and analyzer.
-
 ---
 
-## Compile EvoASM (Evochora Assembly) Programs
+## 5. Compile EvoASM (Evochora Assembly) Programs
 
-The `compile` command translates EvoASM source files into a JSON `ProgramArtifact` that contains machine code layout, labels, procedures, source mapping and more.
+`compile` compiles an EvoASM program and prints the result, a `ProgramArtifact`, as JSON to standard output. A compilation error is printed to standard error.
+
+```
+bin/evochora compile (-f | --file) <file> [--source-root <path>[:<PREFIX>]]...
+    [--define <NAME>[=<NUMBER>|true|false]]... [--value <NAME>=<TEXT>]...
+    [(-e | --env) <dimensions>:<topology>]
+```
+
+Options:
+
+- `-f`, `--file <file>`: Main file of the program, a path under a source root (required).
+- `--source-root <path>[:<PREFIX>]`: Directory or URL that paths are resolved against. See [Source Roots](#source-roots---source-root).
+- `--define <NAME>[=<NUMBER>|true|false]`: Flag for conditional compilation. See [Flags](#flags---define).
+- `--value <NAME>=<TEXT>`: Value of the main program. See [Values](#values---value).
+- `-e`, `--env <dimensions>:<topology>`: Environment the program is laid out for (default: the environment of the configuration). See [Environment Parameters](#environment-parameters---env).
+
+Examples:
 
 ```bash
-# Basic compilation (for the environment of the configuration)
+# Compile for the environment of the configuration
 bin/evochora compile --source-root assembly/examples --file=simple.evo
 
-# With custom environment
+# Compile for another environment
 bin/evochora compile --source-root assembly/examples --file=simple.evo --env=256x256:bound
 
-# Multiple source roots with prefixes (format: path or path:PREFIX)
-bin/evochora compile --source-root ./predator:PRED --source-root ./prey:PREY --file=PRED:main.evo
+# Use two source roots, the library with the prefix LIB
+bin/evochora compile --source-root assembly/ancestors --source-root assembly/lib:LIB --file=default/main.evo
 
-# HTTP source root
-bin/evochora compile --source-root https://example.com/organisms:PRED --file=PRED:main.evo
-
-# With flags for conditional compilation and a value of the main program
+# Set flags for conditional compilation and a value of the main program
 bin/evochora compile --source-root assembly/examples --file=simple.evo --define AGGRESSIVE --define REDUNDANCY=2 --value STEPS=DATA:20
 ```
 
 ### Source Roots (`--source-root`)
 
-Source roots define base directories (or HTTP URLs) from which `.IMPORT`, `.REQUIRE`, and `.SOURCE` paths are resolved. All paths in directives are relative to their source root.
+A source root is a directory or an HTTP URL from which the compiler resolves the main file and the paths in `.IMPORT`, `.REQUIRE` and `.SOURCE`. All paths in directives are relative to their source root, never to the file that names them.
 
-Syntax:
+- `--source-root <path>`: The unprefixed source root.
+- `--source-root <path>:<PREFIX>`: A named source root, such as `./predator:PRED` or `https://example.com/organisms:PRED`. A path into it is written with the prefix, in `--file` as in a directive: `.IMPORT "PRED:lib/move.evo" AS MOVE`. The prefix must match `[A-Z][A-Z0-9_]+`, so it has at least two characters. A single letter would collide with a Windows drive letter like `C:\`.
 
-- `--source-root <path>` — unprefixed (default) source root
-- `--source-root <path>:<PREFIX>` — named source root with prefix (PREFIX must match `[A-Z][A-Z0-9_]+`, so at least two characters; a single letter would collide with a Windows drive letter like `C:\`)
-
-When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g., `.IMPORT "PRED:lib/move.evo" AS MOVE`). If no `--source-root` is specified, the directory of the main file is the default root.
+The option may be repeated. Without it, the directory of the main file is the only source root.
 
 ### Flags (`--define`)
 
 Decides a flag for the conditional compilation directives (`.IFDEF` and its relatives, see [EVOASM_SPEC.md](EVOASM_SPEC.md#conditional-compilation)) before the first line of the program:
 
-- `--define NAME` or `--define NAME=true` — sets the flag without a value
-- `--define NAME=NUMBER` — sets it with that value; decimal, `0x…`, `0o…` and `0b…`, with an optional minus
-- `--define NAME=false` — switches the flag off: a `.DEFINE DEFAULT` of it in the program does not take effect
+- `--define NAME` or `--define NAME=true`: Sets the flag without a value.
+- `--define NAME=NUMBER`: Sets the flag with that value, written in decimal or as `0x…`, `0o…` or `0b…`, with an optional minus.
+- `--define NAME=false`: Switches the flag off, so that a `.DEFINE DEFAULT` of it in the program does not take effect.
 
 A flag the option does not name is free, and the program's `.DEFINE DEFAULT` of it takes effect. The option may be repeated. Flag names, `true` and `false` are case-insensitive. In a simulation the same flags are decided per organism in the configuration: `defines { NAME = true }`, `NAME = 2` or `NAME = false` in the organism entry.
 
 ### Values (`--value`)
 
-Sets a value of the main program, which nothing imports, so no `USING VALUE` can bind it: the main program's `.REQUIRE VALUE` of that name takes it in place of its default (see `EVOASM_SPEC.md`):
+Sets a value of the main program. Nothing imports the main program, so no `USING VALUE` can bind its values. Instead, the main program's `.REQUIRE VALUE` of that name takes the value in place of its default (see [EVOASM_SPEC.md](EVOASM_SPEC.md#require)).
 
-- `--value NAME=TEXT` — the text is an operand as a `.CONST` takes it: a literal, a vector, a name of the main program or an expression with them, e.g. `--value STEPS=DATA:20` or `--value 'STEPS=DATA:(WIDTH/2)'`
+- `--value NAME=TEXT`: The text is an operand as a `.CONST` takes it: a literal, a vector, a name of the main program or an expression with them, such as `--value STEPS=DATA:20` or `--value 'STEPS=DATA:(WIDTH/2)'`.
 
 The option may be repeated. Value names are case-insensitive. A value no `.REQUIRE VALUE` of the main program names is ignored, as a flag no `.IFDEF` tests is. In a simulation the same values are set per organism in the configuration (`values { … }` in the organism entry).
 
 ### Environment Parameters (`--env`)
 
-Syntax:
+`--env=<dimensions>:<topology>` lays the program out for the given environment:
 
-- `--env=<dimensions>:<topology>`
-- `dimensions`: environment dimensions, e.g. `128x128`, `2048x2048`, `1024x1024x128`
-- `topology`: `torus` or `bound`, as in the simulation's configuration; it cannot be left out
+- `dimensions`: Size of the environment along each axis, such as `128x128`, `2048x2048` or, in three dimensions, `1024x1024x128`.
+- `topology`: `torus` or `bound`, as in the simulation's configuration. It cannot be left out.
 
-Without `--env`, the program is laid out for the environment of the configuration: the file a `--config` before `compile` names, else `config/evochora.conf` of the project folder. Nothing else is read from the configuration; source roots, flags and values come from the command line.
-
-Examples:
-
-- `128x128:torus` → 128x128 environment, torus
-- `2048x2048:bound` → 2048x2048 environment, bounded
-- `1024x1024x128:torus` → 3D environment, torus
+Without `--env`, the program is laid out for the environment of the configuration. `compile` reads nothing else from the configuration: source roots, flags and values come from the command line.
 
 ### JSON Output (ProgramArtifact)
 
-Compilation produces a JSON object with (among others):
+The JSON object contains, among others:
 
-- `programId`: unique identifier
-- `sources`: one entry per placement and source file, with the placement's alias chain, the path as written, the resolved path and the lines
-- `machineCodeLayout`: the code, one entry per cell with its `position` relative to the program's origin and its encoded `instruction`
-- `labelValueToName`, `labelNameToValue`: the value each label stands for in the machine code, by value and by name
-- `registerAliasMap`: register aliases used by the compiler
-- `procNameToParamNames`: procedures and their parameters
-- `sourceMap`: source mapping for debugging
-- `tokenMap`: token information for syntax highlighting
-- `envProps`: environment properties (worldShape, isToroidal, strides, totalCells)
-
-### Inspect Storage Data
-
-```bash
-# Inspect tick data from storage (summary format)
-bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run
-
-# Inspect with JSON output format
-bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run --format=json
-
-# Inspect with raw protobuf output
-bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run --format=raw
-
-# Use custom storage resource
-bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run --storage=custom-storage
-```
-
-The `inspect storage` command allows you to examine tick data that has been persisted to storage for debugging purposes. It supports three output formats:
-
-- **summary** (default): Human-readable summary with key information
-- **json**: Complete tick data in JSON format
-- **raw**: Raw protobuf message output
-
-**Parameters:**
-- `--tick, -t`: Tick number to inspect (required)
-- `--run-id, -r`: Simulation run ID (required)
-- `--format, -f`: Output format: json, summary, raw (default: summary)
-- `--storage, -s`: Storage resource name (default: tick-storage)
-
-**Example output (summary format):**
-```
-Found batch file: my-simulation-run/batch_0000000000000001000_0000000000000001999.pb
-=== Tick Data Summary ===
-Simulation Run ID: my-simulation-run
-Tick Number: 1000
-Capture Time: 2024-01-15T10:30:45.123Z
-Organisms: 150 alive
-Cells: 2500 non-empty
-RNG State: 32 bytes
-Strategy States: 5
-
-=== Organism Summary ===
-  ID: 1, Energy: 100, Dead: false
-  ID: 2, Energy: 85, Dead: false
-  ...
-
-=== Cell Summary ===
-  Index: 100, Type: 1, Value: 5, Owner: 1
-  Index: 101, Type: 2, Value: 3, Owner: 2
-  ...
-```
-
-### Render Simulation Videos
-
-The `video` command renders simulation data into video files using ffmpeg. A renderer subcommand
-selects how the world is drawn; each renderer adds its own options on top of the shared ones. The
-default container format is MKV, which stays playable if rendering is interrupted.
-
-Available renderers:
-
-- `video exact` — pixel-per-cell rendering with detailed organism markers
-- `video minimap` — aggregated overview matching the web visualizer's minimap style
-- `video lineage` — organism glows colored by genome lineage; with `--clade` restricted to
-  clade membership (given clades in distinct hues, everything else gray)
-- `video descent` — organism glows colored by line of descent below the youngest common ancestor
-  of the living; with `--root` below one organism for the whole video
-- `video density` — instruction-pointer density heatmap
-
-```bash
-# Basic rendering (defaults to simulation.mkv next to the working directory)
-bin/evochora video minimap --run-id <run-id>
-
-# Specify output file and format
-bin/evochora video minimap --run-id <run-id> --out simulation.mp4 --format mp4
-
-# Render every 100th tick at 30 fps
-bin/evochora video exact --run-id <run-id> --fps 30 --sampling-interval 100
-
-# Render a specific tick range
-bin/evochora video minimap --run-id <run-id> --start-tick 1000 --end-tick 5000
-
-# Add the info overlay (tick number, alive count, cumulative births)
-bin/evochora video lineage --run-id <run-id> --overlay info
-
-# Color two clades and gray out everything else (lineage renderer)
-bin/evochora video lineage --run-id <run-id> --clade <genomeHash>:21 --clade <genomeHash>:210
-
-# Use parallel rendering for better performance
-bin/evochora video minimap --run-id <run-id> --threads 4
-
-# See the options of a renderer
-bin/evochora video lineage --help
-```
-
-**Shared Parameters** (all renderers):
-- `--run-id`: Simulation run ID (defaults to the latest run)
-- `--out`: Output file; its extension follows `--format` (default: simulation.mkv)
-- `--fps`: Frames per second for the output video (default: 60)
-- `--sampling-interval`: Render the ticks that are multiples of N, best a multiple of the run's sampling interval (default: every recorded tick)
-- `--start-tick` / `--end-tick`: Restrict the rendered tick range (inclusive)
-- `--format`: Output video format: mkv/mp4/avi/mov/webm (default: mkv)
-- `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow, not used for WebM (default: fast)
-- `--crf`: H.264 constant rate factor for mkv/mp4/avi/mov output, 0 = lossless to 51 = worst (default: 18)
-- `--threads`: Number of threads for parallel chunk rendering (default: 1)
-- `--overlay`: Overlays to apply, comma-separated: `info`, `diversity`, `graph`, `logo`
-- `--storage`: Storage resource name (default: tick-storage)
-- `--verbose`: Show detailed debug output from ffmpeg
-
-Renderer-specific options (such as `--scale`, `--glow-size`, `--hue-shift`, `--clade`,
-`--cluster-grid`, `--blur-radius`) are documented by each renderer's `--help`.
-
-**Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `bin/evochora video <renderer> --help`.
+- `programId`: Unique identifier of the program.
+- `sources`: One entry per placement and source file, with the placement's alias chain, the path as written, the resolved path and the lines.
+- `machineCodeLayout`: The code, one entry per cell with its `position` relative to the program's origin and its encoded `instruction`.
+- `labelValueToName`, `labelNameToValue`: The value each label stands for in the machine code, by value and by name.
+- `registerAliasMap`: The register aliases of the program.
+- `procNameToParamNames`: The procedures and their parameters.
+- `sourceMap`: Source mapping for debugging.
+- `tokenMap`: Token information for syntax highlighting.
+- `envProps`: The environment the program was laid out for (`worldShape`, `isToroidal`, `strides`, `totalCells`).
 
 ---
 
-## Clean Up Simulation Runs
+## 6. Inspect Storage Data
 
-The `cleanup` command removes old simulation runs from storage, database, and Artemis topics. It uses glob patterns to specify which runs to keep or delete.
+`inspect storage` prints one recorded tick of a run, to check what the run recorded. If the run did not record that tick, the command lists the tick ranges it found instead.
+
+```
+bin/evochora inspect storage (-t | --tick) <tick> (-r | --run) <run-id>
+    [(-f | --format) (summary | json | raw)] [(-s | --storage) <name>]
+```
+
+Options:
+
+- `-t`, `--tick <tick>`: Tick to print (required).
+- `-r`, `--run <run-id>`: ID of the run (required).
+- `-f`, `--format <format>`: Output format (default: `summary`).
+  - `summary`: The run, the tick and its capture time, the number and size of the organisms and of the non-empty cells, how the tick is stored, and the first organisms and cells.
+  - `json`: The complete tick as JSON.
+  - `raw`: The tick as a protobuf message in text form.
+- `-s`, `--storage <name>`: Storage resource the run is read from (default: `tick-storage`).
+
+Examples:
 
 ```bash
-# Preview what would be deleted (dry-run, default)
+# Print the summary of a tick
+bin/evochora inspect storage --tick=1000 --run=<run-id>
+
+# Print the complete tick as JSON
+bin/evochora inspect storage --tick=1000 --run=<run-id> --format=json
+
+# Read from another storage resource
+bin/evochora inspect storage --tick=1000 --run=<run-id> --storage=<name>
+```
+
+---
+
+## 7. Render Simulation Videos
+
+`video` renders a recorded run into a video file. It requires ffmpeg to be installed and available in your `PATH`. A renderer subcommand selects how the environment is drawn, and each renderer adds its own options to the shared ones.
+
+```
+bin/evochora video <renderer> [(-r | --run) <run-id>] [--out <file>]
+    [--format (mkv | mp4 | avi | mov | webm)] [--fps <n>] [--sampling-interval <n>]
+    [--from <tick>] [--to <tick>] [--preset (ultrafast | fast | medium | slow)]
+    [--crf <n>] [--threads <n>] [--overlay <name>[,<name>]...] [(-s | --storage) <name>]
+    [--verbose] [<renderer options>]
+```
+
+Renderers:
+
+- `exact`: Draws one pixel per cell, with detailed organism markers.
+- `minimap`: Draws an aggregated overview in the style of the visualizer's minimap.
+- `lineage`: Draws organisms as glows colored by genome lineage. With `--clade`, it draws the given clades in distinct hues and everything else in gray.
+- `descent`: Draws organisms as glows colored by line of descent below the youngest common ancestor of the living. With `--root`, it colors the lines below one organism for the whole video.
+- `density`: Draws a heatmap of the instruction pointers.
+
+Shared options:
+
+- `-r`, `--run <run-id>`: ID of the run (default: the newest run).
+- `--out <file>`: Output file, relative to the working directory (default: `simulation.mkv`). Its extension follows `--format`. An existing file is overwritten.
+- `--format <format>`: Video format (default: `mkv`, which stays playable if rendering is interrupted).
+- `--fps <n>`: Frames per second of the video (default: 60).
+- `--sampling-interval <n>`: Render only the ticks that are multiples of `<n>`, best a multiple of the run's sampling interval (default: every recorded tick).
+- `--from <tick>`, `--to <tick>`: First and last tick to render.
+- `--preset <preset>`: ffmpeg encoding preset (default: `fast`). Not used for WebM.
+- `--crf <n>`: H.264 constant rate factor for `mkv`, `mp4`, `avi` and `mov`, from 0 (lossless) to 51 (worst quality) (default: 18).
+- `--threads <n>`: Number of threads that render in parallel (default: 1).
+- `--overlay <name>[,<name>]...`: Overlays to draw on every frame: `info`, `diversity`, `graph`, `logo`.
+- `-s`, `--storage <name>`: Storage resource the run is read from (default: `tick-storage`).
+- `--verbose`: Show the output of ffmpeg.
+
+Each renderer documents its own options, such as `--scale`, `--glow-size`, `--hue-shift`, `--clade`, `--root`, `--cluster-grid` or `--blur-radius`, in `bin/evochora video <renderer> --help`.
+
+Examples:
+
+```bash
+# Render a run to simulation.mkv in the working directory
+bin/evochora video minimap --run <run-id>
+
+# Specify the output file and its format
+bin/evochora video minimap --run <run-id> --out simulation.mp4 --format mp4
+
+# Render every 100th tick at 30 frames per second
+bin/evochora video exact --run <run-id> --fps 30 --sampling-interval 100
+
+# Render a range of ticks
+bin/evochora video minimap --run <run-id> --from 1000 --to 5000
+
+# Add the info overlay (tick number, organisms alive, births so far)
+bin/evochora video lineage --run <run-id> --overlay info
+
+# Color two clades and gray out everything else
+bin/evochora video lineage --run <run-id> --clade <genomeHash>:21 --clade <genomeHash>:210
+
+# Render with four threads
+bin/evochora video minimap --run <run-id> --threads 4
+```
+
+---
+
+## 8. Clean Up Simulation Runs
+
+`cleanup` deletes recorded runs from storage, from the database and from the topics of the message broker. A glob pattern on the run IDs selects the runs: `*` matches any characters, `?` a single one. Without `--force`, the command only previews what it would delete: for each of the three, the runs it would keep and the runs it would delete, and a summary.
+
+```
+bin/evochora cleanup (--keep <pattern> | --delete <pattern>) [--storage] [--database] [--topics]
+    [--compact] [--force]
+bin/evochora cleanup --compact [--force]
+```
+
+Options:
+
+- `--keep <pattern>`: Keep the runs whose IDs match the pattern and delete all others.
+- `--delete <pattern>`: Delete the runs whose IDs match the pattern and keep all others.
+- `--storage`, `--database`, `--topics`: Clean up only the named ones (default: all three).
+- `--compact`: Compact the database afterwards to reclaim disk space. This works only while nothing else is connected to the database, and only if the database is among the targets. It can also be given alone, without a pattern.
+- `--force`: Delete and compact. Without it, nothing is changed.
+
+Examples:
+
+```bash
+# Preview what would be deleted
 bin/evochora cleanup --keep "20260117*"
 
-# Actually delete (requires --force)
+# Delete all runs except the matching ones
 bin/evochora cleanup --keep "20260117*" --force
 
-# Delete runs matching a pattern (keep all others)
+# Preview deleting the matching runs
 bin/evochora cleanup --delete "20260122*"
 
-# Target specific areas only
+# Clean up specific targets only
 bin/evochora cleanup --keep "20260117*" --storage
 bin/evochora cleanup --keep "20260117*" --database --topics
-```
 
-**Parameters:**
-
-| Parameter | Description |
-|-----------|-------------|
-| `--keep <pattern>` | Glob pattern for runs to KEEP (delete all non-matching runs) |
-| `--delete <pattern>` | Glob pattern for runs to DELETE (keep all non-matching runs) |
-| `--storage` | Target storage directories only |
-| `--database` | Target database schemas only |
-| `--topics` | Target Artemis topics/queues only |
-| `--compact` | Compact the H2 database to reclaim disk space; can be given alone |
-| `--force` | Execute deletion and compaction (default: dry-run preview only) |
-
-**Notes:**
-- `--keep` and `--delete` are mutually exclusive (use one or the other)
-- If no area flags are specified, all three areas are targeted
-- The default mode is **dry-run** - nothing is deleted or compacted without `--force`
-- Pattern uses glob syntax: `*` matches any characters, `?` matches single character
-
-**Example output (dry-run):**
-```
-=== Cleanup Preview (dry-run mode, use --force to execute) ===
-Pattern: KEEP runs matching "20260117*"
-
-Storage (/home/user/evochora/data/storage):
-  ✓ KEEP   20260117-22042059-d59177fc-1eba-4ce8-85a6-36bd2032e3cb
-  ✗ DELETE 20260122-23234622-42ca3fea-4793-45bd-8dc8-0453cfa2319d
-  ✗ DELETE 20260123-00013250-d6c3c75a-3129-4dde-ab77-4aad8af9c207
-  ...
-
-Database (jdbc:h2:.../indexdb):
-  ✓ KEEP   SIM_20260117_22042059_D59177FC_1EBA_4CE8_85A6_36BD2032E3CB
-  ✗ DELETE SIM_20260122_23234622_42CA3FEA_4793_45BD_8DC8_0453CFA2319D
-  ...
-
-Topics (/home/user/evochora/data/topic):
-  ✓ KEEP   batch-topic_20260117-22042059-d59177fc-1eba-4ce8-85a6-36bd2032e3cb
-  ✗ DELETE batch-topic_20260122-23234622-42ca3fea-4793-45bd-8dc8-0453cfa2319d
-  ...
-
-=== Summary ===
-Storage:  1 kept, 93 to delete
-Database: 1 kept, 93 to delete
-Topics:   14 kept, 190 to delete
-
-Run with --force to execute deletion.
+# Delete the matching runs and compact the database
+bin/evochora cleanup --delete "20260122*" --compact --force
 ```
 
 ---
 
-## Configuration
+## 9. Exit Codes
 
-### Custom Configuration File
+- `0`: Success.
+- `1`: The command failed, for example on a compilation error, a run or file that was not found, or a configuration that could not be loaded.
+- `2`: The command line was invalid, for example an unknown option or a missing required option.
 
-You can specify a custom configuration file using the `--config` parameter:
+---
 
-```bash
-bin/evochora --config my-config.conf node run
-```
-
-**Important notes:**
-
-- The `--config` parameter must come **before** the command (e.g., before `node run`).
-- If the file is not found, the CLI will log an ERROR and exit.
-- If the file has invalid syntax, the CLI will log an ERROR with details and exit.
-- Default configuration file: `config/evochora.conf`
-
-### Configuration File Format
-
-The configuration file uses HOCON format (`.conf` extension). See `config/evochora.conf` for the experiment template and `src/main/resources/reference.conf` for all defaults.
-
-## Exit Codes
-
-- `0` - Success
-- `1` - The command failed (compilation error, missing file or configuration, etc.)
-- `2` - Invalid command line (unknown option, missing required parameter)
-
-## Troubleshooting
+## 10. Troubleshooting
 
 ### Node doesn't start
-- Check that the configuration file exists and is valid.
-- Check that required ports (e.g., 8081 for HTTP API) are not already in use.
-- Check the logs for error messages.
+
+- Check that the configuration file exists and is valid. The error names the project folder and the file.
+- Check that the ports the configuration uses are not already in use.
+- Check the log for error messages.
 
 ### Compilation fails
-- Verify the EvoASM source file exists.
-- Check for syntax errors in the assembly code
-- See `EVOASM_SPEC.md` for assembly language documentation
+
+- Check that the main file exists under its source root.
+- Check that paths in directives are written relative to their source root.
+- See [EVOASM_SPEC.md](EVOASM_SPEC.md) for the language.
 
 ### Configuration errors
-- Verify the configuration file uses valid HOCON syntax
-- Check that all required configuration keys are present
-- See `config/evochora.conf` for the experiment template and `src/main/resources/reference.conf` for all defaults
+
+- Check that the file uses valid HOCON syntax.
+- Check that an experiment file begins with `include required("evochora.conf")`. An `include` without `required` skips a missing file silently.
+- See [`reference.conf`](../src/main/resources/reference.conf) for every setting and its default.
 
 ### Warning that a run was written by another build
-- Every run records the git revision of the build that wrote it; a run is reproduced exactly only by that build
-- Check out the revision named in the warning (`git checkout <hash>`) and build it to read or continue the run faithfully
-- A revision ending in `-dirty` came from uncommitted changes and cannot be checked out again
+
+- Every run records the revision of the build that wrote it. A run is reproduced exactly only by that build, so another build warns when it reads the run.
+- To read or continue the run faithfully, use the build that wrote it. The [User Guide](USER_GUIDE.md#8-reproduce-a-run) describes how to keep that build with the run.
+- A revision ending in `-dirty` came from uncommitted changes, so that build cannot be made again.
 
 ### Inspect storage fails
-- Verify the simulation run ID exists in storage
-- Check that the specified tick number exists in the batch files
-- Ensure the storage resource is properly configured
-- Use `--format=summary` for human-readable output or `--format=json` for detailed inspection
+
+- Check that the run ID exists in storage.
+- Check that the run recorded the tick. The command lists the tick ranges it found.
+- Check that `--storage` names the storage resource the run was recorded to.

@@ -176,7 +176,7 @@ The Evochora CLI is the main entry point for running simulations and tools.
 
 - `node run` — Start the simulation node (engine, pipeline, HTTP server)
 - `node resume` — Continue the newest run, or the one named with `--run`
-- `node fork` — Record a window of a run again as a new run, densely (`--from`, `--to`, `--profile`, `--sampling`)
+- `node fork` — Record a window of a run again as a new run, densely (`--from`, `--to`, `--profile`, `--sampling-interval`)
 - `node show` — Serve the indexed runs to the visualizer and analyzer without running a simulation
 - `compile` — Compile EvoASM programs for the Evochora VM
 - `inspect` — Inspect stored simulation data (ticks, runs, resources)

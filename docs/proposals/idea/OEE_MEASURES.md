@@ -14,7 +14,7 @@ instruments would have to be built, so that the work can be planned when a run i
 
 | Input | Needed by | State in Evochora |
 |---|---|---|
-| Abundance of every component (genome) at every point in time | activity statistics, MODES change/novelty/ecology | `genome_population` holds every genome with living carriers at every recorded tick; resolution is the recording profile |
+| Abundance of every component (genome) at every point in time | activity statistics, MODES change/novelty/ecology | `genome_population` holds every genome with living carriers at every recorded tick; resolution is the tuning profile |
 | Descent of components | MODES persistence filter, phylogenetic metrics | `genome_lineage` holds every genome with its parent genome, unsampled; `births` every birth with parent |
 | Content of each component | novelty and complexity beyond identity | no hash-to-body table; bodies are read from a running node or the raw record; a genome whose carriers lived between two recordings has no recorded body unless the window is re-recorded with `node fork` |
 | Death of every organism | shadow model, persistence filters, life tables | only in the raw record and the index database; no Parquet table per organism |

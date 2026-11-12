@@ -96,7 +96,7 @@ It serves the recorded runs to the visualizer and the analyzer. Because nothing 
 
 ### Clean up
 
-Runs you no longer need take up disk space. `bin/evochora -c config/my-experiment.conf cleanup` deletes them: it first shows what it would delete and acts only with `--force`. The [CLI Usage Guide](CLI_USAGE.md#clean-up-simulation-runs) explains how to select runs by their IDs.
+Runs you no longer need take up disk space. `bin/evochora -c config/my-experiment.conf cleanup` deletes them: it first shows what it would delete and acts only with `--force`. The [CLI Usage Guide](CLI_USAGE.md#8-clean-up-simulation-runs) explains how to select runs by their IDs.
 
 ## 5. Observe a Run
 

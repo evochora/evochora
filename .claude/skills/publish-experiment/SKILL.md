@@ -236,7 +236,7 @@ a 7 680 × 4 320 world; 16 GB was needed for the largest run). `--sampling-inter
 length for one frame per block.
 
 ```
-bin/evochora video lineage --run-id <runId> --start-tick <t0> --end-tick <t1> --sampling-interval <block ticks> \
+bin/evochora video lineage --run <runId> --from <t0> --to <t1> --sampling-interval <block ticks> \
     --scale 0.25 --glow-size 0.2 --fps 25 --format mp4 --crf 26 --overlay info,logo --clade <genomeHash>:<hue>
 ```
 
