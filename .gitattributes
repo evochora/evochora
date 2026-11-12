@@ -3,5 +3,6 @@
 gradle/wrapper/gradle-wrapper.jar -text
 
 # Notebooks are committed without execution state (outputs, execution counts).
-# Requires a one-time local setup, see notebooks/README.md.
+# The filter is registered per clone, which the build does (task registerNotebookFilter);
+# CI verifies the result.
 *.ipynb filter=nbstrip

@@ -1124,7 +1124,8 @@ val registerNotebookFilter = tasks.register("registerNotebookFilter") {
             // A filter whose command cannot run makes every `git add` of a notebook fail, which is
             // worse than having no filter at all.
             logger.warn("Notebook filter not registered: '$interpreter' is not available. " +
-                    "Notebooks would be committed with their outputs — see notebooks/README.md.")
+                    "Notebooks would be committed with their outputs. Install it and build again, " +
+                    "or run: git config $configKey \"$interpreter tools/nbstrip.py\"")
             return@doLast
         }
 
