@@ -1786,15 +1786,32 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
 
         return switch (context.usageType()) {
-            case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
+            case "storage-write" -> {
+                prepareForWriting();
+                yield new MonitoredBatchStorageWriter(this, context);
+            }
             case "storage-read" -> new MonitoredBatchStorageReader(this, context);
-            case "analytics-write" -> new MonitoredAnalyticsStorageWriter(this, context);
+            case "analytics-write" -> {
+                prepareForWriting();
+                yield new MonitoredAnalyticsStorageWriter(this, context);
+            }
             default -> throw new IllegalArgumentException(String.format(
                 "Unsupported usage type '%s' for storage resource '%s'. " +
                 "Supported types: storage-write, storage-read, analytics-write",
                 context.usageType(), getResourceName()
             ));
         };
+    }
+
+    /**
+     * Sets the storage up for a service that is about to write to it. Called whenever a writer
+     * is handed out, and therefore when a service is built rather than at its first write; a
+     * storage that is only read is never prepared. The default does nothing.
+     *
+     * @throws IllegalArgumentException if the storage cannot be written
+     */
+    protected void prepareForWriting() {
+        // nothing to set up by default
     }
 
     // ===== Abstract I/O primitives (subclasses implement) =====

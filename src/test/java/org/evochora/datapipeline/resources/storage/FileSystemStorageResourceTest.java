@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
@@ -191,7 +192,7 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        new FileSystemStorageResource("test-storage", config);
+        requestWriter(new FileSystemStorageResource("test-storage", config));
 
         assertTrue(Files.isDirectory(testDir),
             "The system property should be expanded and the directory created under it: " + testDir);
@@ -211,7 +212,7 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        new FileSystemStorageResource("test-storage", config);
+        requestWriter(new FileSystemStorageResource("test-storage", config));
 
         assertTrue(Files.isDirectory(testDir),
             "The variable should be expanded and the directory created under it: " + testDir);
@@ -233,7 +234,7 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        new FileSystemStorageResource("test-storage", config);
+        requestWriter(new FileSystemStorageResource("test-storage", config));
 
         Path expanded = testDir.resolve("data");
         assertTrue(Files.isDirectory(expanded),
@@ -282,7 +283,7 @@ class FileSystemStorageResourceTest {
         Path plainDir = tempDir.resolve("no-variables");
         Config config = ConfigFactory.parseMap(Map.of("rootDirectory", plainDir.toAbsolutePath().toString()));
 
-        new FileSystemStorageResource("test-storage", config);
+        requestWriter(new FileSystemStorageResource("test-storage", config));
 
         assertTrue(Files.isDirectory(plainDir),
             "A path without variables should be used as it stands: " + plainDir);
@@ -302,10 +303,40 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        new FileSystemStorageResource("test-storage", config);
+        requestWriter(new FileSystemStorageResource("test-storage", config));
 
         assertTrue(Files.isDirectory(testDir),
             "The system property should be expanded and the directory created under it: " + testDir);
+    }
+
+    @Test
+    void testConstruction_CreatesNoDirectory() {
+        Path missing = tempDir.resolve("never-written");
+        Config config = ConfigFactory.parseMap(Map.of("rootDirectory", missing.toAbsolutePath().toString()));
+
+        FileSystemStorageResource readOnly = new FileSystemStorageResource("test-storage", config);
+        readOnly.getWrappedResource(new ResourceContext(
+            "test-service", "storage-port", "storage-read", "test-storage", Map.of()));
+
+        assertFalse(Files.exists(missing),
+            "Building the storage and asking for a reader must leave the filesystem untouched: " + missing);
+    }
+
+    @Test
+    void testRequestingAWriter_CreatesTheDirectory() {
+        Path missing = tempDir.resolve("written-later");
+        Config config = ConfigFactory.parseMap(Map.of("rootDirectory", missing.toAbsolutePath().toString()));
+
+        requestWriter(new FileSystemStorageResource("test-storage", config));
+
+        assertTrue(Files.isDirectory(missing),
+            "Asking for a writer should create the root directory: " + missing);
+    }
+
+    /** Asks the storage for a writer, as a service that writes to it does when it is built. */
+    private static void requestWriter(FileSystemStorageResource resource) {
+        resource.getWrappedResource(new ResourceContext(
+            "test-service", "storage-port", "storage-write", "test-storage", Map.of()));
     }
 
     @Test
