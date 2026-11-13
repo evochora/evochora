@@ -46,24 +46,24 @@
 
     <!-- Evochora-spezifische Logger - Level wird zur Laufzeit konfiguriert -->
     <logger name="org.evochora" additivity="false">
-        <appender-ref ref="${evochora.logging.format:-CONSOLE}" />
+        <appender-ref ref="${evochora.logging.format:-CONSOLE_PLAIN}" />
     </logger>
 
     <logger name="org.evochora.compiler" additivity="false">
-        <appender-ref ref="${evochora.logging.format:-CONSOLE}" />
+        <appender-ref ref="${evochora.logging.format:-CONSOLE_PLAIN}" />
     </logger>
 
     <logger name="org.evochora.datapipeline" additivity="false">
-        <appender-ref ref="${evochora.logging.format:-CONSOLE}" />
+        <appender-ref ref="${evochora.logging.format:-CONSOLE_PLAIN}" />
     </logger>
 
     <logger name="org.evochora.server" additivity="false">
-        <appender-ref ref="${evochora.logging.format:-CONSOLE}" />
+        <appender-ref ref="${evochora.logging.format:-CONSOLE_PLAIN}" />
     </logger>
 
     <!-- Root logger auf WARN setzen um nur wichtige Logs zu zeigen -->
     <root level="WARN">
-        <appender-ref ref="${evochora.logging.format:-CONSOLE}" />
+        <appender-ref ref="${evochora.logging.format:-CONSOLE_PLAIN}" />
     </root>
 
     <!-- Status listener um Logback-Konfigurations-Logs zu unterdrücken -->

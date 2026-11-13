@@ -16,7 +16,7 @@ import java.util.Map;
  * <h2>Configuration Structure:</h2>
  * <pre>
  * logging {
- *   format = "PLAIN"  # Can be "PLAIN" or "JSON". Defaults to JSON
+ *   format = "PLAIN"  # "PLAIN" or "JSON"
  *   default-level = "WARN"  # Default log level for all loggers
  *   levels {
  *     # Specific logger levels - override the default for particular components
@@ -76,12 +76,14 @@ public final class LoggingConfigurator {
     }
 
     /**
-     * Configures the log format (JSON or PLAIN).
+     * Configures the log format (JSON or PLAIN). A logging block without a format leaves the
+     * format as Logback has it, as a configuration without a logging block does.
      */
     private static void configureFormat(final Config loggingConfig, final LoggerContext context) {
-        final String format = loggingConfig.hasPath(FORMAT_KEY) 
-            ? loggingConfig.getString(FORMAT_KEY) 
-            : "JSON";
+        if (!loggingConfig.hasPath(FORMAT_KEY)) {
+            return;
+        }
+        final String format = loggingConfig.getString(FORMAT_KEY);
 
         if ("PLAIN".equalsIgnoreCase(format)) {
             // Set both context property and system property for maximum compatibility
