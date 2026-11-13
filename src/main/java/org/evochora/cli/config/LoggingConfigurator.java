@@ -16,7 +16,7 @@ import java.util.Map;
  * <h2>Configuration Structure:</h2>
  * <pre>
  * logging {
- *   format = "PLAIN"  # "PLAIN" or "JSON"
+ *   format = "PLAIN"  # "PLAIN", "DETAILED" or "JSON"
  *   default-level = "WARN"  # Default log level for all loggers
  *   levels {
  *     # Specific logger levels - override the default for particular components
@@ -57,7 +57,7 @@ public final class LoggingConfigurator {
             final Config loggingConfig = config.getConfig(LOGGING_CONFIG_PATH);
             final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
 
-            // Configure format (JSON or PLAIN)
+            // Configure format
             configureFormat(loggingConfig, context);
 
             // Configure default log level
@@ -76,26 +76,39 @@ public final class LoggingConfigurator {
     }
 
     /**
-     * Configures the log format (JSON or PLAIN). A logging block without a format leaves the
-     * format as Logback has it, as a configuration without a logging block does.
+     * Names the appender of {@code logback.xml} that writes the given format: {@code PLAIN} is
+     * date, time, level and message, {@code DETAILED} adds the thread and the logger that wrote
+     * the line, {@code JSON} is one JSON object per line.
+     *
+     * @param format the value of {@code logging.format}, in any case
+     * @return the name of the appender
+     * @throws IllegalArgumentException if the value is none of the three formats
+     */
+    public static String appenderFor(final String format) {
+        return switch (format.toUpperCase(java.util.Locale.ROOT)) {
+            case "PLAIN" -> "CONSOLE_PLAIN";
+            case "DETAILED" -> "CONSOLE_DETAILED";
+            case "JSON" -> "CONSOLE";
+            default -> throw new IllegalArgumentException("Unknown logging.format '" + format
+                    + "'. Accepted values: PLAIN, DETAILED, JSON");
+        };
+    }
+
+    /**
+     * Configures the log format. A logging block without a format leaves the format as Logback
+     * has it, as a configuration without a logging block does.
      */
     private static void configureFormat(final Config loggingConfig, final LoggerContext context) {
         if (!loggingConfig.hasPath(FORMAT_KEY)) {
             return;
         }
         final String format = loggingConfig.getString(FORMAT_KEY);
+        final String appender = appenderFor(format);
 
-        if ("PLAIN".equalsIgnoreCase(format)) {
-            // Set both context property and system property for maximum compatibility
-            context.putProperty("evochora.logging.format", "CONSOLE_PLAIN");
-            System.setProperty("evochora.logging.format", "CONSOLE_PLAIN");
-            LOGGER.debug("Configured logging format: PLAIN");
-        } else {
-            // Set both context property and system property for maximum compatibility
-            context.putProperty("evochora.logging.format", "CONSOLE");
-            System.setProperty("evochora.logging.format", "CONSOLE");
-            LOGGER.debug("Configured logging format: JSON");
-        }
+        // Set both context property and system property for maximum compatibility
+        context.putProperty("evochora.logging.format", appender);
+        System.setProperty("evochora.logging.format", appender);
+        LOGGER.debug("Configured logging format: {}", format);
     }
 
 

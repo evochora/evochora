@@ -83,7 +83,7 @@ The node starts with two services only: the simulation engine and `TickHashConsu
 (`tools/bench-server/consumer/`), which drains every chunk from an in-memory queue and folds its
 bytes — run id and capture times cleared — into a running FNV-1a hash. Nothing is persisted. The
 engine pauses itself at `pauseTicks`, so every variant does identical work. Three results per
-variant: the wall seconds between the log lines `SimulationEngine started` and
+variant: the wall seconds between the log lines `Simulation started` and
 `auto-paused at tick`, the `orgticks` of the last `TICKHASH` line — the ticks the organisms
 executed, one instruction each — and that line's hash.
 
@@ -114,7 +114,7 @@ run-comparison.sh      tools/bench-server/run-comparison.sh
 itself, and sets the `sparse` tuning profile. Keep both: a silently skipped include measures
 the defaults of `reference.conf` (its program path does not even compile in the tree), and the
 `detailed` profile of the shipped `evochora.conf` samples every tick, so the consumer's hashing,
-not the simulation, dominates the wall time. Check the first `SimulationEngine started` line of
+not the simulation, dominates the wall time. Check the first `Simulation started` line of
 a log for `sampling=10000` and the first `TICKHASH` line for `lastTick` counting in thousands
 before trusting a run.
 

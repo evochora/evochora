@@ -19,7 +19,7 @@ A clear and concise description of what the bug is.
 A clear and concise description of what you expected to happen.
 
 **Logs or screenshots**
-If applicable, add the error message, the relevant part of the log or screenshots.
+If applicable, add the error message, the relevant part of the log or screenshots. With `logging.format = "DETAILED"` in the configuration, the log shows which part of Evochora wrote each line.
 
 **Setup (please complete the following information):**
  - Evochora version: the output of `bin/evochora --version`

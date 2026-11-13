@@ -24,7 +24,7 @@ This guide takes you through an experiment with Evochora, from starting a simula
 - **EvoASM**: the assembly language organisms are written in.
 - **Tick**: one step of the simulation, in which every organism executes one instruction.
 - **Run**: one simulation from its first tick on, together with the data recorded about it. Each run has an ID.
-- **Project folder**: the folder with your configuration, ancestors and runs; by default the installation folder.
+- **Project directory**: the directory with your configuration, ancestors and runs; by default the installation directory.
 - **Sampling**: a run records every n-th tick rather than every tick; a stretch of interest can be recorded again in full.
 - **Node**: the Evochora process. It executes a run, records it and serves the web frontend in your browser.
 - **Visualizer**: the part of the web frontend that shows the environment and its organisms at each recorded tick.
@@ -36,7 +36,7 @@ Download the archive for your system from the [releases page](https://github.com
 
 The releases page offers numbered releases and a nightly build of the current development state. For experiments you mean to publish, a numbered release is the usual choice, because it has a DOI to cite it by; the nightly carries the newest changes and has none. A Docker image is published as well, but the archives are the recommended way to run Evochora.
 
-Whichever release you use, you normally work in your project folder. By default, this is the installation folder: your configuration, your ancestors and the data of your runs are kept in it, next to Evochora itself and its sources. That way the whole folder can be published as an experiment, and the runs come with the exact software that produced them.
+Whichever release you use, you normally work in your project directory. By default, this is the installation directory: your configuration, your ancestors and the data of your runs are kept in it, next to Evochora itself and its sources. That way the whole directory can be published as an experiment, and the runs come with the exact software that produced them.
 
 ## 2. Choose or Write an Ancestor
 
@@ -72,7 +72,7 @@ The simulation keeps most of the processor busy, so the computer and the visuali
 
 How much memory a run requires depends on the size of the environment, the number of organisms and the sampling. The node estimates it at startup and warns if not enough memory is available; `EVOCHORA_OPTS` raises the limit, as the [CLI Usage Guide](CLI_USAGE.md#environment-variables) shows.
 
-The space a run takes on disk depends on how large and how full the environment is and on the sampling. The tuning profile sets the sampling; [Configure an Experiment](#3-configure-an-experiment) explains the profiles. The recorded data go into `data/` in your [project folder](#1-install-and-start).
+The space a run takes on disk depends on how large and how full the environment is and on the sampling. The tuning profile sets the sampling; [Configure an Experiment](#3-configure-an-experiment) explains the profiles. The recorded data go into `data/` in your [project directory](#1-install-and-start).
 
 ### Stop and continue
 
@@ -82,7 +82,7 @@ You can stop a run at any time with Ctrl+C and continue it later:
 bin/evochora -c config/my-experiment.conf node resume
 ```
 
-The run continues from the last full state it recorded. Without further options, `node resume` takes the newest run in your [project folder](#1-install-and-start). To continue another one, give its ID with `--run <id>`, as the [CLI Usage Guide](CLI_USAGE.md#continue-a-run-node-resume) describes.
+The run continues from the last full state it recorded. Without further options, `node resume` takes the newest run in your [project directory](#1-install-and-start). To continue another one, give its ID with `--run <id>`, as the [CLI Usage Guide](CLI_USAGE.md#continue-a-run-node-resume) describes.
 
 ### Look at recorded runs
 
@@ -124,15 +124,15 @@ For analyses beyond the analyzer, Evochora keeps the data of a run in standard f
 
 ## 8. Reproduce a Run
 
-A run is determined by the build of Evochora that runs it, by its configuration and by the seed for random numbers. The run records all three with its data, together with the programs of its ancestors, so the same project folder and the same experiment file give the same run again, on another computer and with any number of processor cores. Continuing a run and forking a stretch of it rely on this: both take exactly the course the original takes. The seed is part of the configuration; a run with the same seed takes the same course, and a different seed gives a run of its own.
+A run is determined by the build of Evochora that runs it, by its configuration and by the seed for random numbers. The run records all three with its data, together with the programs of its ancestors, so the same project directory and the same experiment file give the same run again, on another computer and with any number of processor cores. Continuing a run and forking a stretch of it rely on this: both take exactly the course the original takes. The seed is part of the configuration; a run with the same seed takes the same course, and a different seed gives a run of its own.
 
-A run belongs to the version of Evochora that recorded it. Another version can read it but warns, because only the version that recorded a run reproduces it exactly. To continue a run later or to reproduce it, keep the [project folder](#1-install-and-start) it was recorded in, which holds that version next to the run.
+A run belongs to the version of Evochora that recorded it. Another version can read it but warns, because only the version that recorded a run reproduces it exactly. To continue a run later or to reproduce it, keep the [project directory](#1-install-and-start) it was recorded in, which holds that version next to the run.
 
 ## 9. Cite and Share
 
 If you use Evochora in your research, cite the version that produced your runs. `bin/evochora --version` names it: the version with its DOI for a numbered release, and the commit it was built from for a nightly, which is cited by that commit. The repository's [`CITATION.cff`](../CITATION.cff) gives the reference, and GitHub shows it under "Cite this repository".
 
-To share an experiment, publish its [project folder](#1-install-and-start): it holds the configuration, the ancestors and the data of the runs together with the version of Evochora that recorded them and its sources, so that others can inspect the runs and reproduce them. The [published experiments](PUBLISHED_EXPERIMENTS.md) are examples of such records, each with a notebook that documents its finding.
+To share an experiment, publish its [project directory](#1-install-and-start): it holds the configuration, the ancestors and the data of the runs together with the version of Evochora that recorded them and its sources, so that others can inspect the runs and reproduce them. The [published experiments](PUBLISHED_EXPERIMENTS.md) are examples of such records, each with a notebook that documents its finding.
 
 ## 10. Extend Evochora with Plugins
 
@@ -152,6 +152,6 @@ A plugin is a Java class that implements one of Evochora's plugin interfaces:
 
 The plugins that come with Evochora are the best starting point. Those for energy sources, mutation and death are in [`runtime/worldgen`](../src/main/java/org/evochora/runtime/worldgen/), the thermodynamic policies in [`runtime/thermodynamics/impl`](../src/main/java/org/evochora/runtime/thermodynamics/impl/), label matching in [`runtime/label`](../src/main/java/org/evochora/runtime/label/) and the analytics plugins in [`datapipeline/services/analytics/plugins`](../src/main/java/org/evochora/datapipeline/services/analytics/plugins/). Copy the one closest to your idea, including its constructor, because Evochora creates a plugin through the constructor its kind expects.
 
-Compile your class with a JDK of Java 25 or newer against the libraries in the `lib/` directory of your [project folder](#1-install-and-start), for example with `javac -cp "lib/*"`, package it as a jar and put the jar into the project folder's `plugins/` directory. Then name your class in your configuration file in place of the plugin it replaces or next to the ones it joins, and start the node as usual.
+Compile your class with a JDK of Java 25 or newer against the libraries in the `lib/` directory of your [project directory](#1-install-and-start), for example with `javac -cp "lib/*"`, package it as a jar and put the jar into the project directory's `plugins/` directory. Then name your class in your configuration file in place of the plugin it replaces or next to the ones it joins, and start the node as usual.
 
 If your plugin needs a library that Evochora also uses, Evochora's version is the one that loads.

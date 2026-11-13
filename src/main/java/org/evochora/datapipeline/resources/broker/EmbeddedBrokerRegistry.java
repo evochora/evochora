@@ -212,7 +212,7 @@ public final class EmbeddedBrokerRegistry {
                 if (retentionEnabled) {
                     retentionRegistry.put(id, true);
                 }
-                log.info("Embedded ActiveMQ Artemis Broker (serverId={}) started successfully.", id);
+                log.debug("Embedded ActiveMQ Artemis Broker (serverId={}) started successfully.", id);
 
             } catch (Exception e) {
                 log.error("Failed to start Embedded Artemis Broker (serverId={})", id);
@@ -236,11 +236,11 @@ public final class EmbeddedBrokerRegistry {
             // then collide with a broker that still holds it.
             EmbeddedActiveMQ broker = brokerRegistry.get(serverId);
             if (broker != null) {
-                log.info("Stopping Embedded ActiveMQ Artemis Broker (serverId={})...", serverId);
+                log.debug("Stopping Embedded ActiveMQ Artemis Broker (serverId={})...", serverId);
                 broker.stop();
                 brokerRegistry.remove(serverId);
                 retentionRegistry.remove(serverId);
-                log.info("Embedded ActiveMQ Artemis Broker (serverId={}) stopped.", serverId);
+                log.debug("Embedded ActiveMQ Artemis Broker (serverId={}) stopped.", serverId);
             }
         }
     }

@@ -174,7 +174,7 @@ fork_checked=false
 waited=0
 while kill -0 "$PID" 2>/dev/null; do
     if $FORK && ! $fork_checked; then
-        forked="$(grep -m1 -o "SimulationEngine FORKED: .*window=\[[0-9]*" "$LOG" 2>/dev/null || true)"
+        forked="$(grep -m1 -o "Simulation forked: .*window=\[[0-9]*" "$LOG" 2>/dev/null || true)"
         if [ -n "$forked" ]; then
             fork_checked=true
             engine_first="$(printf '%s' "$forked" | sed 's/.*window=.//')"

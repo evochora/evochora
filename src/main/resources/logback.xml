@@ -19,6 +19,14 @@
     <appender name="CONSOLE_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
         <target>System.err</target>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} %levelHighlight(%-5level) %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- As CONSOLE_PLAIN, with the thread and the logger that wrote the line -->
+    <appender name="CONSOLE_DETAILED" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>%d{yyyy-MM-dd HH:mm:ss} %levelHighlight(%-5level) %-40([%thread] %logger{30}:) %msg%n</pattern>
         </encoder>
     </appender>

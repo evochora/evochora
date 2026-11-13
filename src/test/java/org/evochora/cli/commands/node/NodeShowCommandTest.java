@@ -20,15 +20,15 @@ import picocli.CommandLine;
 @Tag("unit")
 class NodeShowCommandTest {
 
-    /** reference.conf resolves its paths against the project folder, which the loader sets at startup. */
+    /** reference.conf resolves its paths against the project directory, which the loader sets at startup. */
     @BeforeEach
-    void setProjectFolder() {
+    void setProjectDirectory() {
         System.setProperty(ConfigLoader.HOME_KEY, System.getProperty("java.io.tmpdir"));
         ConfigFactory.invalidateCaches();
     }
 
     @AfterEach
-    void clearProjectFolder() {
+    void clearProjectDirectory() {
         System.clearProperty(ConfigLoader.HOME_KEY);
         ConfigFactory.invalidateCaches();
     }

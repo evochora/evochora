@@ -44,11 +44,11 @@ public class CommandLineInterfaceTest {
     }
 
     /**
-     * The project folder and the configuration file are named in the log once the logging of the
+     * The project directory and the configuration file are named in the log once the logging of the
      * configuration applies; before that only WARN and above would pass.
      */
     @Test
-    public void theProjectFolderAndTheConfigurationFileAreLoggedOnce(@TempDir Path dir) throws IOException {
+    public void theProjectDirectoryAndTheConfigurationFileAreLoggedOnce(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("experiment.conf");
         // The default level is left to logback-test.xml in tests; a level for this logger is applied
         Files.writeString(file, "logging { format = \"PLAIN\", levels { \"org.evochora.cli.CommandLineInterface\" = \"INFO\" } }\n");
@@ -70,9 +70,9 @@ public class CommandLineInterfaceTest {
         }
 
         String log = captured.toString(StandardCharsets.UTF_8);
-        String folderLine = "Project folder: " + dir.toFile().getAbsolutePath() + ", taken from -Devochora.home";
+        String folderLine = "Project: " + dir.toFile().getAbsolutePath();
         assertTrue(log.contains(folderLine), log);
-        assertTrue(log.contains("Using configuration file specified via --config: " + file.toFile().getAbsolutePath()), log);
+        assertTrue(log.contains("Configuration: " + file.toFile().getAbsolutePath()), log);
         assertEquals(log.indexOf(folderLine), log.lastIndexOf(folderLine), "named once: " + log);
     }
 }

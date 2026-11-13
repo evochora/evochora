@@ -40,7 +40,7 @@ import java.util.concurrent.Callable;
  * <p>
  * Of the configuration the command reads only the environment, as the default of {@code --env}:
  * the file a {@code --config} of the root command names, else {@code config/evochora.conf} of the
- * project folder. The program, its source roots, flags and values are named on the command line.
+ * project directory. The program, its source roots, flags and values are named on the command line.
  * <p>
  * The options mean:
  * <ul>
@@ -89,7 +89,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the environment of the configuration (--config, else config/evochora.conf of the project folder)"
+        description = "Environment as 'WIDTHxHEIGHT:topology', topology torus or bound (e.g., '1024x1024:bound'). Default: the environment of the configuration (--config, else config/evochora.conf of the project directory)"
     )
     private String env;
 

@@ -99,7 +99,7 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         String runId = null;
         
         if (configuredRunId != null) {
-            log.info("Using configured runId: {}", configuredRunId);
+            log.debug("Using configured runId: {}", configuredRunId);
 
             // Validate that the run actually exists in storage
             try {

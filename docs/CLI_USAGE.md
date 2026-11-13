@@ -4,7 +4,7 @@
    - [Environment Variables](#environment-variables)
 2. [Getting Help](#2-getting-help)
 3. [Configuration](#3-configuration)
-   - [Project Folder](#project-folder)
+   - [Project Directory](#project-directory)
    - [Configuration File](#configuration-file)
    - [Configuration File Format](#configuration-file-format)
 4. [Start Simulation Node](#4-start-simulation-node)
@@ -99,11 +99,11 @@ bin/evochora video lineage --help
 
 ## 3. Configuration
 
-### Project Folder
+### Project Directory
 
-The project folder is the folder with your configuration, your ancestors and the data of your runs. The node reads `config/evochora.conf` from it, and the configuration resolves its relative source roots and its data directory against it.
+The project directory is the directory with your configuration, your ancestors and the data of your runs. The node reads `config/evochora.conf` from it, and the configuration resolves its relative source roots and its data directory against it.
 
-By default, the project folder is the installation, the unpacked release archive. When Evochora runs from a build or an IDE instead, it is the working directory. To use another folder, pass the JVM option `-Devochora.home=<folder>` in `EVOCHORA_OPTS`. The [User Guide](USER_GUIDE.md#1-install-and-start) describes how to work in the project folder.
+By default, the project directory is the installation, the unpacked release archive. When Evochora runs from a build or an IDE instead, it is the working directory. To use another directory, pass the JVM option `-Devochora.home=<directory>` in `EVOCHORA_OPTS`. The [User Guide](USER_GUIDE.md#1-install-and-start) describes how to work in the project directory.
 
 ### Configuration File
 
@@ -113,11 +113,11 @@ By default, the project folder is the installation, the unpacked release archive
 bin/evochora --config config/my-experiment.conf node run
 ```
 
-Without `--config`, the configuration file is `config/evochora.conf` of the [project folder](#project-folder). If the project folder has no such file, only the defaults of `reference.conf` apply, and a warning says so. If the file `--config` names does not exist, or if a configuration file has invalid syntax, the command logs an error and exits.
+Without `--config`, the configuration file is `config/evochora.conf` of the [project directory](#project-directory). If the project directory has no such file, only the defaults of `reference.conf` apply, and a warning says so. If the file `--config` names does not exist, or if a configuration file has invalid syntax, the command logs an error and exits.
 
 ### Configuration File Format
 
-Configuration files are written in [HOCON](https://github.com/lightbend/config/blob/main/HOCON.md). [`config/evochora.conf`](../config/evochora.conf) is the configuration of the project folder. An experiment has a file of its own next to it, which begins with `include required("evochora.conf")` and sets only what the experiment changes. The [User Guide](USER_GUIDE.md#3-configure-an-experiment) describes how to set one up. [`reference.conf`](../src/main/resources/reference.conf) explains every setting and supplies the default for everything the other files do not set.
+Configuration files are written in [HOCON](https://github.com/lightbend/config/blob/main/HOCON.md). [`config/evochora.conf`](../config/evochora.conf) is the configuration of the project directory. An experiment has a file of its own next to it, which begins with `include required("evochora.conf")` and sets only what the experiment changes. The [User Guide](USER_GUIDE.md#3-configure-an-experiment) describes how to set one up. [`reference.conf`](../src/main/resources/reference.conf) explains every setting and supplies the default for everything the other files do not set.
 
 ---
 
@@ -432,7 +432,7 @@ bin/evochora cleanup --delete "20260122*" --compact --force
 
 ### Node doesn't start
 
-- Check that the configuration file exists and is valid. The error names the project folder and the file.
+- Check that the configuration file exists and is valid. The error names the project directory and the file.
 - Check that the ports the configuration uses are not already in use.
 - Check the log for error messages.
 

@@ -37,7 +37,7 @@ class ConfigLoaderTest {
 
     @BeforeEach
     void setUp() {
-        // reference.conf resolves its paths against the project folder, which resolve() sets
+        // reference.conf resolves its paths against the project directory, which resolve() sets
         System.setProperty(ConfigLoader.HOME_KEY, System.getProperty("java.io.tmpdir"));
         ConfigFactory.invalidateCaches();
     }
@@ -234,11 +234,11 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("The system property evochora.home names the project folder")
-    void detectProjectFolder_systemPropertyWins(@TempDir Path dir) throws IOException {
+    @DisplayName("The system property evochora.home names the project directory")
+    void detectProjectDirectory_systemPropertyWins(@TempDir Path dir) throws IOException {
         File jar = jarIn(dir.resolve("install").resolve("lib"));
 
-        ConfigLoader.ProjectFolder folder = ConfigLoader.detectProjectFolder(
+        ConfigLoader.ProjectDirectory folder = ConfigLoader.detectProjectDirectory(
                 dir.resolve("given").toString(), jar, dir.toFile());
 
         assertEquals(dir.resolve("given").toFile().getAbsoluteFile(), folder.directory());
@@ -246,22 +246,22 @@ class ConfigLoaderTest {
     }
 
     @Test
-    @DisplayName("A JAR in lib/ makes the directory above it the project folder")
-    void detectProjectFolder_jarInLibIsAnInstallation(@TempDir Path dir) throws IOException {
+    @DisplayName("A JAR in lib/ makes the directory above it the project directory")
+    void detectProjectDirectory_jarInLibIsAnInstallation(@TempDir Path dir) throws IOException {
         File jar = jarIn(dir.resolve("install").resolve("lib"));
 
-        ConfigLoader.ProjectFolder folder = ConfigLoader.detectProjectFolder(null, jar, dir.resolve("elsewhere").toFile());
+        ConfigLoader.ProjectDirectory folder = ConfigLoader.detectProjectDirectory(null, jar, dir.resolve("elsewhere").toFile());
 
         assertEquals(dir.resolve("install").toFile().getAbsoluteFile(), folder.directory());
         assertEquals("the installation", folder.source());
     }
 
     @Test
-    @DisplayName("A JAR outside lib/ belongs to no installation: the working directory is the project folder")
-    void detectProjectFolder_jarOutsideLibFallsBackToWorkingDirectory(@TempDir Path dir) throws IOException {
+    @DisplayName("A JAR outside lib/ belongs to no installation: the working directory is the project directory")
+    void detectProjectDirectory_jarOutsideLibFallsBackToWorkingDirectory(@TempDir Path dir) throws IOException {
         File jar = jarIn(dir.resolve("build").resolve("libs"));
 
-        ConfigLoader.ProjectFolder folder = ConfigLoader.detectProjectFolder(null, jar, dir.toFile());
+        ConfigLoader.ProjectDirectory folder = ConfigLoader.detectProjectDirectory(null, jar, dir.toFile());
 
         assertEquals(dir.toFile().getAbsoluteFile(), folder.directory());
         assertEquals("the working directory", folder.source());
@@ -269,18 +269,18 @@ class ConfigLoaderTest {
 
     @Test
     @DisplayName("Classes run from a build directory fall back to the working directory")
-    void detectProjectFolder_classesDirectoryFallsBackToWorkingDirectory(@TempDir Path dir) throws IOException {
+    void detectProjectDirectory_classesDirectoryFallsBackToWorkingDirectory(@TempDir Path dir) throws IOException {
         File classes = Files.createDirectories(dir.resolve("build").resolve("classes")).toFile();
 
         assertEquals(dir.toFile().getAbsoluteFile(),
-                ConfigLoader.detectProjectFolder(null, classes, dir.toFile()).directory());
+                ConfigLoader.detectProjectDirectory(null, classes, dir.toFile()).directory());
         assertEquals(dir.toFile().getAbsoluteFile(),
-                ConfigLoader.detectProjectFolder(null, null, dir.toFile()).directory());
+                ConfigLoader.detectProjectDirectory(null, null, dir.toFile()).directory());
     }
 
     @Test
-    @DisplayName("resolve takes config/evochora.conf of the project folder, puts the folder into evochora.home and names it")
-    void resolve_takesTheConfigurationOfTheProjectFolder(@TempDir Path dir) throws IOException {
+    @DisplayName("resolve takes config/evochora.conf of the project directory, puts the folder into evochora.home and names it")
+    void resolve_takesTheConfigurationOfTheProjectDirectory(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("config"));
         Files.writeString(dir.resolve("config").resolve("evochora.conf"), "test.value = \"project-value\"\n");
         System.setProperty(ConfigLoader.HOME_KEY, dir.toString());
@@ -291,13 +291,13 @@ class ConfigLoaderTest {
 
         assertEquals("project-value", config.getString("test.value"));
         assertEquals(dir.toFile().getAbsolutePath(), config.getString(ConfigLoader.HOME_KEY));
-        assertTrue(messages.contains("Project folder: " + dir.toFile().getAbsolutePath() + ", taken from -Devochora.home"),
-                "Messages: " + messages);
+        assertTrue(messages.contains("Project: " + dir.toFile().getAbsolutePath()), "Messages: " + messages);
+        assertTrue(messages.contains("Project directory taken from -Devochora.home"), "Messages: " + messages);
     }
 
     @Test
     @DisplayName("An explicit configuration file gets evochora.home as well")
-    void resolve_explicitFileGetsTheProjectFolder(@TempDir Path dir) {
+    void resolve_explicitFileGetsTheProjectDirectory(@TempDir Path dir) {
         System.setProperty(ConfigLoader.HOME_KEY, dir.toString());
         ConfigFactory.invalidateCaches();
 

@@ -43,7 +43,7 @@ final class NodeLauncher {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOGGER.info("Node stopped gracefully.");
+            LOGGER.debug("Node stopped gracefully.");
         }
         return 0;
     }

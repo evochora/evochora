@@ -129,8 +129,7 @@ public class H2TcpServerProcess extends AbstractProcess {
             String jdbcUrl = H2_PREFIX + "tcp://localhost:" + tcpPort + "/" + databasePath;
             String accessInfo = tcpAllowOthers ? "remote allowed" : "localhost only";
             
-            log.info("H2 TCP Server started on port {} ({}) - Connect: {}", 
-                tcpPort, accessInfo, jdbcUrl);
+            log.info("H2 TCP server: {} ({})", jdbcUrl, accessInfo);
 
         } catch (final SQLException e) {
             // Check if error is port-related (graceful handling)
@@ -169,7 +168,7 @@ public class H2TcpServerProcess extends AbstractProcess {
         if (tcpServer != null) {
             tcpServer.stop();
             tcpServer = null;
-            log.info("H2 TCP Server stopped.");
+            log.debug("H2 TCP Server stopped.");
         }
     }
 }

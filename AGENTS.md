@@ -382,40 +382,27 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 **Framework:**
 - Use SLF4J + Logback: `LoggerFactory.getLogger(this.getClass())`
 - Code that runs inside the node (`node`, `datapipeline`, `runtime`, `compiler`) NEVER writes to `System.out` or `System.err`: a running node's console is watched by nobody, and only its log is read. `ConsoleOutputRulesTest` enforces this
-- The console belongs to the command line interface in `cli`, before a node runs or instead of one: the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version) write their results, progress and errors there, and the node commands `node resume` and `node fork` an error in their arguments or checkpoint before the node starts; so do the launcher's Java check, which runs before logging exists, and the welcome banner, shown only with `PLAIN` logging
+- The console belongs to the command line interface in `cli`, before a node runs or instead of one: the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version) write their results, progress and errors there, and the node commands `node resume` and `node fork` an error in their arguments or checkpoint before the node starts; so do the launcher's Java check, which runs before logging exists, and the welcome banner, not shown with `JSON` logging
 
-**Log Levels by Component:**
+**Log Levels:**
 
-**ServiceManager & Node (INFO-level orchestration):**
-- `INFO`: Service/resource lifecycle (starting, stopping, closing), batch control operations
-- `WARN`: Operation failures (service didn't stop in time, resource close failed)
-- `DEBUG`: Process initialization details, topology sorting, dependency injection
+`INFO` is for the person who started the node. It says what that person has to know and nothing else:
+- where Evochora works and what it runs: the project directory and the configuration file, the run the simulation engine started, resumed or forked, the memory estimate
+- how to reach the node: the address of the web interface and of the database
+- that the node is up, that it is shutting down and that it has stopped
+- an event that person caused or that concerns the run: services paused, resumed or restarted through the API (one line for the action, not one per service), an automatic pause, a limit that was reached, messages of an earlier run that were discarded, a write to the dead letter queue
 
-**Services (INFO only for user-visible events):**
-- `INFO`:
-  - Service started with configuration (via `logStarted()` override - each service logs its own config)
-  - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
-  - Explicit runId configuration
-- `WARN`: Transient errors (always with `recordError()` call) - duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings
-- `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
-- `DEBUG`: All operational details (batch processing, retries, interrupts, shutdown sequences, drain operations)
+`DEBUG` is the bookkeeping of the parts: every service, resource and process that is instantiated, started, paused, resumed, stopped or closed, the configuration a service started with, and all operational detail (batch processing, retries, interrupts, shutdown and drain steps, connection pools, schema setup, message claim and ack). Whoever needs it sets the level of that one class in `logging.levels`.
 
-**AbstractService (automatic lifecycle logs):**
-- `INFO`: `paused`, `resumed` (automatic via base class)
-- `DEBUG`: `stopped`, `Service thread interrupted`, `Service thread terminated` (automatic via base class)
-- Note: `started` log is replaced by service's `logStarted()` override
-
-**Resources (DEBUG-only operations, WARN/ERROR for problems):**
-- `INFO`: NEVER log at INFO level (all orchestration goes through ServiceManager)
-- `WARN`: Transient operational errors (query failed, parse error, rollback failed, claim conflict reassignment, sampler errors) - always with `recordError()`
-- `ERROR`: Fatal errors (connection pool failed, delegate creation failed, schema setup failed, connection acquisition failed) - always with `recordError()`
-- `DEBUG`: All operations (connection pool started/closed, schema setup, delegate creation, message claim/ack, wrapper close, compression setup, sampling)
+`WARN` and `ERROR` by component:
+- **ServiceManager & Node**: `WARN`: an operation that failed (a service that did not stop in time, a resource that could not be closed)
+- **Services**: `WARN`: transient errors, always with a `recordError()` call (duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings). `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
+- **Resources**: `WARN`: transient operational errors (query failed, parse error, rollback failed, claim conflict reassignment, sampler errors), always with `recordError()`. `ERROR`: fatal errors (connection pool failed, delegate creation failed, schema setup failed, connection acquisition failed), always with `recordError()`
 
 **Format:**
 - Single-line logs only (no multi-line output). This is strict for every message without a stack trace; a stack trace is multi-line by nature and is the one exception
 - No phase/version prefixes in log messages
 - Include context: service name, resource name, consumer group, relevant parameters
-- For orchestration logs: use ServiceManager/Node for INFO, keep service/resource details at DEBUG
 
 **Stack Traces:**
 A stack trace exists to find out what went wrong. When the system already knows, it is noise: it hides
@@ -434,14 +421,14 @@ unstable. So the one question is whether the cause is known.
 
 **Examples:**
 ```java
-// Good - ServiceManager orchestration (INFO)
-log.info("Starting service '{}'...", serviceName);
-log.info("Closed resource: {}", resourceName);
+// Good - what the person who started the node has to know (INFO)
+log.info("Pausing {} running service(s)...", running.size());
+log.info("Simulation started: run={}, environment=[{}, {}], seed={}, sampling={}", runId, shape, topology, seed, samplingInterval);
 
-// Good - Service startup (INFO, via logStarted())
-log.info("PersistenceService started: batch=[size={}, timeout={}s], retry=[max={}, backoff={}ms], dlq={}, idempotency={}",
-    maxBatchSize, batchTimeoutSeconds, maxRetries, retryBackoffMs, dlq != null ? "configured" : "none",
-    idempotencyTracker != null ? "enabled" : "disabled");
+// Good - lifecycle of one part (DEBUG)
+log.debug("Closed resource: {}", resourceName);
+log.debug("PersistenceService started: batch=[size={}, timeout={}s], idempotency={}",
+    maxBatchSize, batchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
 
 // Good - Service operation (DEBUG)
 log.debug("Successfully wrote batch {} with {} ticks", storageKey, batch.size());

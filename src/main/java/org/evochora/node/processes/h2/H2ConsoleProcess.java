@@ -79,7 +79,7 @@ public class H2ConsoleProcess extends AbstractProcess {
     public void start() {
         // Check if console is explicitly disabled
         if (options.hasPath("enabled") && !options.getBoolean("enabled")) {
-            LOGGER.info("H2 web console is disabled in configuration. Skipping startup.");
+            LOGGER.debug("H2 web console is disabled in configuration. Skipping startup.");
             return;
         }
 
@@ -126,9 +126,13 @@ public class H2ConsoleProcess extends AbstractProcess {
             final Config dbConfig = options.getConfig("database");
             final String username = dbConfig.hasPath("username") ? dbConfig.getString("username") : "sa";
             final String password = dbConfig.hasPath("password") ? dbConfig.getString("password") : "";
-            LOGGER.info("H2 web console started at {} - Connect: JDBC URL: {}, User: {}, Password: {}",
+            // The console connects to the database the node has open, so the settings the URL
+            // carries after the path are not needed to log in
+            final String jdbcUrl = dbConfig.getString("jdbcUrl");
+            final int settings = jdbcUrl.indexOf(';');
+            LOGGER.info("H2 web console: {} - JDBC URL: {}, user: {}, password: {}",
                 consoleUrl,
-                dbConfig.getString("jdbcUrl"),
+                settings < 0 ? jdbcUrl : jdbcUrl.substring(0, settings),
                 username,
                 password.isEmpty() ? "(empty)" : "***");
 
@@ -145,7 +149,7 @@ public class H2ConsoleProcess extends AbstractProcess {
         if (webServer != null) {
             webServer.stop();
             webServer = null;
-            LOGGER.info("H2 web console stopped.");
+            LOGGER.debug("H2 web console stopped.");
         }
     }
 }

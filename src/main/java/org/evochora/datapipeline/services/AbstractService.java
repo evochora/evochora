@@ -162,7 +162,7 @@ public abstract class AbstractService implements IService, IMonitorable {
      * detailed startup information. Default implementation logs a simple message.
      */
     protected void logStarted() {
-        log.info("{} started", this.getClass().getSimpleName());
+        log.debug("{} started", this.getClass().getSimpleName());
     }
 
     @Override
@@ -249,7 +249,7 @@ public abstract class AbstractService implements IService, IMonitorable {
         if (!currentState.compareAndSet(State.RUNNING, State.PAUSED)) {
             throw new IllegalStateException(String.format("Cannot pause service '%s' as it is in state %s", serviceName, getCurrentState()));
         }
-        log.info("{} paused", this.getClass().getSimpleName());
+        log.debug("{} paused", this.getClass().getSimpleName());
     }
 
     @Override
@@ -257,7 +257,7 @@ public abstract class AbstractService implements IService, IMonitorable {
         if (!currentState.compareAndSet(State.PAUSED, State.RUNNING)) {
             throw new IllegalStateException(String.format("Cannot resume service '%s' as it is in state %s", serviceName, getCurrentState()));
         }
-        log.info("{} resumed", this.getClass().getSimpleName());
+        log.debug("{} resumed", this.getClass().getSimpleName());
         synchronized (pauseLock) {
             pauseLock.notifyAll();
         }

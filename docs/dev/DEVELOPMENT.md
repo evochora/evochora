@@ -29,7 +29,7 @@ cd evochora
 
 `build` compiles everything and runs the tests. `run` starts a node with the default ancestor; open `http://localhost:8081/visualizer/` to watch it, and stop it with Ctrl+C. On Windows, write `gradlew` instead of `./gradlew`.
 
-The checkout is your [project folder](../USER_GUIDE.md#1-install-and-start): the node reads `config/evochora.conf` and writes the data of its runs to `data/`, which Git ignores.
+The checkout is your [project directory](../USER_GUIDE.md#1-install-and-start): the node reads `config/evochora.conf` and writes the data of its runs to `data/`, which Git ignores.
 
 ## Test
 

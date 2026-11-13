@@ -775,7 +775,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     /**
      * A source root as the compiler takes it: a relative path is resolved against
-     * {@code compiler.base-directory}, the project folder, so that the configuration's roots do
+     * {@code compiler.base-directory}, the project directory, so that the configuration's roots do
      * not depend on the directory the node was started from; an absolute path and a URL stay as
      * configured.
      *
@@ -974,16 +974,18 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int parallelism = simulation.getEffectiveParallelism();
         String parallelismStr = parallelism > 1 ? parallelism + " workers" : "sequential";
         if (mode == Mode.FORK) {
-            log.info("SimulationEngine FORKED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, parent={}, checkpointTick={}, window=[{}, {}]",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId,
+            log.info("Simulation forked: run={}, environment=[{}, {}], seed={}, sampling={}, parent={}, checkpointTick={}, window=[{}, {}]",
+                    runId, worldDims, topology, seed, samplingInterval,
                     forkOrigin.getParentRunId(), forkCheckpointTick, forkOrigin.getFirstTick(), forkOrigin.getLastTick());
         } else if (mode == Mode.RESUME) {
-            log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, resumeFromTick={}",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId, currentTick.get() + 1);
+            log.info("Simulation resumed: run={}, environment=[{}, {}], seed={}, sampling={}, resumeFromTick={}",
+                    runId, worldDims, topology, seed, samplingInterval, currentTick.get() + 1);
         } else {
-            log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId);
+            log.info("Simulation started: run={}, environment=[{}, {}], seed={}, sampling={}",
+                    runId, worldDims, topology, seed, samplingInterval);
         }
+        log.debug("Simulation configuration: organisms={}, tickPlugins={} ({}), ticksPerChunk={}, parallelism={}",
+                simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, ticksPerChunk, parallelismStr);
     }
 
     @Override
@@ -1037,7 +1039,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 }
 
                 if (shouldAutoPause(tick)) {
-                    log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
+                    boolean endOfFork = forkOrigin != null && tick == forkOrigin.getLastTick();
+                    log.info("Simulation auto-paused at tick {} {}", tick,
+                            endOfFork ? "at the end of the forked stretch" : "due to pauseTicks configuration");
                     pause();
                     continue;
                 }
@@ -1049,7 +1053,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Note: No flushPartialChunk() - partial chunks cause duplicate/shifted boundaries on resume.
         // Only complete chunks are persisted; partial data is discarded and regenerated on resume.
 
-        log.info("Simulation loop finished.");
+        log.debug("Simulation loop finished.");
     }
 
     /**
