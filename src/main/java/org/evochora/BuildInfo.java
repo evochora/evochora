@@ -2,6 +2,7 @@ package org.evochora;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Optional;
 import java.util.Properties;
 
 import org.slf4j.Logger;
@@ -15,7 +16,8 @@ import org.slf4j.LoggerFactory;
  * {@code revision}, the commit hash suffixed with {@link #DIRTY_SUFFIX} when the working tree
  * carried uncommitted changes. A build made outside a git checkout, from a source archive for instance,
  * writes {@link #UNKNOWN}; so does a classpath without the file. The key {@code version} holds the
- * release tag the build was made for, or {@code latest} for any other build. The key
+ * release tag of a build made for a release and is empty for every other build, a nightly or one
+ * made by hand: such a build is named by its revision alone. The key
  * {@code requiredJava} holds the Java version the code is compiled for; the entry point
  * {@code JavaVersionGuard} checks it against the running Java, and this class does not read it.
  * <p>
@@ -40,7 +42,7 @@ public final class BuildInfo {
 
     private static final String REVISION = revisionOf(RECORDED);
 
-    private static final String VERSION = versionOf(RECORDED);
+    private static final Optional<String> VERSION = versionOf(RECORDED);
 
     private BuildInfo() {
     }
@@ -56,12 +58,27 @@ public final class BuildInfo {
     }
 
     /**
-     * Returns the version this build was made as.
+     * Returns the version of this build, which only a build made for a release has.
      *
-     * @return the release tag, {@code latest} for a build made for no release, or {@link #UNKNOWN}
+     * @return the release tag, or empty for a build made for no release
      */
-    public static String version() {
+    public static Optional<String> version() {
         return VERSION;
+    }
+
+    /**
+     * Names a build in a sentence: by its version and revision when it has a version, by its
+     * revision alone when it has none.
+     *
+     * @param version  the version of the build, or empty or {@code null} for a build without one
+     * @param revision the revision of the build
+     * @return for instance {@code Evochora v1.0.0 (9c80bde4)} or {@code a build of revision 9c80bde4}
+     */
+    public static String describe(String version, String revision) {
+        if (version != null && !version.isBlank()) {
+            return "Evochora " + version + " (" + revision + ")";
+        }
+        return UNKNOWN.equals(revision) ? "a build of unknown revision" : "a build of revision " + revision;
     }
 
     /**
@@ -103,10 +120,11 @@ public final class BuildInfo {
      * Reads the version from the properties the build wrote.
      *
      * @param properties the contents of {@value #RESOURCE}
-     * @return the version, or {@link #UNKNOWN} when the key is missing or blank
+     * @return the version, or empty when the key is missing or blank
      */
-    static String versionOf(Properties properties) {
-        return recorded(properties, "version");
+    static Optional<String> versionOf(Properties properties) {
+        String value = properties.getProperty("version");
+        return value == null || value.isBlank() ? Optional.empty() : Optional.of(value.strip());
     }
 
     private static String recorded(Properties properties, String key) {

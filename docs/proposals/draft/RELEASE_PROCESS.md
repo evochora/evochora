@@ -55,6 +55,23 @@ deleted.
   `--version` names version, revision and DOI, and an experiment package can read the DOI of the
   build it ran on. A nightly carries no DOI. The version DOI is not written into the tagged source:
   that would need a commit before the tag and a rebuild after it.
+- **Only a build made for a release has a version.** The version is the release tag, of the form
+  `v<number>`, a suffixed one such as `v1.0.0-rc.1` included. A nightly and a build made by hand
+  have none and are named by their revision alone: `--version` prints
+  `Evochora v1.0.0 (<revision>)` for a release and `Evochora (revision <revision>)` otherwise. A
+  run records the version of its build beside the revision, and the warning for a run read by
+  another build names each build by its version where it has one. The DOI is neither part of that
+  warning nor recorded with a run: the version finds the release, and the DOI is for citing it.
+  This part is built: `BuildInfo`, the field `build_version` in a run's metadata and
+  `BuildRevisionCheck`.
+- **An archive is named after its tag, and a build without a tag carries none.** The names are
+  `evochora-v1.0.0-<platform>` for a release, `evochora-nightly-<platform>` for the nightly, whose
+  workflow passes the tag `nightly`, and `evochora-<platform>` for a build made without a tag, by
+  hand or for a pull request. The word `latest` appears in no name. A commit hash in the name was
+  rejected: the files of the nightly would be named differently every night, and no link, image
+  build or deploy could name them. Which commit an archive holds is said by `--version` and by
+  the title of the nightly. This part is not built: it changes the names the workflow, the image
+  and the start test look for.
 - **The concept DOI is entered once by hand**, after the first archived release, as a badge in the
   README and in the `doi` field of `CITATION.cff`. It never changes, so no job maintains it.
 - **`CITATION.cff` carries `version` and `date-released`, kept by hand**, and the workflow checks
@@ -133,8 +150,11 @@ which one the job uses is decided when it is written.
   unnecessary.
 - `.github/release-notes-latest.md` becomes `.github/release-notes-nightly.md`.
 - `build.gradle.kts`, `infrastructure/docker/evochora-node/Dockerfile`,
-  `.github/workflows/deploy.yml`: the fallback and default `latest` become `nightly`; the build
-  takes a DOI property beside `RELEASE_TAG` and `GIT_REVISION`.
+  `.github/workflows/deploy.yml`, the start test of the packages: the fallback and default
+  `latest` are removed, and the archive name carries the tag the workflow passes or none, as
+  decided above; the build takes a DOI property beside `RELEASE_TAG` and `GIT_REVISION`.
+- `README.md` and `docs/USER_GUIDE.md`: the archive names in the Quick Start and in "Install and
+  Start".
 - `BuildInfo` and the version provider of the CLI: the DOI as a third field, printed by
   `--version` when present.
 - `CITATION.cff`: `version`, `date-released`, later `doi`.

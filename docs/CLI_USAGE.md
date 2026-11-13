@@ -38,7 +38,7 @@ Global options, given before the command:
 
 - `-c`, `--config <file>`: Use this configuration file. See [Configuration](#3-configuration).
 - `-h`, `--help`: Show the commands, or after a command its options. See [Getting Help](#2-getting-help).
-- `-V`, `--version`: Print the version of the build and the commit it was made from. A numbered release also prints its DOI.
+- `-V`, `--version`: Print the build: the commit it was made from, and for a numbered release its version and its DOI.
 
 Commands:
 

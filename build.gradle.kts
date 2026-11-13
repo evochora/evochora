@@ -264,8 +264,9 @@ tasks.named("processResources") {
 // evochora-build.properties and read there by org.evochora.BuildInfo. The engine writes that
 // revision into the metadata of every run, because a run is reproduced exactly only by the build
 // that wrote it; whoever reads a run compares the two and warns when they differ. Beside it the
-// file holds the version of the build - the release tag, or "latest" - which the API documentation
-// names.
+// file holds the version of the build, which only a build made for a release has: the release tag,
+// of the form v<number>. Every other build, a nightly or one made by hand, has a revision and no
+// version, and the key stays empty.
 //
 // The value comes from the first of these that answers:
 //   1. the git checkout — the commit hash, with "-dirty" appended when a tracked file carries
@@ -332,7 +333,8 @@ val writeBuildInfo = tasks.register<WriteProperties>("writeBuildInfo") {
     description = "Records the revision of the sources and the version of the build on the classpath"
     destinationFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
     property("revision", buildRevision)
-    property("version", project.version.toString())
+    property("version", (project.findProperty("RELEASE_TAG")?.toString() ?: "")
+        .takeIf { Regex("v\\d.*").matches(it) } ?: "")
     // The Java the code is compiled for, which JavaVersionGuard requires of the Java it runs on
     property("requiredJava", java.toolchain.languageVersion.get().asInt())
 }

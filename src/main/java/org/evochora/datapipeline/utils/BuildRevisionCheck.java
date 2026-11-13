@@ -20,7 +20,9 @@ public final class BuildRevisionCheck {
 
     /**
      * Logs a warning through the given logger when the run's build revision is unknown or differs
-     * from this build's, and nothing when both are known and equal.
+     * from this build's, and nothing when both are known and equal. Each build is named by its
+     * version where it has one and by its revision otherwise; what the warning advises follows
+     * the build that wrote the run.
      *
      * @param metadata the metadata of the run about to be read
      * @param log the logger of the caller, so the warning is attributed to the process that reads
@@ -30,13 +32,20 @@ public final class BuildRevisionCheck {
         if (BuildInfo.matches(recorded)) {
             return;
         }
-        log.warn("Run {} was written by build {} and is read by build {}: the trajectory is reproduced "
-                + "exactly only by the build that wrote the run; {}",
-            metadata.getSimulationRunId(), recorded, BuildInfo.revision(), howToGetTheSources(recorded));
+        String recordedVersion = metadata.getBuildVersion();
+        log.warn("Run {} was written by {} and is read by {}: only the build that wrote a run reproduces "
+                + "it exactly; {}",
+            metadata.getSimulationRunId(),
+            BuildInfo.describe(recordedVersion, recorded),
+            BuildInfo.describe(BuildInfo.version().orElse(""), BuildInfo.revision()),
+            recordedVersion.isBlank()
+                ? howToGetTheSources(recorded)
+                : "use Evochora " + recordedVersion + " to reproduce or continue it");
     }
 
     /**
-     * Says how the sources of the recorded revision can be had, or why they cannot.
+     * Says how the sources of the recorded revision can be had, or why they cannot. This is the
+     * advice for a run written by a build without a version, which exists only as its sources.
      *
      * @param recorded the revision a run's metadata carries
      * @return the closing part of the warning

@@ -40,7 +40,10 @@ public class CommandLineInterfaceTest {
         int exitCode = cmd.execute("node", "run", "--version");
 
         assertEquals(0, exitCode);
-        assertEquals("Evochora " + BuildInfo.version() + " (" + BuildInfo.revision() + ")", out.toString().strip());
+        String expected = BuildInfo.version()
+            .map(version -> "Evochora " + version + " (" + BuildInfo.revision() + ")")
+            .orElse("Evochora (revision " + BuildInfo.revision() + ")");
+        assertEquals(expected, out.toString().strip());
     }
 
     /**

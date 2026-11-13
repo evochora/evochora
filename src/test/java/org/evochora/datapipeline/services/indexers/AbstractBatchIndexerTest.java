@@ -61,7 +61,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchIndexerTest\\$StreamingTestBatchIndexer", messagePattern = "Run .* was written by build .* and is read by build .*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchIndexerTest\\$StreamingTestBatchIndexer", messagePattern = "Run .* was written by .* and is read by .*")
 class AbstractBatchIndexerTest {
 
     private IResourceTopicReader<BatchInfo, String> mockTopic;

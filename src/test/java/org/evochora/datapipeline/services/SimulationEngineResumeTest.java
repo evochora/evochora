@@ -53,7 +53,7 @@ import org.evochora.test.utils.ProtoTestUtils;
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by build .* and is read by build .*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by .* and is read by .*")
 class SimulationEngineResumeTest {
 
     private static final String TEST_RUN_ID = "20250127-123456-test-run";

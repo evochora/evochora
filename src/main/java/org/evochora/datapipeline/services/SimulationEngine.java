@@ -1242,6 +1242,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *   <li>seed - the actual seed used (important when auto-generated)</li>
      *   <li>programs - compiled artifacts with machine code</li>
      *   <li>buildRevision - the sources this build was made from</li>
+     *   <li>buildVersion - the release this build was made for, empty for any other build</li>
      *   <li>fork - the parent and window, when this run is a fork</li>
      *   <li>resolvedConfigJson - all other configuration</li>
      * </ul>
@@ -1252,6 +1253,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
         builder.setBuildRevision(BuildInfo.revision());
+        builder.setBuildVersion(BuildInfo.version().orElse(""));
         if (this.forkOrigin != null) {
             builder.setFork(this.forkOrigin);
         }
