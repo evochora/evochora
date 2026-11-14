@@ -552,7 +552,8 @@ the lineage's past all take part.
 
 ## Pitfalls
 
-- `node run` without auto-start off resumes and ADVANCES the run.
+- To look at a run, start the node with `node show`. `node resume` continues the run and
+  ADVANCES it, and `node run` starts a new one.
 - One organism per parent when sampling bodies; siblings bias the sample.
 - Batch chunks carry their first recording in `snapshot`, not in `deltas`.
 - The H2 index file is locked by a running node; the H2 shell then fails or, worse, the node does.

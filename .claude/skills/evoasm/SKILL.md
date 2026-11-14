@@ -16,8 +16,9 @@ runtime source is the truth when the specification leaves a question open.
 - `assembly/examples/duplicate-shell/`: a small procedure with a driver, written with this
   workflow; `tools/trace/README.md` shows the queries that verified it.
 
-The maintainer's session rules apply throughout: a plan before code, one point per message, a
-simulation run only within the bounds the maintainer has given, nothing committed on your own.
+The agent rules in `AGENTS.md` apply throughout: nothing beyond what the person you work for has
+asked, a simulation run only within the bounds that person has given, nothing committed on your
+own.
 `docs/EVOASM_GUIDELINES.md` holds what this skill only points at: room for evolution, acting in
 a shared world, checking a program.
 
@@ -34,8 +35,7 @@ the simulation's constraints.
 
 ## 1 · Facts about the language that are easy to get wrong
 
-These are properties of the machine, verified in the runtime; every one of them has cost a
-session an iteration.
+These are properties of the machine, verified in the runtime.
 
 - A conditional skip (`IF*`, `IN*`, `LT*`, ...) skips the one instruction behind it when its
   condition is not met, and the skipped instruction costs no tick. A conditional jump (`JF*`,
@@ -123,9 +123,8 @@ misleads.
 build/install/evochora/bin/evochora compile --source-root <dir> --file <main>.evo --env <w>x<h>:torus
 ```
 
-The installation tree must be current (`./gradlew installDist`, after the benchmark check the
-session rules require). A compile error names file and line; layout collisions and overlong rows
-show here, semantics do not.
+The installation tree must be current (`./gradlew installDist`). A compile error names file and
+line; layout collisions and overlong rows show here, semantics do not.
 
 ## 4 · Debug with the trace recorder
 
@@ -133,7 +132,7 @@ show here, semantics do not.
 tick recorded, nothing persisted, and writes three tables you query with DuckDB.
 
 ```
-tools/trace/run-trace.sh <scratchpad>/trace-N <ticks> \
+tools/trace/run-trace.sh <output-dir>/trace-N <ticks> \
   'pipeline.services.simulation-engine.options.environment.shape = [128, 96]' \
   'pipeline.services.simulation-engine.options.compiler.source-roots = [{ path = "<dir>" }]' \
   'pipeline.services.simulation-engine.options.organisms = [{ program = "<main>.evo", initialEnergy = 100000, placement { positions = [0, 0] } }]'
@@ -169,14 +168,9 @@ priced a step; both need the configuration or the runtime source.
 
 End with the numbers: the acceptance queries and their results, ticks and energy per unit of
 work, failures and `differs`, the result register and the marker after every call. Then every
-iteration: what the trace showed, what the cause was, what changed. When the maintainer asks to
-see each iteration as it happens, stop after every finding and report before changing anything.
+iteration: what the trace showed, what the cause was, what changed.
 
-Close with a short section for the maintainer's decision: what about the recorder, this skill,
-or the documentation would have helped in this session, concrete and from this session only.
-"Nothing" is a valid answer; a proposal stays a proposal until the maintainer decides.
-
-## Pitfalls that have cost sessions
+## Pitfalls
 
 - `.IMPORT "lib/x.evo" AS DUP` fails to parse: `DUP` is an instruction.
 - `LETI %TMP ENERGY:0` does not check that `%TMP` holds energy: order ignores types, so a
@@ -186,5 +180,5 @@ or the documentation would have helped in this session, concrete and from this s
 - `cond_met` is empty for a conditional that failed, where `fail_reason` tells why and the
   decision is "not met", and for a conditional jump with a label between it and the next
   instruction, whose decision the next step cannot show.
-- Trace outputs belong in the session's scratchpad; the recorder's own README says what it
+- Trace outputs go to a directory outside the repository; the recorder's own README says what it
   writes and what it removes.

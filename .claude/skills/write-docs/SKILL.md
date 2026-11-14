@@ -6,8 +6,8 @@ description: Write, revise or review documentation that people read — the guid
 # Writing documentation for people
 
 A document is written for one reader at a time: someone who reads it from the start, or who
-jumps to one place and reads on from there. Every rule below serves that reader. Apply the
-`humanizer` skill as well, every time, before a text is presented.
+jumps to one place and reads on from there. Every rule below serves that reader. Where a
+`humanizer` skill is installed, apply it as well, every time, before a text is presented.
 
 ## Before writing
 
@@ -63,4 +63,4 @@ Do these by reading, not by tooling, and do all of them before anything is shown
    it stands when asked.
 5. Compile or run every complete code example with the real tool. An example in running text,
    such as an operand inside a sentence, needs no compiling.
-6. Apply the `humanizer` skill.
+6. Apply the `humanizer` skill, where one is installed.

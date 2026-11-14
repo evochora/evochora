@@ -20,7 +20,7 @@ client the procedure below refers to.
   started from. After a change, restart it — `./gradlew run --args="node show"` rebuilds the
   resources. A node started from `build/install` is stopped before `./gradlew installDist`; the
   JVM reads classes from the jar lazily and fails when it is replaced under it.
-- `node show` serves the indexed runs without simulating. It reads `${user.dir}/data` unless
+- `node show` serves the indexed runs without simulating. It reads `data/` of the project directory unless
   `pipeline.dataBaseDir` says otherwise; `--config=<file>` before `node show` selects another
   configuration.
 - One node at a time: it takes the ports 8081 (web), 8082 and 9092 (H2). `ss -ltnp` shows who

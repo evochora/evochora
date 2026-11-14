@@ -8,17 +8,15 @@ description: Package a finished Evochora run as a citable experiment record on Z
 A record is a self-contained, citable package of one run and one finding. Anyone can read the
 finding, re-run the analysis and browse the run in the visualizer — without the project's servers
 and independent of later changes to the code or its persisted formats. Every record so far
-(`docs/PUBLISHED_EXPERIMENTS.md`) was built this way. Every step below ran at least twice; the
-pitfalls at the end each cost a session, and the rules of section 3 and section 7 each cost a
-round of iteration before they were written down.
+(`docs/PUBLISHED_EXPERIMENTS.md`) was built this way.
 
 ## 0 · What must be fixed before any file is touched
 
 - The run: `runId`, the configuration that produced it, the build that wrote it (`GIT_REVISION`).
 - The finding in one sentence, and the chain of evidence that carries it, as a numbered list of
   links. The notebook is written along this chain and nothing else; the package is cut for it.
-- Where the run lives and where the package is built. Large runs sit on the external SSD or on the
-  demo server; the package is built next to the data, never through the user's machine.
+- Where the run lives and where the package is built. The package is built next to the data: a
+  large run is not copied to another machine first.
 
 ## 1 · What a record contains
 
@@ -92,9 +90,9 @@ EVOCHORA_OPTS="-Dpipeline.dataBaseDir=$PWD/data-rerun" app/bin/evochora -c confi
 The second leaves `data/` untouched (system properties override the file); the run is
 deterministic for its seed. No Docker image is part of a package.
 
-**The distribution** is built fresh for the package (`gw installDist`) and its file list compared
-with the build's: a copy taken from a directory the temp cleaner had thinned lacked the primordial
-programs once. Start probe with both commands before the tar.
+**The distribution** is built fresh for the package (`./gradlew installDist`) and its file list compared
+with the build's, so that a copy with files missing is noticed. Start probe with both commands
+before the tar.
 
 **`analysis/requirements.txt`** pins the versions the notebook was executed with and names the
 Python version that actually ran; no minimum version is claimed that was not tried.
@@ -303,23 +301,16 @@ The round ends when a pass brings no finding with substance.
   databases, draft and upload responses, helper scripts and logs go; originals stay. Nothing on
   the demo server may be deleted while a demo container serves it.
 
-## Pitfalls that have cost sessions
+## Pitfalls
 
-- **Never delete a derived copy without diffing its tree against the claimed original.** A bundle
-  once held the only analytics copy of a run; "everything is in the original" was asserted, not
-  checked, and the analytics had to be regenerated overnight.
-- `SHUTDOWN COMPACT` corrupted an H2 file once. Use plain `SHUTDOWN`.
+- **Never delete a derived copy without diffing its tree against the claimed original.** That
+  everything is in the original has to be checked, not asserted.
+- `SHUTDOWN COMPACT` can corrupt an H2 file. Use plain `SHUTDOWN`.
 - A running node re-creates `data/queue`, `data/topic` and `indexdb.trace.db` inside the package;
   tar from a clean tree, and re-clean if the package was started for review after tarring.
-- Killing a process by a command-line pattern matched the session's own shell. Match only
+- Killing a process by a command-line pattern can match the shell that runs the command. Match only
   processes whose `argv[0]` ends in `/bin/java`, with a pattern that names the package.
 - Environment chunks need ≥8 GB heap to serve (the distribution's `bin/evochora` sets it); on the
   demo server the package is only viewable with the demo container stopped, then restored.
-- A notebook built by accretion from two rounds of reviews was a patchwork that had to be rebuilt
-  from the chain; a comparison presented as "decisive" showed only the sweep in other numbers; an
-  energy budget counted the energy handed to a child as consumed; an explanation for excess shells
-  was written without reading the death handler. Each of these is a rule in section 3 now.
 - The Zenodo preview renders no notebook above 1 MiB; a figure of two frames resampled onto a
   non-integer grid weighed 1.2 MB on its own.
-- The scratchpad under `/tmp` is cleaned by age; a worktree, a build installation and a venv were
-  lost that way. Nothing that must survive a pause lives only there.

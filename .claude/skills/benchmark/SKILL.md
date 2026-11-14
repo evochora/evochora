@@ -41,7 +41,7 @@ is confirmed on the target machine under the conditions of `docs/dev/BENCHMARKIN
    or the comparison measures somebody else's change too.
 2. Say what the change should do to the numbers **before** running: which combinations move,
    in which direction, roughly how much. A prediction that fails is the most useful result.
-3. Check the host is free: `ssh $BENCH_SSH uptime` — another session may be measuring. Both
+3. Check the host is free: `ssh $BENCH_SSH uptime` — someone else may be measuring. Both
    scripts refuse a loaded host, but a queued run still collides with theirs.
 
 ## 1 · JMH tick benchmark
@@ -111,12 +111,10 @@ run-comparison.sh      tools/bench-server/run-comparison.sh
 ```
 
 `perf_server.conf` includes `evochora.conf` with `include required(...)`, resolved next to
-itself, and sets the `sparse` tuning profile. Keep both: a silently skipped include measures
-the defaults of `reference.conf` (its program path does not even compile in the tree), and the
-`detailed` profile of the shipped `evochora.conf` samples every tick, so the consumer's hashing,
-not the simulation, dominates the wall time. Check the first `Simulation started` line of
-a log for `sampling=10000` and the first `TICKHASH` line for `lastTick` counting in thousands
-before trusting a run.
+itself, and sets the `sparse` tuning profile. Keep the profile: one that samples every tick, such
+as `detailed`, makes the consumer's hashing, not the simulation, dominate the wall time. Check
+the first `Simulation started` line of a log for `sampling=10000` and the first `TICKHASH` line
+for `lastTick` counting in thousands before trusting a run.
 
 Run all variants in one invocation, then again in the opposite order:
 
@@ -157,7 +155,7 @@ a dead organism's last instruction record is observation, not behaviour.
 
 ## Pitfalls
 
-- The host is shared: another session's comparison in `~/bench/cmp/` is destroyed by starting a
+- The host is shared: someone else's comparison in `~/bench/cmp/` is destroyed by starting a
   second one. Check `uptime` and `progress.txt` before touching the directory.
 - A JMH run on a laptop without a clock cap reports throttling as a regression.
   Never conclude from a developer machine without the conditions in `docs/dev/BENCHMARKING.md`.
@@ -165,5 +163,5 @@ a dead organism's last instruction record is observation, not behaviour.
   needs the measurement, not the intuition.
 - A synthetic scenario can mislead the profile: it can spend its time in a path that production
   never stresses. Profile production runs, benchmark synthetic ones.
-- Killing a process by a command-line pattern can match the session's own shell. Match only
+- Killing a process by a command-line pattern can match the shell that runs the command. Match only
   processes whose `argv[0]` ends in `/bin/java`.
