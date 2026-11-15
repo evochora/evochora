@@ -30,7 +30,7 @@ The [development guide](docs/dev/DEVELOPMENT.md) shows how to build, run and tes
 
 ## Using AI Assistants
 
-AI assistants are welcome under the project's [AI Policy](AI_POLICY.md): say that you used one, understand what you contribute, and take responsibility for it. An assistant finds the project's rules in [AGENTS.md](AGENTS.md) by itself.
+AI assistants are welcome under the project's [AI Policy](AI_POLICY.md): say that you used one, understand what you contribute, and take responsibility for it. An assistant finds the project's rules in `AGENTS.md` by itself.
 
 ## Code of Conduct and License
 

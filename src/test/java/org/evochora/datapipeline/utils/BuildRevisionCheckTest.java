@@ -78,6 +78,19 @@ class BuildRevisionCheckTest {
     }
 
     @Test
+    void runWrittenByABuildFromShippedSources_NamesTheCommitAndSaysTheyMayHaveChanged() {
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+            .setSimulationRunId("run-f")
+            .setBuildRevision("0123abcd" + BuildInfo.REBUILT_SUFFIX)
+            .build();
+
+        BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, log);
+
+        verify(log).warn(anyString(), eq("run-f"), eq("a build of revision 0123abcd-rebuilt"), eq(reader()),
+            eq("its sources were shipped as those of `git checkout 0123abcd` and may have been changed before the build"));
+    }
+
+    @Test
     void runWrittenByThisBuild_IsSilentWhenTheRevisionIsKnown() {
         SimulationMetadata metadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("run-c")

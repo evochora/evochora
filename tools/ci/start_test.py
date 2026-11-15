@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Starts a platform distribution of Evochora the way a user does and checks that it works.
 
-Unpacks the archive into a temporary directory and, from its top directory, checks four things:
+Unpacks the archive into a temporary directory and, from its top directory, checks five things:
 
-1. ``src/`` holds the sources the archive was built from and the GIT_REVISION that names them.
-2. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
-3. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
-4. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
+1. The top directory holds the files of the commit the archive was built from, as the repository
+   holds them, and the GIT_REVISION that names the commit, and none of the files that only
+   building the project needs.
+2. Every relative link in a document of the archive leads to a file the archive holds.
+3. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
+4. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
+5. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
    every service that counts processed ticks has processed some, so that data has passed through
    the whole pipeline; the HTTP API reports no service in ERROR; nothing is logged at WARN or
    ERROR, and the JVM prints no warning of its own, up to and including the node's shutdown; and
@@ -30,6 +33,7 @@ import tarfile
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -38,6 +42,9 @@ WINDOWS = os.name == "nt"
 STATUS_URL = "http://localhost:8081/pipeline/api/status"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LOG_PROBLEM = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (WARN|ERROR)\b")
+# A link as Markdown writes it, and the scheme that marks one that leaves the archive
+MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
+URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 # The JVM's own warnings, in the three forms it writes them: the JDK's at run time, the virtual
 # machine's ("OpenJDK 64-Bit Server VM warning: ..."), and those of its unified logging, which
 # begin with the uptime ("[0.012s][warning][gc] ..."); a line of the node's own log, which begins
@@ -70,8 +77,31 @@ def environment(**overrides) -> dict:
 
 
 def check_sources(root: Path) -> list:
-    missing = [name for name in ("build.gradle.kts", "GIT_REVISION") if not (root / "src" / name).is_file()]
-    return [f"src/ lacks {', '.join(missing)}"] if missing else []
+    problems = [f"the archive lacks {name}" for name in ("GIT_REVISION", "README.md", "docs", "src/main")
+                if not (root / name).exists()]
+    problems += [f"the archive holds {name}, which only building the project needs"
+                 for name in ("build.gradle.kts", "gradlew") if (root / name).exists()]
+    return problems
+
+
+def check_links(root: Path) -> list:
+    """Follows every relative link of every Markdown document outside the Java runtime and the licenses."""
+    problems = []
+    for document in sorted(root.rglob("*.md")):
+        if document.relative_to(root).parts[0] in ("jre", "lib", "licenses"):
+            continue
+        for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), 1):
+            for target in MARKDOWN_LINK.findall(line):
+                # A scheme marks a link that leaves the archive, a lone fragment one within the document
+                if URL_SCHEME.match(target) or target.startswith("#"):
+                    continue
+                path = urllib.parse.unquote(target.split("#")[0].split("?")[0])
+                where = f"{document.relative_to(root).as_posix()}:{number}"
+                if path.startswith("/"):
+                    problems.append(f"{where} links to {target}, a path from the root of a web site")
+                elif not (document.parent / path).exists():
+                    problems.append(f"{where} links to {target}, which the archive does not hold")
+    return problems
 
 
 def check_help(root: Path) -> list:
@@ -302,6 +332,7 @@ def main() -> int:
     try:
         root = unpack(args.archive.resolve(), work)
         for name, check in [("sources", lambda: check_sources(root)),
+                            ("links", lambda: check_links(root)),
                             ("help", lambda: check_help(root)),
                             ("refusal", lambda: check_refusal(root, args.old_java)),
                             ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),

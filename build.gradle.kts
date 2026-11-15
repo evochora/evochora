@@ -271,8 +271,9 @@ tasks.named("processResources") {
 // The value comes from the first of these that answers:
 //   1. the git checkout — the commit hash, with "-dirty" appended when a tracked file carries
 //      uncommitted changes;
-//   2. a GIT_REVISION file in the project root — an experiment bundle ships one next to its source
-//      archive, so a build made from the archive records the revision the archive came from;
+//   2. a GIT_REVISION file in the project root — an experiment bundle ships one with its sources,
+//      so a build made from them records the revision they came from, with "-rebuilt" appended:
+//      without a checkout nothing shows whether the sources are still those of that revision;
 //   3. "unknown" — no checkout and no such file, and the sources cannot be named.
 //
 // The value is resolved while the build is configured and registered as an input of the task, so
@@ -303,7 +304,7 @@ abstract class BuildRevisionSource : ValueSource<String, BuildRevisionSource.Par
         }
         val shipped = projectDir.resolve("GIT_REVISION")
         val recorded = if (shipped.isFile) shipped.readText().trim() else ""
-        return recorded.ifBlank { "unknown" }
+        return if (recorded.isBlank()) "unknown" else "$recorded-rebuilt"
     }
 
     private fun gitOutput(projectDir: File, vararg arguments: String): String? = try {
@@ -651,18 +652,19 @@ tasks.named("check") {
     dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
 }
 
-// The sources of the commit a platform distribution is built from, which it carries under src/:
-// the installation directory holds the runs made with it, and with the sources beside them runs,
-// application and the code that made them are published as one. GIT_REVISION among them names
-// the revision, so that a build made from them records it, as BuildRevisionSource reads it. They
-// are the sources of the last commit; a build with changes not yet committed leaves those out,
-// and its revision says "-dirty".
+// The files of the commit a platform distribution is built from, which it carries at its top as
+// the repository holds them: a link between two documents leads to the same place in an
+// installation as in the repository, and the installation directory holds the runs made with it
+// beside the code that made them. GIT_REVISION among them names the revision, as
+// BuildRevisionSource reads it where a build is made without a checkout. They are the files of the
+// last commit; a build with changes not yet committed leaves those out, and its revision says
+// "-dirty".
 // Archiving needs the project to be a git checkout of its own. In a directory without one, git
 // would take the repository of an enclosing directory, such as an installation directory kept
 // under git, and pack its sources under Evochora's revision; the task stops there instead.
 val sourceArchive = tasks.register<Exec>("sourceArchive") {
     group = "distribution"
-    description = "Packs the sources of the commit HEAD for the src/ directory of the platform distributions"
+    description = "Packs the files of the commit HEAD that the platform distributions carry at their top"
     val archive = layout.buildDirectory.file("sources/evochora-sources.tar").get().asFile
     // In a worktree .git is a file, in a clone a directory
     val checkout = rootProject.layout.projectDirectory.file(".git").asFile
@@ -687,7 +689,17 @@ val unpackSources = tasks.register<Sync>("unpackSources") {
     into(layout.buildDirectory.dir("sources/src"))
 }
 
-// What every distribution carries beside its start scripts and its libraries
+// The licenses of what a distribution ships
+val distributionLicenses = copySpec {
+    into("licenses") {
+        from("src/licenses") { exclude("frontend/**") }
+        from(javaLicenseReport) { include("java-libraries.txt") }
+        from(javaLicenseReport) { include("*.jar/**"); into("java") }
+        from(frontendLicenses)
+    }
+}
+
+// What the main distribution carries beside its start scripts and its libraries
 val distributionContents = copySpec {
     from("assembly") {
         into("assembly")
@@ -700,13 +712,19 @@ val distributionContents = copySpec {
     }
     from("README.md")
     from("LICENSE")
-    into("licenses") {
-        from("src/licenses") { exclude("frontend/**") }
-        from(javaLicenseReport) { include("java-libraries.txt") }
-        from(javaLicenseReport) { include("*.jar/**"); into("java") }
-        from(frontendLicenses)
-    }
+    with(distributionLicenses)
 }
+
+// What a platform distribution leaves out of the commit it carries: the files that only building,
+// testing and hosting the project need. Everything else goes in, a file added to the repository
+// later included, so that no document links to a file its distribution lacks.
+val notInPlatformDistribution = listOf(
+    ".github/**", ".gitattributes", ".gitignore", ".coderabbit.yaml",
+    ".claude/**", ".agents/**", "AGENTS.md", "CLAUDE.md",
+    "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradle/**", "gradlew", "gradlew.bat",
+    "package.json", "package-lock.json", "vitest.config.mjs", ".npmrc",
+    "tools/**", "infrastructure/**", "docs/proposals/**",
+)
 
 distributions {
     main {
@@ -832,13 +850,13 @@ targetPlatforms.forEach { platform ->
     // archive needs the runtime of its platform downloaded and a git checkout for its sources, and
     // building the code needs neither.
     val contents = copySpec {
-        with(distributionContents)
-        into("src") {
-            from(unpackSources)
-            // Archives get fixed permissions; a file git keeps executable, gradlew among them,
-            // stays executable in the archive
+        from(unpackSources) {
+            exclude(notInPlatformDistribution)
+            // Archives get fixed permissions; a file git keeps executable stays executable in
+            // the archive
             eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
         }
+        with(distributionLicenses)
         // What Gradle takes into the main distribution by convention, plugins/ among it
         from("src/main/dist")
         into("bin") {

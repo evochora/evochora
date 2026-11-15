@@ -138,7 +138,7 @@ The project's [AI Policy](AI_POLICY.md) binds the people who work with agents; t
 
 There is a central document for AI agent guidelines that defines architectural principles and review standards. All agents, automated workflows, and human developers should adhere to these rules.
 
-- **Single Source of Truth:** [`/.agents/architecture-guidelines.md`](/.agents/architecture-guidelines.md)
+- **Single Source of Truth:** [`.agents/architecture-guidelines.md`](.agents/architecture-guidelines.md)
 
 ### General Principles
 - **Allowed changes**: Refactors, bug fixes, unit tests, documentation improvements, safe dependency updates (patch/minor versions)
@@ -510,7 +510,7 @@ void send(T message) throws InterruptedException;
 
 ## CI & PR Expectations
 
-- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: the standard configuration, with a plugin added that the start test builds against the archive's `lib/` and puts into its `plugins/`, must run until every indexer has processed ticks and the plugin has run, and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
+- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: every relative link in the archive's documents must lead to a file the archive holds, and the standard configuration, with a plugin added that the start test builds against the archive's `lib/` and puts into its `plugins/`, must run until every indexer has processed ticks and the plugin has run, and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
 - PR must include: a summary of what changed and why, the verification that was performed, green CI.
 - Branch naming: short and purpose-describing, e.g. `feature/<topic>`.
 

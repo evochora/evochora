@@ -14,8 +14,10 @@ import org.slf4j.LoggerFactory;
  * <p>
  * The build writes {@code evochora-build.properties} onto the classpath with the key
  * {@code revision}, the commit hash suffixed with {@link #DIRTY_SUFFIX} when the working tree
- * carried uncommitted changes. A build made outside a git checkout, from a source archive for instance,
- * writes {@link #UNKNOWN}; so does a classpath without the file. The key {@code version} holds the
+ * carried uncommitted changes. A build made outside a git checkout writes the revision that a
+ * {@code GIT_REVISION} file beside its sources names, suffixed with {@link #REBUILT_SUFFIX}, and
+ * {@link #UNKNOWN} where there is no such file, as in a source archive; so does a classpath
+ * without the file. The key {@code version} holds the
  * release tag of a build made for a release and is empty for every other build, a nightly or one
  * made by hand: such a build is named by its revision alone. The key
  * {@code requiredJava} holds the Java version the code is compiled for; the entry point
@@ -32,6 +34,12 @@ public final class BuildInfo {
 
     /** Appended to the commit hash when the working tree carried uncommitted changes. */
     public static final String DIRTY_SUFFIX = "-dirty";
+
+    /**
+     * Appended to the commit hash by a build made without a git checkout from sources shipped with
+     * their revision: such a build cannot tell whether the sources are still those of the commit.
+     */
+    public static final String REBUILT_SUFFIX = "-rebuilt";
 
     /** Classpath location of the file the build writes. */
     static final String RESOURCE = "/evochora-build.properties";
@@ -50,7 +58,8 @@ public final class BuildInfo {
     /**
      * Returns the revision of this build.
      *
-     * @return the commit hash, with {@link #DIRTY_SUFFIX} appended when the tree was not clean, or
+     * @return the commit hash, with {@link #DIRTY_SUFFIX} appended when the tree was not clean or
+     *         {@link #REBUILT_SUFFIX} when the build was made from shipped sources, or
      *         {@link #UNKNOWN}
      */
     public static String revision() {

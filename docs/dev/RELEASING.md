@@ -1,9 +1,7 @@
 # Releasing
 
-This describes the release process that the proposal
-[Release Process](../proposals/draft/RELEASE_PROCESS.md) introduces. Until that proposal is built,
-the workflow still publishes the rolling pre-release `latest` on every push and builds a numbered
-release after it was published by hand.
+This describes how Evochora is released: the nightly build, a numbered release, and what follows
+the first archived one.
 
 ## The nightly
 

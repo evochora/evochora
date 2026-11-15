@@ -57,6 +57,11 @@ public final class BuildRevisionCheck {
         if (recorded.endsWith(BuildInfo.DIRTY_SUFFIX)) {
             return "those sources carried uncommitted changes and cannot be checked out again";
         }
+        if (recorded.endsWith(BuildInfo.REBUILT_SUFFIX)) {
+            String commit = recorded.substring(0, recorded.length() - BuildInfo.REBUILT_SUFFIX.length());
+            return "its sources were shipped as those of `git checkout " + commit + "` and may have been changed "
+                + "before the build";
+        }
         return "its sources are `git checkout " + recorded + "`";
     }
 }

@@ -453,6 +453,7 @@ bin/evochora cleanup --delete "20260122*" --compact --force
 - Every run records the revision of the build that wrote it. A run is reproduced exactly only by that build, so another build warns when it reads the run.
 - To read or continue the run faithfully, use the build that wrote it. The [User Guide](USER_GUIDE.md#8-reproduce-a-run) describes how to keep that build with the run.
 - A revision ending in `-dirty` came from uncommitted changes, so that build cannot be made again.
+- A revision ending in `-rebuilt` came from a build made without a git checkout, from sources shipped together with their revision. Nothing shows whether those sources were changed before the build.
 
 ### Inspect storage fails
 
