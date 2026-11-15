@@ -34,7 +34,7 @@ This guide takes you through an experiment with Evochora, from starting a simula
 
 Download the archive for your system from the [releases page](https://github.com/evochora/evochora/releases), unpack it and start a node as described in the [Quick Start](../README.md#quick-start). The node starts a run with the default ancestor in the default environment. Open the visualizer and you can watch the ancestor copy itself. [Choose or Write an Ancestor](#2-choose-or-write-an-ancestor) shows how to start another one or write your own.
 
-The releases page offers numbered releases and a nightly build of the current development state. For experiments you mean to publish, a numbered release is the usual choice, because it has a DOI to cite it by; the nightly carries the newest changes and has none. A Docker image is published as well, but the archives are the recommended way to run Evochora.
+The releases page offers numbered releases and a nightly build of the current development state. For experiments you mean to publish, a numbered release is the usual choice, because it has a DOI to cite it by; the nightly carries the newest changes and has none. Each comes as one archive per supported system, which brings its own Java, and as one archive without Java, which runs on the Java installed on the machine. A Docker image is published as well, but the archives are the recommended way to run Evochora.
 
 Whichever release you use, you normally work in your project directory. By default, this is the installation directory: your configuration, your ancestors and the data of your runs are kept in it, next to Evochora itself and its sources. That way the whole directory can be published as an experiment, and the runs come with the exact software that produced them.
 

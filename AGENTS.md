@@ -42,7 +42,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew installDist        # Distribution for development under build/install/evochora, run on JAVA_HOME
 ./gradlew installLocalPlatformDist  # This machine's platform distribution, with its Java runtime, under build/install
-./gradlew platformDistributions     # Every published platform archive, under build/distributions
+./gradlew platformDistributions     # Every published archive, one per platform and one without Java, under build/distributions
 ./gradlew jmhJar             # Build the JMH benchmark jar (see docs/dev/BENCHMARKING.md)
 ./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```

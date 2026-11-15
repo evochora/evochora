@@ -118,7 +118,10 @@ registry is tagged `nightly`, and the deploy workflow defaults to it.
    draft's text and passes it into the build; after the build it creates the record, as a new
    version of the concept record if one exists, uploads the source archive, the packages and the
    metadata taken from `CITATION.cff`, sets the version and the release text as description, and
-   publishes the record. Before it creates anything it checks whether a record for this version
+   publishes the record. The source archive is the one the build packs with the task
+   `sourceArchive`: every file of the commit, and the file `GIT_REVISION` that names it, so that a
+   build made from the archive reports that commit. The source archive GitHub attaches to a
+   release lacks that file. Before it creates anything it checks whether a record for this version
    already exists, so that a restarted run after a failure between Zenodo and GitHub does not
    create a second version. A version with a suffix, `v1.0.0-rc.1`, skips Zenodo and is published
    as a pre-release.
