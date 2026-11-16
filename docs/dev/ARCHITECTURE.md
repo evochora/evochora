@@ -252,6 +252,34 @@ Which services a node runs is configuration as well. The node that simulates run
 
 The visualizer and the analyzer are web applications. The HTTP server serves them as static files, and they read everything they show through its controllers. This is why a node that only shows needs nothing but the HTTP server, the database and the storage. The visualizer shows a run tick by tick, from the environment down to one organism, its state and the source line of the instruction it executes. The analyzer draws its charts from the tables in two ways. Either a controller merges and filters the rows of a table on the node, or the browser loads the files and runs the queries itself. A third set of controllers reports the state of the pipeline and controls it: start, stop, pause and resume.
 
+```text
+       Browser (JavaScript Apps)                       Node (Java Backend)
+  ┌──────────────────────────────────┐         ┌──────────────────────────────────┐
+  │                                  │         │                                  │
+  │  ┌───────────────────────────┐   │         │  ┌───────────────────────────┐   │
+  │  │      Visualizer App       │   │         │  │ Visualizer Controllers    │   │
+  │  │---------------------------│   │         │  │ - EnvironmentController   │   │
+  │  │ - EnvironmentApi.js       │───┼───HTTP──┼─►│ - OrganismController      │   │
+  │  │ - OrganismApi.js          │   │         │  │ - SimulationController    │   │
+  │  │ - SimulationApi.js        │   │         │  └───────────────────────────┘   │
+  │  └───────────────────────────┘   │         │                                  │
+  │                                  │         │                                  │
+  │  ┌───────────────────────────┐   │         │                                  │
+  │  │       Analyzer App        │   │         │                                  │
+  │  │---------------------------│   │         │  ┌───────────────────────────┐   │
+  │  │ - AnalyticsApi.js         │───┼───HTTP──┼─►│    AnalyticsController    │   │
+  │  │ - DuckDBClient.js (WASM)  │   │         │  └───────────────────────────┘   │
+  │  └───────────────────────────┘   │         │                                  │
+  │                                  │         │  ┌───────────────────────────┐   │
+  │                                  │         │  │     PipelineController    │   │
+  │      (Admin Tools/Scripts)   ────┼───HTTP──┼─►│ (For pipeline management) │   │
+  │                                  │         │  └───────────────────────────┘   │
+  │                                  │         │                                  │
+  └──────────────────────────────────┘         └──────────────────────────────────┘
+```
+
+On the left are the modules of the two frontends that call the node, on the right the controllers that answer them.
+
 ## 6. Determinism
 
 A run is determined by its seed, its configuration and the build that executes it. With the same three it takes the same course on any machine, cell for cell. Earlier sections have used this property; this section says where a run could depart from it and how each of these ways is closed.
