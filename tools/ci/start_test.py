@@ -6,7 +6,8 @@ Unpacks the archive into a temporary directory and, from its top directory, chec
 1. The top directory holds the files of the commit the archive was built from, as the repository
    holds them, and the GIT_REVISION that names the commit, and none of the files that only
    building the project needs.
-2. Every relative link in a document of the archive leads to a file the archive holds.
+2. Every relative link in a document of the archive leads to a file the archive holds, and a
+   link that names a place in a Markdown document leads to a heading or an anchor it has.
 3. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
 4. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
 5. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
@@ -45,6 +46,11 @@ LOG_PROBLEM = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (WARN|ERROR)\b")
 # A link as Markdown writes it, and the scheme that marks one that leaves the archive
 MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
 URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+# What a fragment can name in a Markdown document: a heading, an anchor the text sets itself, and
+# the fence that opens and closes a code block, inside which a line beginning with # is no heading
+HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*#*\s*$")
+ANCHOR = re.compile(r'<a\s[^>]*\b(?:id|name)="([^"]+)"')
+FENCE = re.compile(r"^\s*(```|~~~)")
 # The JVM's own warnings, in the three forms it writes them: the JDK's at run time, the virtual
 # machine's ("OpenJDK 64-Bit Server VM warning: ..."), and those of its unified logging, which
 # begin with the uptime ("[0.012s][warning][gc] ..."); a line of the node's own log, which begins
@@ -84,23 +90,69 @@ def check_sources(root: Path) -> list:
     return problems
 
 
+def anchors(document: Path) -> set:
+    """Returns the fragments a link can name in a Markdown document.
+
+    A heading gets the fragment GitHub forms from it: the text as it is rendered, in lower case,
+    without anything but letters, digits, hyphens, underscores and spaces, and with a hyphen for
+    every space. A heading whose fragment is taken gets a number appended, counted from 1. An
+    anchor the text sets with ``<a id="...">`` is named as it is written.
+    """
+    found = set()
+    taken = {}
+    in_code = False
+    for line in document.read_text(encoding="utf-8").splitlines():
+        if FENCE.match(line):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        found.update(ANCHOR.findall(line))
+        heading = HEADING.match(line)
+        if heading:
+            # What is rendered of a link is its text, and of inline HTML nothing
+            text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading.group(1))
+            text = re.sub(r"<[^>]+>", "", text)
+            fragment = re.sub(r"[^\w\- ]", "", text.strip().lower()).replace(" ", "-")
+            count = taken.get(fragment, 0)
+            taken[fragment] = count + 1
+            found.add(fragment if count == 0 else f"{fragment}-{count}")
+    return found
+
+
 def check_links(root: Path) -> list:
-    """Follows every relative link of every Markdown document outside the Java runtime and the licenses."""
+    """Follows every relative link of every Markdown document outside the Java runtime and the licenses.
+
+    A link leads to a file the archive holds, and its fragment, where it has one and the file is a
+    Markdown document, to a heading or an anchor of that document. A link that is a fragment alone
+    leads into the document it stands in.
+    """
     problems = []
+    known = {}
     for document in sorted(root.rglob("*.md")):
         if document.relative_to(root).parts[0] in ("jre", "lib", "licenses"):
             continue
         for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), 1):
             for target in MARKDOWN_LINK.findall(line):
-                # A scheme marks a link that leaves the archive, a lone fragment one within the document
-                if URL_SCHEME.match(target) or target.startswith("#"):
+                # A scheme marks a link that leaves the archive
+                if URL_SCHEME.match(target):
                     continue
-                path = urllib.parse.unquote(target.split("#")[0].split("?")[0])
+                link, _, fragment = target.partition("#")
+                path = urllib.parse.unquote(link.split("?")[0])
                 where = f"{document.relative_to(root).as_posix()}:{number}"
                 if path.startswith("/"):
                     problems.append(f"{where} links to {target}, a path from the root of a web site")
-                elif not (document.parent / path).exists():
+                    continue
+                destination = document.parent / path if path else document
+                if not destination.exists():
                     problems.append(f"{where} links to {target}, which the archive does not hold")
+                    continue
+                if fragment and destination.is_file() and destination.suffix == ".md":
+                    if destination not in known:
+                        known[destination] = anchors(destination)
+                    if urllib.parse.unquote(fragment) not in known[destination]:
+                        problems.append(f"{where} links to {target}, but "
+                                        f"{destination.relative_to(root).as_posix()} has no such heading or anchor")
     return problems
 
 
