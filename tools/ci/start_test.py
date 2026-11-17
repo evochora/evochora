@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Starts a platform distribution of Evochora the way a user does and checks that it works.
 
-Unpacks the archive into a temporary directory and, from its top directory, checks five things:
+Unpacks the archive into a temporary directory and, from its top directory, checks these things:
 
 1. The top directory holds the files of the commit the archive was built from, as the repository
    holds them, and the GIT_REVISION that names the commit, and none of the files that only
    building the project needs.
 2. Every relative link in a document of the archive leads to a file the archive holds, and a
    link that names a place in a Markdown document leads to a heading or an anchor it has.
-3. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
-4. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
-5. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
+3. On macOS, the system takes the Java the archive brings as notarized by Apple, so that an
+   archive a browser downloaded starts without a warning.
+4. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
+5. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
+6. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
    every service that counts processed ticks has processed some, so that data has passed through
    the whole pipeline; the HTTP API reports no service in ERROR; nothing is logged at WARN or
    ERROR, and the JVM prints no warning of its own, up to and including the node's shutdown; and
@@ -40,6 +42,7 @@ import zipfile
 from pathlib import Path
 
 WINDOWS = os.name == "nt"
+MACOS = sys.platform == "darwin"
 STATUS_URL = "http://localhost:8081/pipeline/api/status"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LOG_PROBLEM = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (WARN|ERROR)\b")
@@ -154,6 +157,25 @@ def check_links(root: Path) -> list:
                         problems.append(f"{where} links to {target}, but "
                                         f"{destination.relative_to(root).as_posix()} has no such heading or anchor")
     return problems
+
+
+def check_notarization(root: Path) -> list:
+    """Asks macOS whether Apple has notarized the Java the archive brings.
+
+    A browser marks what it downloads as quarantined, and the Finder passes the mark on to what it
+    unpacks. macOS starts a quarantined program without a warning only when its developer signed it
+    and Apple notarized it. The Java runtime is what the start script executes, so it is the
+    program this is asked for; the question goes to Apple over the network.
+    """
+    java = root / "jre" / "Contents" / "Home" / "bin" / "java"
+    if not java.is_file():
+        return [f"the archive holds no {java.relative_to(root).as_posix()}"]
+    result = subprocess.run(["codesign", "--verify", "--check-notarization", "--test-requirement", "=notarized",
+                             "--verbose=2", str(java)], capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        return [f"macOS does not take {java.relative_to(root).as_posix()} as notarized by Apple, so a downloaded "
+                f"archive would not start without a warning: {result.stdout}{result.stderr}"]
+    return []
 
 
 def check_help(root: Path) -> list:
@@ -383,12 +405,15 @@ def main() -> int:
     problems = []
     try:
         root = unpack(args.archive.resolve(), work)
-        for name, check in [("sources", lambda: check_sources(root)),
-                            ("links", lambda: check_links(root)),
-                            ("help", lambda: check_help(root)),
-                            ("refusal", lambda: check_refusal(root, args.old_java)),
-                            ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),
-                            ("node run", lambda: check_node_run(root, args.timeout))]:
+        checks = [("sources", lambda: check_sources(root)),
+                  ("links", lambda: check_links(root))]
+        if MACOS:
+            checks.append(("notarization", lambda: check_notarization(root)))
+        checks += [("help", lambda: check_help(root)),
+                   ("refusal", lambda: check_refusal(root, args.old_java)),
+                   ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),
+                   ("node run", lambda: check_node_run(root, args.timeout))]
+        for name, check in checks:
             found = check()
             print(f"{name}: {'ok' if not found else 'FAILED'}", flush=True)
             problems += [f"[{name}] {p}" for p in found]
