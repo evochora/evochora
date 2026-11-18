@@ -2,7 +2,7 @@
 
 Jupyter notebooks that analyze the data of a run.
 
-- [`data_analysis_guide.ipynb`](data_analysis_guide.ipynb): the usual analyses of a run, from population dynamics to phylogenetic trees, and a reference of the data a notebook can fetch.
+- [`data_analysis_guide.ipynb`](data_analysis_guide.ipynb): how to build an analysis of a run, shown by example from population dynamics to phylogenetic trees, with a reference of the data a notebook can fetch.
 
 A notebook reads its data from a node over HTTP. Its first code cell sets `BASE_URL`, the address of the node, and optionally `RUN_ID`, the run to analyze. Without `RUN_ID`, the notebook takes the longest run the node holds.
 

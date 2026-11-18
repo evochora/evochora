@@ -123,7 +123,7 @@ Run experiments
 
 Analyze the data
 
-- [Analysis Notebook](notebooks/README.md): an example of how an analysis is built, with ten worked analyses and a reference of the data a notebook can fetch.
+- [Analysis Notebook](notebooks/README.md): how to build an analysis of a run, shown by example, with a reference of the data a notebook can fetch.
 
 Write organisms
 
