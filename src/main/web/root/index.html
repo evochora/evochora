@@ -1,1274 +1,416 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Evochora</title>
-    <link rel="icon" type="image/x-icon" href="/favicons/favicon.ico">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon-16x16.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon-32x32.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/favicons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/favicons/android-chrome-192x192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="/favicons/android-chrome-512x512.png">
-    <link rel="manifest" href="/favicons/site.webmanifest">
-    <link rel="stylesheet" href="/shared/vendor/fonts/doto/900.css">
-    <link rel="stylesheet" href="/shared/vendor/fonts/source-serif-4/opsz.css">
-    <link rel="stylesheet" href="/shared/vendor/fonts/source-serif-4/opsz-italic.css">
-    <link rel="stylesheet" href="/shared/vendor/fonts/ibm-plex-sans/400.css">
-    <link rel="stylesheet" href="/shared/vendor/fonts/ibm-plex-sans/500.css">
-    <link rel="stylesheet" href="/shared/vendor/fonts/ibm-plex-sans/600.css">
-    <link rel="stylesheet" href="/shared/app-switcher/app-switcher.css">
-    <style>
-        :root {
-            --bg-deep: #08080f;
-            --bg-mid: #0e0e18;
-            --bg-surface: rgba(255, 255, 255, 0.03);
-            --bg-surface-hover: rgba(255, 255, 255, 0.06);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-hover: rgba(255, 255, 255, 0.15);
-            --text-primary: #d8d8de;
-            --text-secondary: rgba(216, 216, 222, 0.7);
-            --text-tertiary: rgba(216, 216, 222, 0.5);
-            --accent: #4a9eff;
-            --accent-dim: rgba(74, 158, 255, 0.15);
-            --accent-glow: rgba(74, 158, 255, 0.08);
-            --serif: 'Source Serif 4 Variable', Georgia, serif;
-            --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            --doto: 'Doto', monospace;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html {
-            scroll-behavior: smooth;
-        }
-
-        body {
-            font-family: var(--sans);
-            background: var(--bg-deep);
-            color: var(--text-primary);
-            min-height: 100vh;
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        .page {
-            width: 100%;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 3rem 2rem 4rem;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* ── Logo ── */
-        .logo {
-            text-align: center;
-            padding: 1rem 0 2.5rem;
-        }
-
-        .logo-text {
-            font-family: var(--doto);
-            font-weight: 900;
-            font-size: 56px;
-            color: var(--text-primary);
-            letter-spacing: 6px;
-            line-height: 1;
-            opacity: 0.85;
-        }
-
-        .logo-sub {
-            font-family: var(--serif);
-            font-size: 0.95rem;
-            font-weight: 300;
-            color: var(--text-tertiary);
-            margin-top: 0.5rem;
-            letter-spacing: 0.5px;
-        }
-
-        /* ── Dividers ── */
-        .divider {
-            border: none;
-            height: 1px;
-            background: var(--border);
-            margin: 2.5rem 0;
-        }
-
-        /* ── Hero ── */
-        .hero {
-            display: flex;
-            gap: 2.5rem;
-            align-items: flex-start;
-        }
-
-        .hero-text {
-            flex: 1 1 380px;
-            min-width: 280px;
-        }
-
-        .hero-headline {
-            font-family: var(--serif);
-            font-size: 1.75rem;
-            font-weight: 600;
-            line-height: 1.35;
-            color: var(--text-primary);
-            margin-bottom: 1.25rem;
-        }
-
-        .hero-body {
-            font-family: var(--serif);
-            font-size: 1.05rem;
-            font-weight: 400;
-            line-height: 1.75;
-            color: var(--text-secondary);
-        }
-
-        .hero-video {
-            flex: 1 1 420px;
-            min-width: 300px;
-        }
-
-        .demo-video {
-            width: 100%;
-            border-radius: 4px;
-            border: 1px solid var(--border);
-        }
-
-        .video-caption {
-            font-size: 0.8rem;
-            color: var(--text-tertiary);
-            margin-top: 0.5rem;
-            font-style: italic;
-            font-family: var(--serif);
-        }
-
-        /* ── Action Cards ── */
-        .actions {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-        }
-
-        .action-card {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .action-card-img-link {
-            display: block;
-            border-radius: 6px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-            transition: border-color 0.2s ease, transform 0.2s ease;
-        }
-
-        .action-card-img-link:hover {
-            border-color: var(--border-hover);
-            transform: scale(1.02);
-        }
-
-        .action-card-img {
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            object-fit: cover;
-            display: block;
-        }
-
-
-        .action-card-body {
-            padding: 1rem 0.25rem 0;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .action-card-title {
-            font-family: var(--sans);
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 0.3rem;
-        }
-
-        .action-card-desc {
-            font-size: 0.85rem;
-            line-height: 1.5;
-            color: var(--text-secondary);
-            flex: 1;
-        }
-
-        .action-card-cta {
-            display: inline-block;
-            margin-top: 0.75rem;
-            padding: 0.45rem 1rem;
-            font-family: var(--sans);
-            font-size: 0.8rem;
-            font-weight: 500;
-            color: var(--accent);
-            border: 1px solid var(--accent-dim);
-            border-radius: 4px;
-            text-decoration: none;
-            transition: background 0.15s ease, border-color 0.15s ease;
-            align-self: flex-start;
-        }
-
-        .action-card-cta:hover {
-            background: var(--accent-dim);
-            border-color: var(--accent);
-        }
-
-        .action-card-links {
-            margin-top: 0.75rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .action-card-links a {
-            color: var(--accent);
-            text-decoration: none;
-            font-size: 0.8rem;
-            font-weight: 500;
-        }
-
-        .action-card-links a:hover {
-            text-decoration: underline;
-        }
-
-        .colab-badge {
-            height: 20px;
-            display: block;
-        }
-
-        /* ── Section headings ── */
-        .section-title {
-            font-family: var(--serif);
-            font-size: 1.35rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 1.5rem;
-        }
-
-        /* ── Why Evochora ── */
-        .why-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem 6rem;
-        }
-
-        .why-item {
-            padding: 0.9rem 1rem;
-            border-left: 2px solid var(--accent);
-            background: rgba(74, 158, 255, 0.03);
-            border-radius: 0 4px 4px 0;
-        }
-
-        .why-label {
-            font-family: var(--sans);
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 0.3rem;
-        }
-
-        .why-desc {
-            font-family: var(--serif);
-            font-size: 0.9rem;
-            line-height: 1.65;
-            color: var(--text-secondary);
-        }
-
-        /* ── Get Started ── */
-        .get-started {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 2rem 2.25rem;
-        }
-
-        .get-started-title {
-            font-family: var(--serif);
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 0.75rem;
-        }
-
-        .get-started-body {
-            font-family: var(--serif);
-            font-size: 0.95rem;
-            line-height: 1.7;
-            color: var(--text-secondary);
-            margin-bottom: 1.25rem;
-            max-width: 680px;
-        }
-
-        .get-started-actions {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .btn-primary {
-            display: inline-block;
-            padding: 0.6rem 1.4rem;
-            background: var(--accent);
-            color: var(--bg-deep);
-            font-family: var(--sans);
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-decoration: none;
-            border-radius: 4px;
-            transition: background 0.15s ease;
-        }
-
-        .btn-primary:hover {
-            background: #66b3ff;
-        }
-
-        .btn-secondary {
-            display: inline-block;
-            padding: 0.6rem 1.4rem;
-            color: var(--text-secondary);
-            font-family: var(--sans);
-            font-size: 0.875rem;
-            font-weight: 500;
-            text-decoration: none;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            transition: border-color 0.15s ease, color 0.15s ease;
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .get-started-req {
-            font-size: 0.8rem;
-            color: var(--text-tertiary);
-            margin-top: 0.75rem;
-        }
-
-
-        /* ── Footer ── */
-        .footer {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-            padding-top: 0.5rem;
-        }
-
-        .footer-link {
-            font-size: 0.8rem;
-            color: var(--text-tertiary);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            transition: color 0.15s ease;
-        }
-
-        .footer-link:hover {
-            color: var(--text-secondary);
-        }
-
-        .footer-sep {
-            color: var(--border);
-            font-size: 0.7rem;
-            user-select: none;
-        }
-
-        .footer-icon {
-            width: 14px;
-            height: 14px;
-            fill: currentColor;
-            opacity: 0.8;
-        }
-
-        /* ── Responsive ── */
-        @media (max-width: 900px) {
-            .actions {
-                grid-template-columns: 1fr 1fr;
-            }
-
-            .why-grid, .next-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-
-        @media (max-width: 680px) {
-            .site-header-inner {
-                padding: 6px 1.25rem;
-            }
-
-            .page {
-                padding: 2rem 1.25rem 3rem;
-            }
-
-            .logo-text {
-                font-size: 40px;
-                letter-spacing: 4px;
-            }
-
-            .hero {
-                flex-direction: column;
-                gap: 1.5rem;
-            }
-
-            .hero-headline {
-                font-size: 1.4rem;
-            }
-
-            .actions {
-                grid-template-columns: 1fr;
-            }
-
-            .why-grid, .next-grid {
-                grid-template-columns: 1fr;
-                gap: 1.25rem;
-            }
-
-            .get-started {
-                padding: 1.5rem;
-            }
-
-            .divider {
-                margin: 2rem 0;
-            }
-        }
-        /* ── Next Steps (local mode) ── */
-        .next-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem 6rem;
-        }
-
-        .next-item {
-            padding: 0.9rem 1rem;
-            border-left: 2px solid var(--accent);
-            background: rgba(74, 158, 255, 0.03);
-            border-radius: 0 4px 4px 0;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .next-label {
-            font-family: var(--sans);
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 0.3rem;
-        }
-
-        .next-desc {
-            font-family: var(--serif);
-            font-size: 0.9rem;
-            line-height: 1.65;
-            color: var(--text-secondary);
-        }
-
-        .next-links {
-            margin-top: auto;
-            padding-top: 0.75rem;
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-        }
-
-        .next-links a {
-            color: var(--accent);
-            text-decoration: none;
-            font-family: var(--sans);
-            font-size: 0.8rem;
-            font-weight: 500;
-        }
-
-        .next-links a:hover {
-            text-decoration: underline;
-        }
-
-        .next-link-sep {
-            color: var(--text-tertiary);
-            font-size: 0.75rem;
-        }
-
-        /* ── Node Banner ── */
-        .node-banner {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.6rem 1rem;
-            font-size: 0.85rem;
-            color: var(--accent);
-            background: var(--accent-glow);
-            border: 1px solid var(--accent-dim);
-            border-radius: 4px;
-            margin-bottom: 1.5rem;
-        }
-
-        .node-banner-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #50c878;
-            flex-shrink: 0;
-        }
-
-        /* ── Run List ── */
-        .run-list-title {
-            font-family: var(--sans);
-            font-size: 0.85rem;
-            font-weight: 400;
-            color: var(--text-secondary);
-            margin-bottom: 0.6rem;
-        }
-
-        .run-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-
-        .run-table th {
-            text-align: left;
-            font-weight: 500;
-            color: var(--text-tertiary);
-            padding: 0.3rem 0.75rem;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .run-table th:nth-child(n+2) {
-            text-align: right;
-        }
-
-        .run-table td {
-            padding: 0.3rem 0.75rem;
-            color: var(--text-secondary);
-            font-variant-numeric: tabular-nums;
-        }
-
-        .run-table td:nth-child(n+2) {
-            text-align: right;
-        }
-
-        .run-table tbody tr:hover {
-            background: var(--bg-surface-hover);
-        }
-
-        .run-active td {
-            color: var(--text-primary);
-        }
-
-        .run-status-badge {
-            display: inline-block;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            padding: 0.15rem 0.5rem;
-            border-radius: 3px;
-            margin-right: 0.5rem;
-        }
-
-        .run-status-running {
-            color: #50c878;
-            background: rgba(80, 200, 120, 0.1);
-            border: 1px solid rgba(80, 200, 120, 0.25);
-        }
-
-        .run-status-error {
-            color: #e05050;
-            background: rgba(224, 80, 80, 0.1);
-            border: 1px solid rgba(224, 80, 80, 0.25);
-        }
-
-        .run-viz-link {
-            color: var(--accent);
-            text-decoration: none;
-            font-size: 0.8rem;
-            font-weight: 500;
-        }
-
-        .run-viz-link:hover {
-            text-decoration: underline;
-        }
-
-        .run-link-sep {
-            color: var(--text-tertiary);
-            font-size: 0.75rem;
-            margin: 0 0.15rem;
-        }
-
-        .run-list-loading, .run-list-empty, .run-list-offline {
-            font-size: 0.85rem;
-            color: var(--text-tertiary);
-            padding: 0.5rem 0;
-        }
-
-        .node-banner-offline {
-            color: #c0a050;
-            background: rgba(192, 160, 80, 0.08);
-            border-color: rgba(192, 160, 80, 0.2);
-            margin-bottom: 0;
-        }
-
-        .node-banner-offline .node-banner-dot {
-            background: #c0a050;
-        }
-
-        /* ── Sticky Header ── */
-        .site-header {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: rgba(8, 8, 15, 0.9);
-            backdrop-filter: blur(8px);
-        }
-
-        .site-header-inner {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 6px 2rem;
-            position: relative;
-        }
-
-        .site-header-inner::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 2rem;
-            right: 2rem;
-            height: 1px;
-            background: var(--border);
-        }
-
-        .site-header-left {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .site-header-logo {
-            font-family: var(--doto);
-            font-weight: 900;
-            font-size: 16px;
-            color: var(--text-primary);
-            letter-spacing: 2px;
-            opacity: 0.85;
-            text-decoration: none;
-        }
-
-        .site-header-right {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .site-header-icon {
-            width: 18px;
-            height: 18px;
-            fill: var(--text-tertiary);
-            transition: fill 0.15s ease;
-            display: block;
-        }
-
-        .site-header-icon:hover {
-            fill: var(--text-secondary);
-        }
-
-        /* App switcher sizing for LP header */
-        .site-header .app-switcher-button {
-            width: 22px;
-            height: 22px;
-            margin-right: 0;
-        }
-
-        .site-header .app-switcher-button svg {
-            width: 14px;
-            height: 14px;
-        }
-
-        #app-switcher-container {
-            position: relative;
-        }
-
-        .site-header .app-switcher-overlay {
-            position: absolute;
-            top: 32px;
-            left: 0;
-        }
-
-        /* ── Mode visibility (demo vs local) ── */
-        [data-mode="local"] { display: none; }
-        [data-mode="demo"] { display: revert; }
-        body.local [data-mode="demo"] { display: none; }
-        body.local [data-mode="local"] { display: revert; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evochora</title>
+<link rel="icon" type="image/x-icon" href="/favicons/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon-32x32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/favicons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicons/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/favicons/android-chrome-512x512.png">
+<link rel="manifest" href="/favicons/site.webmanifest">
+<link rel="stylesheet" href="/shared/vendor/fonts/doto/900.css">
+<link rel="stylesheet" href="/shared/vendor/fonts/roboto-mono/400.css">
+<link rel="stylesheet" href="/shared/vendor/fonts/roboto-mono/500.css">
+<link rel="stylesheet" href="/shared/vendor/fonts/source-serif-4/opsz.css">
+<link rel="stylesheet" href="/shared/vendor/fonts/ibm-plex-sans/400.css">
+<link rel="stylesheet" href="/shared/vendor/fonts/ibm-plex-sans/500.css">
+<link rel="stylesheet" href="/shared/vendor/fonts/ibm-plex-sans/600.css">
+<link rel="stylesheet" href="/shared/app-switcher/app-switcher.css">
+<style>
+:root {
+    --field: #0a0a14; --panel: #191923; --line: #333; --hair: #26262f; --well: #0f0f18;
+    --ink: #e0e0e0; --ink-2: #aaa; --ink-3: #888;
+    --blue: #4a9eff; --blue-2: #6bb3ff; --green: #a0e0a0; --orange: #ffb366; --red: #e87070;
+    --tile-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --tile-serif: 'Source Serif 4 Variable', Georgia, serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--field); color: var(--ink);
+    font: 400 13px/1.5 'Roboto Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+a { color: inherit; text-decoration: none; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 2px; }
+code { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 3px; padding: 1px 7px; }
+
+/* Header, as in the analyzer: app switcher and logo */
+header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 15px; }
+.brand { display: flex; align-items: center; min-width: 0; }
+.logo { position: relative; font: 900 36px/1 'Doto', sans-serif; letter-spacing: 1px; opacity: .9; white-space: nowrap; }
+.node { display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 8px; font-size: 12px; line-height: 16px; color: var(--ink-2); white-space: nowrap; text-align: right; }
+.node small { grid-column: 2; font-size: 11px; color: var(--ink-3); }
+.node i { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+.node.running i, .node.starting i { background: var(--green); }
+.node.paused i { background: var(--orange); }
+.node.degraded i, .node.unreachable i { background: var(--red); }
+
+main { flex: 1; min-height: 0; overflow: auto; width: 100%; max-width: 1440px; margin: 0 auto;
+    padding: clamp(14px, 2.8vh, 26px) 28px 14px; display: flex; flex-direction: column; gap: clamp(16px, 3vh, 30px); }
+section { display: flex; flex-direction: column; min-height: 0; }
+
+/* The simulation runs */
+.runs { flex: 0 1 auto; min-height: 170px; }
+.panel { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    scrollbar-width: thin; scrollbar-color: #444 transparent; }
+table { width: 100%; border-collapse: collapse; }
+th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: inset 0 -1px 0 var(--line);
+    font-weight: 400; font-size: 12px; color: var(--ink-3); text-align: left; white-space: nowrap; padding: 11px 24px 8px 0; }
+td { height: 44px; padding: 0 24px 0 0; white-space: nowrap; border-bottom: 1px solid var(--hair); }
+tbody tr:last-child td { border-bottom: 0; }
+th:first-child, td:first-child { padding-left: 20px; }
+th:last-child, td:last-child { padding-right: 20px; text-align: right; width: 1%; }
+th.num, td.num { text-align: right; }
+tbody tr:hover td { background: rgba(60, 80, 120, .16); }
+.name { font-weight: 500; }
+.copy { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 18px; margin-left: 6px; padding: 0; vertical-align: -4px; background: none; border: 1px solid transparent; border-radius: 3px;
+    color: var(--ink-3); cursor: pointer; }
+.copy:hover { border-color: var(--line); color: var(--ink); }
+.copy.done { color: var(--green); }
+.copy svg { display: block; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.topology { margin-left: 10px; font-size: 11px; color: var(--ink-3); }
+.per { display: block; margin-top: 3px; font-size: 12px; line-height: 1; color: var(--ink-3); }
+
+/* The run the node is simulating */
+tr.live td { background: transparent; }
+tr.live:hover td { background: rgba(60, 80, 120, .16); }
+tr.live td:first-child { box-shadow: inset 2px 0 0 var(--green); }
+
+tr.live.paused td:first-child { box-shadow: inset 2px 0 0 var(--orange); }
+
+tr.live.degraded td:first-child { box-shadow: inset 2px 0 0 var(--red); }
+.tick { display: inline-block; background: var(--well); border: 1px solid var(--line); border-radius: 4px; padding: 1px 10px;
+    font-size: 17px; font-weight: 500; line-height: 24px; color: #fff; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; margin-left: 12px; vertical-align: 1px;
+    border: 1px solid rgba(160, 224, 160, .45); border-radius: 3px; background: rgba(160, 224, 160, .08);
+    color: var(--green); font-size: 11px; line-height: 1; }
+.chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.paused { color: var(--orange); border-color: rgba(255, 179, 102, .45); background: rgba(255, 179, 102, .08); }
+.chip.degraded { color: var(--red); border-color: rgba(232, 112, 112, .5); background: rgba(232, 112, 112, .08); }
+@media (prefers-reduced-motion: no-preference) { .chip.running i, .chip.starting i { animation: beat 2s ease-in-out infinite; } }
+@keyframes beat { 50% { opacity: .3; } }
+
+.btn { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; margin-left: 6px; cursor: pointer; white-space: nowrap;
+    background: var(--well); border: 1px solid var(--line); border-radius: 3px; color: var(--ink-2); font: inherit; font-size: 12px; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn:hover { background: #1a1a2a; border-color: #555; color: var(--ink); }
+.btn.door { background: #1a2a3a; border-color: var(--blue); color: var(--blue); }
+.btn.door:hover { background: #20364c; color: var(--blue-2); }
+.rule { display: inline-block; width: 1px; height: 16px; margin: 0 6px 0 12px; background: var(--line); vertical-align: middle; }
+.panel .none { margin: 0; padding: 18px 20px 20px; color: var(--ink-2); line-height: 2; }
+.panel .none a { color: var(--blue); } .panel .none a:hover { text-decoration: underline; }
+.panel .none.error { color: var(--red); }
+
+/* The documentation: the tiles for the work on an experiment, the remaining topics in the footer */
+.docs { flex: none; position: relative; margin-top: auto; }
+.copy { position: relative; }
+.copied { position: absolute; z-index: 2; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); padding: 1px 6px; background: var(--well); border: 1px solid var(--line); border-radius: 3px; font-size: 11px; line-height: 14px; color: var(--green); pointer-events: none; }
+.more .version { height: calc(.8rem * 1.55); line-height: calc(.8rem * 1.55); font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.more .plain { width: 152px; }
+td:first-child, th:first-child { width: 1%; }
+td.name { max-width: 0; width: 34%; overflow: hidden; text-overflow: ellipsis; }
+.work { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.topic { display: flex; flex-direction: column; padding: .8rem 1rem .85rem 19px; border-left: 2px solid var(--blue); background: rgba(74, 158, 255, .03); border-radius: 0 4px 4px 0; }
+.topic.start { border-left-width: 3px; padding-left: 18px; background: rgba(74, 158, 255, .09); }
+.topic h3, .more h3 { margin: 0 0 .3rem; font-family: var(--tile-sans); font-size: .875rem; font-weight: 600; color: #d8d8de; }
+.topic.start h3 { font-size: 1rem; color: #fff; }
+.topic p { margin: 0; font-family: var(--tile-serif); font-size: .9rem; line-height: 1.5; color: rgba(216, 216, 222, .7); }
+.topic.start p { color: rgba(216, 216, 222, .88); }
+.links { margin: auto 0 0; padding: .65rem 0 0; list-style: none; display: grid; grid-auto-flow: column; grid-template-rows: repeat(3, auto); justify-content: start; gap: .2rem 1.5rem; }
+.links a, .more a { color: var(--blue); font-family: var(--tile-sans); font-size: .8rem; font-weight: 500; white-space: nowrap; }
+.links a:hover, .more a:hover { text-decoration: underline; }
+.more { display: grid; grid-template-columns: repeat(7, auto); justify-content: space-between; gap: 16px; padding: 14px 0 0 21px; border-top: 1px solid var(--hair); }
+.more h3 { font-size: .8rem; color: rgba(216, 216, 222, .75); white-space: nowrap; }
+.more .plain h3 { font-family: inherit; font-size: 12px; font-weight: 400; color: var(--ink-3); }
+.more a { display: block; width: fit-content; line-height: 1.55; }
+
+footer { flex: none; }
+
+@media (max-height: 720px) {
+    main { padding: 12px 28px 8px; gap: 13px; }
+    .runs { min-height: 150px; }
+    td { height: 40px; }
+    .docs { gap: 12px; } .work { gap: 12px; } .topic { padding: .55rem .9rem .6rem 19px; } .topic p { font-size: .84rem; line-height: 1.38; } .links { margin-top: .4rem; }
+}
+@media (max-width: 1400px) { th, td { padding-right: 16px; } }
+@media (max-width: 1320px) { th, td { padding-right: 10px; } .chip { margin-left: 8px; } .rule { margin: 0 2px 0 8px; } .btn { padding: 0 8px; } }
+/* While the first answer of the node is awaited: the analyzer's line under the logo, and no list yet */
+.logo.loading::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; height: 2px; width: 30%;
+    background: var(--blue); animation: loading-pulse 1.5s ease-in-out infinite; }
+@keyframes loading-pulse { 0% { width: 30%; } 50% { width: 100%; } 100% { width: 30%; } }
+</style>
 </head>
 <body>
-    <!-- Sticky Header -->
-    <nav class="site-header">
-        <div class="site-header-inner">
-            <div class="site-header-left">
-                <div id="app-switcher-container"></div>
-                <span class="site-header-logo">EVOCHORA</span>
-            </div>
-            <div class="site-header-right">
-                <a href="https://github.com/evochora/evochora" target="_blank" rel="noopener noreferrer" title="GitHub">
-                    <svg class="site-header-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                </a>
-                <a href="https://discord.gg/t9yEJc4MKX" target="_blank" rel="noopener noreferrer" title="Discord">
-                    <svg class="site-header-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"/>
-                    </svg>
-                </a>
-            </div>
-        </div>
-    </nav>
-
-    <div class="page">
-
-        <!-- Logo -->
-        <header class="logo">
-            <div class="logo-text">EVOCHORA</div>
-            <div class="logo-sub">Simulation Platform for Digital Evolution Research</div>
-        </header>
-
-        <!-- Hero -->
-        <section class="hero">
-            <div class="hero-text">
-                <h1 class="hero-headline">Welcome to Evochora</h1>
-                <p class="hero-body">
-                    Evochora provides a complete tool stack for digital evolution research &mdash; from
-                    authoring self-replicating organisms to analyzing the evolutionary dynamics and results.
-                </p>
-                <p class="hero-body" style="margin-top: 0.75rem;">
-                    Organisms are written in EvoASM, a purpose-built assembly language. They inhabit an
-                    n-dimensional environment governed by configurable thermodynamics. Mutation mechanics,
-                    resource dynamics, and death conditions are fully programmable through swappable
-                    plugins &mdash; even the EvoASM instruction set itself.
-                </p>
-                <p class="hero-body" style="margin-top: 0.75rem;">
-                    A built-in visualizer lets you inspect and debug individual organisms during simulation:
-                    registers, stacks, thermodynamic state, and executed code. The analyzer tracks population
-                    dynamics, genome diversity, generation depth, and more. For deeper analysis, a data
-                    pipeline exports all generated data as industry-standard Parquet files &mdash; ready
-                    for Python, R, DuckDB, or your preferred tools.
-                </p>
-            </div>
-            <div class="hero-video">
-                <video class="demo-video" autoplay muted loop playsinline preload="auto"
-                       poster="/favicons/video-poster.png">
-                    <source src="https://github.com/user-attachments/assets/69b33e5b-074b-46d6-917c-9b9cf06e10ef"
-                            type="video/mp4">
-                </video>
-
-            </div>
-        </section>
-
-        <hr class="divider">
-
-        <!-- Node Banner (JS-controlled: success on local, offline on both) -->
-        <div class="node-banner" id="node-banner" style="display: none;">
-            <span class="node-banner-dot"></span>
-            <span id="node-banner-text"></span>
-        </div>
-
-        <!-- Simulation Runs -->
-        <section id="run-list">
-            <div class="run-list-loading">Loading simulation data&hellip;</div>
-        </section>
-
-        <hr class="divider" id="run-list-divider">
-
-        <!-- Action Cards -->
-        <section class="actions">
-            <div class="action-card">
-                <a href="/visualizer" class="action-card-img-link">
-                    <img class="action-card-img" src="/screenshots/visualizer.png"
-                         alt="Evochora Visualizer showing organism grid, registers, and assembly debugger">
-                </a>
-                <div class="action-card-body">
-                    <div class="action-card-title">Visualizer</div>
-                    <div class="action-card-desc">
-                        Inspect organisms tick-by-tick &mdash; registers, stacks, thermodynamic state, and executed code.
-                    </div>
-                    <a href="/visualizer" class="action-card-cta">Open Visualizer</a>
-                </div>
-            </div>
-
-            <div class="action-card">
-                <a href="/analyzer" class="action-card-img-link">
-                    <img class="action-card-img" src="/screenshots/analyzer.png"
-                         alt="Evochora Analyzer showing population dynamics, birth rates, and generation depth charts">
-                </a>
-                <div class="action-card-body">
-                    <div class="action-card-title">Analyzer</div>
-                    <div class="action-card-desc">
-                        Population dynamics, genome diversity, simulation metrics, and more.
-                    </div>
-                    <a href="/analyzer" class="action-card-cta">Open Analyzer</a>
-                </div>
-            </div>
-
-            <div class="action-card">
-                <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true"
-                   target="_blank" rel="noopener noreferrer" class="action-card-img-link">
-                    <img class="action-card-img" src="/screenshots/notebook.png"
-                         alt="Muller Plot showing lineage clade dynamics over evolutionary time">
-                </a>
-                <div class="action-card-body">
-                    <div class="action-card-title">Jupyter Notebook</div>
-                    <div class="action-card-desc">
-                        Explore simulation data with pandas, networkx, and DuckDB &mdash; phylogenetic trees, Muller plots, and more.
-                    </div>
-                    <div class="action-card-links">
-                        <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true"
-                           target="_blank" rel="noopener noreferrer">
-                            <img class="colab-badge"
-                                 src="https://colab.research.google.com/assets/colab-badge.svg"
-                                 alt="Open in Colab">
-                        </a>
-                        <a href="/notebooks/data_analysis_guide.ipynb" download>Download Notebook</a>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <hr class="divider" data-mode="demo">
-
-        <!-- Why Evochora (demo only) -->
-        <section data-mode="demo">
-            <h2 class="section-title">Why Evochora?</h2>
-            <div class="why-grid">
-                <div class="why-item">
-                    <div class="why-label">The physics are the experiment</div>
-                    <div class="why-desc">
-                        An n-dimensional environment, configurable thermodynamics, swappable mutation and death
-                        mechanics, and an extensible assembly instruction set &mdash; every aspect of the world
-                        is an experimental variable.
-                    </div>
-                </div>
-                <div class="why-item">
-                    <div class="why-label">From simulation to science</div>
-                    <div class="why-desc">
-                        A complete data pipeline exports everything as Parquet files.
-                        Analyze with Python, R, Jupyter, or DuckDB &mdash; bring your own methods.
-                    </div>
-                </div>
-                <div class="why-item">
-                    <div class="why-label">Deterministic &amp; reproducible</div>
-                    <div class="why-desc">
-                        Seed-based simulation with complete state persistence.
-                        Every experiment is perfectly reproducible.
-                    </div>
-                </div>
-                <div class="why-item">
-                    <div class="why-label">Open source, MIT licensed</div>
-                    <div class="why-desc">
-                        Use it, extend it, build on it. No restrictions.
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <hr class="divider" data-mode="demo">
-
-        <!-- Get Started (demo only) -->
-        <section class="get-started" data-mode="demo">
-            <h2 class="get-started-title">Run Your Own Instance</h2>
-            <p class="get-started-body">
-                This demo hosts a set of simulations with default settings. To design your own experiments &mdash;
-                custom organisms, different physics, alternative mutation strategies &mdash; run your own Evochora node.
-            </p>
-            <div class="get-started-actions">
-                <a href="https://github.com/evochora/evochora/releases" class="btn-primary"
-                   target="_blank" rel="noopener noreferrer">Download Latest Release</a>
-                <a href="https://github.com/evochora/evochora#quick-start" class="btn-secondary"
-                   target="_blank" rel="noopener noreferrer">Read the Quick Start Guide</a>
-            </div>
-            <div class="get-started-req">Open Source: <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener noreferrer" style="color: inherit;">MIT License</a> · Windows · macOS · Linux</div>
-        </section>
-
-        <hr class="divider">
-
-        <!-- What's Next (both modes) -->
-        <section>
-            <h2 class="section-title">What's Next</h2>
-            <div class="next-grid">
-                <div class="next-item">
-                    <div class="next-label">Get Help</div>
-                    <div class="next-desc">
-                        Questions, ideas, feedback &mdash; reach out.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/discussions" target="_blank" rel="noopener noreferrer">
-                            <img src="https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white" alt="GitHub Discussions" style="height: 20px;">
-                        </a>
-                        <a href="https://discord.gg/t9yEJc4MKX" target="_blank" rel="noopener noreferrer">
-                            <img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord" style="height: 20px;">
-                        </a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">Configure Your Simulation</div>
-                    <div class="next-desc">
-                        Customize thermodynamics, mutation rates, energy dynamics, and environment parameters.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/blob/main/config/evochora.conf" target="_blank" rel="noopener noreferrer">Configuration Reference</a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">Write Organisms</div>
-                    <div class="next-desc">
-                        Create digital organisms in EvoASM, a purpose-built assembly language for self-replicating programs.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/blob/main/docs/EVOASM_SPEC.md" target="_blank" rel="noopener noreferrer">Assembly Spec</a>
-                        <span class="next-link-sep">|</span>
-                        <a href="https://github.com/evochora/evochora/tree/main/assembly" target="_blank" rel="noopener noreferrer">Examples</a>
-                        <span class="next-link-sep">|</span>
-                        <a href="https://github.com/evochora/evochora/tree/main/extensions" target="_blank" rel="noopener noreferrer">Syntax Highlighting</a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">Build Plugins</div>
-                    <div class="next-desc">
-                        Write custom plugins for mutation strategies, death mechanics, energy sources, and more.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/tree/main/src/main/java/org/evochora/runtime/worldgen" target="_blank" rel="noopener noreferrer">Reference Plugins</a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">CLI Tools</div>
-                    <div class="next-desc">
-                        Render simulation videos, compile EvoASM organisms, and inspect storage from the command line.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/blob/main/docs/CLI_USAGE.md" target="_blank" rel="noopener noreferrer">CLI Reference</a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">API Documentation</div>
-                    <div class="next-desc">
-                        REST API for visualization, analytics, and service management.
-                    </div>
-                    <div class="next-links">
-                        <a href="/api-docs">OpenAPI Reference</a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">Scientific Overview</div>
-                    <div class="next-desc">
-                        Theoretical foundations, design decisions, and the computational model behind Evochora.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md" target="_blank" rel="noopener noreferrer">Read the Paper</a>
-                    </div>
-                </div>
-                <div class="next-item">
-                    <div class="next-label">Contribute</div>
-                    <div class="next-desc">
-                        Open source, MIT licensed. Bug reports, ideas, and pull requests are welcome.
-                    </div>
-                    <div class="next-links">
-                        <a href="https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing Guide</a>
-                        <span class="next-link-sep">|</span>
-                        <a href="https://github.com/orgs/evochora/projects/1" target="_blank" rel="noopener noreferrer">Project Roadmap</a>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <hr class="divider">
-
-        <!-- Footer -->
-        <footer class="footer">
-            <a href="https://github.com/evochora/evochora" class="footer-link" target="_blank" rel="noopener noreferrer">
-                <svg class="footer-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                </svg>
-                GitHub
-            </a>
-            <span class="footer-sep">&middot;</span>
-            <a href="https://discord.gg/t9yEJc4MKX" class="footer-link" target="_blank" rel="noopener noreferrer">
-                <svg class="footer-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"/>
-                </svg>
-                Discord
-            </a>
-            <span class="footer-sep">&middot;</span>
-            <a href="/api-docs" class="footer-link">API Documentation</a>
-            <span class="footer-sep">&middot;</span>
-            <a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md"
-               class="footer-link" target="_blank" rel="noopener noreferrer">Scientific Overview</a>
-            <span class="footer-sep">&middot;</span>
-            <a href="https://opensource.org/licenses/MIT" class="footer-link" target="_blank" rel="noopener noreferrer">MIT License</a>
-        </footer>
-
+<header>
+    <div class="brand">
+        <div id="app-switcher-container"></div>
+        <div class="logo loading" id="logo">EVOCHORA</div>
     </div>
-    <script type="module">
-        import { AppSwitcher } from '/shared/app-switcher/AppSwitcher.js';
-        try {
-            const container = document.getElementById('app-switcher-container');
-            const response = await fetch('/shared/app-switcher/apps.json');
-            const apps = await response.json();
-            const params = new URLSearchParams(window.location.search);
-            new AppSwitcher({
-                element: container,
-                apps: apps,
-                getState: () => ({
-                    tick: params.get('tick'),
-                    organism: params.get('organism'),
-                    runId: params.get('runId')
-                })
-            });
-        } catch (e) {
-            console.error('Failed to initialize AppSwitcher:', e);
+    <div class="node" id="node"><i hidden></i><span></span><small id="pace"></small></div>
+</header>
+
+<main>
+    <section class="runs">
+        <div class="panel" id="runs"></div>
+    </section>
+
+    <section class="docs"><div class="work" id="work"></div></section>
+
+    <footer><div class="more" id="more"></div></footer>
+</main>
+
+<script type="module">
+import { AppSwitcher } from '/shared/app-switcher/AppSwitcher.js';
+
+const pageParams = new URLSearchParams(window.location.search);
+
+try {
+    const apps = await (await fetch('/shared/app-switcher/apps.json')).json();
+    new AppSwitcher({
+        element: document.getElementById('app-switcher-container'),
+        apps,
+        getState: () => ({ tick: pageParams.get('tick'), organism: pageParams.get('organism'), runId: pageParams.get('runId') })
+    });
+} catch (e) {
+    console.error('Failed to initialize AppSwitcher:', e);
+}
+
+// ── Helpers ──
+const escapeHtml = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const groupDigits = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const json = url => fetch(url).then(response => response.ok ? response.json() : null).catch(() => null);
+const copyIcon = (value, what) => '<button class="copy" type="button" data-copy="' + escapeHtml(value) + '" title="Copy the ' + what + ' ' + escapeHtml(value)
+    + '" aria-label="Copy the ' + what + '"><svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
+    + '<path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg></button>';
+
+document.addEventListener('click', event => {
+    const button = event.target.closest('.copy');
+    if (!button || !navigator.clipboard) return;
+    navigator.clipboard.writeText(button.dataset.copy).then(() => {
+        const note = document.createElement('span');
+        note.className = 'copied';
+        note.textContent = 'Copied';
+        button.classList.add('done');
+        button.appendChild(note);
+        setTimeout(() => { button.classList.remove('done'); note.remove(); }, 1400);
+    }, () => {});
+});
+
+// ── Documentation ──
+// A release links the documents as its tag holds them; a build made for no release links main.
+const REPOSITORY = 'https://github.com/evochora/evochora';
+const PLUGIN_SOURCES = 'src/main/java/org/evochora/';
+const file = path => ref => REPOSITORY + '/blob/' + ref + '/' + path;
+const directory = path => ref => REPOSITORY + '/tree/' + ref + '/' + path;
+const fixed = url => () => url;
+const userGuide = anchor => file('docs/USER_GUIDE.md' + (anchor ? '#' + anchor : ''));
+
+const WORK = [
+    { label: 'Run Experiments', emphasis: true,
+        text: 'Follow the User Guide through a full experiment, from the first start to sharing its results, and look up every command in the CLI Usage Guide.',
+        links: [['User Guide', userGuide()], ['CLI Usage Guide', file('docs/CLI_USAGE.md')]] },
+    { label: 'Configure an Experiment',
+        text: 'Learn in the User Guide how to set up an experiment, start from the template with the most important settings, and look up every setting in the full reference.',
+        links: [['User Guide', userGuide('3-configure-an-experiment')], ['evochora.conf', file('config/evochora.conf')],
+            ['reference.conf', file('src/main/resources/reference.conf')]] },
+    { label: 'Write Organisms',
+        text: 'Start from an ancestor that comes with Evochora, reuse behaviors from the library, and learn the EvoASM language.',
+        links: [['User Guide', userGuide('2-choose-or-write-an-ancestor')], ['Ancestors', file('assembly/ancestors/README.md')],
+            ['Behavior Library', file('assembly/lib/behavior/README.md')], ['Assembly Specification', file('docs/EVOASM_SPEC.md')],
+            ['EvoASM Guidelines', file('docs/EVOASM_GUIDELINES.md')], ['Syntax Highlighting', file('extensions/vscode/README.md')]] },
+    { label: 'Analyze the Data',
+        text: 'Take the data of a run further than the analyzer does. The User Guide and the notebook show how, and plugins let you add further metrics.',
+        links: [['User Guide', userGuide('7-analyze-the-data')], ['Analysis Notebook', file('notebooks/README.md')],
+            ['Analytics Plugins', directory(PLUGIN_SOURCES + 'datapipeline/services/analytics/plugins')]] }
+];
+const MORE = [
+    { label: 'Build Plugins', links: [['User Guide', userGuide('10-extend-evochora-with-plugins')], ['Reference Plugins', directory(PLUGIN_SOURCES + 'runtime/worldgen')]] },
+    { label: 'API Documentation', links: [['HTTP API Reference', fixed('/api-docs/')]] },
+    { label: 'Understand the Project', links: [['Scientific Overview', file('docs/SCIENTIFIC_OVERVIEW.md')],
+        ['Published Experiments', file('docs/PUBLISHED_EXPERIMENTS.md')], ['Origin Story', file('docs/ORIGIN_STORY.md')]] },
+    { label: 'Work on the Code', links: [['Development Guide', file('docs/dev/DEVELOPMENT.md')], ['Architecture', file('docs/dev/ARCHITECTURE.md')],
+        ['Architecture & Design Decisions', file('docs/dev/ARCHITECTURE_DECISIONS.md')]] },
+    { label: 'Contribute', links: [['Contributing Guide', file('CONTRIBUTING.md')], ['AI Policy', file('AI_POLICY.md')], ['Code of Conduct', file('CODE_OF_CONDUCT.md')]] },
+    { label: 'Get Help', links: [['Discord', fixed('https://discord.gg/t9yEJc4MKX')], ['Discussions', fixed(REPOSITORY + '/discussions')],
+        ['Issues', fixed(REPOSITORY + '/issues')]] }
+];
+const PROJECT = [['MIT License', file('LICENSE')], ['GitHub', fixed(REPOSITORY)]];
+
+let ref = 'main';
+const anchor = ([label, target]) => {
+    const url = target(ref);
+    return '<a href="' + url + '"' + (url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"') + '>' + escapeHtml(label) + '</a>';
+};
+
+function renderDocumentation(build) {
+    document.getElementById('work').innerHTML = WORK.map(topic =>
+        '<div class="topic' + (topic.emphasis ? ' start' : '') + '"><h3>' + topic.label + '</h3><p>' + topic.text + '</p><ul class="links">'
+        + topic.links.map(link => '<li>' + anchor(link) + '</li>').join('') + '</ul></div>').join('');
+    document.getElementById('more').innerHTML = MORE.map(topic => '<div><h3>' + topic.label + '</h3>' + topic.links.map(anchor).join('') + '</div>').join('')
+        + '<div class="plain"><h3>&nbsp;</h3>' + PROJECT.map(anchor).join('') + build + '</div>';
+}
+
+// The node names its build in the API specification: the release tag, or "revision <hash>" for a build made for no release.
+const REVISION_PREFIX = 'revision ';
+const SHORT_REVISION_LENGTH = 7;
+async function describeBuild() {
+    const specification = await json('/api-docs/openapi.json');
+    const version = specification && specification.info ? specification.info.version : null;
+    if (!version) return '';
+    if (!version.startsWith(REVISION_PREFIX)) {
+        ref = version;
+        return '<div class="version">Evochora ' + escapeHtml(version) + '</div>';
+    }
+    const revision = version.slice(REVISION_PREFIX.length);
+    return '<div class="version" title="' + escapeHtml(version) + '">' + REVISION_PREFIX + escapeHtml(revision.slice(0, SHORT_REVISION_LENGTH))
+        + copyIcon(revision, 'revision') + '</div>';
+}
+renderDocumentation('');
+describeBuild().then(renderDocumentation);
+
+// ── Runs and the state of the node ──
+const REFRESH_INTERVAL_MS = 1000;
+const RUN_LIST_INTERVAL_MS = 15000;
+const TOGGLE_TIMEOUT_MS = 8000;
+const UNNAMED = 'unnamed';
+const DASH = '—';
+const NODE_LABEL = { running: 'Simulation running', starting: 'Simulation starting', paused: 'Simulation paused', degraded: 'Pipeline degraded',
+    none: 'No simulation running', unreachable: 'Node not reachable' };
+const CHIP_HINT = { degraded: 'A service of the pipeline is not healthy', starting: 'The run is simulating, its first data is not recorded yet' };
+
+const nodeElement = document.getElementById('node');
+const paceElement = document.getElementById('pace');
+const panel = document.getElementById('runs');
+const facts = {};        // runId -> what never changes: name, environment, sampling
+const recorded = {};     // runId -> what was last read: maxTick, alive, born
+let runIds = [];
+let runListReadAt = 0;
+let pendingToggle = null;   // { leaving: the engine state the click wants to leave, since }
+let lastMarkup = null;
+
+const query = runId => '?runId=' + encodeURIComponent(runId);
+const started = runId => {
+    const m = runId.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);
+    return m ? m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5] : runId;
+};
+
+async function readFacts(runId) {
+    if (facts[runId]) return;
+    const metadata = await json('/visualizer/api/simulation/metadata' + query(runId));
+    if (!metadata) return;
+    let name = '';
+    try { name = (JSON.parse(metadata.resolvedConfigJson).metadata || {}).experiment || ''; } catch (e) { /* a run without a readable name has none */ }
+    facts[runId] = { name: name === UNNAMED ? '' : name, size: metadata.environment.shape.join(' × '),
+        topology: metadata.environment.topology, sampling: metadata.samplingInterval };
+}
+
+async function readRecorded(runId) {
+    const ticks = await json('/visualizer/api/organisms/ticks' + query(runId));
+    if (!ticks || ticks.maxTick === null || ticks.maxTick === undefined) return;
+    const known = recorded[runId];
+    if (known && known.maxTick === ticks.maxTick) return;
+    const organisms = await json('/visualizer/api/organisms/' + ticks.maxTick + query(runId));
+    recorded[runId] = { maxTick: ticks.maxTick, alive: organisms ? organisms.organisms.length : null, born: organisms ? organisms.totalOrganismCount : null };
+}
+
+function stateOf(status, engine, activeRunId) {
+    if (engine.state === 'PAUSED') return 'paused';
+    if (status.status === 'DEGRADED') return 'degraded';
+    if (status.status !== 'RUNNING') return 'none';
+    return activeRunId && !recorded[activeRunId] ? 'starting' : 'running';
+}
+
+function toolLinks(runId) {
+    const params = new URLSearchParams({ runId });
+    ['tick', 'organism'].forEach(key => { if (pageParams.get(key)) params.set(key, pageParams.get(key)); });
+    return '<a class="btn" href="/visualizer/?' + params + '">Visualizer</a><a class="btn" href="/analyzer/?' + params + '">Analyzer</a>';
+}
+
+function row(runId, activeRunId, state, named) {
+    const active = runId === activeRunId;
+    const f = facts[runId], r = recorded[runId];
+    const number = value => value === null || value === undefined ? DASH : groupDigits(value);
+    const chip = active ? '<span class="chip ' + state + '" title="' + (CHIP_HINT[state] || '') + '"><i></i>' + state + '</span>' : '';
+    const toggle = active ? '<button class="btn" type="button" data-toggle="' + (state === 'paused' ? 'resume' : 'pause') + '"' + (pendingToggle ? ' disabled' : '') + '>'
+        + (state === 'paused' ? 'Continue' : 'Pause') + '</button><i class="rule"></i>' : '';
+    return '<tr class="' + (active ? 'live ' + state : '') + '"><td>' + started(runId) + copyIcon(runId, 'run ID') + chip + '</td>'
+        + (named ? '<td class="name" title="' + escapeHtml(f ? f.name : '') + '">' + escapeHtml(f ? f.name : '') + '</td>' : '')
+        + '<td>' + (f ? f.size + '<span class="topology">' + escapeHtml(f.topology) + '</span>' : DASH) + '</td>'
+        + '<td class="num">' + number(f ? f.sampling : null) + '</td><td class="num">' + number(r ? r.maxTick : null) + '</td>'
+        + '<td class="num">' + number(r ? r.alive : null) + '</td><td class="num">' + number(r ? r.born : null) + '</td>'
+        + '<td>' + toggle + toolLinks(runId) + '</td></tr>';
+}
+
+function renderRuns(markup) {
+    if (markup === lastMarkup) return;   // an unchanged list keeps its scroll position and an open tooltip
+    lastMarkup = markup;
+    panel.innerHTML = markup;
+}
+
+async function refresh() {
+    const status = await json('/pipeline/api/status');
+    nodeElement.firstElementChild.hidden = false;
+    if (!status) {
+        nodeElement.className = 'node unreachable';
+        nodeElement.children[1].textContent = NODE_LABEL.unreachable;
+        paceElement.textContent = '';
+        renderRuns('<p class="none error">This node is not reachable.</p>');
+        return;
+    }
+    const engine = (status.services || []).find(service => service.name === 'simulation-engine') || {};
+    const simulating = engine.state === 'PAUSED' || status.status === 'RUNNING' || status.status === 'DEGRADED';
+    const activeRunId = simulating ? status.activeRunId || null : null;
+
+    if (Date.now() - runListReadAt > RUN_LIST_INTERVAL_MS || (activeRunId && !runIds.includes(activeRunId))) {
+        const listed = await json('/analyzer/api/runs');
+        if (listed) {
+            runIds = listed.sort((a, b) => b.startTime - a.startTime).map(run => run.runId);
+            // A run that simulates but is not indexed yet is listed all the same
+            if (activeRunId && !runIds.includes(activeRunId)) runIds.unshift(activeRunId);
+            runListReadAt = Date.now();
         }
-    </script>
-    <script>
-    (function() {
-        'use strict';
+    }
+    await Promise.all(runIds.map(runId => Promise.all([readFacts(runId), runId === activeRunId || !recorded[runId] ? readRecorded(runId) : null])));
 
-        // ── Mode detection ──
-        var DEMO_HOSTS = ['evochora.org', 'www.evochora.org'];
-        var isLocal = !DEMO_HOSTS.includes(window.location.hostname);
-        if (isLocal) {
-            document.body.classList.add('local');
-        }
+    const state = stateOf(status, engine, activeRunId);
+    if (pendingToggle && (engine.state !== pendingToggle.leaving || Date.now() - pendingToggle.since > TOGGLE_TIMEOUT_MS)) pendingToggle = null;
+    nodeElement.className = 'node ' + state;
+    nodeElement.children[1].textContent = NODE_LABEL[state];
+    // The engine reports a stale speed for some seconds after it was paused
+    const speed = (engine.metrics || {}).ticks_per_second;
+    paceElement.textContent = (state === 'running' || state === 'degraded') && speed !== undefined ? groupDigits(Math.round(speed)) + ' ticks per second' : '';
 
-        // ── State ──
-        var runData = {};
-        var activeRunId = null;
-        var systemOnline = true;
+    if (!runIds.length) {
+        renderRuns('<p class="none">No simulation runs on this node yet.<br>Start one with <code>bin/evochora node run</code>, as '
+            + anchor(['Start and Manage Runs', userGuide('4-start-and-manage-runs')]) + ' in the User Guide describes.</p>');
+        return;
+    }
+    const named = runIds.some(runId => facts[runId] && facts[runId].name);
+    renderRuns('<table><thead><tr><th>Started</th>' + (named ? '<th>Name</th>' : '') + '<th>Environment</th>'
+        + '<th class="num" title="A run records every n-th tick">Sampling</th><th class="num">Ticks</th>'
+        + '<th class="num">Alive</th><th class="num">Born</th><th></th></tr></thead><tbody>'
+        + runIds.map(runId => row(runId, activeRunId, state, named)).join('') + '</tbody></table>');
+}
 
-        // ── API helper with timeout ──
-        function fetchJSON(url, timeoutMs) {
-            timeoutMs = timeoutMs || 10000;
-            var controller = new AbortController();
-            var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
-            return fetch(url, { signal: controller.signal })
-                .then(function(res) {
-                    clearTimeout(timer);
-                    if (!res.ok) return null;
-                    return res.json();
-                })
-                .catch(function() {
-                    clearTimeout(timer);
-                    return null;
-                });
-        }
+// The node accepts every pause and resume request, so the outcome is read from its state afterwards
+document.addEventListener('click', event => {
+    const button = event.target.closest('[data-toggle]');
+    if (!button || button.disabled) return;
+    pendingToggle = { leaving: button.dataset.toggle === 'pause' ? 'RUNNING' : 'PAUSED', since: Date.now() };
+    button.disabled = true;
+    fetch('/pipeline/api/' + button.dataset.toggle, { method: 'POST' }).catch(() => {});
+});
 
-        // ── Data fetchers ──
-        function fetchRuns() {
-            return fetchJSON('/analyzer/api/runs').then(function(runs) {
-                if (!runs) {
-                    systemOnline = false;
-                    runData = {};
-                    activeRunId = null;
-                    return;
-                }
-                systemOnline = true;
-                var ids = {};
-                runs.forEach(function(r) {
-                    ids[r.runId] = true;
-                    if (!runData[r.runId]) {
-                        runData[r.runId] = { runId: r.runId, startTime: r.startTime };
-                    }
-                });
-                Object.keys(runData).forEach(function(id) {
-                    if (!ids[id]) delete runData[id];
-                });
-            });
-        }
-
-        function fetchTicks(runId) {
-            return fetchJSON('/visualizer/api/organisms/ticks?runId=' + encodeURIComponent(runId))
-                .then(function(data) {
-                    if (data) {
-                        runData[runId].maxTick = data.maxTick;
-                    }
-                });
-        }
-
-        function fetchMetadata(runId) {
-            if (runData[runId].samplingInterval !== undefined) return Promise.resolve();
-            return fetchJSON('/visualizer/api/simulation/metadata?runId=' + encodeURIComponent(runId))
-                .then(function(data) {
-                    if (data) {
-                        if (data.samplingInterval !== undefined) {
-                            runData[runId].samplingInterval = data.samplingInterval;
-                        }
-                        if (data.environment && data.environment.shape) {
-                            runData[runId].shape = data.environment.shape;
-                        }
-                    }
-                });
-        }
-
-        function fetchOrganisms(runId) {
-            var maxTick = runData[runId].maxTick;
-            if (maxTick === undefined) return Promise.resolve();
-            return fetchJSON('/visualizer/api/organisms/' + maxTick + '?runId=' + encodeURIComponent(runId))
-                .then(function(data) {
-                    if (data && data.organisms) {
-                        runData[runId].organismsAlive = data.organisms.length;
-                        runData[runId].organismsTotal = data.totalOrganismCount;
-                    }
-                });
-        }
-
-        var pipelineStatus = null;
-
-        function fetchPipelineStatus() {
-            return fetchJSON('/pipeline/api/status', 15000).then(function(status) {
-                if (!status) return;
-                activeRunId = status.activeRunId || null;
-                pipelineStatus = status.status || null;
-            });
-        }
-
-        // ── Formatting ──
-        function fmt(n) {
-            if (n === undefined || n === null) return '\u2014';
-            return Number(n).toLocaleString('en-US');
-        }
-
-        function fmtTimestamp(runId) {
-            var m = runId.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/);
-            if (!m) return runId.substring(0, 15);
-            return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5];
-        }
-
-        // ── Banner ──
-        function updateBanner() {
-            var banner = document.getElementById('node-banner');
-            var text = document.getElementById('node-banner-text');
-            if (!systemOnline && isLocal) {
-                banner.style.display = 'flex';
-                banner.classList.add('node-banner-offline');
-                text.textContent = 'Evochora node is not reachable.';
-            } else if (systemOnline && isLocal) {
-                banner.style.display = 'flex';
-                banner.classList.remove('node-banner-offline');
-                text.textContent = 'Your Evochora node is running.';
-            } else {
-                banner.style.display = 'none';
-                banner.classList.remove('node-banner-offline');
-            }
-        }
-
-        // ── Render ──
-        function render() {
-            var el = document.getElementById('run-list');
-            updateBanner();
-
-            if (!systemOnline) {
-                el.innerHTML = '';
-                return;
-            }
-
-            var runs = Object.values(runData).sort(function(a, b) {
-                return (b.startTime || 0) - (a.startTime || 0);
-            });
-
-            // A run the pipeline is producing but whose data is not indexed yet
-            var pipelineActive = pipelineStatus === 'RUNNING' || pipelineStatus === 'DEGRADED';
-            if (activeRunId && pipelineActive && !runData[activeRunId]) {
-                runs.unshift({ runId: activeRunId, starting: true });
-            }
-
-            if (runs.length === 0) {
-                el.innerHTML = '<div class="run-list-empty">No simulation runs available yet.</div>';
-                return;
-            }
-
-            var h = '<div class="run-list-title">Simulation runs available on this instance:</div>';
-            h += '<table class="run-table"><thead><tr>';
-            h += '<th>Started</th><th>Environment</th><th>Sampling</th><th>Ticks</th><th>Organisms</th><th></th>';
-            h += '</tr></thead><tbody>';
-
-            var urlParams = new URLSearchParams(window.location.search);
-            var urlTick = urlParams.get('tick');
-            var urlOrganism = urlParams.get('organism');
-
-            runs.forEach(function(run) {
-                var isActive = run.runId === activeRunId;
-                var cls = isActive ? ' class="run-active"' : '';
-                var qs = (urlTick ? '?tick=' + encodeURIComponent(urlTick) : '?')
-                       + (urlOrganism ? '&organism=' + encodeURIComponent(urlOrganism) : '')
-                       + '&runId=' + encodeURIComponent(run.runId);
-                qs = qs.replace('?&', '?');
-                h += '<tr' + cls + '>';
-                h += '<td>' + fmtTimestamp(run.runId);
-                if (run.starting) {
-                    h += ' <span class="run-status-badge run-status-running">STARTING</span>';
-                } else if (isActive && pipelineStatus && pipelineStatus !== 'STOPPED') {
-                    var badgeCls = 'run-status-badge ';
-                    if (pipelineStatus === 'RUNNING') badgeCls += 'run-status-running';
-                    else if (pipelineStatus === 'DEGRADED') badgeCls += 'run-status-error';
-                    h += ' <span class="' + badgeCls + '">' + pipelineStatus + '</span>';
-                }
-                h += '</td>';
-                h += '<td>' + (run.shape ? run.shape.join(' \u00d7 ') : '\u2014') + '</td>';
-                h += '<td>' + fmt(run.samplingInterval) + '</td>';
-                h += '<td>' + fmt(run.maxTick) + '</td>';
-                h += '<td>' + fmt(run.organismsAlive) + (run.organismsTotal !== undefined ? ' / ' + fmt(run.organismsTotal) : '') + '</td>';
-                h += '<td>';
-                h += '<a href="/analyzer' + qs + '" class="run-viz-link">Analyzer</a>';
-                h += ' <span class="run-link-sep">|</span> ';
-                h += '<a href="/visualizer' + qs + '" class="run-viz-link">Visualizer</a>';
-                h += '</td></tr>';
-            });
-
-            h += '</tbody></table>';
-            el.innerHTML = h;
-        }
-
-        // ── Refresh cycles ──
-        function refreshLight() {
-            return Promise.all([fetchRuns(), fetchPipelineStatus()]).then(function() {
-                var promises = Object.keys(runData).map(function(id) {
-                    return Promise.all([fetchTicks(id), fetchMetadata(id)]);
-                });
-                return Promise.all(promises);
-            }).then(render);
-        }
-
-        function refreshHeavy() {
-            if (!systemOnline) return Promise.resolve();
-            var promises = Object.keys(runData).map(function(id) {
-                return fetchOrganisms(id);
-            });
-            return Promise.all(promises).then(render);
-        }
-
-        // ── Start ──
-        refreshLight().then(refreshHeavy);
-        setInterval(refreshLight, 15000);
-        setInterval(refreshHeavy, 30000);
-    })();
-    </script>
+let refreshing = false;
+async function tick() {
+    if (refreshing) return;
+    refreshing = true;
+    try { await refresh(); } finally { refreshing = false; document.getElementById('logo').classList.remove('loading'); }
+}
+tick();
+setInterval(tick, REFRESH_INTERVAL_MS);
+</script>
 </body>
 </html>
