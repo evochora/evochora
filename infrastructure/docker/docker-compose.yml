@@ -47,7 +47,6 @@ services:
       # The domain name for automatic HTTPS.
       # This will be read from the .env file on the server.
       - DOMAIN_NAME=${DOMAIN_NAME}
-      - LOG_LEVEL=INFO
 
 # Docker volume for persisting Caddy's data (e.g., SSL certs)
 volumes:

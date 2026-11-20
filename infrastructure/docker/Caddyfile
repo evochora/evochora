@@ -4,8 +4,5 @@
 # Caddy will automatically handle HTTP to HTTPS redirection.
 reverse_proxy evochora:8081
 
-# Configure logging
-log {
-    level {$LOG_LEVEL}
-    output stdout
-}
+# The site has no log directive, so Caddy writes no access log: no request and no address of a
+# visitor is recorded.
