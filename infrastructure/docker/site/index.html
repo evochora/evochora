@@ -1195,7 +1195,7 @@
         function recorded(sampling) { return sampling === 1 ? 'every tick recorded' : 'every ' + group(sampling) + 'th tick recorded'; }
         function entry(r) {
             var q = '?runId=' + encodeURIComponent(r.id);
-            var facts = [r.size ? '<span><b>' + r.size + '</b>' + (r.topology ? ' ' + r.topology : '') + '</span>' : '', r.ticks != null ? '<span><b>' + group(r.ticks) + '</b> ticks</span>' : '',
+            var facts = [r.size ? '<span><b>' + r.size + '</b>' + (r.topology ? ' ' + r.topology : '') + '</span>' : '', r.ticks != null ? (r.firstTick > 0 ? '<span>ticks <b>' + group(r.firstTick) + '\u00a0\u2013\u00a0' + group(r.ticks) + '</b></span>' : '<span><b>' + group(r.ticks) + '</b> ticks</span>') : '',
                 r.sampling ? '<span>' + recorded(r.sampling) + '</span>' : '', r.born != null ? '<span><b>' + group(r.born) + '</b> organisms born</span>' : ''].join('');
             return '<div class="demo-run"><div><div class="demo-name">' + (r.name || 'Run of ' + started(r.id)) + '</div>'
                 + (r.description ? '<p class="demo-desc">' + r.description + '</p>' : '') + '<div class="demo-facts">' + facts + '</div></div>'
@@ -1213,7 +1213,8 @@
                         try { var m = JSON.parse(meta.resolvedConfigJson).metadata || {}; var text = m.experiment === 'unnamed' ? '' : String(m.experiment || ''), cut = text.indexOf('\n'); r.name = (cut < 0 ? text : text.slice(0, cut)).trim(); r.description = cut < 0 ? '' : text.slice(cut + 1).trim(); } catch (e) { /* no metadata */ }
                     }
                     if (!ticks || ticks.maxTick == null) return r;
-                    r.ticks = ticks.maxTick;
+                    // A fork holds a stretch of its parent run: its first tick is not 0
+                    r.firstTick = ticks.minTick; r.ticks = ticks.maxTick;
                     return json('/visualizer/api/organisms/' + ticks.maxTick + q).then(function (o) { if (o) r.born = o.totalOrganismCount; return r; });
                 });
             })).then(function (list) { box.innerHTML = list.map(entry).join(''); });

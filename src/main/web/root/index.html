@@ -55,13 +55,15 @@ section { display: flex; flex-direction: column; min-height: 0; }
 .runs { flex: 0 1 auto; min-height: 170px; }
 .panel { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     scrollbar-width: thin; scrollbar-color: #444 transparent; }
-table { width: 100%; border-collapse: collapse; }
+/* The gap between two columns grows with the window, so that the columns stand apart where there is
+   room and the table still fits where there is little */
+table { width: 100%; border-collapse: collapse; --gap: clamp(10px, 7.4vw - 71px, 36px); }
 th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: inset 0 -1px 0 var(--line);
-    font-weight: 400; font-size: 12px; color: var(--ink-3); text-align: left; white-space: nowrap; padding: 11px 24px 8px 0; }
-td { height: 44px; padding: 0 24px 0 0; white-space: nowrap; border-bottom: 1px solid var(--hair); }
+    font-weight: 400; font-size: 12px; color: var(--ink-3); text-align: left; white-space: nowrap; padding: 11px var(--gap) 8px 0; }
+td { height: 44px; padding: 0 var(--gap) 0 0; white-space: nowrap; border-bottom: 1px solid var(--hair); }
 tbody tr:last-child td { border-bottom: 0; }
 th:first-child, td:first-child { padding-left: 20px; }
-th:last-child, td:last-child { padding-right: 20px; text-align: right; width: 1%; }
+th:last-child, td:last-child { padding-right: 20px; text-align: right; }
 th.num, td.num { text-align: right; }
 tbody tr:hover td { background: rgba(60, 80, 120, .16); }
 .name { font-weight: 500; }
@@ -109,8 +111,11 @@ tr.live.degraded td:first-child { box-shadow: inset 2px 0 0 var(--red); }
 .copied { position: absolute; z-index: 2; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); padding: 1px 6px; background: var(--well); border: 1px solid var(--line); border-radius: 3px; font-size: 11px; line-height: 14px; color: var(--green); pointer-events: none; }
 .more .version { height: calc(.8rem * 1.55); line-height: calc(.8rem * 1.55); font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .more .plain { width: 152px; }
-td:first-child, th:first-child { width: 1%; }
-td.name { max-width: 0; width: 34%; overflow: hidden; text-overflow: ellipsis; }
+/* Every column is as wide as its content. The width left over goes to one column: the name of the
+   runs and, where no run has a name, their start. */
+th, td { width: 1%; }
+th.fill, td.fill { width: auto; }
+td.name { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .work { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .topic { display: flex; flex-direction: column; padding: .8rem 1rem .85rem 19px; border-left: 2px solid var(--blue); background: rgba(74, 158, 255, .03); border-radius: 0 4px 4px 0; }
 .topic.start { border-left-width: 3px; padding-left: 18px; background: rgba(74, 158, 255, .09); }
@@ -134,8 +139,7 @@ footer { flex: none; }
     td { height: 40px; }
     .docs { gap: 12px; } .work { gap: 12px; } .topic { padding: .55rem .9rem .6rem 19px; } .topic p { font-size: .84rem; line-height: 1.38; } .links { margin-top: .4rem; }
 }
-@media (max-width: 1400px) { th, td { padding-right: 16px; } }
-@media (max-width: 1320px) { th, td { padding-right: 10px; } .chip { margin-left: 8px; } .rule { margin: 0 2px 0 8px; } .btn { padding: 0 8px; } }
+@media (max-width: 1320px) { .chip { margin-left: 8px; } .rule { margin: 0 2px 0 8px; } .btn { padding: 0 8px; } }
 /* While the first answer of the node is awaited: the analyzer's line under the logo, and no list yet */
 .logo.loading::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; height: 2px; width: 30%;
     background: var(--blue); animation: loading-pulse 1.5s ease-in-out infinite; }
@@ -284,7 +288,7 @@ const nodeElement = document.getElementById('node');
 const paceElement = document.getElementById('pace');
 const panel = document.getElementById('runs');
 const facts = {};        // runId -> what never changes: name, environment, sampling
-const recorded = {};     // runId -> what was last read: maxTick, alive, born
+const recorded = {};     // runId -> what was last read: minTick, maxTick, alive, born
 let runIds = [];
 let runListReadAt = 0;
 let pendingToggle = null;   // { leaving: the engine state the click wants to leave, since }
@@ -312,7 +316,7 @@ async function readRecorded(runId) {
     const known = recorded[runId];
     if (known && known.maxTick === ticks.maxTick) return;
     const organisms = await json('/visualizer/api/organisms/' + ticks.maxTick + query(runId));
-    recorded[runId] = { maxTick: ticks.maxTick, alive: organisms ? organisms.organisms.length : null, born: organisms ? organisms.totalOrganismCount : null };
+    recorded[runId] = { minTick: ticks.minTick, maxTick: ticks.maxTick, alive: organisms ? organisms.organisms.length : null, born: organisms ? organisms.totalOrganismCount : null };
 }
 
 function stateOf(status, engine, activeRunId) {
@@ -328,6 +332,13 @@ function toolLinks(runId) {
     return '<a class="btn" href="/visualizer/?' + params + '">Visualizer</a><a class="btn" href="/analyzer/?' + params + '">Analyzer</a>';
 }
 
+// A run that starts at tick 0 is named by its last tick. A fork holds a stretch of its parent run and
+// is named by that stretch.
+function ticksOf(r) {
+    if (!r) return DASH;
+    return r.minTick > 0 ? groupDigits(r.minTick) + '\u00a0\u2013\u00a0' + groupDigits(r.maxTick) : groupDigits(r.maxTick);
+}
+
 function row(runId, activeRunId, state, named) {
     const active = runId === activeRunId;
     const f = facts[runId], r = recorded[runId];
@@ -335,10 +346,10 @@ function row(runId, activeRunId, state, named) {
     const chip = active ? '<span class="chip ' + state + '" title="' + (CHIP_HINT[state] || '') + '"><i></i>' + state + '</span>' : '';
     const toggle = active ? '<button class="btn" type="button" data-toggle="' + (state === 'paused' ? 'resume' : 'pause') + '"' + (pendingToggle ? ' disabled' : '') + '>'
         + (state === 'paused' ? 'Continue' : 'Pause') + '</button><i class="rule"></i>' : '';
-    return '<tr class="' + (active ? 'live ' + state : '') + '"><td>' + started(runId) + copyIcon(runId, 'run ID') + chip + '</td>'
-        + (named ? '<td class="name" title="' + escapeHtml(f ? f.name : '') + '">' + escapeHtml(f ? f.name : '') + '</td>' : '')
+    return '<tr class="' + (active ? 'live ' + state : '') + '"><td' + (named ? '' : ' class="fill"') + '>' + started(runId) + copyIcon(runId, 'run ID') + chip + '</td>'
+        + (named ? '<td class="name fill" title="' + escapeHtml(f ? f.name : '') + '">' + escapeHtml(f ? f.name : '') + '</td>' : '')
         + '<td>' + (f ? f.size + '<span class="topology">' + escapeHtml(f.topology) + '</span>' : DASH) + '</td>'
-        + '<td class="num">' + number(f ? f.sampling : null) + '</td><td class="num">' + number(r ? r.maxTick : null) + '</td>'
+        + '<td class="num">' + number(f ? f.sampling : null) + '</td><td class="num">' + ticksOf(r) + '</td>'
         + '<td class="num">' + number(r ? r.alive : null) + '</td><td class="num">' + number(r ? r.born : null) + '</td>'
         + '<td>' + toggle + toolLinks(runId) + '</td></tr>';
 }
@@ -388,7 +399,7 @@ async function refresh() {
         return;
     }
     const named = runIds.some(runId => facts[runId] && facts[runId].name);
-    renderRuns('<table><thead><tr><th>Started</th>' + (named ? '<th>Name</th>' : '') + '<th>Environment</th>'
+    renderRuns('<table><thead><tr><th' + (named ? '' : ' class="fill"') + '>Started</th>' + (named ? '<th class="fill">Name</th>' : '') + '<th>Environment</th>'
         + '<th class="num" title="A run records every n-th tick">Sampling</th><th class="num">Ticks</th>'
         + '<th class="num">Alive</th><th class="num">Born</th><th></th></tr></thead><tbody>'
         + runIds.map(runId => row(runId, activeRunId, state, named)).join('') + '</tbody></table>');
