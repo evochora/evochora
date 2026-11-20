@@ -118,7 +118,7 @@ In the runs published so far, evolution changed where offspring are built, what 
 
 Run experiments
 
-- [User Guide](docs/USER_GUIDE.md): an experiment from the first start to analyzing and sharing what it produced.
+- [User Guide](docs/USER_GUIDE.md): how to run an experiment, from the first start to analyzing and sharing its results.
 - [CLI Usage Guide](docs/CLI_USAGE.md): every command of `bin/evochora` with its options.
 
 Analyze the data
@@ -128,7 +128,7 @@ Analyze the data
 Write organisms
 
 - [Assembly Specification](docs/EVOASM_SPEC.md): the EvoASM language, the virtual machine and every instruction.
-- [EvoASM Guidelines](docs/EVOASM_GUIDELINES.md): how to write programs that hold up in a simulation.
+- [EvoASM Guidelines](docs/EVOASM_GUIDELINES.md): practices for writing programs that leave room for evolution and act reliably among other organisms.
 
 Understand the project
 
