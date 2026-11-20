@@ -54,7 +54,7 @@ These conditions were not designed in one piece. They entered one after another,
 
 What exists today is a platform on which populations sustain themselves over billions of ticks, and [published runs](PUBLISHED_EXPERIMENTS.md) in which a change of the program swept to fixation and could be traced to its mechanism. The rise of complexity has not been shown in Evochora yet; the platform is built to look for it.
 
-The platform consists of a runtime that runs the simulation, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the environment, the tools for observing and analyzing a run, the first results, the research directions, its reproducibility and the resources a run needs, and the limitations. A running simulation can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
+The platform consists of a runtime that runs the simulation, the EvoASM language with its compiler for writing organisms, a data pipeline that records and indexes every run, and a visualizer and an analyzer in the browser. The chapters that follow describe the physics of the environment, the tools for observing and analyzing a run, the first results, the research directions, its reproducibility and the resources a run needs, and the limitations. A live demo can be watched at [evochora.org](https://evochora.org/). How the project came about is told in the [Origin Story](ORIGIN_STORY.md).
 
 ### 1.1 Evochora among related systems
 
