@@ -1,6 +1,27 @@
 {$DOMAIN_NAME}
 
-# Reverse proxy all requests to the evochora service on port 8081.
+# The homepage of evochora.org is no part of the node: Caddy delivers it from the directory the
+# deployment copies beside this file. Whatever lies in that directory is served under its name, and
+# every other request goes to the node. The homepage is the index.html there, so it also stands in
+# place of the start page of the node, which the demo does not show.
+@site file {
+    root /srv/site
+    try_files {path} {path}/index.html
+}
+handle @site {
+    root * /srv/site
+    file_server
+}
+
+# Nobody controls the pipeline of the demo from outside: a request to the pipeline that is not a
+# read is refused.
+@control {
+    path /pipeline/api/*
+    not method GET HEAD
+}
+respond @control 403
+
+# Reverse proxy all other requests to the evochora service on port 8081.
 # Caddy will automatically handle HTTP to HTTPS redirection.
 reverse_proxy evochora:8081
 
