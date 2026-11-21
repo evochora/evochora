@@ -15,6 +15,12 @@ on:
         description: 'The version to release, as the tag of its draft names it (e.g. "v1.0.0"). Empty for a nightly.'
         required: false
         type: string
+      zenodo:
+        description: 'Where the release is archived. "sandbox" is for trying: such a run prepares the draft and publishes nothing.'
+        required: false
+        type: choice
+        options: [production, sandbox]
+        default: production
   # The nightly. GitHub starts scheduled runs late or not at all at the full hour, when most
   # schedules fire, so the minute is an odd one.
   schedule:
@@ -58,6 +64,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       publish: ${{ steps.plan.outputs.publish }}
       release: ${{ steps.plan.outputs.release }}
+      archive: ${{ steps.plan.outputs.archive }}
     steps:
       - name: Decide what this run builds and publishes
         id: plan
@@ -70,7 +77,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          build=true; package=true; publish=false; release=false; tag=
+          build=true; package=true; publish=false; release=false; archive=false; tag=
           if [ -n "$VERSION" ]; then
             # The form the build takes for a version, with a suffix or without: v1.0.0, v1.0.0-rc.1
             if ! printf '%s' "$VERSION" | grep -qE '^v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]+)?$'; then
@@ -79,6 +86,8 @@ jobs:
               exit 1
             fi
             tag=$VERSION; release=true
+            # A version with a suffix is a pre-release and is not archived
+            if [[ "$VERSION" != *-* ]]; then archive=true; fi
           elif [ "$EVENT_NAME" = "push" ]; then
             package=false
           elif [ "$EVENT_NAME" = "schedule" ]; then
@@ -100,6 +109,7 @@ jobs:
             echo "tag=$tag"
             echo "publish=$publish"
             echo "release=$release"
+            echo "archive=$archive"
           } >> "$GITHUB_OUTPUT"
 
   # A release is built from a draft the maintainer wrote, and everything that can be checked
@@ -378,14 +388,51 @@ jobs:
   # after them, so that packaging, start tests and the image add no time to a pull request as
   # long as they are shorter than the tests and the reviews. The archives carry the tag the plan
   # names, and the jobs after this one read the tag and whether the run publishes from here.
+  # Reserves the DOI under which the release will be archived, before anything is built, so that
+  # the build and the text of the release can name it: see tools/ci/zenodo_release.py. What it
+  # creates at Zenodo is a draft, which nobody sees, and the token it uses may create and fill
+  # drafts and publish nothing. A version with a suffix is not archived and has no DOI.
+  zenodo:
+    name: Reserve the DOI
+    needs: [plan, draft]
+    if: needs.plan.outputs.archive == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      record: ${{ steps.reserve.outputs.record }}
+      doi: ${{ steps.reserve.outputs.doi }}
+    steps:
+      - name: Checkout the script and CITATION.cff
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            tools/ci
+            CITATION.cff
+          sparse-checkout-cone-mode: false
+
+      - name: Find or create the draft of the record and reserve its DOI
+        id: reserve
+        env:
+          ZENODO_TOKEN: ${{ inputs.zenodo == 'sandbox' && secrets.ZENODO_SANDBOX_TOKEN || secrets.ZENODO_TOKEN }}
+          ZENODO_URL: ${{ inputs.zenodo == 'sandbox' && 'https://sandbox.zenodo.org' || 'https://zenodo.org' }}
+          VERSION: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          yq -o=json CITATION.cff > citation.json
+          python3 -I tools/ci/zenodo_release.py --url "$ZENODO_URL" reserve \
+            --citation citation.json --version "$VERSION" | tee -a "$GITHUB_OUTPUT"
+
   package:
     name: Package
-    needs: [plan, draft]
-    # The check of the draft is skipped where the run builds no release, and a job whose need was
-    # skipped is skipped itself unless its condition asks about the state of the run
+    needs: [plan, draft, zenodo]
+    # The check of the draft and the reservation of the DOI are skipped where the run builds no
+    # release, and a job whose need was skipped is skipped itself unless its condition asks about
+    # the state of the run
     if: |
       !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.package == 'true' &&
-      (needs.draft.result == 'success' || needs.draft.result == 'skipped')
+      (needs.draft.result == 'success' || needs.draft.result == 'skipped') &&
+      (needs.zenodo.result == 'success' || needs.zenodo.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -420,7 +467,8 @@ jobs:
       - name: Build the platform distributions
         env:
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
-        run: ./gradlew platformDistributions --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
+          RELEASE_DOI: ${{ needs.zenodo.outputs.doi }}
+        run: ./gradlew platformDistributions --no-daemon "-PRELEASE_TAG=$RELEASE_TAG" "-PRELEASE_DOI=$RELEASE_DOI"
 
       - name: Upload the distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -429,6 +477,16 @@ jobs:
           path: |
             build/distributions/*.tar.gz
             build/distributions/*.zip
+          if-no-files-found: error
+
+      # The files of the commit as the distributions carry them, GIT_REVISION among them, so that
+      # a build made from the archived sources reports that commit
+      - name: Upload the sources for the archive of the release
+        if: needs.plan.outputs.archive == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evochora-sources
+          path: build/sources/evochora-sources.tar
           if-no-files-found: error
 
   # Starts each distribution on its platform the way a user does: see tools/ci/start_test.py. The
@@ -674,12 +732,13 @@ jobs:
 
   # Finishes the draft of a release once everything before it has passed: the distributions the
   # start tests ran are attached, the draft is aimed at the commit this run built, and the text
-  # of .github/release-notes-release.md is written below the maintainer's. Nothing is public
+  # of .github/release-notes-release.md is written below the maintainer's. The draft of the
+  # record at Zenodo gets the same distributions, the sources and that text. Nothing is public
   # after this job. The draft, with its distributions, is there for the maintainer to try before
   # approving the publication.
   prepare-release:
     name: Prepare Release
-    needs: [test, fingerprint, compare-fingerprints, package, start-test, docker]
+    needs: [test, fingerprint, compare-fingerprints, zenodo, package, start-test, docker]
     runs-on: ubuntu-latest
     if: |
       always() &&
@@ -687,6 +746,7 @@ jobs:
       needs.compare-fingerprints.result == 'success' &&
       needs.package.result == 'success' && needs.start-test.result == 'success' &&
       needs.docker.result == 'success' &&
+      (needs.zenodo.result == 'success' || needs.zenodo.result == 'skipped') &&
       needs.package.outputs.release == 'true'
     permissions:
       contents: write
@@ -694,7 +754,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: .github
+          sparse-checkout: |
+            .github
+            tools/ci
+            CITATION.cff
+          sparse-checkout-cone-mode: false
 
       - name: Download the distributions
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -712,7 +776,7 @@ jobs:
           VERSION: ${{ needs.package.outputs.tag }}
           SHA: ${{ github.sha }}
           SERVER_URL: ${{ github.server_url }}
-          DOI: ''
+          DOI: ${{ needs.zenodo.outputs.doi }}
         run: |
           set -euo pipefail
           gh release view "$VERSION" --repo "$REPOSITORY" --json body --jq .body |
@@ -749,16 +813,48 @@ jobs:
             --prerelease="$prerelease" --notes-file release-notes-final.md
           echo "The draft of $VERSION is ready. Try its distributions, then approve the job that publishes it." >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Download the sources
+        if: needs.zenodo.outputs.record != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evochora-sources
+          path: sources
+
+      # Zenodo shows a description as HTML, and GitHub renders the text of the release as it
+      # shows it itself
+      - name: Give the draft of the record its metadata and its files
+        if: needs.zenodo.outputs.record != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ZENODO_TOKEN: ${{ inputs.zenodo == 'sandbox' && secrets.ZENODO_SANDBOX_TOKEN || secrets.ZENODO_TOKEN }}
+          ZENODO_URL: ${{ inputs.zenodo == 'sandbox' && 'https://sandbox.zenodo.org' || 'https://zenodo.org' }}
+          VERSION: ${{ needs.package.outputs.tag }}
+          RECORD: ${{ needs.zenodo.outputs.record }}
+        run: |
+          set -euo pipefail
+          yq -o=json CITATION.cff > citation.json
+          gh api markdown -f mode=gfm -f context="$REPOSITORY" -F text=@release-notes-final.md > description.html
+          mv sources/evochora-sources.tar "sources/evochora-$VERSION-sources.tar"
+          python3 -I tools/ci/zenodo_release.py --url "$ZENODO_URL" fill --citation citation.json \
+            --version "$VERSION" --record "$RECORD" --description description.html \
+            "sources/evochora-$VERSION-sources.tar" distributions/*.tar.gz distributions/*.zip
+
   # Publishes what the run prepared, after the maintainer has approved: the environment
-  # "release" holds this job until then. The image gets its tag first and the draft is published
-  # last, so that the release never names an image that is missing. GitHub creates the tag of
-  # the release at that moment, on the commit the draft is aimed at, and opens the discussion
-  # that announces it. A release is published from main alone: a run on another branch prepares
-  # a draft and ends there.
+  # "release" holds this job until then, and holds the token that may publish at Zenodo. The
+  # image gets its tag first, then the record is published, and the draft last, so that the
+  # release never names an image or a DOI that is missing. GitHub creates the tag of the release
+  # at that moment, on the commit the draft is aimed at, and opens the discussion that announces
+  # it. A release is published from main alone, and never with a record of the sandbox: a run
+  # on another branch, or one that tries the sandbox, prepares a draft and ends there.
   publish-release:
     name: Publish Release
-    needs: [package, docker, prepare-release]
-    if: github.ref == 'refs/heads/main'
+    needs: [zenodo, package, docker, prepare-release]
+    # The reservation of the DOI is skipped for a version that is not archived, and a job whose
+    # need was skipped is skipped itself unless its condition asks about the state of the run
+    if: |
+      !cancelled() && needs.prepare-release.result == 'success' &&
+      github.ref == 'refs/heads/main' && inputs.zenodo != 'sandbox'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -801,6 +897,21 @@ jobs:
           set -euo pipefail
           docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
           docker buildx imagetools inspect "$IMAGE:$TAG"
+
+      # A published record can never be deleted. Nothing after this step can fail in a way that
+      # a second run does not repair: it finds the record published and publishes the draft.
+      - name: Checkout the script
+        if: needs.zenodo.outputs.record != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools/ci
+
+      - name: Publish the record at Zenodo
+        if: needs.zenodo.outputs.record != ''
+        env:
+          ZENODO_TOKEN: ${{ secrets.ZENODO_PUBLISH_TOKEN }}
+          RECORD: ${{ needs.zenodo.outputs.record }}
+        run: python3 -I tools/ci/zenodo_release.py publish --record "$RECORD"
 
       - name: Publish the draft
         env:
