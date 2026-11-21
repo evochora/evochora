@@ -5,34 +5,37 @@
 name: Build and Release
 
 on:
-  # Started by hand on main, a run builds and publishes the nightly whether or not main has
-  # changed; on another branch it builds and publishes nothing
+  # Started by hand with a version, a run prepares the release of that version from its draft
+  # and publishes it once the maintainer has approved. Without a version, a run on main builds
+  # and publishes the nightly whether or not main has changed, and one on another branch builds
+  # and publishes nothing.
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to release, as the tag of its draft names it (e.g. "v1.0.0"). Empty for a nightly.'
+        required: false
+        type: string
   # The nightly. GitHub starts scheduled runs late or not at all at the full hour, when most
   # schedules fire, so the minute is an odd one.
   schedule:
     - cron: '17 2 * * *'
   push:
     branches: [ "main" ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ "main" ]
-  release:
-    # Trigger when a draft release is published via GitHub UI
-    # This creates a tag, but doesn't fire 'push' event
-    types: [ published ]
 
-# Each pull request has one group, and so has every other ref: main, and each tag on its own. A
-# newer run cancels the older run of its group, so only the newest state of a pull request or of
-# main is checked. The runs that build the nightly, the scheduled one and one started by hand,
-# have a group of their own beside the runs a push starts: a push to main must not cancel the
-# nightly, which builds an earlier commit to its end. A nightly cancelled by a newer one while it
-# publishes can leave no nightly at all until that newer run has passed, which creates it anew.
-# Runs of different tags never meet in a group, so a release with a version number is only
-# cancelled by a newer run of its own tag, which publishes the same release.
+# Each pull request has one group, and so has main. A newer run cancels the older run of its
+# group, so only the newest state of a pull request or of main is checked. The runs that build
+# the nightly, the scheduled one and one started by hand, have a group of their own beside the
+# runs a push starts: a push to main must not cancel the nightly, which builds an earlier commit
+# to its end. A nightly cancelled by a newer one while it publishes can leave no nightly at all
+# until that newer run has passed, which creates it anew. The runs of a release have a group for
+# each version: such a run waits for the maintainer's approval, for days if need be, and neither
+# a push nor a nightly may cancel it; only a newer run for the same version does.
 concurrency:
   group: >-
     ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{
+    inputs.version && format('release-{0}', inputs.version) ||
     (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'nightly' || 'push' }}
   cancel-in-progress: true
 
@@ -43,8 +46,7 @@ jobs:
   # publishes nothing. The scheduled run builds and publishes the nightly when main has changed
   # since the nightly that is published, and does nothing at all otherwise, so that the date of
   # the nightly names the last change of main; a run started by hand on main builds and publishes
-  # it without that question. A release with a version number is built and published under its
-  # tag.
+  # it without that question. A run started by hand with a version builds that release.
   plan:
     name: Plan
     runs-on: ubuntu-latest
@@ -55,28 +57,28 @@ jobs:
       package: ${{ steps.plan.outputs.package }}
       tag: ${{ steps.plan.outputs.tag }}
       publish: ${{ steps.plan.outputs.publish }}
+      release: ${{ steps.plan.outputs.release }}
     steps:
       - name: Decide what this run builds and publishes
         id: plan
         env:
-          # Read from the environment rather than written into the script: a release tag is
-          # chosen by whoever publishes the release, and git allows characters in a tag name
-          # that a shell reads as syntax.
+          # Read from the environment rather than written into the script: the version is
+          # typed by whoever starts the run, and a shell would read what it holds as syntax.
           EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ inputs.version }}
           REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          build=true; package=true; publish=false; tag=
-          if [ "$EVENT_NAME" = "release" ]; then
-            # Release event: tag comes from the release object
-            tag=$RELEASE_TAG
-            if [[ "$RELEASE_TAG" == v* ]]; then publish=true; fi
-          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # Tag push: extract tag name from ref
-            tag=${GITHUB_REF#refs/tags/}
-            publish=true
+          build=true; package=true; publish=false; release=false; tag=
+          if [ -n "$VERSION" ]; then
+            # The form the build takes for a version, with a suffix or without: v1.0.0, v1.0.0-rc.1
+            if ! printf '%s' "$VERSION" | grep -qE '^v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::Not a version: '$VERSION'. Expected v and numbers separated by dots," \
+                   "with or without a suffix after a hyphen, such as v1.0.0 or v1.0.0-rc.1."
+              exit 1
+            fi
+            tag=$VERSION; release=true
           elif [ "$EVENT_NAME" = "push" ]; then
             package=false
           elif [ "$EVENT_NAME" = "schedule" ]; then
@@ -97,7 +99,44 @@ jobs:
             echo "package=$package"
             echo "tag=$tag"
             echo "publish=$publish"
+            echo "release=$release"
           } >> "$GITHUB_OUTPUT"
+
+  # A release is built from a draft the maintainer wrote, and everything that can be checked
+  # about it is checked here, before anything is built: that there is exactly one draft for the
+  # version and no release or tag of that name yet, and that the draft has a text. A draft is
+  # visible only to a token that may write, which is why this is a job of its own.
+  draft:
+    name: Check the Draft
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check the draft of the version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          releases=$(gh api --paginate "repos/$REPOSITORY/releases" | jq -s --arg tag "$VERSION" '[.[][] | select(.tag_name == $tag)]')
+          if [ "$(jq '[.[] | select(.draft | not)] | length' <<< "$releases")" -ne 0 ]; then
+            echo "::error::$VERSION is published already."; exit 1
+          fi
+          if [ "$(jq length <<< "$releases")" -ne 1 ]; then
+            echo "::error::Expected one draft release with the tag $VERSION, found $(jq length <<< "$releases")." \
+                 "Write the draft in GitHub first: tag $VERSION, target main, the release notes."
+            exit 1
+          fi
+          if gh api "repos/$REPOSITORY/git/ref/tags/$VERSION" --silent 2> /dev/null; then
+            echo "::error::The tag $VERSION exists already. Publishing the draft creates it."; exit 1
+          fi
+          # What the workflow itself wrote below its line in an earlier run is no text of the draft
+          if [ -z "$(jq -r '.[0].body // ""' <<< "$releases" | sed '/^<!-- What follows is written by the release workflow/,$d' | tr -d '[:space:]')" ]; then
+            echo "::error::The draft of $VERSION has no text. Write the release notes first."; exit 1
+          fi
 
   notebooks:
     name: Verify Notebooks
@@ -106,7 +145,7 @@ jobs:
     # has to register once. Git silently ignores an unregistered filter, so this job is what
     # actually keeps generated data out of the repository.
     needs: plan
-    if: needs.plan.outputs.build == 'true' && github.event_name != 'release'
+    if: needs.plan.outputs.build == 'true'
     permissions:
       contents: read
     steps:
@@ -120,8 +159,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
-    # Runs for a published release as well: the release is built anew from its tag, so its tests
-    # run on that tag rather than relying on an earlier run that nothing ties to it
+    # Runs for a release as well: the release is built from the commit this run fixes, so its
+    # tests run on that commit rather than relying on an earlier run that nothing ties to it
     strategy:
       # Every leg runs to its end, so that a failure on one platform does not hide whether the
       # others pass.
@@ -341,14 +380,19 @@ jobs:
   # names, and the jobs after this one read the tag and whether the run publishes from here.
   package:
     name: Package
-    needs: plan
-    if: needs.plan.outputs.package == 'true'
+    needs: [plan, draft]
+    # The check of the draft is skipped where the run builds no release, and a job whose need was
+    # skipped is skipped itself unless its condition asks about the state of the run
+    if: |
+      !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.package == 'true' &&
+      (needs.draft.result == 'success' || needs.draft.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       tag: ${{ needs.plan.outputs.tag }}
       publish: ${{ needs.plan.outputs.publish }}
+      release: ${{ needs.plan.outputs.release }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -500,7 +544,7 @@ jobs:
         run: docker run --rm evochora-start-test bin/evochora --help
 
       - name: Log in to GitHub Container Registry
-        if: needs.package.outputs.publish == 'true'
+        if: needs.package.outputs.publish == 'true' || needs.package.outputs.release == 'true'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
@@ -508,7 +552,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # The same build for both architectures; its amd64 half is the image started above, taken
-      # from the builder's cache. On a run that publishes it is pushed by its digest alone.
+      # from the builder's cache. On a run that publishes the nightly or prepares a release it is
+      # pushed by its digest alone, under no name: the tag is set later on exactly that digest.
       - name: Build the image for both architectures
         id: both
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -522,12 +567,13 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.package.outputs.tag }}
-          outputs: ${{ needs.package.outputs.publish == 'true' && format('type=image,name=ghcr.io/{0},push-by-digest=true,name-canonical=true,push=true', github.repository) || 'type=cacheonly' }}
+          outputs: ${{ (needs.package.outputs.publish == 'true' || needs.package.outputs.release == 'true') && format('type=image,name=ghcr.io/{0},push-by-digest=true,name-canonical=true,push=true', github.repository) || 'type=cacheonly' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Tags the image the docker job built, started and pushed by its digest, once every check has
-  # passed, on a run that publishes. It builds nothing: the tag is set on exactly that digest.
+  # Tags the image the docker job built, started and pushed by its digest as the nightly, once
+  # every check has passed. It builds nothing: the tag is set on exactly that digest. The image
+  # of a release gets its tag when the release is published.
   docker-push:
     name: Push Docker Image
     needs: [test, fingerprint, compare-fingerprints, package, start-test, docker]
@@ -562,16 +608,14 @@ jobs:
           docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
           docker buildx imagetools inspect "$IMAGE:$TAG"
 
-  # Publishes the distributions as the release of their tag, or as the nightly, once everything
-  # before it has passed, the push of the image included, so that a release never names an image
-  # that is missing or old. The nightly is deleted and created anew, never changed in place:
-  # GitHub shows a release under the date it was first published, and a nightly that kept its
-  # release would show the date of the first one for ever. It carries the text of
-  # .github/release-notes-nightly.md with the commit it was built from. A release with a version
-  # number keeps the text it was published with, and one whose version has a suffix is a
-  # pre-release.
+  # Publishes the distributions as the nightly, once everything before it has passed, the push
+  # of the image included, so that the nightly never names an image that is missing or old. The
+  # nightly is deleted and created anew, never changed in place: GitHub shows a release under the
+  # date it was first published, and a nightly that kept its release would show the date of the
+  # first one for ever. It carries the text of .github/release-notes-nightly.md with the commit
+  # it was built from.
   publish:
-    name: Publish Release
+    name: Publish Nightly
     needs: [test, fingerprint, compare-fingerprints, package, start-test, docker, docker-push]
     runs-on: ubuntu-latest
     if: |
@@ -596,7 +640,6 @@ jobs:
           path: distributions
 
       - name: Write the text of the nightly for the commit this run built
-        if: needs.package.outputs.tag == 'nightly'
         env:
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           SHA: ${{ github.sha }}
@@ -614,7 +657,6 @@ jobs:
       # of the same tag as a draft, which nobody sees: the pause avoids that, and the last line
       # fails the run where it has happened all the same.
       - name: Delete the nightly and create it anew
-        if: needs.package.outputs.tag == 'nightly'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -630,13 +672,142 @@ jobs:
             distributions/*.tar.gz distributions/*.zip
           test "$(gh release view nightly --repo "$REPOSITORY" --json isDraft --jq .isDraft)" = "false"
 
-      - name: Create or update the release
-        if: needs.package.outputs.tag != 'nightly'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+  # Finishes the draft of a release once everything before it has passed: the distributions the
+  # start tests ran are attached, the draft is aimed at the commit this run built, and the text
+  # of .github/release-notes-release.md is written below the maintainer's. Nothing is public
+  # after this job. The draft, with its distributions, is there for the maintainer to try before
+  # approving the publication.
+  prepare-release:
+    name: Prepare Release
+    needs: [test, fingerprint, compare-fingerprints, package, start-test, docker]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      needs.test.result == 'success' && needs.fingerprint.result == 'success' &&
+      needs.compare-fingerprints.result == 'success' &&
+      needs.package.result == 'success' && needs.start-test.result == 'success' &&
+      needs.docker.result == 'success' &&
+      needs.package.outputs.release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          tag_name: ${{ needs.package.outputs.tag }}
-          # A version with a suffix, v1.3.0-dev.1 or v1.3.0-rc.1, is a pre-release, as SemVer has it
-          prerelease: ${{ contains(needs.package.outputs.tag, '-') }}
-          files: |
-            distributions/*.tar.gz
-            distributions/*.zip
+          sparse-checkout: .github
+
+      - name: Download the distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evochora-distributions
+          path: distributions
+
+      # The maintainer's text ends where the line of the workflow begins; what an earlier run
+      # wrote below it is replaced. A line of the template that names something this release
+      # does not have, a DOI or an earlier release to compare with, is left out.
+      - name: Write the text of the workflow below the maintainer's
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.package.outputs.tag }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          DOI: ''
+        run: |
+          set -euo pipefail
+          gh release view "$VERSION" --repo "$REPOSITORY" --json body --jq .body |
+            sed '/^<!-- What follows is written by the release workflow/,$d' > release-notes.md
+          previous=$(gh release list --repo "$REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1 --json tagName --jq '.[0].tagName // ""')
+          {
+            echo
+            sed -e "$([ -n "$DOI" ] || echo '/@DOI@/d')" -e "$([ -n "$previous" ] || echo '/@PREVIOUS@/d')" \
+              -e "s|@TAG@|$VERSION|g" -e "s|@DOI@|$DOI|g" -e "s|@COMMIT@|${SHA:0:8}|g" \
+              -e "s|@COMMIT_URL@|$SERVER_URL/$REPOSITORY/commit/$SHA|g" -e "s|@PREVIOUS@|$previous|g" \
+              -e "s|@COMPARE_URL@|$SERVER_URL/$REPOSITORY/compare/$previous...$VERSION|g" \
+              .github/release-notes-release.md
+          } >> release-notes.md
+          cat -s release-notes.md > release-notes-final.md
+
+      - name: Attach the distributions and aim the draft at the commit this run built
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.package.outputs.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # A draft an earlier run prepared may hold files this run did not build
+          gh release view "$VERSION" --repo "$REPOSITORY" --json assets --jq '.assets[].name' |
+            while read -r asset; do
+              gh release delete-asset "$VERSION" "$asset" --repo "$REPOSITORY" --yes
+            done
+          gh release upload "$VERSION" --repo "$REPOSITORY" distributions/*.tar.gz distributions/*.zip
+          # A version with a suffix, v1.0.0-rc.1, is a pre-release, as SemVer has it
+          prerelease=false; if [[ "$VERSION" == *-* ]]; then prerelease=true; fi
+          gh release edit "$VERSION" --repo "$REPOSITORY" --target "$SHA" \
+            --prerelease="$prerelease" --notes-file release-notes-final.md
+          echo "The draft of $VERSION is ready. Try its distributions, then approve the job that publishes it." >> "$GITHUB_STEP_SUMMARY"
+
+  # Publishes what the run prepared, after the maintainer has approved: the environment
+  # "release" holds this job until then. The image gets its tag first and the draft is published
+  # last, so that the release never names an image that is missing. GitHub creates the tag of
+  # the release at that moment, on the commit the draft is aimed at, and opens the discussion
+  # that announces it. A release is published from main alone: a run on another branch prepares
+  # a draft and ends there.
+  publish-release:
+    name: Publish Release
+    needs: [package, docker, prepare-release]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      discussions: write
+    steps:
+      # GitHub creates an environment that a workflow names and the repository lacks, without
+      # any protection, and this job would then publish without having been approved
+      - name: Refuse to publish where the environment requires no approval
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          reviewers=$(gh api "repos/$REPOSITORY/environments/release" \
+            --jq '[.protection_rules[] | select(.type == "required_reviewers")] | length')
+          if [ "$reviewers" -lt 1 ]; then
+            echo "::error::The environment release requires no approval. Set its required reviewers" \
+                 "in the settings of the repository before a release is published."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the image the docker job built
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ needs.package.outputs.tag }}
+          DIGEST: ${{ needs.docker.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
+          docker buildx imagetools inspect "$IMAGE:$TAG"
+
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release edit "$VERSION" --repo "$REPOSITORY" --draft=false --discussion-category "Announcements"
+          test "$(gh release view "$VERSION" --repo "$REPOSITORY" --json isDraft --jq .isDraft)" = "false"
