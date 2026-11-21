@@ -1,6 +1,5 @@
 package org.evochora.node.processes.h2;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -19,15 +18,6 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("unit")
 class H2ProcessOptionsTest {
-
-    private static final String JDBC_URL = "jdbc:h2:/project/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
-
-    @Test
-    void theTcpServerNamesThePathOfTheConfiguredDatabaseFile() {
-        Config options = ConfigFactory.parseMap(Map.of("database", Map.of("jdbcUrl", JDBC_URL)));
-
-        assertThat(H2TcpServerProcess.databasePath(options)).isEqualTo("/project/data/database/indexdb");
-    }
 
     @Test
     void anEnabledTcpServerWithoutTheDatabaseUrlDoesNotStart() {

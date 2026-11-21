@@ -79,7 +79,7 @@ public class H2TcpServerProcess extends AbstractProcess {
      * The path of the database file in {@code database.jdbcUrl}: what follows {@code jdbc:h2:},
      * up to the first parameter.
      */
-    static String databasePath(final Config options) {
+    private static String databasePath(final Config options) {
         if (!options.hasPath("database.jdbcUrl")) {
             throw new IllegalArgumentException("The H2 TCP server needs database.jdbcUrl; "
                 + "reference.conf sets it to the index database");

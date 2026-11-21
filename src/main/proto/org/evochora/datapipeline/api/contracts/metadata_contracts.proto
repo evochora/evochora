@@ -59,8 +59,8 @@ message SimulationMetadata {
   ForkOrigin fork = 7;
 
   // Version of the build that wrote this run, which only a build made for a release has: the
-  // release tag. Empty for a run written by any other build, and for a run written before this
-  // field existed; such a run names its build by build_revision alone.
+  // release tag. Empty for a run written by any other build; such a run names its build by
+  // build_revision alone.
   string build_version = 8;
 }
 
