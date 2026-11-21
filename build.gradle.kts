@@ -890,20 +890,23 @@ targetPlatforms.forEach { platform ->
     }
 }
 
-// The distribution without a Java runtime, as an archive and installed
+// The distribution without a Java runtime, as an archive and installed. Its name says what whoever
+// takes it has to bring, beside the distributions named after a platform, which need nothing: a
+// name that says what the archive lacks reads as the one for a machine without Java.
+val requiresJava = "requires-java"
 tasks.register<Zip>("noJavaDistZip") {
     group = "distribution"
     description = "Builds the distribution without a Java runtime under build/distributions"
     archiveBaseName = "evochora"
-    archiveClassifier = "no-java"
+    archiveClassifier = requiresJava
     destinationDirectory = layout.buildDirectory.dir("distributions")
-    into(distributionName("no-java")) { with(publishedContents) }
+    into(distributionName(requiresJava)) { with(publishedContents) }
 }
 tasks.register<Sync>("installNoJavaDist") {
     group = "distribution"
     description = "Installs the distribution without a Java runtime under build/install"
     with(publishedContents)
-    into(layout.buildDirectory.dir("install/evochora-no-java"))
+    into(layout.buildDirectory.dir("install/evochora-$requiresJava"))
 }
 
 // Builds the archive of every published distribution: the ones the CI starts, the image is built
