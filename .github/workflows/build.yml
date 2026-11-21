@@ -5,7 +5,13 @@
 name: Build and Release
 
 on:
+  # Started by hand on main, a run builds and publishes the nightly whether or not main has
+  # changed; on another branch it builds and publishes nothing
   workflow_dispatch:
+  # The nightly. GitHub starts scheduled runs late or not at all at the full hour, when most
+  # schedules fire, so the minute is an odd one.
+  schedule:
+    - cron: '17 2 * * *'
   push:
     branches: [ "main" ]
     tags: [ 'v*' ]
@@ -17,24 +23,90 @@ on:
     types: [ published ]
 
 # Each pull request has one group, and so has every other ref: main, and each tag on its own. A
-# newer run cancels the older run of its group, so only the newest state of a pull request is
-# checked and only the newest state of main is published. A run of main cancelled while it
-# publishes can leave the pre-release latest half updated until the next run of main that passes;
-# latest is a development build, and that run writes all of it anew. Runs of different tags never
-# meet in a group, so a release with a version number is only cancelled by a newer run of its own
-# tag, which publishes the same release.
+# newer run cancels the older run of its group, so only the newest state of a pull request or of
+# main is checked. The runs that build the nightly, the scheduled one and one started by hand,
+# have a group of their own beside the runs a push starts: a push to main must not cancel the
+# nightly, which builds an earlier commit to its end. A nightly cancelled by a newer one while it
+# publishes can leave no nightly at all until that newer run has passed, which creates it anew.
+# Runs of different tags never meet in a group, so a release with a version number is only
+# cancelled by a newer run of its own tag, which publishes the same release.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{
+    (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'nightly' || 'push' }}
   cancel-in-progress: true
 
 jobs:
+  # Decides what this run does, for every job after it. A push to main is tested and nothing
+  # more: what main holds is published at night. A pull request, or a run started by hand on
+  # another branch, also builds the distributions, starts them and builds the image, and
+  # publishes nothing. The scheduled run builds and publishes the nightly when main has changed
+  # since the nightly that is published, and does nothing at all otherwise, so that the date of
+  # the nightly names the last change of main; a run started by hand on main builds and publishes
+  # it without that question. A release with a version number is built and published under its
+  # tag.
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      package: ${{ steps.plan.outputs.package }}
+      tag: ${{ steps.plan.outputs.tag }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - name: Decide what this run builds and publishes
+        id: plan
+        env:
+          # Read from the environment rather than written into the script: a release tag is
+          # chosen by whoever publishes the release, and git allows characters in a tag name
+          # that a shell reads as syntax.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          build=true; package=true; publish=false; tag=
+          if [ "$EVENT_NAME" = "release" ]; then
+            # Release event: tag comes from the release object
+            tag=$RELEASE_TAG
+            if [[ "$RELEASE_TAG" == v* ]]; then publish=true; fi
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # Tag push: extract tag name from ref
+            tag=${GITHUB_REF#refs/tags/}
+            publish=true
+          elif [ "$EVENT_NAME" = "push" ]; then
+            package=false
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            # The tag nightly stands on the commit the published nightly was built from. There is
+            # none before the first nightly.
+            published=$(gh api "repos/$REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2> /dev/null || true)
+            if [ "$published" = "$GITHUB_SHA" ]; then
+              echo "The published nightly was built from $GITHUB_SHA, the head of main: nothing to build."
+              build=false; package=false
+            else
+              tag=nightly; publish=true
+            fi
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            tag=nightly; publish=true
+          fi
+          {
+            echo "build=$build"
+            echo "package=$package"
+            echo "tag=$tag"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
   notebooks:
     name: Verify Notebooks
     runs-on: ubuntu-latest
     # Notebooks are committed without outputs, enforced by a git clean filter that each clone
     # has to register once. Git silently ignores an unregistered filter, so this job is what
     # actually keeps generated data out of the repository.
-    if: github.event_name != 'release'
+    needs: plan
+    if: needs.plan.outputs.build == 'true' && github.event_name != 'release'
     permissions:
       contents: read
     steps:
@@ -45,6 +117,8 @@ jobs:
 
   test:
     name: Build & Test
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
     # Runs for a published release as well: the release is built anew from its tag, so its tests
     # run on that tag rather than relying on an earlier run that nothing ties to it
@@ -178,6 +252,8 @@ jobs:
   # shorter than the test job.
   fingerprint:
     name: Platform Fingerprint
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       # Every leg runs to its end, so that the comparison sees every platform's fingerprint.
@@ -259,51 +335,21 @@ jobs:
           done
           exit $status
 
-  # Builds the platform distributions every event publishes or tests. It starts with the tests,
-  # not after them, so that packaging, start tests and the image add no time to a pull request as
-  # long as they are shorter than the tests and the reviews. The version comes from the release tag
-  # for a release and is "latest" for anything else. Whether the run publishes is decided here as
-  # well, once for every job that publishes: a push to main, a v* tag, or a published release with
-  # a v* tag.
+  # Builds the platform distributions a run publishes or tests. It starts with the tests, not
+  # after them, so that packaging, start tests and the image add no time to a pull request as
+  # long as they are shorter than the tests and the reviews. The archives carry the tag the plan
+  # names, and the jobs after this one read the tag and whether the run publishes from here.
   package:
     name: Package
+    needs: plan
+    if: needs.plan.outputs.package == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      tag: ${{ steps.version.outputs.tag }}
-      publish: ${{ steps.version.outputs.publish }}
+      tag: ${{ needs.plan.outputs.tag }}
+      publish: ${{ needs.plan.outputs.publish }}
     steps:
-      - name: Determine version tag
-        id: version
-        env:
-          # Read from the environment rather than written into the script: a release tag is
-          # chosen by whoever publishes the release, and git allows characters in a tag name
-          # that a shell reads as syntax.
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [ "$EVENT_NAME" = "release" ]; then
-            # Release event: tag comes from the release object
-            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-            if [[ "$RELEASE_TAG" == v* ]]; then publish=true; else publish=false; fi
-          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # Tag push: extract tag name from ref
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-            publish=true
-          else
-            # A run of main publishes the pre-release 'latest'; a pull request or a run of another
-            # branch publishes nothing, and its archives carry no tag
-            if [ "$EVENT_NAME" != "pull_request" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
-              echo "tag=latest" >> "$GITHUB_OUTPUT"
-              publish=true
-            else
-              echo "tag=" >> "$GITHUB_OUTPUT"
-              publish=false
-            fi
-          fi
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
-
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -329,7 +375,7 @@ jobs:
 
       - name: Build the platform distributions
         env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
         run: ./gradlew platformDistributions --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
 
       - name: Upload the distributions
@@ -516,10 +562,12 @@ jobs:
           docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
           docker buildx imagetools inspect "$IMAGE:$TAG"
 
-  # Publishes the distributions as the release of their tag, or as the pre-release "latest" for the
-  # current state of main, once everything before it has passed, the push of the image included, so
-  # that a release never names an image that is missing or old. The pre-release carries the text
-  # of .github/release-notes-latest.md with the commit it was built from; a release with a version
+  # Publishes the distributions as the release of their tag, or as the nightly, once everything
+  # before it has passed, the push of the image included, so that a release never names an image
+  # that is missing or old. The nightly is deleted and created anew, never changed in place:
+  # GitHub shows a release under the date it was first published, and a nightly that kept its
+  # release would show the date of the first one for ever. It carries the text of
+  # .github/release-notes-nightly.md with the commit it was built from. A release with a version
   # number keeps the text it was published with, and one whose version has a suffix is a
   # pre-release.
   publish:
@@ -547,66 +595,43 @@ jobs:
           name: evochora-distributions
           path: distributions
 
-      # A tag stays on the commit it was first set to: latest is moved to the commit this run
-      # built, so that the release names what it carries. A first run creates it.
-      - name: Point the tag latest at the commit this run built
-        if: needs.package.outputs.tag == 'latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if gh api "repos/$REPOSITORY/git/ref/tags/latest" --silent; then
-            gh api -X PATCH "repos/$REPOSITORY/git/refs/tags/latest" -f sha="$SHA" -F force=true --silent
-          else
-            gh api -X POST "repos/$REPOSITORY/git/refs" -f ref=refs/tags/latest -f sha="$SHA" --silent
-          fi
-
-      - name: Write the text of latest for the commit this run built
-        if: needs.package.outputs.tag == 'latest'
+      - name: Write the text of the nightly for the commit this run built
+        if: needs.package.outputs.tag == 'nightly'
         env:
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          BUILD_DATE=$(date -u +%Y-%m-%d)
-          sed -e "s|@DATE@|$BUILD_DATE|g" -e "s|@COMMIT@|${SHA:0:8}|g" -e "s|@COMMIT_URL@|$COMMIT_URL|g" \
-            .github/release-notes-latest.md > release-notes-latest.md
+          NOW=$(date -u +%s)
+          BUILD_DATE=$(date -u -d "@$NOW" +%Y-%m-%d)
+          BUILD_TIME=$(date -u -d "@$NOW" +%H:%M)
+          sed -e "s|@DATE@|$BUILD_DATE|g" -e "s|@TIME@|$BUILD_TIME|g" -e "s|@COMMIT@|${SHA:0:8}|g" \
+            -e "s|@COMMIT_URL@|$COMMIT_URL|g" .github/release-notes-nightly.md > release-notes-nightly.md
+          echo "BUILD_DATE=$BUILD_DATE" >> "$GITHUB_ENV"
 
-      - name: Update the pre-release latest
-        if: needs.package.outputs.tag == 'latest'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: latest
-          prerelease: true
-          body_path: release-notes-latest.md
-          files: |
-            distributions/*.tar.gz
-            distributions/*.zip
-
-      # The action replaces files of the same name and adds new ones but removes none, so a file
-      # the current state no longer has, such as an archive renamed or a platform dropped, would
-      # stay at latest without ever being updated again. Removed after the upload, which leaves
-      # latest existing in any case. A release with a version number is created once and keeps
-      # its files.
-      - name: Remove the files of latest that this run did not upload
-        if: needs.package.outputs.tag == 'latest'
+      # Deleting the release takes its tag with it, and creating it sets the tag on the commit
+      # this run built. GitHub can keep a release that is created right after the deletion of one
+      # of the same tag as a draft, which nobody sees: the pause avoids that, and the last line
+      # fails the run where it has happened all the same.
+      - name: Delete the nightly and create it anew
+        if: needs.package.outputs.tag == 'nightly'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          gh release view latest --repo "$REPOSITORY" --json assets --jq '.assets[].name' |
-            while read -r asset; do
-              if [ ! -f "distributions/$asset" ]; then
-                echo "Removing $asset"
-                gh release delete-asset latest "$asset" --repo "$REPOSITORY" --yes
-              fi
-            done
+          if gh release view nightly --repo "$REPOSITORY" > /dev/null 2>&1; then
+            gh release delete nightly --repo "$REPOSITORY" --cleanup-tag --yes
+            sleep 15
+          fi
+          gh release create nightly --repo "$REPOSITORY" --target "$SHA" --prerelease \
+            --title "Nightly build $BUILD_DATE (${SHA:0:8})" --notes-file release-notes-nightly.md \
+            distributions/*.tar.gz distributions/*.zip
+          test "$(gh release view nightly --repo "$REPOSITORY" --json isDraft --jq .isDraft)" = "false"
 
       - name: Create or update the release
-        if: needs.package.outputs.tag != 'latest'
+        if: needs.package.outputs.tag != 'nightly'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.package.outputs.tag }}

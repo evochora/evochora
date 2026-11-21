@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The image tag to deploy (e.g., "latest" or "v1.0.1")'
+        description: 'The image tag to deploy (e.g., "nightly" or "v1.0.1")'
         required: true
         type: string
-        default: 'latest'
+        default: 'nightly'
 
 jobs:
   deploy:
