@@ -9,7 +9,10 @@
 ``fill``     gives the draft its metadata, from CITATION.cff and the text of the release, and its
              files, and compares the checksum Zenodo reports for each file with the file's own.
              One of the files can be named as the one Zenodo shows first: it shows a preview of
-             a record's first file otherwise, and cannot preview an archive of this size.
+             a record's first file otherwise, and cannot preview an archive of this size. That
+             file says what the others are, and is held against them before anything is sent:
+             the names it gives in backquotes have to be the names of the other files, all of
+             them and no other, since a published record keeps what it says for good.
 ``publish``  publishes the draft. A published record can never be deleted, which is why this is a
              step of its own, taken with a token of its own after the maintainer has approved.
 
@@ -188,6 +191,13 @@ def fill(zenodo: Zenodo, citation: dict, record: str, version: str, description:
         raise ZenodoError(f"two files of the same name: {names}")
     if preview and preview not in names:
         raise ZenodoError(f"the file to preview, {preview}, is none of the files: {names}")
+    if preview:
+        described = set(re.findall(r"`([^`]+)`", files[names.index(preview)].read_text(encoding="utf-8")))
+        others = set(names) - {preview}
+        if described != others:
+            raise ZenodoError(f"{preview} does not describe the files of the record: it names "
+                              f"{sorted(described - others) or 'nothing'} that is not among them, and leaves out "
+                              f"{sorted(others - described) or 'nothing'}")
     draft = zenodo.request("GET", f"/records/{record}/draft")
     if draft["metadata"].get("version") != version:
         raise ZenodoError(f"the draft {record} is of version {draft['metadata'].get('version')}, not {version}")
