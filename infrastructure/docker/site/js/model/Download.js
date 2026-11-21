@@ -46,6 +46,8 @@ const BYTES_PER_MEGABYTE = 1e6;
  */
 export function systemOf(platform, userAgent, architecture = null) {
     const p = platform.toLowerCase(), ua = userAgent.toLowerCase();
+    // Android calls itself Linux in its user agent, and no archive is for a phone
+    if (p.includes('android') || ua.includes('android')) return null;
     if (p.includes('win')) return 'windows-x64';
     if (p.includes('mac')) return architecture === 'x86' ? 'macos-x64' : 'macos-aarch64';
     if (p.includes('linux') || ua.includes('linux')) {

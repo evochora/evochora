@@ -42,6 +42,8 @@ describe('the system of a visitor', () => {
 
     test('is not recognised on a system without an archive', () => {
         expect(systemOf('iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)')).toBeNull();
+        expect(systemOf('Android', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36')).toBeNull();
+        expect(systemOf('Linux armv81', 'Mozilla/5.0 (Android 14; Mobile; rv:131.0) Gecko/131.0 Firefox/131.0')).toBeNull();
         expect(systemOf('', '')).toBeNull();
     });
 });
