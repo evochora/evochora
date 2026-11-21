@@ -1,8 +1,7 @@
 # Release Process
 
-**Status: DRAFT — decided in conversation, not built. Builds on the publish job of the branch
-`release-prep`, which already writes the rolling pre-release from a template and marks suffixed
-versions as pre-releases; the changes below are made on top of that job.**
+**Status: ACCOMPLISHED — implemented on branch `release-prep` (2026-11-21); see *Outcome* at the
+end for what the first runs on `main` still have to show.**
 
 ## Purpose
 
@@ -42,14 +41,19 @@ deleted.
 - **A nightly that would carry the same commit as the published one is not built.** The nightly's
   date then names the last change of `main`, and a night without a runner retries itself the next
   night, because `main` still differs from the published nightly.
-- **A numbered release is published by the workflow as its last step**, from a draft the
-  maintainer wrote. Nothing is public before every package exists and every test has passed; a
-  failed run leaves the draft a draft.
+- **A numbered release is prepared and published by one run of the workflow, with the
+  maintainer's approval in between**, from a draft the maintainer wrote. The run builds, tests and
+  finishes the draft, and then waits in a GitHub environment that requires approval. The maintainer
+  tries the distributions of the draft and approves; only then is anything public. A failed or
+  rejected run leaves the draft a draft. Because preparation and publication are one run, what is
+  published is what was built and tested, without a second run having to find it again.
 - **Zenodo is driven through its API from the workflow**, not through Zenodo's GitHub
   integration. The integration archives every published release including pre-releases, archives
   the moment the maintainer clicks "Publish" with whatever text the release has then, and does not
   take the packages. The API lets the workflow archive after verification, with the release text as
-  description, with the packages, and only for versions without a suffix.
+  description, with the packages, and only for versions without a suffix. The workflow creates and
+  fills the draft of the record with a token that cannot publish; the token that can is a secret
+  of the environment that the approval guards.
 - **The version DOI lives in the release text and in the build.** The workflow reserves the DOI
   before it builds and passes it into the build beside `RELEASE_TAG` and `GIT_REVISION`, so that
   `--version` names version, revision and DOI, and an experiment package can read the DOI of the
@@ -70,22 +74,23 @@ deleted.
   hand or for a pull request. The word `latest` appears in no name. A commit hash in the name was
   rejected: the files of the nightly would be named differently every night, and no link, image
   build or deploy could name them. Which commit an archive holds is said by `--version` and by
-  the title of the nightly. This part is not built: it changes the names the workflow, the image
-  and the start test look for.
+  the title of the nightly.
 - **The concept DOI is entered once by hand**, after the first archived release, as a badge in the
-  README and in the `doi` field of `CITATION.cff`. It never changes, so no job maintains it.
-- **`CITATION.cff` carries `version` and `date-released`, kept by hand**, and the workflow checks
-  before it builds that `version` equals the version it was started with, and, once a concept DOI
-  exists, that `doi` names it. `date-released` is not checked, so that a release that slips a day
-  does not fail on its date.
+  README, in the `doi` field of `CITATION.cff` and in the homepage. It never changes, so no job
+  maintains it. The workflow reads it from `CITATION.cff` to make a later release a version of the
+  same record, and refuses a release while the software is archived and the field is empty.
+- **`CITATION.cff` names no version.** It says how Evochora is cited; the version someone ran, and
+  its DOI, are named by `--version`. A version in the file would have to be set by hand before
+  every release, and would be wrong for everyone on a nightly or an older release.
+- **A version with a suffix is not archived.** `v1.0.0-rc.1` is published as a pre-release and has
+  no DOI.
 - **The version number itself is not part of this proposal.** Whether the next release is 0.5.0 or
   1.0.0, and what a major number means for a project that promises no compatibility between
   versions, is a separate decision.
 
 ## The nightly
 
-Every push to `main` runs tests, fingerprint and fingerprint comparison, as today, and publishes
-nothing.
+Every push to `main` runs tests, fingerprint and fingerprint comparison, and publishes nothing.
 
 At night GitHub starts the workflow on `main`. The workflow reads the commit the published
 nightly names and ends if it is the head of `main`. Otherwise it runs tests, packages for every
@@ -102,80 +107,76 @@ registry is tagged `nightly`, and the deploy workflow defaults to it.
 
 ## A numbered release
 
-1. The maintainer brings `CITATION.cff` to the version and date of the release, and creates a
-   draft release in GitHub: tag name `v<version>`, target `main`, release notes. A draft is not
-   public and has no tag yet.
+1. The maintainer creates a draft release in GitHub: tag name `v<version>`, target `main`, release
+   notes. A draft is not public and has no tag yet.
 2. The maintainer starts the workflow by hand with the version as input. Without an input the same
    start is a nightly. There is no other way to publish: the triggers on published releases and on
    pushed tags are removed.
-3. The workflow finds the draft by its tag name and checks, before anything is built or reserved:
-   the draft exists, its text is not empty, the tag has the form `v<number>`, `CITATION.cff` names
-   the version and, once there is one, the concept DOI. A failed check ends the run with nothing
-   changed anywhere.
-4. The workflow fixes the commit it builds, the head of `main` at the start, and runs tests,
-   fingerprint, packages, start tests and image with that version as the build's version.
-5. For a version without a suffix: the workflow reserves the DOI at Zenodo, writes it into the
-   draft's text and passes it into the build; after the build it creates the record, as a new
-   version of the concept record if one exists, uploads the source archive, the packages and the
-   metadata taken from `CITATION.cff`, sets the version and the release text as description, and
-   publishes the record. The source archive is the one the build packs with the task
-   `sourceArchive`: every file of the commit, and the file `GIT_REVISION` that names it, so that a
-   build made from the archive reports that commit. The source archive GitHub attaches to a
-   release lacks that file. Before it creates anything it checks whether a record for this version
-   already exists, so that a restarted run after a failure between Zenodo and GitHub does not
-   create a second version. A version with a suffix, `v1.0.0-rc.1`, skips Zenodo and is published
-   as a pre-release.
-6. The workflow sets the draft's target to the built commit, attaches the packages and publishes
-   the draft. GitHub creates the tag at that moment. The release appears complete: text, DOI,
-   packages.
+3. The workflow checks, before anything is built or reserved: the version has the form
+   `v<number>`, there is exactly one draft with that tag name, no release and no tag of that name
+   exist, and the text of the draft is not empty. A failed check ends the run with nothing changed
+   anywhere.
+4. For a version without a suffix, the workflow finds or creates the draft of the record at Zenodo,
+   as a new version of the concept record if one exists, and reserves its DOI. A draft an earlier
+   run created for the version is used again, so that a restarted run keeps the DOI. A version
+   that is archived already is refused.
+5. The workflow builds the commit it was started on, the head of `main`, and runs tests,
+   fingerprint, packages, start tests and image with that version and DOI as the build's.
+6. The workflow finishes the draft: it attaches the packages, sets the draft's target to the built
+   commit, and writes a block below the maintainer's text, from a template in the repository, with
+   the way to install, the DOI, the commit and a link to the changes since the release before. It
+   gives the draft of the record the source archive, the packages, the metadata taken from
+   `CITATION.cff`, the version and the text of the release as description. The source archive is
+   the one the build packs with the task `sourceArchive`: every file of the commit, and the file
+   `GIT_REVISION` that names it, so that a build made from the archive reports that commit. The
+   source archive GitHub attaches to a release lacks that file.
+7. The run waits for the maintainer's approval. The draft and its packages can be downloaded and
+   tried.
+8. After the approval the workflow tags the image, publishes the record at Zenodo and publishes
+   the draft. GitHub creates the tag at that moment and opens a discussion that announces the
+   release. The release appears complete: text, DOI, packages.
 
 Between the Zenodo publication and the GitHub publication lie seconds in which a record exists
-whose release is not yet visible. A failure exactly there is repaired by a restart, which finds the
-record and publishes the draft without a second deposit.
+whose release is not yet visible. A failure exactly there is repaired by running the failed job
+again, which finds the record published and publishes the draft.
+
+A run on another branch than `main`, or one aimed at Zenodo's sandbox, ends when the draft is
+prepared and publishes nothing.
 
 ## Zenodo
 
-The workflow uses a Zenodo token stored as a repository secret, and a second token for
-`sandbox.zenodo.org`. The job is developed and tested against the sandbox with a throwaway draft
-in the real repository, which is deleted afterwards; sandbox records are not permanent. The first
-run against Zenodo itself is the first numbered release, and it is irreversible: `CITATION.cff`
+The workflow uses three Zenodo tokens stored as secrets: one for `zenodo.org` that may create and
+fill drafts, one for `zenodo.org` that may also publish, held by the environment the approval
+guards, and one for `sandbox.zenodo.org`. The calls are in `tools/ci/zenodo_release.py`, which was
+developed and tested against the sandbox; sandbox records are not permanent. The first run against
+Zenodo itself is the first numbered release, and its publication is irreversible: `CITATION.cff`
 must be right before it, authors, ORCID, title, license.
 
-The id of the concept record is kept in the repository once it exists, so that later releases
-become versions of it. Zenodo supports both its legacy deposit API and the newer InvenioRDM API;
-which one the job uses is decided when it is written.
+The job uses Zenodo's records API, the one its web interface uses itself, and asks for records in
+that API's own format: asked for plain JSON, Zenodo answers in the format of its former deposit
+API, which lacks the DOI of a draft. The record is not added to the community `evochora`, whose
+records the homepage lists as published experiments.
 
 ## Changes
 
 - `.github/workflows/build.yml`: triggers reduced to `schedule`, `workflow_dispatch` with an
-  optional version input, `push` to `main` and `pull_request`; the publish job as described, the
-  Zenodo steps, the checks; the step that removes stale assets of the rolling release becomes
-  unnecessary.
-- `.github/release-notes-latest.md` becomes `.github/release-notes-nightly.md`.
+  optional version and the choice of the Zenodo system, `push` to `main` and `pull_request`; a
+  first job that decides what a run builds and publishes; the publication of the nightly; the
+  check of the draft, the reservation of the DOI, the preparation of the release and its
+  publication behind the approval.
+- `tools/ci/zenodo_release.py`: the calls to Zenodo.
+- `.github/release-notes-latest.md` becomes `.github/release-notes-nightly.md`;
+  `.github/release-notes-release.md` is the block written below the text of a release.
 - `build.gradle.kts`, `infrastructure/docker/evochora-node/Dockerfile`,
-  `.github/workflows/deploy.yml`, the start test of the packages: the fallback and default
-  `latest` are removed, and the archive name carries the tag the workflow passes or none, as
-  decided above; the build takes a DOI property beside `RELEASE_TAG` and `GIT_REVISION`.
-- `README.md` and `docs/USER_GUIDE.md`: the archive names in the Quick Start and in "Install and
-  Start".
+  `infrastructure/docker/docker-compose.yml`, `.github/workflows/deploy.yml`, the start test of
+  the packages: the fallback and default `latest` are removed, and the archive name carries the
+  tag the workflow passes or none, as decided above; the build takes a DOI property beside
+  `RELEASE_TAG`.
 - `BuildInfo` and the version provider of the CLI: the DOI as a third field, printed by
-  `--version` when present.
-- `CITATION.cff`: `version`, `date-released`, later `doi`.
-- `docs/dev/RELEASING.md`: how a release is published, written with this proposal.
-- `README.md`: the concept DOI badge, after the first archived release; a sentence that the
-  nightly is a pre-release that watchers of releases will be notified of.
-
-## Order of execution
-
-1. The publish job of `release-prep` is on `main`.
-2. The workflow changes, the renamed template and the defaults are built and merged. The first
-   nightly is started by hand.
-3. The release `latest` and its tag are deleted:
-   `gh release delete latest --cleanup-tag --yes`.
-4. `CITATION.cff` with the maintainer's ORCID is on `main`.
-5. The Zenodo job is tested against the sandbox.
-6. The first numbered release is published through the workflow.
-7. The concept DOI goes into the README and `CITATION.cff` in a commit without a release.
+  `--version` in a line of its own when present.
+- `docs/dev/RELEASING.md`: how a release is published, and what is set up once.
+- The repository: the environment `release` with the maintainer as required reviewer, open to
+  `main` alone, and the three secrets.
 
 ## Pitfalls
 
@@ -184,9 +185,11 @@ For the maintainer:
 - GitHub's "immutable releases" setting must stay off. Enabled, it protects the tags and locks
   the assets of every new release, and the nightly can no longer be recreated. Releases created
   while it was on stay immutable after it is turned off.
-- The Zenodo token lets whoever can change the workflow publish permanent records in the
-  maintainer's name. As long as the maintainer alone pushes to `main` that is acceptable; the day
-  others get write access, the token belongs in an environment with a required approval.
+- The token that can publish at Zenodo is reachable only by the job the maintainer has approved.
+  Whoever can change the workflow can still create drafts in the maintainer's Zenodo account with
+  the other token; a draft is not public and can be discarded.
+- GitHub keeps a run waiting for approval for 30 days. After that the run has failed and is
+  started again; the draft at Zenodo and its DOI are used again.
 - A night without macOS runners costs a day: the nightly retries itself the next night. A
   numbered release whose run fails is restarted by hand; nothing was public.
 - The demo host runs a nightly that can be a day behind `main`, unless a nightly is started by
@@ -208,7 +211,7 @@ For users:
 
 ## Rejected alternatives
 
-- **Updating the rolling release in place**, as today and on `release-prep`: keeps the stale
+- **Updating the rolling release in place**, as it was done before: keeps the stale
   GitHub date, and that date is what readers see first. The date in the title mitigates it; the
   recreation removes it.
 - **Zenodo's GitHub integration**: no filter for pre-releases, archives at the click, no packages,
@@ -217,14 +220,33 @@ For users:
   second place a newcomer has to know, for a problem the recreation solves in the same place.
 - **Writing the version DOI into the tagged source**: needs a commit by the workflow before the
   tag and a build after it; the release text and the build carry the DOI instead.
-- **Letting the workflow write `version` and `date-released` into `CITATION.cff`**: bot commits
-  on `main` for two fields that a check enforces as well.
+- **A version in `CITATION.cff`**, kept by hand and checked by the workflow, or written by the
+  workflow: a step before every release, or bot commits on `main`, for a field that is wrong for
+  everyone who runs another build than the latest release. Of nine comparable projects with a
+  `CITATION.cff`, seven name no version.
+- **Publishing without a halt**, as the last step of the run: the maintainer could not try the
+  packages of a release before it was public, and a Zenodo record cannot be taken back.
+- **Two workflows, one that prepares and one that publishes**: the second would have to find what
+  the first prepared, the image among it, and establish that it is still the same. One run that
+  waits for approval publishes what it built by construction.
+- **Naming the Docker image in the text of a release**: the image serves the demo host, and
+  software that ships its own Java runtime does not usually advertise one.
 
-## Open
+## Outcome
 
-- Whether release candidates, `v1.0.0-rc.1`, also get a DOI. The proposal excludes them; they
-  are real versions and Zenodo would accept them.
-- Which Zenodo API the job uses.
-- Whether a failed nightly is restarted automatically after a delay, should runner shortages
-  become frequent.
-- The version number of the next release and what the major number promises.
+Built as described above. Checked before the merge: the names of the archives and what
+`--version` prints, by building; the decisions of the first job, the check of the draft and the
+writing of the release text, by running the scripts of the workflow against a stand-in for
+GitHub; `tools/ci/zenodo_release.py`, against Zenodo's sandbox, through reserving, filling,
+publishing, a second version of the same record and every refusal.
+
+Left to the first runs on `main`, because a schedule and the publication run only there: the
+nightly at its time, its deletion and recreation, the image tagged `nightly`; and for the first
+numbered release, the attachment of the packages to a draft, the approval, the token for
+`zenodo.org` that may not publish, and the discussion GitHub opens. After the first nightly the
+release `latest` and its tag are deleted with `gh release delete latest --cleanup-tag --yes`.
+After the first archived release the concept DOI is entered as `docs/dev/RELEASING.md` describes.
+
+Not decided here: the version number of the next release and what the major number promises; and
+whether a failed nightly is restarted automatically after a delay, should runner shortages become
+frequent.
