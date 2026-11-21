@@ -281,6 +281,10 @@ public final class ConfigLoader {
     /**
      * The project directory of this process, set as the system property {@code evochora.home} if
      * it is not given. A property this loader set itself keeps the source it was found by.
+     * <p>
+     * The property always ends up holding the absolute directory, a given relative one included:
+     * the configuration takes the property as it stands, and everything it derives from the
+     * project directory, the data directory first, has to be an absolute path.
      */
     private static synchronized ProjectDirectory projectDirectory() {
         final String given = System.getProperty(HOME_KEY);
@@ -288,9 +292,12 @@ public final class ConfigLoader {
             return detected;
         }
         final ProjectDirectory directory = detectProjectDirectory(given, codeLocation(), new File("").getAbsoluteFile());
-        if (given == null || given.isBlank()) {
-            System.setProperty(HOME_KEY, directory.directory().getPath());
+        final String absolute = directory.directory().getPath();
+        if (!absolute.equals(given)) {
+            System.setProperty(HOME_KEY, absolute);
             ConfigFactory.invalidateCaches();
+        }
+        if (given == null || given.isBlank()) {
             detected = directory;
         }
         return directory;

@@ -296,6 +296,23 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("A relative -Devochora.home reaches the configuration as the absolute directory the messages name")
+    void resolve_relativeProjectDirectoryReachesTheConfigurationAbsolute() {
+        System.setProperty(ConfigLoader.HOME_KEY, "my-project");
+        ConfigFactory.invalidateCaches();
+        List<String> messages = new ArrayList<>();
+        String absolute = new File("my-project").getAbsolutePath();
+
+        Config config = ConfigLoader.resolve(null, (level, message) -> messages.add(message));
+
+        assertEquals(absolute, config.getString(ConfigLoader.HOME_KEY));
+        assertTrue(new File(config.getString("pipeline.dataBaseDir")).isAbsolute(),
+            "pipeline.dataBaseDir is relative: " + config.getString("pipeline.dataBaseDir"));
+        assertTrue(messages.contains("Project: " + absolute), "Messages: " + messages);
+        assertTrue(messages.contains("Project directory taken from -Devochora.home"), "Messages: " + messages);
+    }
+
+    @Test
     @DisplayName("An explicit configuration file gets evochora.home as well")
     void resolve_explicitFileGetsTheProjectDirectory(@TempDir Path dir) {
         System.setProperty(ConfigLoader.HOME_KEY, dir.toString());
