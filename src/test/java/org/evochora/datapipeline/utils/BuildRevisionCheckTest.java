@@ -78,6 +78,19 @@ class BuildRevisionCheckTest {
     }
 
     @Test
+    void runWrittenByABuildFromSourcesShippedWithUncommittedChanges_SaysTheSourcesAreGone() {
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+            .setSimulationRunId("run-g")
+            .setBuildRevision("0123abcd" + BuildInfo.DIRTY_SUFFIX + BuildInfo.REBUILT_SUFFIX)
+            .build();
+
+        BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, log);
+
+        verify(log).warn(anyString(), eq("run-g"), eq("a build of revision 0123abcd-dirty-rebuilt"), eq(reader()),
+            eq("those sources carried uncommitted changes and cannot be checked out again"));
+    }
+
+    @Test
     void runWrittenByABuildFromShippedSources_NamesTheCommitAndSaysTheyMayHaveChanged() {
         SimulationMetadata metadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("run-f")

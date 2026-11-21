@@ -54,12 +54,15 @@ public final class BuildRevisionCheck {
         if (BuildInfo.UNKNOWN.equals(recorded)) {
             return "the run does not name its sources";
         }
-        if (recorded.endsWith(BuildInfo.DIRTY_SUFFIX)) {
+        // Sources shipped from a tree with uncommitted changes carry both suffixes, the one of
+        // the tree first: such a build is as little to be had from the repository as that tree
+        String shipped = recorded.endsWith(BuildInfo.REBUILT_SUFFIX)
+            ? recorded.substring(0, recorded.length() - BuildInfo.REBUILT_SUFFIX.length()) : recorded;
+        if (shipped.endsWith(BuildInfo.DIRTY_SUFFIX)) {
             return "those sources carried uncommitted changes and cannot be checked out again";
         }
         if (recorded.endsWith(BuildInfo.REBUILT_SUFFIX)) {
-            String commit = recorded.substring(0, recorded.length() - BuildInfo.REBUILT_SUFFIX.length());
-            return "its sources were shipped as those of `git checkout " + commit + "` and may have been changed "
+            return "its sources were shipped as those of `git checkout " + shipped + "` and may have been changed "
                 + "before the build";
         }
         return "its sources are `git checkout " + recorded + "`";
