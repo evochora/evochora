@@ -38,8 +38,10 @@ public final class BuildInfo {
     public static final String DIRTY_SUFFIX = "-dirty";
 
     /**
-     * Appended to the commit hash by a build made without a git checkout from sources shipped with
-     * their revision: such a build cannot tell whether the sources are still those of the commit.
+     * Appended by a build made without a git checkout to the revision the sources were shipped
+     * with: such a build cannot tell whether the sources are still those of the commit. The
+     * shipped revision can itself end in {@link #DIRTY_SUFFIX}, when the sources were packed from
+     * a tree with uncommitted changes, and then carries both suffixes, that of the tree first.
      */
     public static final String REBUILT_SUFFIX = "-rebuilt";
 
@@ -62,8 +64,9 @@ public final class BuildInfo {
     /**
      * Returns the revision of this build.
      *
-     * @return the commit hash, with {@link #DIRTY_SUFFIX} appended when the tree was not clean or
-     *         {@link #REBUILT_SUFFIX} when the build was made from shipped sources, or
+     * @return the commit hash, with {@link #DIRTY_SUFFIX} appended when the tree was not clean,
+     *         with {@link #REBUILT_SUFFIX} appended when the build was made from shipped sources,
+     *         with both in that order when those sources came from a tree that was not clean, or
      *         {@link #UNKNOWN}
      */
     public static String revision() {
