@@ -894,7 +894,7 @@ targetPlatforms.forEach { platform ->
 // takes it has to bring, beside the distributions named after a platform, which need nothing: a
 // name that says what the archive lacks reads as the one for a machine without Java.
 val requiresJava = "requires-java"
-tasks.register<Zip>("noJavaDistZip") {
+tasks.register<Zip>("requiresJavaDistZip") {
     group = "distribution"
     description = "Builds the distribution without a Java runtime under build/distributions"
     archiveBaseName = "evochora"
@@ -902,7 +902,7 @@ tasks.register<Zip>("noJavaDistZip") {
     destinationDirectory = layout.buildDirectory.dir("distributions")
     into(distributionName(requiresJava)) { with(publishedContents) }
 }
-tasks.register<Sync>("installNoJavaDist") {
+tasks.register<Sync>("installRequiresJavaDist") {
     group = "distribution"
     description = "Installs the distribution without a Java runtime under build/install"
     with(publishedContents)
@@ -917,7 +917,7 @@ tasks.register("platformDistributions") {
     targetPlatforms.forEach { platform ->
         dependsOn(if (platform.zip) "${platform.distributionName}DistZip" else "${platform.distributionName}DistTar")
     }
-    dependsOn("noJavaDistZip")
+    dependsOn("requiresJavaDistZip")
 }
 
 // Builds the platform distribution of the machine this build runs on and unpacks it under
