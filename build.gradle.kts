@@ -325,6 +325,18 @@ val buildRevision: String = providers.of(BuildRevisionSource::class) {
     parameters.projectDir.set(rootProject.layout.projectDirectory)
 }.get()
 
+// Only a build made for a release has a version: its tag, of the form v<number>. The rolling
+// pre-release and a build made by hand have none.
+val releaseVersion = releaseTag.takeIf { Regex("v\\d.*").matches(it) }.orEmpty()
+
+// The DOI under which the release this build is made for is archived, which the workflow reserves
+// before it builds. It belongs to a release: a build without a version takes none.
+val releaseDoi = project.findProperty("RELEASE_DOI")?.toString().orEmpty()
+if (releaseDoi.isNotEmpty() && releaseVersion.isEmpty()) {
+    throw GradleException("RELEASE_DOI names the DOI of a release, and this build is made for none: " +
+        "RELEASE_TAG is \"$releaseTag\", not a version of the form v<number>.")
+}
+
 // Written as a properties file by Gradle's own task, which escapes every value as the format
 // requires and writes no timestamp: a release tag may hold any character a tag allows, and what
 // is read back is exactly what was written
@@ -333,8 +345,8 @@ val writeBuildInfo = tasks.register<WriteProperties>("writeBuildInfo") {
     description = "Records the revision of the sources and the version of the build on the classpath"
     destinationFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
     property("revision", buildRevision)
-    property("version", (project.findProperty("RELEASE_TAG")?.toString() ?: "")
-        .takeIf { Regex("v\\d.*").matches(it) } ?: "")
+    property("version", releaseVersion)
+    property("doi", releaseDoi)
     // The Java the code is compiled for, which JavaVersionGuard requires of the Java it runs on
     property("requiredJava", java.toolchain.languageVersion.get().asInt())
 }
