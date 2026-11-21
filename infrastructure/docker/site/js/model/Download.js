@@ -16,6 +16,13 @@ const DOI_PREFIX = '10.5281/zenodo.';
 /** The systems a release can have an archive for, in the order the download names them */
 export const SYSTEMS = { 'linux-x64': 'Linux (x64)', 'linux-aarch64': 'Linux (ARM64)', 'macos-aarch64': 'macOS (Apple silicon)', 'windows-x64': 'Windows (x64)' };
 
+/**
+ * The systems Evochora is known not to support, each as the sentence about it ends. No archive
+ * runs there as it is shipped, the one without a Java runtime included: a library the analysis
+ * needs brings its native part for the systems of SYSTEMS alone.
+ */
+const UNSUPPORTED = { 'macos-x64': 'a Mac with an Intel processor' };
+
 /** How the name of an archive for one system ends: the system, then the kind of archive */
 const SYSTEM_ARCHIVE = /-((?:linux|macos|windows)-[a-z0-9]+)\.(?:tar\.gz|zip)$/;
 
@@ -24,22 +31,28 @@ const BYTES_PER_MEGABYTE = 1e6;
 /**
  * The system of the visitor, as the archives of a release name it.
  *
- * A Mac is taken for one with Apple silicon unless the browser says otherwise: platform and user
- * agent read the same on both kinds of Mac, and only some browsers name the processor when asked.
- * A Mac known to have an Intel processor has no archive, since the one for macOS brings a Java
- * that does not run on it.
+ * Where the browser names the processor when asked, that answer decides; only some browsers do.
+ * Without it, a Mac is taken for one with Apple silicon, since platform and user agent read the
+ * same on both kinds of Mac, and Linux for x64 unless platform or user agent name ARM: a browser
+ * that answers the question carries a user agent that says x86_64 on every processor. Windows has
+ * one archive, which Windows runs on ARM as well.
  *
  * @param {string} platform - What the browser names as its platform
  * @param {string} userAgent
  * @param {string|null} [architecture] - The processor family as the browser names it when asked,
  *     "arm" or "x86", or null where it does not tell
- * @returns {string|null} A key of SYSTEMS, or null for a system Evochora has no archive for
+ * @returns {string|null} A key of SYSTEMS, a key of UNSUPPORTED for a system Evochora is known
+ *     not to support, or null for a system that is not recognised
  */
 export function systemOf(platform, userAgent, architecture = null) {
     const p = platform.toLowerCase(), ua = userAgent.toLowerCase();
     if (p.includes('win')) return 'windows-x64';
-    if (p.includes('mac')) return architecture === 'x86' ? null : 'macos-aarch64';
-    if (p.includes('linux') || ua.includes('linux')) return /aarch64|arm64/.test(ua + ' ' + p) ? 'linux-aarch64' : 'linux-x64';
+    if (p.includes('mac')) return architecture === 'x86' ? 'macos-x64' : 'macos-aarch64';
+    if (p.includes('linux') || ua.includes('linux')) {
+        if (architecture === 'arm') return 'linux-aarch64';
+        if (architecture === 'x86') return 'linux-x64';
+        return /aarch64|arm64/.test(ua + ' ' + p) ? 'linux-aarch64' : 'linux-x64';
+    }
     return null;
 }
 
@@ -64,11 +77,12 @@ function archivesBySystem(assets) {
  *     not answer
  * @param {string|null} system - The system of the visitor, as systemOf names it
  * @returns {null|{button: {url: string, label: string, newTab: boolean}, version: string,
- *     others: null|{label: string, links: Array<{label: string, url: string}>}}}
+ *     others: null|{label: string, links: Array<{label: string, url: string}>}, notice?: string}}
  *     null where there is no release: the button to the latest release stays as the page has it.
  *     The button leads to an archive, or opens the page of the release in a new tab; others are the
  *     archives named beside the version: those for further systems, or all of them where the
- *     button leads to the release.
+ *     button leads to the release. The notice is there for a visitor on a system Evochora is known
+ *     not to support, and says so.
  */
 export function describeDownload(release, system) {
     if (!release) return null;
@@ -88,7 +102,8 @@ export function describeDownload(release, system) {
     const systems = Object.keys(SYSTEMS).filter(key => found[key]);
     const archiveLink = key => ({ label: SYSTEMS[key], url: found[key].browser_download_url });
     if (systems.length && !found[system]) {
-        return { button: { url: release.html_url, label: 'Download', newTab: true }, version, others: { label: 'Available for', links: systems.map(archiveLink) } };
+        const notice = UNSUPPORTED[system] ? { notice: 'Evochora is not supported on ' + UNSUPPORTED[system] + '.' } : {};
+        return { button: { url: release.html_url, label: 'Download', newTab: true }, version, others: { label: 'Available for', links: systems.map(archiveLink) }, ...notice };
     }
     if (systems.length) {
         return {

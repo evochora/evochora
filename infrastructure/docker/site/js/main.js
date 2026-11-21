@@ -63,7 +63,7 @@ Promise.all([readLatestRelease(), architecture]).then(([release, processor]) => 
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
     const download = describeDownload(release, systemOf(platform, navigator.userAgent, processor));
     if (!download) return;
-    drawDownload({ button: byId('dl-button'), version: byId('dl-version'), separator: byId('dl-version-sep'), others: byId('dl-other') }, download);
+    drawDownload({ button: byId('dl-button'), notice: byId('dl-notice'), noticeSeparator: byId('dl-notice-sep'), version: byId('dl-version'), separator: byId('dl-version-sep'), others: byId('dl-other') }, download);
     if (citation) {
         readVersionRecords(ZENODO_CONCEPT_RECORD).then(answer => {
             const doi = versionDoi(answer, release.tag_name);

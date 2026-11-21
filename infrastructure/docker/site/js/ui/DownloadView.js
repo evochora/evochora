@@ -8,12 +8,18 @@
 import { element, link } from './Element.js';
 
 /**
- * @param {{button: HTMLAnchorElement, version: HTMLElement, separator: HTMLElement, others: HTMLElement}} places
+ * @param {{button: HTMLAnchorElement, notice: HTMLElement, noticeSeparator: HTMLElement, version: HTMLElement,
+ *     separator: HTMLElement, others: HTMLElement}} places
  * @param {{button: {url: string, label: string, newTab: boolean}, version: string,
- *     others: null|{label: string, links: Array<{label: string, url: string}>}}} download
+ *     others: null|{label: string, links: Array<{label: string, url: string}>}, notice?: string}} download
  */
 export function drawDownload(places, download) {
-    const { button, version, separator, others } = places;
+    const { button, notice, noticeSeparator, version, separator, others } = places;
+    if (download.notice) {
+        notice.textContent = download.notice;
+        notice.hidden = false;
+        noticeSeparator.hidden = false;
+    }
     button.href = download.button.url;
     button.textContent = download.button.label;
     if (!download.button.newTab) button.removeAttribute('target');

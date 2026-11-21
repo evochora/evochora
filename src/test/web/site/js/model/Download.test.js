@@ -25,11 +25,19 @@ describe('the system of a visitor', () => {
         expect(systemOf('', 'Mozilla/5.0 (X11; Linux x86_64)')).toBe('linux-x64');
     });
 
-    test('is a Mac with Apple silicon unless the browser names an Intel processor, which has no archive', () => {
+    test('is a Mac with Apple silicon unless the browser names an Intel processor, which Evochora does not support', () => {
         const intelLooking = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)';
         expect(systemOf('macOS', intelLooking, 'arm')).toBe('macos-aarch64');
-        expect(systemOf('macOS', intelLooking, 'x86')).toBeNull();
+        expect(systemOf('macOS', intelLooking, 'x86')).toBe('macos-x64');
         expect(systemOf('MacIntel', intelLooking, null)).toBe('macos-aarch64');
+    });
+
+    test('is the Linux of the processor the browser names, whatever its user agent says', () => {
+        const frozen = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+        expect(systemOf('Linux', frozen, 'arm')).toBe('linux-aarch64');
+        expect(systemOf('Linux', frozen, 'x86')).toBe('linux-x64');
+        expect(systemOf('Linux', frozen, null)).toBe('linux-x64');
+        expect(systemOf('Windows', '', 'arm')).toBe('windows-x64');
     });
 
     test('is not recognised on a system without an archive', () => {
@@ -79,6 +87,14 @@ describe('the download', () => {
                 { label: 'Windows (x64)', url: url('evochora-v1.0.0-windows-x64.zip') }
             ] }
         });
+    });
+
+    test('tells a visitor on a system Evochora does not support, and leads to the release beside every archive', () => {
+        const download = describeDownload(release(SYSTEM_ARCHIVES), 'macos-x64');
+        expect(download.notice).toBe('Evochora is not supported on a Mac with an Intel processor.');
+        expect(download.button).toEqual({ url: PAGE, label: 'Download', newTab: true });
+        expect(download.others.label).toBe('Available for');
+        expect(download.others.links.map(link => link.label)).toEqual(['Linux (x64)', 'Linux (ARM64)', 'macOS (Apple silicon)', 'Windows (x64)']);
     });
 
     test('leads a visitor whose system has no archive in the release to the release, and names the archives it has', () => {
