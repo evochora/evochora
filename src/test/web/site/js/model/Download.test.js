@@ -25,6 +25,13 @@ describe('the system of a visitor', () => {
         expect(systemOf('', 'Mozilla/5.0 (X11; Linux x86_64)')).toBe('linux-x64');
     });
 
+    test('is a Mac with Apple silicon unless the browser names an Intel processor, which has no archive', () => {
+        const intelLooking = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)';
+        expect(systemOf('macOS', intelLooking, 'arm')).toBe('macos-aarch64');
+        expect(systemOf('macOS', intelLooking, 'x86')).toBeNull();
+        expect(systemOf('MacIntel', intelLooking, null)).toBe('macos-aarch64');
+    });
+
     test('is not recognised on a system without an archive', () => {
         expect(systemOf('iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)')).toBeNull();
         expect(systemOf('', '')).toBeNull();

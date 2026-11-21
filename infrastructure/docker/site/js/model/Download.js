@@ -24,14 +24,21 @@ const BYTES_PER_MEGABYTE = 1e6;
 /**
  * The system of the visitor, as the archives of a release name it.
  *
+ * A Mac is taken for one with Apple silicon unless the browser says otherwise: platform and user
+ * agent read the same on both kinds of Mac, and only some browsers name the processor when asked.
+ * A Mac known to have an Intel processor has no archive, since the one for macOS brings a Java
+ * that does not run on it.
+ *
  * @param {string} platform - What the browser names as its platform
  * @param {string} userAgent
+ * @param {string|null} [architecture] - The processor family as the browser names it when asked,
+ *     "arm" or "x86", or null where it does not tell
  * @returns {string|null} A key of SYSTEMS, or null for a system Evochora has no archive for
  */
-export function systemOf(platform, userAgent) {
+export function systemOf(platform, userAgent, architecture = null) {
     const p = platform.toLowerCase(), ua = userAgent.toLowerCase();
     if (p.includes('win')) return 'windows-x64';
-    if (p.includes('mac')) return 'macos-aarch64';
+    if (p.includes('mac')) return architecture === 'x86' ? null : 'macos-aarch64';
     if (p.includes('linux') || ua.includes('linux')) return /aarch64|arm64/.test(ua + ' ' + p) ? 'linux-aarch64' : 'linux-x64';
     return null;
 }
@@ -75,8 +82,8 @@ export function describeDownload(release, system) {
 
     // An archive for each system: the visitor's one is offered, the others are named beside it. A
     // visitor for whom the release has none, because the system is not recognised or its archive is
-    // missing, is led to the release, beside every archive it has: no archive is offered that would
-    // not run on the visitor's system.
+    // missing, is led to the release, beside every archive it has, and not offered the archive of
+    // another system.
     const found = archivesBySystem(assets);
     const systems = Object.keys(SYSTEMS).filter(key => found[key]);
     const archiveLink = key => ({ label: SYSTEMS[key], url: found[key].browser_download_url });

@@ -54,9 +54,14 @@ readCommunityRecords().then(answer => drawExperiments(byId('exp-list'), describe
 const citation = conceptDoi(ZENODO_CONCEPT_RECORD);
 if (citation) drawConceptDoi(byId('cite-doi'), citation);
 
-readLatestRelease().then(release => {
+// The processor of the visitor's computer, which Chromium browsers name when asked and others do not
+const architecture = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues
+    ? navigator.userAgentData.getHighEntropyValues(['architecture']).then(values => values.architecture || null, () => null)
+    : Promise.resolve(null);
+
+Promise.all([readLatestRelease(), architecture]).then(([release, processor]) => {
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
-    const download = describeDownload(release, systemOf(platform, navigator.userAgent));
+    const download = describeDownload(release, systemOf(platform, navigator.userAgent, processor));
     if (!download) return;
     drawDownload({ button: byId('dl-button'), version: byId('dl-version'), separator: byId('dl-version-sep'), others: byId('dl-other') }, download);
     if (citation) {
