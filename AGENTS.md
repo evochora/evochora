@@ -103,30 +103,12 @@ The compiler produces a JSON `ProgramArtifact` with machine code layout, labels,
 
 ## Configuration
 
-### File Layout
-
-- `config/evochora.conf` — User-facing experiment template (overrides selected defaults)
-- `src/main/resources/reference.conf` — All defaults with documentation (embedded in JAR, loaded automatically)
-- `config/local.conf` — Local development overrides (not checked in)
-
-### Config Resolution Cascade (in `ConfigLoader.resolve()`)
-
-1. `--config` CLI option
-2. `-Dconfig.file` system property
-3. `config/evochora.conf` in CWD
-4. `APP_HOME/config/evochora.conf` (detected from JAR location)
-5. Classpath `reference.conf` only (fallback)
-
-### Tuning Profiles
-
-Services share pipeline tuning parameters via HOCON substitutions:
-- `pipeline.tuning = ${profiles.detailed}` (or `sampled`, `sparse`)
-- Services consume via `${pipeline.tuning.samplingInterval}`, `${pipeline.tuning.insertBatchSize}`, etc.
-- Override in experiment config or `local.conf`: `pipeline.tuning = ${profiles.sampled}`
-
-### Config Priority (within a single file)
-
-System properties > Environment variables > User config file > reference.conf defaults
+Every setting has its default and its explanation in `src/main/resources/reference.conf`.
+`config/evochora.conf` is the template for an experiment and sets only what it changes. Where
+Evochora looks for its configuration, how the project directory is found and how a configuration
+file is built is described in [`docs/CLI_USAGE.md`](docs/CLI_USAGE.md#3-configuration). The full
+order of the sources, system properties and environment variables among them, stands in the JavaDoc
+of `ConfigLoader`.
 
 ## Agent Guidelines
 
