@@ -175,9 +175,16 @@ val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
 // option exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
 val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
 
+// Rendering a video draws into images in memory, and Evochora opens no window anywhere. Left to
+// itself, Java decides from the environment whether there is a display, and where one is named
+// that it cannot reach, in a terminal that outlived its desktop session or behind a broken display
+// forwarding, the first drawing fails. Told that there is none, it does not look. The start
+// scripts of the distribution and the test tasks carry the flag.
+val headless = "-Djava.awt.headless=true"
+
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
-    applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
+    applicationDefaultJvmArgs = listOf("-Xmx8g", headless, enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
 // The start scripts are made from templates of our own in gradle/start-scripts: copies of Gradle's,
@@ -958,7 +965,7 @@ tasks.test {
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    jvmArgs(headless, enableNativeAccess, allowUnsafeMemoryAccess)
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
@@ -984,7 +991,7 @@ tasks.register<Test>("unit") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    jvmArgs(headless, enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = false
@@ -1021,7 +1028,7 @@ tasks.register<Test>("integration") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     maxParallelForks = testForks
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    jvmArgs(headless, enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         // Only show output for failed tests (silent on success)
