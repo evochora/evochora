@@ -496,6 +496,10 @@ jobs:
   start-test:
     name: Start Test (${{ matrix.platform }})
     needs: package
+    # Asked outright: a job is skipped when any job before it in the chain was skipped, and the
+    # check of the draft and the reservation of the DOI, on which the package job waits, are
+    # skipped in every run that builds no release
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
     runs-on: ${{ matrix.os }}
     strategy:
       # Every leg runs to its end, so that a failure on one platform does not hide whether the
@@ -558,6 +562,8 @@ jobs:
   docker:
     name: Docker Image
     needs: package
+    # Asked outright, for the reason given at the start test
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
