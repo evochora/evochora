@@ -659,6 +659,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param organismConfigs The organism entries of the configuration, each with a
      *                        {@code program} and optionally {@code defines} and {@code values}.
      * @param sourceRoots     The source roots every program is compiled with.
+     * @param baseDirectory   The directory the compiler resolves a relative source root against.
      * @param envProps        The world the programs are laid out for.
      * @return One artifact per organism entry, in the order of the entries; entries of one
      *         variant share the same artifact instance.
@@ -670,6 +671,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      */
     static List<ProgramArtifact> compileOrganismPrograms(List<? extends Config> organismConfigs,
                                                          List<SourceRoot> sourceRoots,
+                                                         Path baseDirectory,
                                                          EnvironmentProperties envProps) {
         Compiler compiler = new Compiler();
         Map<ProgramVariant, ProgramArtifact> artifactsByVariant = new HashMap<>();
@@ -681,7 +683,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Map<String, String> values = readValues(orgConfig, index);
             CompilerOptions compilerOptions;
             try {
-                compilerOptions = new CompilerOptions(sourceRoots, defines, values);
+                compilerOptions = new CompilerOptions(sourceRoots, defines, values, baseDirectory);
             } catch (IllegalArgumentException e) {
                 // The options say themselves whether the defines or the values are wrong
                 throw new IllegalArgumentException("organisms[" + index + "]: " + e.getMessage(), e);
@@ -773,24 +775,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return values;
     }
 
-    /**
-     * A source root as the compiler takes it: a relative path is resolved against
-     * {@code compiler.base-directory}, the project directory, so that the configuration's roots do
-     * not depend on the directory the node was started from; an absolute path and a URL stay as
-     * configured.
-     *
-     * @param path          the configured root.
-     * @param baseDirectory the directory relative roots are resolved against.
-     * @return the root the compiler resolves programs against.
-     */
-    static String againstBaseDirectory(String path, Path baseDirectory) {
-        // A root with a scheme, such as https://, is a URL and no path of this machine
-        if (path.matches("[A-Za-z][A-Za-z0-9+.-]*://.*") || Path.of(path).isAbsolute()) {
-            return path;
-        }
-        return baseDirectory.resolve(path).normalize().toString();
-    }
-
     private static String newRunId() {
         return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
             + "-" + UUID.randomUUID().toString();
@@ -820,12 +804,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         } else {
             sourceRoots = CompilerOptions.defaults().sourceRoots();
         }
-        if (options.hasPath("compiler.base-directory")) {
-            Path baseDirectory = Path.of(options.getString("compiler.base-directory"));
-            sourceRoots = sourceRoots.stream()
-                    .map(root -> new SourceRoot(againstBaseDirectory(root.path(), baseDirectory), root.prefix()))
-                    .toList();
-        }
+        // The compiler resolves a relative root against this directory, so that the roots of the
+        // configuration do not depend on the directory the node was started from
+        Path baseDirectory = Path.of(options.hasPath("compiler.base-directory")
+                ? options.getString("compiler.base-directory") : "");
 
         String topology = options.getString("environment.topology");
         boolean isToroidal;
@@ -851,7 +833,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             throw new IllegalArgumentException("environment.shape: " + e.getMessage(), e);
         }
 
-        List<ProgramArtifact> organismArtifacts = compileOrganismPrograms(organismConfigs, sourceRoots, envProps);
+        List<ProgramArtifact> organismArtifacts = compileOrganismPrograms(organismConfigs, sourceRoots, baseDirectory, envProps);
         Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
         organismArtifacts.forEach(artifact -> compiledPrograms.putIfAbsent(artifact.programId(), artifact));
 

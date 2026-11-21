@@ -6,6 +6,7 @@ import org.evochora.compiler.api.SourceRoot;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,6 +28,17 @@ public class CompilerOptionsTest {
         assertThat(opts.sourceRoots().get(0).path()).isEqualTo(".");
         assertThat(opts.sourceRoots().get(0).isDefault()).isTrue();
         assertThat(opts.defines()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void baseDirectory_isTheWorkingDirectoryUnlessGiven_andAlwaysAbsolute() {
+        Path workingDirectory = Path.of("").toAbsolutePath();
+
+        assertThat(CompilerOptions.defaults().baseDirectory()).isEqualTo(workingDirectory);
+        assertThat(new CompilerOptions(List.of(), Map.of(), Map.of()).baseDirectory()).isEqualTo(workingDirectory);
+        assertThat(new CompilerOptions(List.of(), Map.of(), Map.of(), Path.of("project")).baseDirectory())
+                .isEqualTo(workingDirectory.resolve("project"));
     }
 
     @Test

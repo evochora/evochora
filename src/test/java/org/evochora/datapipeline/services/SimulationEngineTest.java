@@ -669,18 +669,6 @@ class SimulationEngineTest {
     }
 
     @Test
-    void againstBaseDirectory_resolvesOnlyARelativePath() {
-        Path project = tempDir.resolve("project");
-
-        assertEquals(project.resolve("assembly/ancestors").normalize().toString(),
-                SimulationEngine.againstBaseDirectory("assembly/ancestors", project));
-        String absolute = tempDir.resolve("elsewhere").toString();
-        assertEquals(absolute, SimulationEngine.againstBaseDirectory(absolute, project));
-        assertEquals("https://example.com/organisms",
-                SimulationEngine.againstBaseDirectory("https://example.com/organisms", project));
-    }
-
-    @Test
     void readValues_rejectsAValueThatIsNoString() {
         Config entry = ConfigFactory.parseString("values { STEPS = 20 }");
 
@@ -718,7 +706,7 @@ class SimulationEngineTest {
 
     private static List<ProgramArtifact> compileOrganismPrograms(Config... entries) {
         return SimulationEngine.compileOrganismPrograms(List.of(entries),
-                CompilerOptions.defaults().sourceRoots(),
+                CompilerOptions.defaults().sourceRoots(), Path.of(""),
                 new EnvironmentProperties(new int[]{32, 32}, true));
     }
 

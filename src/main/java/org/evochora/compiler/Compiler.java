@@ -312,14 +312,14 @@ public class Compiler implements ICompiler {
 
     /**
      * Locates the main file. With source roots the program name is resolved against them from
-     * the current directory; without, it is a file path, and the included files are resolved
-     * against that file's directory.
+     * the base directory of the options; without, it is a file path, and the included files are
+     * resolved against that file's directory.
      */
     private static MainFile locateMainFile(String programName, CompilerOptions options) throws CompilationException {
         SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programName);
         String rootAliasChain = parsed.prefix() != null ? parsed.prefix() : "";
         if (options != null) {
-            Path workingDirectory = Path.of("").toAbsolutePath();
+            Path workingDirectory = options.baseDirectory();
             SourceRootResolver resolver = new SourceRootResolver(options.sourceRoots(), workingDirectory);
             try {
                 return new MainFile(resolver.resolve(programName, ""), workingDirectory, rootAliasChain);
