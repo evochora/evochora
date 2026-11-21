@@ -21,18 +21,18 @@ public final class SourceRootResolver {
     private static final Pattern PREFIX_PATTERN = Pattern.compile("^([A-Z][A-Z0-9_]+):(.+)$");
 
     private final List<SourceRoot> sourceRoots;
-    private final Path workingDirectory;
+    private final Path baseDirectory;
 
     /**
      * Creates a resolver for one set of source roots. Both arguments are kept by reference and the
      * resolver holds no other state, so a single instance can resolve any number of paths.
      *
      * @param sourceRoots      The configured source roots.
-     * @param workingDirectory Base directory for resolving relative source root paths.
+     * @param baseDirectory    Base directory for resolving relative source root paths.
      */
-    public SourceRootResolver(List<SourceRoot> sourceRoots, Path workingDirectory) {
+    public SourceRootResolver(List<SourceRoot> sourceRoots, Path baseDirectory) {
         this.sourceRoots = sourceRoots;
-        this.workingDirectory = workingDirectory;
+        this.baseDirectory = baseDirectory;
     }
 
     /**
@@ -93,7 +93,7 @@ public final class SourceRootResolver {
         }
 
         try {
-            Path rootPath = workingDirectory.resolve(root.path()).normalize();
+            Path rootPath = baseDirectory.resolve(root.path()).normalize();
             return rootPath.resolve(parsed.filePath()).normalize().toString().replace('\\', '/');
         } catch (InvalidPathException invalid) {
             throw new UnresolvablePathException("Path '" + directivePath + "' cannot be resolved: " + invalid.getReason() + ".");

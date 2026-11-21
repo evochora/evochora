@@ -306,6 +306,8 @@ public class Compiler implements ICompiler {
      * Where the main file is and what it is called: its resolved path, the directory the
      * included files' paths are resolved against, and the alias chain the program's own names
      * are qualified with, which is the source root prefix of the program name if it has one.
+     * With source roots that directory is the base directory of the options; without, it is the
+     * directory of the main file.
      */
     private record MainFile(String path, Path workingDirectory, String rootAliasChain) {
     }
@@ -319,10 +321,10 @@ public class Compiler implements ICompiler {
         SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programName);
         String rootAliasChain = parsed.prefix() != null ? parsed.prefix() : "";
         if (options != null) {
-            Path workingDirectory = options.baseDirectory();
-            SourceRootResolver resolver = new SourceRootResolver(options.sourceRoots(), workingDirectory);
+            Path baseDirectory = options.baseDirectory();
+            SourceRootResolver resolver = new SourceRootResolver(options.sourceRoots(), baseDirectory);
             try {
-                return new MainFile(resolver.resolve(programName, ""), workingDirectory, rootAliasChain);
+                return new MainFile(resolver.resolve(programName, ""), baseDirectory, rootAliasChain);
             } catch (SourceRootResolver.UnresolvablePathException e) {
                 throw new CompilationException(e.getMessage());
             }
