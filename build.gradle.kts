@@ -52,7 +52,15 @@ tasks.named<JavaCompile>(launcher.compileJavaTaskName) {
 }
 
 group = "org.evochora"
-version = project.findProperty("RELEASE_TAG")?.toString() ?: "latest"
+// The tag a build is made for, which the workflow passes: that of a release, or the name of the
+// rolling pre-release. A build made by hand or for a pull request has none.
+val releaseTag = project.findProperty("RELEASE_TAG")?.toString().orEmpty()
+version = releaseTag
+
+// The name of a published distribution and of the directory it unpacks to: the tag of the build
+// between the project and the platform, and nothing there for a build without a tag
+fun distributionName(classifier: String) =
+    listOf("evochora", releaseTag, classifier).filter { it.isNotEmpty() }.joinToString("-")
 
 // Remove -SNAPSHOT suffix if it exists for local builds
 if (version.toString().endsWith("-SNAPSHOT")) {
@@ -547,7 +555,7 @@ tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// The archives of the published distributions carry the project version, which comes from RELEASE_TAG.
+// The archives of the published distributions carry the project version, which is the tag of the build.
 // The jars inside them do not: an archive names its version once, and the jars are never published
 // on their own, so they keep the fixed names the documentation and the benchmark tooling refer to.
 tasks.withType<Jar> {
@@ -848,7 +856,7 @@ targetPlatforms.forEach { platform ->
         archiveBaseName = "evochora"
         archiveClassifier = platform.classifier
         destinationDirectory = layout.buildDirectory.dir("distributions")
-        into("evochora-${project.version}-${platform.classifier}") { with(contents) }
+        into(distributionName(platform.classifier)) { with(contents) }
     }
     if (platform.zip) {
         tasks.register<Zip>("${platform.distributionName}DistZip", configureArchive)
@@ -870,7 +878,7 @@ tasks.register<Zip>("noJavaDistZip") {
     archiveBaseName = "evochora"
     archiveClassifier = "no-java"
     destinationDirectory = layout.buildDirectory.dir("distributions")
-    into("evochora-${project.version}-no-java") { with(publishedContents) }
+    into(distributionName("no-java")) { with(publishedContents) }
 }
 tasks.register<Sync>("installNoJavaDist") {
     group = "distribution"

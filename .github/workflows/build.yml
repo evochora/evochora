@@ -292,11 +292,13 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
             publish=true
           else
-            # Main branch push, pull request or manual run: use 'latest'
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            # A run of main publishes the pre-release 'latest'; a pull request or a run of another
+            # branch publishes nothing, and its archives carry no tag
             if [ "$EVENT_NAME" != "pull_request" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+              echo "tag=latest" >> "$GITHUB_OUTPUT"
               publish=true
             else
+              echo "tag=" >> "$GITHUB_OUTPUT"
               publish=false
             fi
           fi
@@ -397,7 +399,8 @@ jobs:
         run: |
           set -euo pipefail
           python=python3; command -v python3 > /dev/null || python=python
-          "$python" -I tools/ci/start_test.py distributions/evochora-*-"$PLATFORM".* --old-java "$OLD_JAVA" --jdk "$JDK"
+          # An archive built without a tag has nothing between the project and the platform
+          "$python" -I tools/ci/start_test.py distributions/evochora-*"$PLATFORM".* --old-java "$OLD_JAVA" --jdk "$JDK"
 
   # Builds the node image for both architectures from the Linux distributions the start tests run,
   # and starts the amd64 image once. It runs alongside the tests. On a run that publishes it pushes
