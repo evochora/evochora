@@ -2,10 +2,11 @@
 
 ---
 
-Choose the archive for your platform, unpack it, and start Evochora as the [Quick Start](https://github.com/evochora/evochora/blob/@TAG@/README.md#quick-start) describes.
+## How to install and cite
 
-To cite this release, use its DOI, [@DOI@](https://doi.org/@DOI@). `bin/evochora --version` names it as well.
+To use Evochora, download the archive for your system from the files of this release, unpack it and start it as the [Quick Start](https://github.com/evochora/evochora/blob/@TAG@/README.md#quick-start) describes.
 
-Built from commit [@COMMIT@](@COMMIT_URL@).
+If you use Evochora in your research, please cite this release by its DOI, [@DOI@](https://doi.org/@DOI@). `bin/evochora --version` names it as well.
 
-[Changes since @PREVIOUS@](@COMPARE_URL@)
+This release was built from commit [@COMMIT@](@COMMIT_URL@).
+See [what changed since @PREVIOUS@](@COMPARE_URL@).

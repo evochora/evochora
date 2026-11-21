@@ -49,7 +49,8 @@ approved it. Until then nothing is public.
    the distributions to the draft, aims the draft at the commit it built, and writes a block below
    your text, from `.github/release-notes-release.md`: how to install, the DOI, the commit, and a
    link to the changes since the release before. The draft at Zenodo gets the sources, the
-   distributions and the text of the release.
+   distributions, the text of the release and a README that says what its files are, from
+   `.github/zenodo-readme.md`, which Zenodo shows first.
 4. The run now waits at the job "Publish Release". Try the release: download a distribution from
    the draft, start it, and check that `bin/evochora --version` names the version and the DOI.
 5. Approve the job on the page of the run, under "Review deployments". The workflow tags the image,

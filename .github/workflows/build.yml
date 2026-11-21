@@ -827,7 +827,9 @@ jobs:
           path: sources
 
       # Zenodo shows a description as HTML, and GitHub renders the text of the release as it
-      # shows it itself
+      # shows it itself. The record gets a README that says what its files are, from
+      # .github/zenodo-readme.md, and Zenodo shows that file first: it previews the first file
+      # of a record otherwise, and cannot preview these archives.
       - name: Give the draft of the record its metadata and its files
         if: needs.zenodo.outputs.record != ''
         env:
@@ -842,9 +844,10 @@ jobs:
           yq -o=json CITATION.cff > citation.json
           gh api markdown -f mode=gfm -f context="$REPOSITORY" -F text=@release-notes-final.md > description.html
           mv sources/evochora-sources.tar "sources/evochora-$VERSION-sources.tar"
+          sed -e "s|@TAG@|$VERSION|g" .github/zenodo-readme.md > README.md
           python3 -I tools/ci/zenodo_release.py --url "$ZENODO_URL" fill --citation citation.json \
-            --version "$VERSION" --record "$RECORD" --description description.html \
-            "sources/evochora-$VERSION-sources.tar" distributions/*.tar.gz distributions/*.zip
+            --version "$VERSION" --record "$RECORD" --description description.html --preview README.md \
+            README.md "sources/evochora-$VERSION-sources.tar" distributions/*.tar.gz distributions/*.zip
 
   # Publishes what the run prepared, after the maintainer has approved: the environment
   # "release" holds this job until then, and holds the token that may publish at Zenodo. The

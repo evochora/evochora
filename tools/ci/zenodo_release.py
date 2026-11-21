@@ -8,6 +8,8 @@
              for all versions.
 ``fill``     gives the draft its metadata, from CITATION.cff and the text of the release, and its
              files, and compares the checksum Zenodo reports for each file with the file's own.
+             One of the files can be named as the one Zenodo shows first: it shows a preview of
+             a record's first file otherwise, and cannot preview an archive of this size.
 ``publish``  publishes the draft. A published record can never be deleted, which is why this is a
              step of its own, taken with a token of its own after the maintainer has approved.
 
@@ -179,11 +181,13 @@ def md5_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def fill(zenodo: Zenodo, citation: dict, record: str, version: str, description: str, files: list) -> None:
-    """Sets the metadata of the draft and replaces its files with the given ones."""
+def fill(zenodo: Zenodo, citation: dict, record: str, version: str, description: str, files: list, preview=None) -> None:
+    """Sets the metadata of the draft, replaces its files with the given ones and names the one to preview."""
     names = [path.name for path in files]
     if len(set(names)) != len(names):
         raise ZenodoError(f"two files of the same name: {names}")
+    if preview and preview not in names:
+        raise ZenodoError(f"the file to preview, {preview}, is none of the files: {names}")
     draft = zenodo.request("GET", f"/records/{record}/draft")
     if draft["metadata"].get("version") != version:
         raise ZenodoError(f"the draft {record} is of version {draft['metadata'].get('version')}, not {version}")
@@ -200,6 +204,11 @@ def fill(zenodo: Zenodo, citation: dict, record: str, version: str, description:
         if reported != own:
             raise ZenodoError(f"Zenodo reports the checksum {reported} for {path.name}, and the file has {own}")
         print(f"uploaded {path.name} ({path.stat().st_size} bytes, {own})", flush=True)
+    if preview:
+        # Only a file the draft holds can be named, so this follows the uploads
+        body = body_of(zenodo.request("GET", f"/records/{record}/draft"), metadata_of(citation, version, description))
+        body["files"]["default_preview"] = preview
+        zenodo.request("PUT", f"/records/{record}/draft", body=body)
 
 
 def publish(zenodo: Zenodo, record: str) -> dict:
@@ -221,6 +230,7 @@ def main() -> int:
     filling = commands.choices["fill"]
     filling.add_argument("--record", required=True, help="the id of the draft, as reserve printed it")
     filling.add_argument("--description", type=Path, required=True, help="the text of the release as HTML")
+    filling.add_argument("--preview", help="the name of the file Zenodo shows first")
     filling.add_argument("files", type=Path, nargs="+", help="the files of the record")
     commands.add_parser("publish").add_argument("--record", required=True, help="the id of the draft")
     arguments = parser.parse_args()
@@ -237,7 +247,8 @@ def main() -> int:
             print(f"doi={draft['pids']['doi']['identifier']}")
         elif arguments.command == "fill":
             fill(zenodo, json.loads(arguments.citation.read_text(encoding="utf-8")), arguments.record,
-                 arguments.version, arguments.description.read_text(encoding="utf-8"), arguments.files)
+                 arguments.version, arguments.description.read_text(encoding="utf-8"), arguments.files,
+                 arguments.preview)
         else:
             record = publish(zenodo, arguments.record)
             print(f"published {record['pids']['doi']['identifier']}: {record['links'].get('self_html', '')}")
