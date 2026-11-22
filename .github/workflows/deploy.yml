@@ -76,6 +76,23 @@ jobs:
           # The action will automatically run ssh-keyscan for this host
           known_hosts: ${{ secrets.SSH_HOST }}
 
+      # A run of the demo is recorded by a container started by hand, which has the database
+      # open; the node this deploy starts would want it too. Such a container is one compose
+      # started with `run`, which is what the label says. Checked before anything is copied, so
+      # that a refused deploy leaves the server as it was.
+      - name: Refuse while a run is being recorded
+        env:
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          RECORDING=$(ssh -o StrictHostKeyChecking=no "$SSH_TARGET" \
+            'docker ps --filter label=com.docker.compose.oneoff=True --format "{{.Names}}"')
+          if [ -n "$RECORDING" ]; then
+            echo "::error::A container started by hand is running on the server ($RECORDING)." \
+                 "It records a run; stop it before deploying."
+            exit 1
+          fi
+
       # Copied from the commit checked out above, so they match the image being deployed.
       #
       # None of them starts a simulation: docker-compose.yml runs the node with `node show`,
@@ -141,7 +158,35 @@ jobs:
             # Pull the new image version from the registry
             docker compose pull
 
-            # Stop and restart the service(s).
-            # docker-compose will now use UID and GID from the .env file.
-            docker compose up -d
+            # Create both containers anew, whether or not compose sees a change: the Caddyfile
+            # and the configuration are files handed into the containers, and a container that
+            # keeps running keeps the content it started with. The data and Caddy's certificates
+            # lie outside the containers and stay.
+            docker compose up -d --force-recreate
+
+            # The image this deploy replaced is left without a tag; remove such images, so that
+            # they do not fill the disk deploy by deploy.
+            docker image prune -f
           EOF
+
+      # The containers being started says little: a node that cannot read its configuration
+      # ends again at once. The deploy has passed when the homepage, which Caddy delivers, and
+      # the list of the runs, which the node answers, are both there.
+      - name: Wait until the demo answers
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+        run: |
+          set -euo pipefail
+          for path in / /analyzer/api/runs; do
+            status=none
+            for attempt in $(seq 1 36); do
+              status=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$DOMAIN_NAME$path" || true)
+              if [ "$status" = "200" ]; then break; fi
+              sleep 5
+            done
+            if [ "$status" != "200" ]; then
+              echo "::error::The demo does not answer at $path: status $status after three minutes."
+              exit 1
+            fi
+            echo "$path answers with 200"
+          done

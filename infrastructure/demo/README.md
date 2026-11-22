@@ -11,7 +11,12 @@ sets up a new server. The image of the node is built from [`../image`](../image)
 
 The workflow `deploy.yml` copies `docker-compose.yml`, the `Caddyfile`, the two configurations in
 `config`, the homepage and the repository's own `config/evochora.conf` to the server, writes the
-`.env` file with the image tag and the memory for Java, pulls the image and starts the containers.
+`.env` file with the image tag and the memory for Java, pulls the image and creates both
+containers anew, so that every change takes effect. It then waits until the homepage and the list
+of the runs answer, and fails if they do not. The data on the server and Caddy's certificates lie
+outside the containers and stay as they are.
+
+A deploy refuses to start while a run is being recorded.
 
 The node container runs `bin/evochora node show`. It serves the runs in its data directory to the
 visualizer and the analyzer and simulates nothing, so neither a deploy nor a restart of the server
