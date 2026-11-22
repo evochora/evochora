@@ -122,7 +122,8 @@ function factsOf(metadata, tickRange, organisms) {
  * @param {{totalOrganismCount: number}|null} [organisms] - The organisms of the last recorded tick
  * @returns {{title: string, description: string, facts: Array<Array<{text: string, strong: boolean}>>,
  *     links: Array<{label: string, url: string}>}} A run without a name is titled by the day it was
- *     started; the description is empty where there is none
+ *     started; the description is HTML as the configuration of the run holds it, and empty
+ *     where there is none
  */
 export function describeEntry(runId, metadata, tickRange, organisms = null) {
     const { name, description } = metadata ? namingOf(metadata.resolvedConfigJson) : { name: '', description: '' };

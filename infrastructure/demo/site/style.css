@@ -31,6 +31,16 @@ body {
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
 }
+
+/* A link in running text. :where keeps the rule without weight, so that whatever styles a link of
+   its own, as the jump bar, the footer and the buttons do, replaces it by naming it. */
+:where(a) {
+    color: var(--accent);
+    text-decoration: none;
+}
+:where(a:hover) {
+    text-decoration: underline;
+}
 .page {
     width: 100%;
     max-width: 1400px;
@@ -200,13 +210,6 @@ body {
     line-height: 1.6;
     color: var(--text-secondary);
     margin: -0.5rem 0 1.25rem;
-}
-.demo-intro a {
-    color: var(--accent);
-    text-decoration: none;
-}
-.demo-intro a:hover {
-    text-decoration: underline;
 }
 /* A jump to a section stops below the header */
 #demo, #why, #install, #experiments, #directions, #documentation, #community {
@@ -385,13 +388,8 @@ body {
     flex-wrap: wrap;
 }
 .action-card-links a {
-    color: var(--accent);
-    text-decoration: none;
     font-size: 0.8rem;
     font-weight: 500;
-}
-.action-card-links a:hover {
-    text-decoration: underline;
 }
 .colab-badge {
     height: 20px;
@@ -471,13 +469,6 @@ body {
     color: var(--text-tertiary);
 }
 /* A notice may name where to look instead: its links are those of the running text */
-.demo-none a {
-    color: var(--accent);
-    text-decoration: none;
-}
-.demo-none a:hover {
-    text-decoration: underline;
-}
 @media (max-width: 900px) {
     .demo-run {
         grid-template-columns: 1fr;
@@ -551,13 +542,6 @@ body {
     font-family: var(--sans);
     font-size: 0.8rem;
     font-weight: 500;
-}
-.why-links a {
-    color: var(--accent);
-    text-decoration: none;
-}
-.why-links a:hover {
-    text-decoration: underline;
 }
 /* The text starts below the claim, to the right of the plus */
 .why-body {
@@ -637,12 +621,7 @@ body {
     color: var(--text-tertiary);
 }
 .dl-line a {
-    color: var(--accent);
-    text-decoration: none;
     font-weight: 500;
-}
-.dl-line a:hover {
-    text-decoration: underline;
 }
 .dl-line .sep {
     width: 1px;
@@ -654,13 +633,6 @@ body {
     font-family: var(--serif);
     font-size: 0.95rem;
     color: var(--text-secondary);
-}
-.dl-help a {
-    color: var(--accent);
-    text-decoration: none;
-}
-.dl-help a:hover {
-    text-decoration: underline;
 }
 @media (max-width: 700px) {
     .get-started {
@@ -709,12 +681,7 @@ body {
     color: var(--text-tertiary);
 }
 .exp-meta a {
-    color: var(--accent);
-    text-decoration: none;
     font-weight: 500;
-}
-.exp-meta a:hover {
-    text-decoration: underline;
 }
 @media (max-width: 900px) {
     .exp-list {
@@ -749,11 +716,6 @@ body {
     font-family: var(--sans);
     font-size: 0.95rem;
     font-weight: 500;
-    color: var(--accent);
-    text-decoration: none;
-}
-.directions a:hover {
-    text-decoration: underline;
 }
 @media (max-width: 1100px) {
     .directions {
@@ -792,11 +754,6 @@ body {
     font-family: var(--sans);
     font-size: 0.9rem;
     font-weight: 500;
-    color: var(--accent);
-    text-decoration: none;
-}
-.doc-group a:hover {
-    text-decoration: underline;
 }
 .doc-group span {
     display: block;
@@ -897,13 +854,6 @@ body {
 }
 .legal ul {
     margin: 0.5rem 0 0 1.25rem;
-}
-.legal a {
-    color: var(--accent);
-    text-decoration: none;
-}
-.legal a:hover {
-    text-decoration: underline;
 }
 
 /* ── The foot of the page ── */

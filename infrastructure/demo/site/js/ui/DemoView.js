@@ -13,7 +13,13 @@ function fact(parts) {
 
 function entry({ title, description, facts, links }) {
     const text = element('div', {}, [element('div', { className: 'demo-name', text: title })]);
-    if (description) text.append(element('p', { className: 'demo-desc', text: description }));
+    if (description) {
+        // HTML, so that it can link into the run: whoever runs this node wrote it into the
+        // configuration of the run, and nobody else can start a run on it
+        const about = element('p', { className: 'demo-desc' });
+        about.innerHTML = description;
+        text.append(about);
+    }
     text.append(element('div', { className: 'demo-facts' }, facts.map(fact)));
     const open = element('div', { className: 'demo-open' }, links.map(target => link(target.url, [target.label], { className: 'btn-secondary' })));
     return element('div', { className: 'demo-run' }, [text, open]);

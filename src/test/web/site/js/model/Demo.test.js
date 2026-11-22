@@ -52,7 +52,7 @@ describe('the title and the description of a run', () => {
         expect(namingOf('{')).toEqual(none);
     });
 
-    test('are kept as text, markup included', () => {
+    test('are passed on as the configuration holds them, markup included', () => {
         expect(namingOf(JSON.stringify({ metadata: { experiment: 'Energy < entropy & more\nA <b>description</b>' } })))
             .toEqual({ name: 'Energy < entropy & more', description: 'A <b>description</b>' });
     });
