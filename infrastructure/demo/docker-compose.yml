@@ -51,6 +51,8 @@ services:
       - ./site:/srv/site:ro
       # Persist Caddy's state, including acquired SSL certificates
       - caddy_data:/data
+      # The access log, kept on the server so that it outlasts the container
+      - ./caddy-logs:/var/log/caddy
     environment:
       # The domain name for automatic HTTPS.
       # This will be read from the .env file on the server.

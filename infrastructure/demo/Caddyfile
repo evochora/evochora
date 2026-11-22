@@ -25,5 +25,23 @@ respond @control 403
 # Caddy will automatically handle HTTP to HTTPS redirection.
 reverse_proxy evochora:8081
 
-# The site has no log directive, so Caddy writes no access log: no request and no address of a
-# visitor is recorded.
+# The access log. A line holds the time, the address of the visitor shortened by its last part,
+# the request, the status, the browser and the page the visitor came from; every other header of
+# the request is left out. Caddy starts a new file a day and keeps a file for five days. The file
+# lies in a directory of the server, so that it outlasts a deploy.
+log_append browser {http.request.header.User-Agent}
+log_append referrer {http.request.header.Referer}
+log {
+    output file /var/log/caddy/access.log {
+        mode 644
+        roll_interval 24h
+        roll_keep_for 120h
+    }
+    format filter {
+        request>remote_ip ip_mask 24 48
+        request>client_ip ip_mask 24 48
+        request>headers delete
+        request>tls delete
+        resp_headers delete
+    }
+}
