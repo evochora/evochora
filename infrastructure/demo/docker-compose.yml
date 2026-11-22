@@ -13,21 +13,27 @@ services:
     #   - "80:8081"
     #   - "8082:8082"
     #   - "9092:9092"
+    # The demo only shows its runs: this node simulates nothing, so a deploy or a restart never
+    # starts a run. The runs are recorded by hand, with a container started for that alone and
+    # one of the configurations in config; README.md beside this file says how.
+    command: ["bin/evochora", "node", "show"]
     volumes:
       # Mount host directories into the container for persistent data
       - ./evochora-data/storage:/home/appuser/app/data/storage
       - ./evochora-data/database:/home/appuser/app/data/database
       - ./evochora-data/topic:/home/appuser/app/data/topic
       - ./evochora-data/queue:/home/appuser/app/data/queue
-      # Mount the configuration file into the container's config directory (read-only)
-      - ./config/evochora.conf:/home/appuser/app/config/evochora.conf:ro
+      # The configuration directory (read-only): evochora.conf, which the node runs on, and
+      # beside it the configurations the demo's runs are recorded with
+      - ./config:/home/appuser/app/config:ro
     environment:
       # === JVM Options & Configuration Overrides via System Properties (-D) ===
-      # Note: Most application config is now in local.conf on the server,
-      # which is loaded via docker-compose.override.yml.
+      # The node listens on every interface of its container, because Caddy reaches it from
+      # another one; its port is published nowhere.
       - >
         JAVA_OPTS=
         -Xmx${JAVA_MAX_MEM:-8g}
+        -Dnode.processes.http.options.network.host=0.0.0.0
 
     restart: unless-stopped
 

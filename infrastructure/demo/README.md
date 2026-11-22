@@ -1,38 +1,58 @@
-# Demo System Configuration
+# The Demo System
 
-This directory contains reference configuration files for the manual deployment on the Demo System.
+The demo at evochora.org is one server that runs two containers: a node that shows recorded runs,
+and Caddy, which delivers the homepage and passes everything else on to the node. This directory
+holds all of it, laid out as on the server: [`docker-compose.yml`](docker-compose.yml) describes both
+containers, [`Caddyfile`](Caddyfile) configures Caddy, [`config`](config) holds the configurations
+the demo's runs are recorded with, [`site`](site) is the homepage, and [`cloud-init.sh`](cloud-init.sh)
+sets up a new server. The image of the node is built from [`../image`](../image).
 
-## Files
+## What a deploy does
 
-- **`local.conf`**: Contains environment-specific overrides for the demo server (e.g., database paths, network binding).
-- **`docker-compose.override.yml`**: Overrides the default `docker-compose.yml` to mount the `local.conf` and use it at startup.
-- **`env.template`**: Template for the `.env` file. Contains environment variables for the demo system, including memory settings (`JAVA_MAX_MEM`).
+The workflow `deploy.yml` copies `docker-compose.yml`, the `Caddyfile`, the two configurations in
+`config`, the homepage and the repository's own `config/evochora.conf` to the server, writes the
+`.env` file with the image tag and the memory for Java, pulls the image and starts the containers.
 
-## Deployment Instructions
+The node container runs `bin/evochora node show`. It serves the runs in its data directory to the
+visualizer and the analyzer and simulates nothing, so neither a deploy nor a restart of the server
+starts a run or changes one.
 
-These files are **not** automatically deployed by the GitHub Actions workflow to prevent overwriting manual changes on the server. To install or update them:
+## Recording the runs
 
-1. Copy the files to the server (e.g., via `scp`):
-   ```bash
-   scp infrastructure/demo/local.conf user@server:~/app/config/local.conf
-   scp infrastructure/demo/docker-compose.override.yml user@server:~/app/docker-compose.override.yml
-   # Copy env.template to .env (or merge with existing .env)
-   scp infrastructure/demo/env.template user@server:~/app/.env
-   ```
-   *Note: If you have existing secrets in `.env` on the server (like DOMAIN_NAME), make sure to merge them manually instead of overwriting! The demo system needs `JAVA_MAX_MEM=16g` in this file.*
+A run is recorded by hand on the server, with a container that is started for this alone. Only one
+node can have the database open, so the node that shows the runs is stopped for the time. The
+homepage lists the runs with the newest first: record the run of `population.conf` first and the
+run of `replication.conf` after it.
 
-2. Restart the application on the server:
-   ```bash
-   ssh user@server
-   cd ~/app
-   docker compose up -d
-   ```
+```bash
+cd ~/app
+docker compose stop evochora
 
-## How it works
+# The long run. It goes on until it is stopped.
+docker compose run -d --use-aliases --name record evochora bin/evochora -c config/population.conf node run
+docker logs -f record                # the log of the node
+docker stop -t 120 record            # ends the run; the node needs a moment to shut down
+docker rm record
 
-- The `deploy.yml` workflow only updates `docker-compose.yml` and `config/evochora.conf`.
-- `docker compose` automatically merges `docker-compose.yml` and `docker-compose.override.yml`.
-- `docker compose` automatically loads variables from `.env` in the same directory.
-- The `override` file mounts `local.conf` and changes the startup command to use it.
-- `local.conf` includes `evochora.conf` via `include file("evochora.conf")`, ensuring it inherits the base configuration.
-- Memory usage is controlled via `JAVA_MAX_MEM` in `.env` (defaults to 8g if not set).
+# The run of one replication. It pauses by itself at its pause tick and is stopped then.
+docker compose run -d --use-aliases --name record evochora bin/evochora -c config/replication.conf node run
+docker logs -f record
+docker stop -t 120 record
+docker rm record
+
+docker compose up -d evochora
+```
+
+`--use-aliases` gives the recording container the name Caddy looks for, so the homepage, the
+visualizer and the analyzer show a run while it is being recorded.
+
+A run that was stopped can be continued with `node resume --run <id>` in place of `node run`.
+`bin/evochora cleanup`, started the same way, deletes runs; the
+[CLI Usage Guide](../../docs/CLI_USAGE.md) describes both.
+
+## Settings of the server
+
+- The memory for Java comes from `JAVA_MAX_MEM` in `~/app/.env`, which the deploy writes.
+- The node listens on every interface of its container, because Caddy reaches it from the other
+  container. `docker-compose.yml` sets this, and publishes none of the node's ports.
+- Everything else is `config/evochora.conf` as the repository holds it.
