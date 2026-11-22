@@ -31,7 +31,6 @@ import com.typesafe.config.Config;
  *   options {
  *     enabled = true
  *     network {
- *       host = "localhost"
  *       port = 8082
  *     }
  *     allowOthers = false
@@ -42,8 +41,9 @@ import com.typesafe.config.Config;
  * }
  * </pre>
  *
- * <p>After starting, the console is accessible at {@code http://localhost:8082}
- * (or the configured host/port).</p>
+ * <p>After starting, the console is accessible from this computer at
+ * {@code http://localhost:8082}, on the configured port and with {@code https} when
+ * {@code useSSL} is set; the process writes the address into the log.</p>
  *
  * <p>Users must manually enter database connection details on first access:</p>
  * <ul>
@@ -88,9 +88,6 @@ public class H2ConsoleProcess extends AbstractProcess {
             return;
         }
 
-        final String host = options.hasPath("network.host") 
-            ? options.getString("network.host") 
-            : "localhost";
         final int port = options.hasPath("network.port") 
             ? options.getInt("network.port") 
             : 8082;
@@ -102,13 +99,15 @@ public class H2ConsoleProcess extends AbstractProcess {
         args.add(String.valueOf(port));
 
         // Allow remote connections (security consideration!)
-        if (options.hasPath("allowOthers") && options.getBoolean("allowOthers")) {
+        final boolean allowOthers = options.hasPath("allowOthers") && options.getBoolean("allowOthers");
+        if (allowOthers) {
             args.add("-webAllowOthers");
             LOGGER.warn("H2 console allows remote connections - this is a security risk!");
         }
 
         // Enable SSL if configured
-        if (options.hasPath("useSSL") && options.getBoolean("useSSL")) {
+        final boolean useSsl = options.hasPath("useSSL") && options.getBoolean("useSSL");
+        if (useSsl) {
             args.add("-webSSL");
         }
 
@@ -121,8 +120,8 @@ public class H2ConsoleProcess extends AbstractProcess {
             webServer = Server.createWebServer(args.toArray(new String[0]));
             webServer.start();
 
-            final String consoleUrl = String.format("http://%s:%d", host, port);
-            
+            final String consoleAddress = addressOf(webServer.getPort(), useSsl, allowOthers);
+
             final Config dbConfig = options.getConfig("database");
             final String username = dbConfig.hasPath("username") ? dbConfig.getString("username") : "sa";
             final String password = dbConfig.hasPath("password") ? dbConfig.getString("password") : "";
@@ -131,7 +130,7 @@ public class H2ConsoleProcess extends AbstractProcess {
             final String jdbcUrl = dbConfig.getString("jdbcUrl");
             final int settings = jdbcUrl.indexOf(';');
             LOGGER.info("H2 web console: {} - JDBC URL: {}, user: {}, password: {}",
-                consoleUrl,
+                consoleAddress,
                 settings < 0 ? jdbcUrl : jdbcUrl.substring(0, settings),
                 username,
                 password.isEmpty() ? "(empty)" : "***");
@@ -144,6 +143,13 @@ public class H2ConsoleProcess extends AbstractProcess {
         }
     }
     
+    // The address that reaches the console from this computer, followed by whether other
+    // computers may connect
+    private static String addressOf(final int port, final boolean useSsl, final boolean allowOthers) {
+        return (useSsl ? "https" : "http") + "://localhost:" + port
+            + (allowOthers ? " (remote allowed)" : " (localhost only)");
+    }
+
     @Override
     public void stop() {
         if (webServer != null) {
