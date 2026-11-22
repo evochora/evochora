@@ -1,4 +1,5 @@
 import { isTextEntry } from '../../../shared/input/EditableTarget.js';
+import { browserStorage, markHelpSeen, wasHelpSeen } from '../model/HelpSeen.js';
 
 /** The key that opens the help, on every layout that writes it with a shift. */
 const HELP_KEY = '?';
@@ -10,6 +11,9 @@ const HELP_KEY = '?';
  * so that the timeline does not step and the view does not move behind it; the help key and the
  * escape key close it again. The panel keeps to the right of the element it is anchored to,
  * whose width follows its content, and matches its height.
+ *
+ * <p>For a visitor whose browser has not closed the help before, the window is open from the
+ * start; closing it is what the browser remembers.
  *
  * @class HelpOverlay
  */
@@ -40,6 +44,7 @@ export class HelpOverlay {
         new ResizeObserver(() => this.place()).observe(anchor);
 
         this.place();
+        if (!wasHelpSeen(browserStorage())) this.open();
     }
 
     /** Whether the help is open. */
@@ -56,9 +61,10 @@ export class HelpOverlay {
         this.dialog.focus();
     }
 
-    /** Closes the help and returns the focus where it was. */
+    /** Closes the help, returns the focus where it was and has the browser remember the closing. */
     close() {
         if (!this.isOpen()) return;
+        markHelpSeen(browserStorage());
         this.overlay.hidden = true;
         this.button.setAttribute('aria-expanded', 'false');
         if (this.lastFocused?.isConnected) this.lastFocused.focus();
