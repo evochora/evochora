@@ -1,32 +1,62 @@
-import { check, sleep } from 'k6';
+import { sleep } from 'k6';
 import http from 'k6/http';
 import { Rate } from 'k6/metrics';
 
-// Custom metrics
+// Every request that is not answered with 200 counts as an error
 export let errorRate = new Rate('errors');
 
-// Configuration
+// The node to test, and the run to ask it for; without a run the node answers for its newest
 const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8081';
+const RUN_ID = __ENV.RUN_ID || '';
+// Whom the virtual users act as: 'visualizer', 'analyzer', or both mixed where nothing is given
+const SCENARIO = __ENV.SCENARIO || 'mixed';
 
-// Test options
+// The requests by what they ask for. A request carries one of these names, so that the summary
+// lists the response times of each kind instead of one line per tick.
+const KINDS = ['metadata', 'ticks', 'environment 800x600', 'environment 100x50', 'organisms', 'organism details',
+               'analyzer runs', 'analyzer manifest', 'analyzer tick range', 'analyzer parquet'];
+
+const thresholds = {
+  errors: ['rate<0.01'],             // Error rate should be below 1%
+  http_req_duration: ['p(95)<1000'], // 95% of requests should be below 1000ms
+};
+// A threshold on a kind is what makes the summary show that kind on a line of its own
+KINDS.forEach(kind => { thresholds[`http_req_duration{name:${kind}}`] = ['p(95)<1000']; });
+
 export let options = {
   stages: [
     { duration: '10s', target: 5 },    // Ramp up
-    { duration: '1m',  target: 50 },  // Steady state
+    { duration: '1m',  target: 50 },   // Steady state
     { duration: '10s', target: 0 },    // Ramp down
   ],
-  thresholds: {
-    errors: ['rate<0.01'],             // Error rate should be below 1%
-    http_req_duration: ['p(95)<1000'], // 95% of requests should be below 1000ms
-  },
+  thresholds,
 };
 
+// Requests the path with its parameters, the run among them where one is given, and counts the
+// answer as an error unless it is 200
+function get(kind, path, params = {}) {
+  const all = RUN_ID ? Object.assign({}, params, { runId: RUN_ID }) : params;
+  const query = Object.keys(all).map(key => `${key}=${encodeURIComponent(all[key])}`).join('&');
+  const res = http.get(`${BASE_URL}${path}${query ? '?' + query : ''}`, { tags: { name: kind } });
+  errorRate.add(res.status !== 200);
+  return res;
+}
+
+function jsonOf(res) {
+  try {
+    return res.status === 200 ? res.json() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export default function () {
-  // 95% of the time act as a Visualizer user, 5% as an Analyzer user
-  if (Math.random() < 0.95) {
-    visualizerScenario();
-  } else {
+  // Mixed, a user is a Visualizer user 95% of the time and an Analyzer user otherwise
+  const analyzer = SCENARIO === 'analyzer' || (SCENARIO !== 'visualizer' && Math.random() >= 0.95);
+  if (analyzer) {
     analyzerScenario();
+  } else {
+    visualizerScenario();
   }
 }
 
@@ -35,145 +65,87 @@ function getRandomRegion(envWidth, envHeight, viewWidth, viewHeight) {
   const actualW = Math.min(envWidth, viewWidth);
   const actualH = Math.min(envHeight, viewHeight);
 
-  // Calculate max starting points
-  const maxX = envWidth - actualW;
-  const maxY = envHeight - actualH;
+  // Random start coordinates, so that the region lies inside the environment
+  const x1 = Math.floor(Math.random() * (envWidth - actualW + 1));
+  const y1 = Math.floor(Math.random() * (envHeight - actualH + 1));
 
-  // Random start coordinates
-  const x1 = Math.floor(Math.random() * (maxX + 1));
-  const y1 = Math.floor(Math.random() * (maxY + 1));
-  const x2 = x1 + actualW;
-  const y2 = y1 + actualH;
-
-  return `${x1},${x2},${y1},${y2}`;
+  return `${x1},${x1 + actualW},${y1},${y1 + actualH}`;
 }
 
 function visualizerScenario() {
-  // 1. Initial Setup: Get Simulation Metadata (for Environment Shape)
-  let metadataRes = http.get(`${BASE_URL}/visualizer/api/simulation/metadata`);
-  
-  if (!check(metadataRes, { 'metadata 200': (r) => r.status === 200 })) {
-    errorRate.add(1);
+  // 1. The metadata of the run: the shape of its environment and how densely it was recorded
+  const meta = jsonOf(get('metadata', '/visualizer/api/simulation/metadata'));
+  if (!meta) {
     sleep(1);
     return;
   }
+  const shape = meta.environment && meta.environment.shape;
+  const envWidth = shape && shape.length >= 2 ? shape[0] : 1000;
+  const envHeight = shape && shape.length >= 2 ? shape[1] : 1000;
+  // A run holds every samplingInterval-th tick; any other tick is not there to be asked for
+  const step = meta.samplingInterval || 1;
 
-  let envWidth = 1000;
-  let envHeight = 1000;
-
-  try {
-    const meta = metadataRes.json();
-    if (meta.environment && meta.environment.shape && meta.environment.shape.length >= 2) {
-      envWidth = meta.environment.shape[0];
-      envHeight = meta.environment.shape[1];
-    }
-  } catch (e) {
-    // Keep defaults if parsing fails
-  }
-
-  // 2. Get Tick Range
-  let res = http.get(`${BASE_URL}/visualizer/api/environment/ticks`);
-  
-  if (!check(res, { 'setup ticks 200': (r) => r.status === 200 })) {
-    errorRate.add(1);
+  // 2. The range of the recorded ticks
+  const range = jsonOf(get('ticks', '/visualizer/api/environment/ticks'));
+  if (!range || range.maxTick === null || range.maxTick === undefined) {
     sleep(1);
     return;
   }
+  const minTick = range.minTick || 0;
+  const recorded = Math.floor((range.maxTick - minTick) / step) + 1;
 
-  let range = { minTick: 0, maxTick: 100 };
-  try {
-    const body = res.json();
-    range.minTick = body.minTick || 0;
-    range.maxTick = body.maxTick || 100;
-  } catch (e) {
-    // Keep defaults
-  }
+  // Start at a random recorded tick within the first 80% of the timeline, so that there is
+  // room to step forward
+  let currentTick = minTick + Math.floor(Math.random() * recorded * 0.8) * step;
 
-  // Pick a random start tick within the first 80% of the timeline
-  // so we have room to "play" forward
-  const rangeSpan = range.maxTick - range.minTick;
-  let currentTick = range.minTick + Math.floor(Math.random() * (rangeSpan * 0.8));
-  
-  // Persist a selected organism ID across the session (user watching one organism)
+  // The organism the user watches, kept across the ticks
   let selectedOrganismId = null;
 
-  // Simulate viewing 10 sequential ticks (simulating "Play" or manual stepping)
+  // View 10 recorded ticks in a row (playing, or stepping by hand)
   for (let i = 0; i < 10; i++) {
-    // Stop if we exceed max tick
     if (currentTick > range.maxTick) break;
+    const tickPath = `/${currentTick}`;
 
-    // A. Fetch Environment - Zoom Level 1 (Overview - 800x600)
-    // Randomly positioned viewport within the world bounds
-    const regionZoom1 = getRandomRegion(envWidth, envHeight, 800, 600);
-    http.get(`${BASE_URL}/visualizer/api/environment/${currentTick}?region=${regionZoom1}`);
+    // A. The environment zoomed out (800x600), at a random place
+    get('environment 800x600', '/visualizer/api/environment' + tickPath, { region: getRandomRegion(envWidth, envHeight, 800, 600) });
 
-    // B. Fetch Environment - Zoom Level 2 (Detailed - 100x50)
-    // Randomly positioned detailed viewport (simulating panning or focused view)
-    const regionZoom2 = getRandomRegion(envWidth, envHeight, 100, 50);
-    http.get(`${BASE_URL}/visualizer/api/environment/${currentTick}?region=${regionZoom2}`);
+    // B. The environment zoomed in (100x50), at a random place
+    get('environment 100x50', '/visualizer/api/environment' + tickPath, { region: getRandomRegion(envWidth, envHeight, 100, 50) });
 
-    // C. Fetch All Organisms for this tick
-    let orgRes = http.get(`${BASE_URL}/visualizer/api/organisms/${currentTick}`);
-    
-    // D. Fetch Organism Detail (if one is selected, or select one now)
-    if (orgRes.status === 200) {
-      try {
-        const orgs = orgRes.json();
-        if (orgs && orgs.length > 0) {
-          // If we don't have a selection yet, or randomly 20% of time switch selection
-          if (!selectedOrganismId || Math.random() < 0.2) {
-            const randomOrg = orgs[Math.floor(Math.random() * orgs.length)];
-            selectedOrganismId = randomOrg.id || randomOrg.organismId;
-          }
+    // C. All organisms of this tick
+    const listed = jsonOf(get('organisms', '/visualizer/api/organisms' + tickPath));
+    const organisms = listed && listed.organisms ? listed.organisms : [];
 
-          if (selectedOrganismId) {
-             http.get(`${BASE_URL}/visualizer/api/organisms/${currentTick}/${selectedOrganismId}`);
-          }
-        }
-      } catch (e) {
-        // Ignore json errors
+    // D. The details of one organism: the selected one while it lives, and now and then another
+    if (organisms.length > 0) {
+      const stillThere = organisms.some(organism => organism.organismId === selectedOrganismId);
+      if (!stillThere || Math.random() < 0.2) {
+        selectedOrganismId = organisms[Math.floor(Math.random() * organisms.length)].organismId;
       }
+      get('organism details', `/visualizer/api/organisms${tickPath}/${selectedOrganismId}`);
     }
 
-    // Advance tick
-    currentTick++;
-    
-    // User delay between ticks (simulating "Play" speed ~5-10 ticks/sec or manual clicks)
-    // If playing, this is fast (e.g. 100ms). If manual, it's slower.
-    // Let's average it to 200ms
-    sleep(0.2); 
+    currentTick += step;
+
+    // Between two ticks: fast while playing, slower by hand; 200ms on average
+    sleep(0.2);
   }
 }
 
 function analyzerScenario() {
-  // 1. List Runs
-  let res = http.get(`${BASE_URL}/analyzer/api/runs`);
-  if (!check(res, { 'analyzer runs 200': (r) => r.status === 200 })) {
-    errorRate.add(1);
-    return;
-  }
+  // 1. The runs of the node
+  if (get('analyzer runs', '/analyzer/api/runs').status !== 200) return;
 
-  // 2. Get Manifest (metrics definition)
-  res = http.get(`${BASE_URL}/analyzer/api/manifest`);
-  if (!check(res, { 'analyzer manifest 200': (r) => r.status === 200 })) {
-    errorRate.add(1);
-    return;
-  }
+  // 2. The manifest, which names the metrics
+  const manifest = jsonOf(get('analyzer manifest', '/analyzer/api/manifest'));
+  if (!manifest || !manifest.metrics) return;
 
-  let metrics = [];
-  try {
-    const body = res.json();
-    if (body.metrics) {
-      metrics = body.metrics.map(m => m.id);
-    }
-  } catch (e) {
-    return;
-  }
-
-  // 3. Fetch data for all available metrics
-  metrics.forEach(metricId => {
-     http.get(`${BASE_URL}/analyzer/api/data?metric=${metricId}&lod=lod0`);
+  // 3. Every metric as the Analyzer's page loads it: the range of its ticks, then its data as
+  //    Parquet at the level of detail the node chooses
+  manifest.metrics.forEach(metric => {
+    get('analyzer tick range', '/analyzer/api/tick-range', { metric: metric.id });
+    get('analyzer parquet', '/analyzer/api/parquet', { metric: metric.id });
   });
-  
+
   sleep(1);
 }
