@@ -93,7 +93,7 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
     @Override
     public void start() {
         if (!options.hasPath("enabled") || !options.getBoolean("enabled")) {
-            log.info("Embedded broker (serverId={}) is disabled in configuration. Skipping startup.", serverId);
+            log.debug("Embedded broker (serverId={}) is disabled in configuration. Skipping startup.", serverId);
             return;
         }
 

@@ -84,7 +84,7 @@ import io.restassured.response.Response;
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
 @LogTimeline
-@AllowLog(level = LogLevel.WARN, loggerPattern = ".*EnvironmentIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*EnvironmentIndexer.*", messagePattern = "Run .* was written by .* and is read by .*")
 class EnvironmentControllerIntegrationTest {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentControllerIntegrationTest.class);

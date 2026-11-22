@@ -4,7 +4,8 @@ package org.evochora.compiler.api;
  * Defines a source root directory for the compiler's path resolution.
  * Source roots are base directories from which the compiler resolves module files.
  *
- * @param path   The directory path (absolute or relative to working directory).
+ * @param path   The directory: an absolute path, an HTTP or HTTPS URL, or a path relative to the
+ *               base directory of the {@link CompilerOptions}.
  * @param prefix An optional namespace prefix (e.g., "PRED", "PREY"). Null means default (unprefixed) root.
  */
 public record SourceRoot(String path, String prefix) {

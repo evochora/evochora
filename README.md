@@ -1,15 +1,9 @@
 <div align="center">
 
-  <img width="465" height="74" alt="logo" src="https://github.com/user-attachments/assets/4724aed1-a596-4e03-9c3c-41f791b0babd" />
+  <img width="465" height="74" alt="Evochora logo" src="https://github.com/user-attachments/assets/4724aed1-a596-4e03-9c3c-41f791b0babd" />
   <br><code>Simulation Platform for Digital Evolution Research</code>
 
   <br><br>
-
-  <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;" target="_blank">👉 SEE LIVE DEMO</a>
-  <br>
-  <sub>Runs in your browser. No installation required.</sub>
-
-  <br>
 
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat&logo=opensourceinitiative&logoColor=white" height="28">
@@ -26,33 +20,53 @@
   <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true">
     <img src="https://colab.research.google.com/assets/colab-badge.svg" height="28">
   </a>
+  <!-- After the first archived release, with the concept DOI in both places:
+  &nbsp;&nbsp;
+  <a href="https://doi.org/10.5281/zenodo.0000000">
+    <img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.0000000-1682D4?style=flat&logo=zenodo&logoColor=white" height="28">
+  </a>
+  -->
 
 </div>
 
-<br><br>
+<br>
 
-<!--<video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" loop></video>-->
-<!--<video src="https://github.com/user-attachments/assets/28c329bc-9554-4b10-8d65-049f00eeda86" loop></video>-->
-<video src="https://github.com/user-attachments/assets/69b33e5b-074b-46d6-917c-9b9cf06e10ef" loop></video>
+Evochora is an open-source platform for digital evolution research. Its organisms are self-replicating programs laid out in a shared spatial environment, where they live under thermodynamic constraints.
 
 <br>
 
-**Screenshots:**
+<div align="center">
+  <a href="https://evochora.org">
+    <img alt="Live demo" src="https://img.shields.io/badge/Live_demo-evochora.org-1f6feb?style=for-the-badge" height="40">
+  </a>
+  <br>
+  <sub>Runs in your browser. No installation required.</sub>
+</div>
+
+<br>
+
+<!--<video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" loop></video>-->
+<!--<video src="https://github.com/user-attachments/assets/28c329bc-9554-4b10-8d65-049f00eeda86" loop></video>-->
+
+https://github.com/user-attachments/assets/69b33e5b-074b-46d6-917c-9b9cf06e10ef
+
+<br>
+
 <table>
   <tr>
     <td align="center" width="50%">
-      <a href="https://github.com/user-attachments/assets/3bf0aa8e-f2bd-4b98-a03f-dd33d449ed93" target="_blank">
+      <a href="https://github.com/user-attachments/assets/3bf0aa8e-f2bd-4b98-a03f-dd33d449ed93">
         <img alt="Web Visualizer" src="https://github.com/user-attachments/assets/3bf0aa8e-f2bd-4b98-a03f-dd33d449ed93" width="100%">
       </a>
       <br><strong>Web Visualizer</strong>
-      <br><sub>Tick-by-tick inspection and debugging of organism state, registers, and EvoASM execution</sub>
+      <br><sub>Inspect any recorded tick: the environment and every organism with its internal state and the code it executes</sub>
     </td>
     <td align="center" width="50%">
-      <a href="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3" target="_blank">
+      <a href="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3">
         <img alt="Web Analyzer" src="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3" width="100%">
       </a>
       <br><strong>Web Analyzer</strong>
-      <br><sub>Population metrics, environment composition, and genome analytics via pluggable charts</sub>
+      <br><sub>Follow the whole run: charts on its population, evolution and ecology</sub>
     </td>
   </tr>
 </table>
@@ -61,446 +75,101 @@
 
 ## What is Evochora?
 
-Evochora is a scientific simulation platform where digital organisms — written in EvoASM, a spatial assembly language — live as distributed code in an n-dimensional grid. They interact with their surroundings exclusively through local pointers and replicate under configurable thermodynamic constraints. There is no fitness function and no external selection pressure.
+Evochora's organisms are virtual machines that execute code laid out in a shared, n-dimensional grid. The cells an organism writes become part of its body or of its offspring. Every instruction costs energy, which the organism has to harvest, and adds entropy, which it sheds by writing into the grid. What it builds and how it harvests and reproduces are written in its code, and so they are exposed to selection. Selection needs no reward from outside: it arises from the competition for space and energy.<br>→ [n-dimensional grid](docs/SCIENTIFIC_OVERVIEW.md#21-the-environment-and-its-molecules) · [virtual machine](docs/SCIENTIFIC_OVERVIEW.md#22-the-virtual-machine) · [ownership and thermodynamics](docs/SCIENTIFIC_OVERVIEW.md#23-ownership-and-thermodynamics)
 
-The platform is extensible at every layer: the compiler pipeline, the VM instruction set, the mutation operators, and the rules of the world are all configurable or replaceable through plugins. A decoupled data pipeline persists complete simulation state and exports all metrics as standard Parquet files — ready for analysis in Python, R, Jupyter, or DuckDB. A web-based frontend allows tick-by-tick inspection and debugging of organism behavior.
+Out of the box, a run starts with a default ancestor in a default environment. The ancestor is assembled from a library of behaviors, and you can set which of them it uses and under which conditions. The environment's physics is configurable too: its energy sources, the cost of every instruction, how offspring mutate and what happens to the dead.<br>→ [default ancestor](docs/USER_GUIDE.md#2-choose-or-write-an-ancestor) · [library of behaviors](assembly/lib/behavior/README.md) · [configurable physics](docs/USER_GUIDE.md#3-configure-an-experiment)
+
+Beyond that, you can write new behaviors in EvoASM, an assembly language with a compiler, modules and procedures. And you can write plugins to replace any part of the physics or to act on the environment and all its organisms at every tick.<br>→ [assembly language](docs/EVOASM_SPEC.md) · [plugin interfaces](docs/USER_GUIDE.md#10-extend-evochora-with-plugins)
+
+The web frontend lets you inspect a run even while it is being recorded. Its visualizer shows the environment at any recorded tick and any organism in it, down to the single instruction it is executing and the mutations its lineage carries. Its analyzer plots metrics over the whole run and can be extended with additional ones. All metrics are stored as Parquet files for analysis in Python or R.<br>→ [visualizer and analyzer](docs/USER_GUIDE.md#5-observe-a-run) · [parquet data](docs/USER_GUIDE.md#7-analyze-the-data)
+
+Runs are deterministic: the same version and configuration give the same run on any machine (Linux, macOS and Windows). A run of billions of ticks can therefore be recorded sparsely, and any stretch of it re-recorded tick by tick. In this way, a change that spread through a population can be traced back to the mutation behind it.<br>→ [deterministic runs](docs/USER_GUIDE.md#8-reproduce-a-run) · [re-recording a stretch](docs/USER_GUIDE.md#6-record-a-stretch-in-full)
+
+Evochora's development is driven by the desire to understand what an environment must provide for complexity to keep arising. The [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md) describes the physics and the research directions in depth, the [Published Experiments](docs/PUBLISHED_EXPERIMENTS.md) document what has evolved so far, and the [Origin Story](docs/ORIGIN_STORY.md) tells how the project came about.
 
 <br>
 
 ## Quick Start
 
-Download the archive for your platform (Windows, macOS, Linux) from the [GitHub Releases page](https://github.com/evochora/evochora/releases), unpack it, and start the node from the unpacked directory:
+Download the archive for your system from the [GitHub Releases page](https://github.com/evochora/evochora/releases) and unpack it.<br>Start a simulation from the unpacked directory:
 
 ```bash
 cd evochora-<version>-<platform>
 bin/evochora node run          # Windows: bin\evochora.bat node run
 ```
 
-Open the visualizer in your browser: `http://localhost:8081/visualizer/`
+Open the visualizer in your browser: http://localhost:8081/visualizer/
 
-The node starts a complete in-process simulation with the default primordial organism, including persistence, indexing, and the web frontend. Press Ctrl+C to stop.
+Next, set up, run and analyze your own experiment.<br>→ [user guide](docs/USER_GUIDE.md)
 
-> **Resource requirements:** Evochora records every tick for full replay. Allow sufficient disk space for long-running experiments. The default heap size is 8 GB. To increase it, set `EVOCHORA_OPTS` before starting:
-> ```bash
-> EVOCHORA_OPTS="-Xmx16g" bin/evochora node run
-> ```
-> The system warns at startup if memory is insufficient for the configured world size.
+> A simulation records to disk until you press Ctrl+C, so allow sufficient disk space.<br>It keeps the processor busy while it runs.<br>By default it records only every n-th tick, which you can adjust with the [tuning profile](docs/USER_GUIDE.md#3-configure-an-experiment).
 
 <br>
 
-## Table of Contents
+## Published Experiments
 
-- [What is Evochora?](#what-is-evochora)
-- [Quick Start](#quick-start)
-- [Why Evochora?](#why-evochora)
-- [Key Capabilities](#key-capabilities)
-- [User Guide](#user-guide)
-- [How It Works](#how-it-works)
-- [Comparison with Other Platforms](#comparison-with-other-platforms)
-- [Research Directions](#research-directions)
-- [Contributing & Community](#contributing--community)
-- [License & Citation](#license--citation)
+The project publishes its findings as citable records on Zenodo. Each record holds the data of its run, the build of Evochora that recorded it and an executed notebook with the evidence, so that anyone can check the finding and run the simulation again.
+
+In the runs published so far, evolution changed where offspring are built, what they are made of and when a parent reproduces. None of it was designed or rewarded.<br>→ [published experiments](docs/PUBLISHED_EXPERIMENTS.md) · [records on zenodo](https://zenodo.org/communities/evochora)
 
 <br>
 
-## Why Evochora?
+## Documentation
 
-Landmark platforms like Tierra and Avida demonstrated that digital evolution can produce genuine ecological dynamics and complex adapted functions. Evochora asks a complementary question: how do the fundamental rules of a world shape the evolutionary outcomes within it?
+Run experiments
 
-To answer this, the physics of the world are themselves the experiment. Thermodynamic models, mutation operators, resource distribution, and death mechanics are all swappable plugins. Instead of asking "what evolves under these rules?", researchers can ask "how do the rules shape what evolves?" — and test the answer by changing them.
+- [User Guide](docs/USER_GUIDE.md): how to run an experiment, from the first start to analyzing and sharing its results.
+- [CLI Usage Guide](docs/CLI_USAGE.md): every command of `bin/evochora` with its options.
 
-For the full scientific motivation, see the [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md). For the personal story behind the project, see the [Origin Story](docs/ORIGIN_STORY.md).
+Analyze the data
 
-<br>
+- [Analysis Notebook](notebooks/README.md): how to build an analysis of a run, shown by example, with a reference of the data a notebook can fetch.
 
-## Key Capabilities
+Write organisms
 
-### Design Your Experiments
-- **Spatial Worlds** — Configurable grid size and dimensionality (2D to n-D), bounded or toroidal
-- **Custom Organisms** — Write organisms in EvoASM, a spatial assembly language with an extensible multi-pass compiler
-- **Configurable Thermodynamics** — Configurable energy and entropy costs; customize selection pressure or write your own thermodynamic rules replacing or extending existing policies, decay rules, and resource distribution
-- **Mutation Models** — Configure existing gene insertion, substitution, deletion, and duplication rules or write your own mutation plugins
-- **Extensible Instruction Set** — Customize or extend the VM instruction set without modifying the core runtime
+- [Assembly Specification](docs/EVOASM_SPEC.md): the EvoASM language, the virtual machine and every instruction.
+- [EvoASM Guidelines](docs/EVOASM_GUIDELINES.md): practices for writing programs that leave room for evolution and act reliably among other organisms.
 
-### Analyze Your Results
-- **Standard Formats** — All simulation data exports as Parquet, ready for Python, R, or Jupyter
-- **Pluggable Analytics** — Add custom metrics as analytics plugins with built-in chart visualization; built-in plugins cover population and demography, genomes and lineage, mutation, instruction usage, and environment composition
-- **Web-Based Inspection** — Step through every tick, inspect organism registers, stacks, and debug EvoASM execution in the browser
-- **Jupyter Notebook** — A ready-to-use [data analysis notebook](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true) with phylogenetic trees, Muller plots, and cross-metric analysis using pandas, networkx, and DuckDB
+Understand the project
 
-### Trust Your Results
-- **Deterministic Simulation** — Seed-based; identical input produces the identical simulation state and trajectory, guaranteed — independent of thread count and of pause/resume
-- **Complete Data Persistence** — Every tick is recorded; nothing is lost or aggregated away
-- **Decoupled Data Pipeline** — Raw data can be reindexed at any time with new or modified analytics plugins
-- **No Built-In Selection Bias** — By default, no global culling or task-based rewards; organisms survive through their own actions in a spatial environment
+- [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md): the physics of the environment, the first results, the research directions and the limitations.
+- [Published Experiments](docs/PUBLISHED_EXPERIMENTS.md): the experiment records on Zenodo, each with its finding.
+- [Origin Story](docs/ORIGIN_STORY.md): how the project came about.
 
-<br>
+Work on the code
 
-## User Guide
-
-### Configuration
-
-Evochora is configured via [HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) configuration files. The main configuration file [`config/evochora.conf`](./config/evochora.conf) serves as an experiment template with the most common parameters. All defaults are defined in [`reference.conf`](./src/main/resources/reference.conf) (embedded in JAR, loaded automatically).
-
-For custom experiments, copy the template and adjust parameters:
-
-```bash
-cp config/evochora.conf config/my-experiment.conf
-# Edit config/my-experiment.conf
-bin/evochora -c config/my-experiment.conf node run
-```
-
-### Writing Your Own Organisms
-
-Organisms are programmed in **EvoASM**, Evochora's custom spatial assembly language. The default primordial organism ([`assembly/primordial/default/main.evo`](./assembly/primordial/default/main.evo)) is a replicator put together from the behaviors of the [library](./assembly/lib/): a main loop checks energy and entropy and gives each behavior, reproducing and harvesting energy, its turn by priority. It is enclosed in a STRUCTURE shell and does not build its child into other organisms unless it is compiled with the flag `AGGRESSIVE`.
-
-This design leaves room for experimentation. For example:
-- **New behavior** — write a behavior for the library and give it a block in the main loop
-- **Defensive variant** — add a subroutine that periodically repairs the STRUCTURE shell against aggressive neighbors
-- **Cooperative variant** — write data molecules into the environment as signals; other organisms can read them to coordinate behavior or share energy
-- **Efficient variant** — optimize the energy harvesting routine to cover more ground with fewer instructions
-
-To create your own organism:
-
-1. Edit or create a `.evo` file in `assembly/`
-2. Configure it in `config/evochora.conf` (see `simulation-engine.options.organisms`)
-3. Run `bin/evochora node run` — the engine compiles automatically
-
-**Resources:**
-- **Language Reference:** [docs/ASSEMBLY_SPEC.md](docs/ASSEMBLY_SPEC.md)
-- **Syntax Highlighting:** VS Code/Cursor extension in [`extensions/vscode/`](extensions/vscode/README.md)
-
-### Command Line Interface (CLI)
-
-The Evochora CLI is the main entry point for running simulations and tools.
-
-- `node run` — Start the simulation node (engine, pipeline, HTTP server)
-- `node resume` — Continue the newest run, or the one named with `--run`
-- `node fork` — Record a window of a run again as a new run, densely (`--from`, `--to`, `--profile`, `--sampling`)
-- `node show` — Serve the indexed runs to the visualizer and analyzer without running a simulation
-- `compile` — Compile EvoASM programs for the Evochora VM
-- `inspect` — Inspect stored simulation data (ticks, runs, resources)
-- `video` — Render simulation runs into videos (requires `ffmpeg`)
-
-For full documentation and worked examples, see the [CLI Usage Guide](docs/CLI_USAGE.md).
-
-### Development & Local Build
-
-```bash
-git clone https://github.com/evochora/evochora.git
-cd evochora
-./gradlew build
-./gradlew run --args="node run"
-```
-
-Open the visualizer: `http://localhost:8081/visualizer/`
-
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full contribution guide, including coding conventions and architecture guidelines.
-
-### Extending the Platform
-
-Evochora is extensible at multiple levels through Java plugin interfaces:
-
-- **Mutation plugins** — Implement `IBirthHandler` to define new mutation operators that run during organism reproduction. Built-in plugins: gene insertion, substitution, deletion, and duplication.
-- **Environment plugins** — Implement `ITickPlugin` to add new environmental processes. Built-in plugins: solar radiation, geysers, and seed energy distribution.
-- **Death handlers** — Implement `IDeathHandler` to control what happens when an organism dies (e.g., decay into energy).
-- **Analytics plugins** — Extend `AbstractAnalyticsPlugin` to define custom metrics exported as Parquet. Built-in plugins cover population and demography, genomes and lineage, mutation, instruction usage, and environment composition.
-- **Compiler extensions** — Each compiler phase is extensible via handler registries (directives, IR converters, layout, linking, emission).
-- **VM instructions** — Add new instructions to the ISA via the instruction registry.
-
-A plugin is built against the jars of a distribution and put into its `plugins/` directory, whose
-jars the start scripts put on the classpath after Evochora's own; the configuration then names the
-plugin by its class name. For an environment plugin in `MyPlugin.java`, with the JDK of the Java
-version Evochora needs:
-
-```bash
-javac -cp "lib/*" -d classes MyPlugin.java
-jar --create --file plugins/my-plugin.jar -C classes .
-```
-
-and, in the configuration, an entry in `pipeline.services.simulation-engine.options.plugins` with
-`className` set to the plugin's class. In the Docker image the directory is
-`/home/appuser/app/plugins`, for a volume to be mounted on. A plugin that brings a library
-Evochora also has gets Evochora's version of it.
-
-<br>
-
-## How It Works
-
-Evochora is built as a modular stack of four components: Runtime, Compiler, Data Pipeline, and Web Frontends.
-Each layer is independently extensible through plugins and registries.
-
-### Runtime
-
-The runtime implements the simulation environment and its physical laws. It provides the n-dimensional grid in which organisms exist as spatially distributed code, subject to thermodynamic constraints. Each organism is an independent virtual machine with its own registers, stacks, and pointers. Organisms interact with the world exclusively through their Instruction Pointer (IP) and Data Pointers (DPs) — they have no global view of the simulation.
-
-Thermodynamic costs are fully configurable: actions can cost energy, produce entropy, or both. An organism dies when its energy is depleted or its entropy exceeds its threshold.
-
-Unlike classical von Neumann architectures, jump instructions in Evochora do not target exact addresses. Instead, they resolve targets through fuzzy label matching based on Hamming distance. This makes genomes inherently resilient to mutations that insert, delete, or shift code — a prerequisite for meaningful evolution.
-
-#### Conceptual Architecture of an Evochora Organism
-```text
-         +---------------------------------------------------------------+
-         |                 Evochora "World" (n-D Grid)                   |
-         |                                                               |
-         |   [ ENERGY ]      [ STRUCTURE ]      [ CODE ]      [ DATA ]   |
-         +-------^-----------------^----------------^-------------^------+
-                 |                 |                |             |
-    Interaction: |                 |                |             |
-             (HARVEST)          (BLOCK)         (EXECUTE)      (READ)
-                 |                 |                |             |
-                 |                 |                |             |
-         +-------|-----------------|----------------|-------------|------+
-         |       |    ORGANISM     |                |             |      |
-         |       |                 |                |             |      |
-         |   +---v-----------------v----+      +----v-------------v----+ |
-         |   |    Data Pointers (DPs)   |      |   Inst. Pointer (IP)  | |
-         |   | [DP 0] [DP 1] ... [DP n] |<-----|                       | |
-         |   +-------------^------------+      +-----------^-----------+ |
-         |                 |                               |             |
-         |         (Move/Read/Write)                   (Control)         |
-         |                 |                               |             |
-         |   +-------------v-------------------------------v---------+   |
-         |   |                  Virtual Machine                      |   |
-         |   |                                                       |   |
-         |   |  Registers: [DRs] [LRs] [PDRs] [PLRs]                 |   |
-         |   |             [FDRs] [FLRs] [SDRs] [SLRs]               |   |
-         |   |                                                       |   |
-         |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
-         |   |                                                       |   |
-         |   |  Metabolism: [Thermodynamics (ER/SR)] --(Cost)--> 0   |   |
-         |   +-------------------------------------------------------+   |
-         +---------------------------------------------------------------+
-```
-
-<br>
-
-### Compiler
-
-The Evochora compiler is a multi-pass pipeline that transforms human-readable EvoASM assembly code into a `ProgramArtifact` ready for execution. The design separates concerns into a frontend (parsing and analysis) and a backend (layout and code generation). Most phases are extensible via handler registries, allowing new syntactical features to be added in a modular way. EvoASM supports procedures, scoped variables, macros, and spatial layout directives for placing code in n-dimensional space.
-
-#### Compiler Frontend
-The frontend parses the source code and transforms it into a machine-independent Intermediate Representation (IR).
-
-1.  **Preprocessor**: Handles macros (`#macro`) and file inclusions (`#include`).
-2.  **Parser**: Converts tokens into an Abstract Syntax Tree (AST). Extensible via `DirectiveHandlerRegistry` for new directives.
-3.  **Semantic Analyzer**: Validates the AST, checks types, and builds a symbol table.
-4.  **IR Generator**: Converts the AST into an Intermediate Representation (IR). Extensible via `IrConverterRegistry`.
-
-#### Compiler Backend
-The backend takes the IR and generates the final, executable `ProgramArtifact`.
-
-5.  **Layout Engine**: Determines the final spatial coordinates of all molecules. Extensible via `LayoutDirectiveRegistry`.
-6.  **Linker**: Resolves symbolic references (e.g., labels). Extensible via `LinkingRegistry`.
-7.  **Emitter**: Generates the final binary machine code. Extensible via `EmissionRegistry`.
-
-```text
- ┌──────────────────┐
- │   EvoASM File    │
- └────────┬─────────┘
-          │
-          ▼
- ┌──────────────────┐
- │  Preprocessor    │
- └────────┬─────────┘
-          │ (Token Stream)
-          ▼
- ┌──────────────────┐
- │      Parser      │
- └────────┬─────────┘
-          │ (AST)
-          ▼
- ┌──────────────────┐
- │ Semantic Analyzer│
- └────────┬─────────┘
-          │ (Validated AST)
-          ▼
- ┌──────────────────┐
- │   IR Generator   │
- └────────┬─────────┘
-          │ (IR)
-          ▼
- ┌──────────────────┐
- │   Layout Engine  │
- └────────┬─────────┘
-          │ (Placed IR)
-          ▼
- ┌──────────────────┐
- │      Linker      │
- └────────┬─────────┘
-          │ (Linked IR)
-          ▼
- ┌──────────────────┐
- │     Emitter      │
- └────────┬─────────┘
-          │
-          ▼
- ┌──────────────────┐
- │ Program Artifact │
- └──────────────────┘
-```
-
-<br>
-
-### Data Pipeline
-
-The simulation engine is decoupled from data processing. Raw simulation data flows through a queue into a persistence service, then through indexers into a queryable database. This separation means the simulation can run at full speed while data is processed independently — and raw data can be reindexed at any time with new or modified indexers.
-
-All pipeline services except the simulation engine are designed as idempotent competing consumers. All inter-service communication is abstracted behind resource interfaces (queues, storage, topics, databases). The default mode runs all components in a single process, but this architecture lays the groundwork for horizontal scaling and distributed deployments.
-
-```text
-┌────────────────────────────┐
-│      SimulationEngine      │
-└─────────────┬──────────────┘
-              │ (TickData)
-              ▼
-┌────────────────────────────┐
-│        Tick Queue          │
-└─────────────┬──────────────┘
-              │ (Batches)
-              ▼
-┌────────────────────────────┐
-│    Persistence Service     │ (Competing Consumers)
-└─┬─────────────────────┬────┘
-  │ (Data)       (BatchInfo Event)
-  │                     │
-  ▼                     ▼
-┌───────────┐    ┌───────────┐
-│  Storage  │    │  Topics   │
-└─────┬─────┘    └──────┬────┘
-      │ (Reads)    (Triggers)
-      │                 │
-      └────────┬────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│      Indexer Services      │ (Competing Consumer Groups)
-└─────────────┬──────────────┘
-              │ (Indexed Data)
-              ▼
-┌────────────────────────────┐
-│          Database          │
-└─────┬───────────────┬──────┘
-      │               │ (Queries)
-      ▼               ▼
-┌────────────┐  ┌────────────┐
-│ Visualizer │  │  Analyzer  │ (Web based)
-└────────────┘  └────────────┘
-```
-
-<br>
-
-### Web Frontends
-
-Evochora includes two web-based frontends for interacting with simulation data:
-
--   **Visualizer**: Provides a tick-by-tick view of the simulation. Step through time, inspect the state of individual organisms (registers, stacks), and debug the execution of their EvoASM code in the browser.
--   **Analyzer**: Offers a high-level overview of simulation metrics over the entire run. It features a pluggable interface for adding new metrics and visualizations. The Analyzer performs range requests on Parquet files served by the backend, enabling custom queries and analysis directly in the browser using DuckDB-WASM.
-
-```text
-       Browser (JavaScript Apps)                       Node (Java Backend)
-  ┌──────────────────────────────────┐         ┌──────────────────────────────────┐
-  │                                  │         │                                  │
-  │  ┌───────────────────────────┐   │         │  ┌───────────────────────────┐   │
-  │  │      Visualizer App       │   │         │  │ Visualizer Controllers    │   │
-  │  │---------------------------│   │         │  │ - EnvironmentController   │   │
-  │  │ - EnvironmentApi.js       │───┼───HTTP──┼─►│ - OrganismController      │   │
-  │  │ - OrganismApi.js          │   │         │  │ - SimulationController    │   │
-  │  │ - SimulationApi.js        │   │         │  └───────────────────────────┘   │
-  │  └───────────────────────────┘   │         │                                  │
-  │                                  │         │                                  │
-  │  ┌───────────────────────────┐   │         │                                  │
-  │  │       Analyzer App        │   │         │                                  │
-  │  │---------------------------│   │         │  ┌───────────────────────────┐   │
-  │  │ - AnalyticsApi.js         │───┼───HTTP──┼─►│    AnalyticsController    │   │
-  │  │ - DuckDBClient.js (WASM)  │   │         │  └───────────────────────────┘   │
-  │  └───────────────────────────┘   │         │                                  │
-  │                                  │         │  ┌───────────────────────────┐   │
-  │                                  │         │  │     PipelineController    │   │
-  │      (Admin Tools/Scripts)   ────┼───HTTP──┼─►│ (For pipeline management) │   │
-  │                                  │         │  └───────────────────────────┘   │
-  │                                  │         │                                  │
-  └──────────────────────────────────┘         └──────────────────────────────────┘
-```
-
-### Further Reading
-
-For more details, see the [Assembly Specification](docs/ASSEMBLY_SPEC.md), [Compiler IR Specification](docs/COMPILER_IR_SPEC.md), [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md), and [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md).
-
-<br>
-
-## Comparison with Other Platforms
-
-Evochora builds on the legacy of seminal Artificial Life platforms. This comparison highlights the different scientific questions and design trade-offs each system explores.
-
-| Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | Evochora |
-| :--- | :--- | :--- | :--- | :--- |
-| **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | Spatial code execution in n-Dimensional grid |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (Thermodynamics, Resource Distribution) |
-| **Organism Body** | Disembodied (Code string only) | Disembodied (CPU + Memory buffer) | Morphological patterns (solitons) | IP + DPs navigating spatial grid |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs); Planned: Signaling |
-| **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Metabolic & spatial constraints |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Sequential; Planned: Intra-organism parallelism (multiple execution threads) |
-| **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | User-defined evolution experiments |
-
-<br>
-
-## Research Directions
-
-Evochora is designed as an open platform for a wide range of evolutionary experiments. Here are some research directions the architecture is built to support:
-
-- **Mutation & Evolvability** — How do different mutation regimes affect long-term evolutionary potential? Compare gene insertion, substitution, deletion, and duplication strategies or design your own.
-- **Thermodynamic Selection** — How do energy and entropy policies shape population dynamics? Explore the space between harsh and permissive environments.
-- **Cooperation & Communication** — Can organisms that coordinate through environmental signals (molecules placed in the grid) outcompete solitary strategies?
-- **Digital Chemistry** — Can reaction chains (A + B → C + Energy) lead to emergent trophic levels and metabolic recycling?
-- **Digital Eukaryogenesis** — Can intra-organism parallelism lead to internal division of labor, analogous to the prokaryote-to-eukaryote transition?
-- **Complexity Measurement** — How do you rigorously quantify whether evolution produces increasingly complex organisms? The data pipeline persists complete organism state for external analysis.
-- **Open-Ended Evolution** — What conditions help a population overcome the next complexity hurdle? Investigate which combinations of physics, mutation, and environmental structure enable incremental gains in complexity.
-
-For the full scientific context behind these questions, see the [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md).
+- [Development Guide](docs/dev/DEVELOPMENT.md): how to build, run and test Evochora from its sources.
+- [Architecture](docs/dev/ARCHITECTURE.md): how Evochora is built, its packages and how they depend on each other.
+- [Architecture & Design Decisions](docs/dev/ARCHITECTURE_DECISIONS.md): why the main parts were built the way they are.
 
 <br>
 
 ## Contributing & Community
 
-We welcome contributions of all kinds — code, experiment design, scientific discussion, documentation, and testing.
+Contributions of any kind are welcome, and none is too small: an experiment, an ancestor, a problem you found, or simply what you think. If you want to try Evochora, we are glad to help you get started.
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full contribution guide, including development standards, PR process, and good first issues.
+Get in touch
 
-For the current roadmap, see the [GitHub Project Board](https://github.com/orgs/evochora/projects/1/views/1).
+- [Discord](https://discord.gg/t9yEJc4MKX): chat with us.
+- [Discussions](https://github.com/evochora/evochora/discussions): ask a question, share an idea or show what you are working on.
+- [Issues](https://github.com/evochora/evochora/issues): report a problem or request a feature.
 
-**Community:**
+Contribute
 
-- Discord: [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord)](https://discord.gg/t9yEJc4MKX)
-- Live Demo: [http://evochora.org/](http://evochora.org/)
-- Published Experiments: [docs/PUBLISHED_EXPERIMENTS.md](docs/PUBLISHED_EXPERIMENTS.md)
-- API Documentation: [http://evochora.org/api-docs/](http://evochora.org/api-docs/)
-- Key documentation:
-    - [CLI Usage Guide](docs/CLI_USAGE.md)
-    - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM)
-    - [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)
+- [Contributing Guide](CONTRIBUTING.md): how to get started, whether you do research with Evochora or work on its code.
+- [AI Policy](AI_POLICY.md): the rules for using AI assistants in the project.
+- [Code of Conduct](CODE_OF_CONDUCT.md): what everyone in the project follows.
 
 <br>
 
----
-
 ## License & Citation
 
-Evochora is open-source and available under the **MIT License** (see [`LICENSE`](./LICENSE)).
+Evochora is open source under the [MIT License](LICENSE).
 
-If you use Evochora in your research, please cite:
+If you use Evochora in your research, please cite the version that produced your runs. The reference is in [`CITATION.cff`](CITATION.cff), and GitHub offers it under "Cite this repository". [Cite and Share](docs/USER_GUIDE.md#9-cite-and-share) in the User Guide says how to find the version and its DOI.
 
-```bibtex
-@software{evochora2025,
-  title={Evochora: Simulation Platform for Digital Evolution Research},
-  author={{Evochora Project}},
-  url={https://github.com/evochora/evochora},
-  year={2025}
-}
-```
+<br>
 
----
+## Use of AI
 
-_Full disclosure: This project uses AI coding assistants. Humans define the architecture, write specifications, and review generated code to ensure correctness and maintain the overall design._
-
----
+AI assistants have been used in Evochora since its inception. Their use is governed by the project's [AI Policy](AI_POLICY.md).

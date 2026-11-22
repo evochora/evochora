@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evochora</title>
+    <link rel="icon" type="image/x-icon" href="/favicons/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicons/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicons/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicons/android-chrome-512x512.png">
+    <link rel="manifest" href="/favicons/site.webmanifest">
+    <link rel="stylesheet" href="fonts/fonts.css">
+    <link rel="stylesheet" href="/shared/app-switcher/app-switcher.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Sticky Header -->
+    <nav class="site-header">
+        <div class="site-header-inner">
+            <div class="site-header-left">
+                <div id="app-switcher-container"></div>
+                <span class="site-header-logo">EVOCHORA</span>
+            </div>
+            <div class="site-nav" id="site-nav"><a href="#demo">Live Demo</a><a href="#why">Why Evochora?</a><a href="#install">Download</a><a href="#experiments">Experiments</a><a href="#directions">Research</a><a href="#documentation">Documentation</a><a href="#community">Community</a></div>
+            <div class="site-header-right">
+                <a href="https://github.com/evochora/evochora" target="_blank" rel="noopener noreferrer" title="GitHub">
+                    <svg class="site-header-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                </a>
+                <a href="https://discord.gg/t9yEJc4MKX" target="_blank" rel="noopener noreferrer" title="Discord">
+                    <svg class="site-header-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page">
+
+        <!-- Logo -->
+        <header class="logo">
+            <div class="logo-text">EVOCHORA</div>
+            <div class="logo-sub">Simulation Platform for Digital Evolution Research</div>
+        </header>
+
+        <!-- Hero -->
+        <section class="hero">
+            <div class="hero-text">
+                <h1 class="hero-headline" id="headline">Run, observe and analyze digital evolution</h1>
+                <p class="hero-body">Evochora is an open-source platform for digital evolution research. Its organisms are self-replicating programs laid out in a shared spatial environment, where they live under thermodynamic constraints.</p>
+                <p class="hero-body">Everything they do is written in their code and therefore exposed to selection. In the published runs, evolution changed where offspring are built, what they are made of and when a parent reproduces.</p>
+                <p class="hero-body">For an experiment, the ancestors, their behaviors and the physics of the environment can be configured and extended. Its runs can be followed in a web-based visualizer and analyzer and analyzed further in Python or R. They are deterministic, so a change that spread can be traced back to the mutation behind it.</p>
+                <div class="hero-actions">
+                    <a class="btn-primary" href="#demo">Live Demo</a>
+                    <a class="btn-secondary" href="#install">Download</a>
+                </div>
+            </div>
+            <div class="hero-video">
+                <video class="demo-video" autoplay muted loop playsinline preload="auto" poster="/video-poster.png">
+                    <source src="https://raw.githubusercontent.com/evochora/media/main/homepage/intro.mp4" type="video/mp4">
+                </video>
+            </div>
+        </section>
+
+        <hr class="divider">
+
+        
+
+        <!-- Action Cards -->
+        <section class="actions">
+            <div class="action-card">
+                <a href="/visualizer" class="action-card-img-link">
+                    <img class="action-card-img" src="/screenshots/visualizer.png"
+                         alt="Evochora Visualizer showing organism grid, registers, and assembly debugger">
+                </a>
+                <div class="action-card-body">
+                    <div class="action-card-title">Visualizer</div>
+                    <div class="action-card-desc">
+                        Inspect the environment and all its organisms at any recorded tick, down to the registers, the thermodynamic state and the code of a single organism.
+                    </div>
+                    <a href="/visualizer" class="action-card-cta">Open Visualizer</a>
+                </div>
+            </div>
+
+            <div class="action-card">
+                <a href="/analyzer" class="action-card-img-link">
+                    <img class="action-card-img" src="/screenshots/analyzer.png"
+                         alt="Evochora Analyzer showing population dynamics, birth rates, and generation depth charts">
+                </a>
+                <div class="action-card-body">
+                    <div class="action-card-title">Analyzer</div>
+                    <div class="action-card-desc">
+                        Follow a whole run in charts on its population, its evolution and its ecology.
+                    </div>
+                    <a href="/analyzer" class="action-card-cta">Open Analyzer</a>
+                </div>
+            </div>
+
+            <div class="action-card">
+                <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true"
+                   target="_blank" rel="noopener noreferrer" class="action-card-img-link">
+                    <img class="action-card-img" src="/screenshots/notebook.png"
+                         alt="Muller Plot showing lineage clade dynamics over evolutionary time">
+                </a>
+                <div class="action-card-body">
+                    <div class="action-card-title">Jupyter Notebook</div>
+                    <div class="action-card-desc">
+                        Write analyses of a run's data in Python. The notebook shows by example how, from phylogenetic trees to Muller plots.
+                    </div>
+                    <div class="action-card-links">
+                        <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true"
+                           target="_blank" rel="noopener noreferrer">
+                            <img class="colab-badge"
+                                 src="colab-badge.svg"
+                                 alt="Open in Colab">
+                        </a>
+                        <a href="/notebooks/data_analysis_guide.ipynb" download>Download Notebook</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- Why Evochora (demo only) -->
+        <section id="demo">
+            <h2 class="section-title">Live Demo</h2>
+            <p class="demo-intro">Explore recorded simulation runs right here. Everything runs in your browser.<br>Open a run in the visualizer to look at the environment and its organisms, or in the analyzer to follow the population over time.</p>
+            <div class="demo-runs" id="demo-runs"></div>
+        </section>
+
+        <hr class="divider">
+
+        <section id="why">
+            <h2 class="section-title">Why Evochora?</h2>
+            <p class="demo-intro">For an in-depth description of the physics, the first results, the research directions and the limitations, read the <a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md" target="_blank" rel="noopener noreferrer">Scientific Overview</a>.</p>
+            <div class="why-list">
+                <details class="why-row" open>
+                    <summary><span class="why-label">Spatial organisms with programmable behavior</span><span class="why-links"><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#25-the-ancestor" target="_blank" rel="noopener noreferrer">The Ancestor</a><a href="https://github.com/evochora/evochora/blob/main/assembly/lib/behavior/README.md" target="_blank" rel="noopener noreferrer">Behavior Library</a><a href="https://github.com/evochora/evochora/blob/main/docs/EVOASM_SPEC.md" target="_blank" rel="noopener noreferrer">Assembly Specification</a></span></summary>
+                    <div class="why-body">
+                        <p class="why-desc">In Evochora, an organism is a program laid out in an n-dimensional grid. It can interact with its environment and other organisms. It searches its surroundings for energy, builds its offspring, decides where to place it and can take or execute cells of its neighbors. The system makes none of these decisions for it. They are behavior in its code and therefore exposed to selection.</p>
+                        <p class="why-desc">The ancestors that come with Evochora harvest energy, hoard it and reproduce. Further behaviors can be written in EvoASM, Evochora's assembly language. Its compiler and modules let a behavior be written once and reused in different ancestors. A run can start from several ancestors, so that different strategies meet in one world.</p>
+                    </div>
+                </details>
+                <details class="why-row">
+                    <summary><span class="why-label">Thermodynamic constraints and extensible physics</span><span class="why-links"><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#23-ownership-and-thermodynamics" target="_blank" rel="noopener noreferrer">Ownership and Thermodynamics</a><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#24-plugin-interfaces" target="_blank" rel="noopener noreferrer">Plugin Interfaces</a><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#54-heterogeneous-and-dynamic-environments" target="_blank" rel="noopener noreferrer">Dynamic Environments</a></span></summary>
+                    <div class="why-body">
+                        <p class="why-desc">In Evochora, survival is thermodynamic, and organisms compete for energy and for space. Every instruction costs energy and produces entropy. Energy has to be harvested from the environment, and entropy can only be shed by writing into it. An organism dies when its energy runs out or its entropy exceeds a limit.</p>
+                        <p class="why-desc">What an action costs, where energy enters the world, how offspring mutate and what becomes of the dead are plugins. Each can be configured or replaced. Barriers, gradients, seasons and catastrophes can be written as plugins too. The world itself becomes part of the experiment.</p>
+                    </div>
+                </details>
+                <details class="why-row">
+                    <summary><span class="why-label">Deterministic and reproducible</span><span class="why-links"><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#61-reproducibility" target="_blank" rel="noopener noreferrer">Reproducibility</a><a href="https://github.com/evochora/evochora/blob/main/docs/USER_GUIDE.md#8-reproduce-a-run" target="_blank" rel="noopener noreferrer">Reproduce a Run</a><a href="https://github.com/evochora/evochora/blob/main/docs/USER_GUIDE.md#6-record-a-stretch-in-full" target="_blank" rel="noopener noreferrer">Record a Stretch in Full</a></span></summary>
+                    <div class="why-body">
+                        <p class="why-desc">A run in Evochora is deterministic. The same version and the same configuration with its seed always give the same course, tick for tick, on Linux, macOS and Windows, with any number of processor cores, and regardless of whether the run was stopped and resumed.</p>
+                        <p class="why-desc">Anyone can therefore produce the same data and check a result independently. The data match bit for bit, apart from the time of recording. This holds at any recording density. A run recorded at intervals, or any stretch of it, can be computed again and recorded at every tick. It then shows the same course in more detail.</p>
+                    </div>
+                </details>
+                <details class="why-row">
+                    <summary><span class="why-label">Traceable from the population to a single instruction</span><span class="why-links"><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#32-what-a-run-records" target="_blank" rel="noopener noreferrer">What a Run Records</a><a href="https://github.com/evochora/evochora/blob/main/docs/USER_GUIDE.md#5-observe-a-run" target="_blank" rel="noopener noreferrer">Observe a Run</a><a href="https://github.com/evochora/evochora/blob/main/docs/USER_GUIDE.md#7-analyze-the-data" target="_blank" rel="noopener noreferrer">Analyze the Data</a></span></summary>
+                    <div class="why-body">
+                        <p class="why-desc">At each recorded tick, Evochora stores the environment and every organism with its internal state. It also stores every death and every birth with its parent and its mutations. The analyzer turns these data into charts, and plugins can add further metrics. All of it is kept as Parquet files, an open format, for analysis in Python or R.</p>
+                        <p class="why-desc">So when a lineage takes over a population, it can be followed back to the organism in which the change began. The stretch around that moment can then be recorded again at every tick. The visualizer shows the organism there instruction by instruction: its internal state, the machine code it executes and the surroundings it actually had.</p>
+                    </div>
+                </details>
+                <details class="why-row">
+                    <summary><span class="why-label">Long runs and large populations on a workstation</span><span class="why-links"><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#62-resources" target="_blank" rel="noopener noreferrer">Resources</a><a href="https://github.com/evochora/evochora/blob/main/docs/PUBLISHED_EXPERIMENTS.md" target="_blank" rel="noopener noreferrer">Published Experiments</a><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#25-the-ancestor" target="_blank" rel="noopener noreferrer">The Ancestor</a></span></summary>
+                    <div class="why-body">
+                        <p class="why-desc">On a workstation, Evochora executes several million instructions per second. Every organism executes one instruction per tick, so a population of a thousand organisms reaches several hundred million ticks a day. Published runs have reached billions of ticks.</p>
+                        <p class="why-desc">How many generations that makes depends on the organisms. The default ancestor is deliberately large, a program of a few thousand cells with behavior routines for harvesting, hoarding and reproducing. With it, such a population completes on the order of a thousand generations a day. Simpler organisms can be expected to reach many times that.</p>
+                    </div>
+                </details>
+                <details class="why-row">
+                    <summary><span class="why-label">Open source and ready to run</span><span class="why-links"><a href="https://github.com/evochora/evochora/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/evochora/evochora/blob/main/README.md#quick-start" target="_blank" rel="noopener noreferrer">Quick Start</a><a href="https://github.com/evochora/evochora/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a></span></summary>
+                    <div class="why-body">
+                        <p class="why-desc"><span class="keep">Evochora runs on Linux, macOS and Windows, on ordinary hardware.</span> Unpack and start with one command. Watch the simulation in your browser while it runs.</p>
+                        <p class="why-desc">The code is open source under the MIT license. Use it, change it, build on it. How the simulation works can be read in the source.</p>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- Get Started (demo only) -->
+        
+
+        <section id="install" class="get-started">
+            <h2 class="section-title">Download</h2>
+            <p class="dl-text">Download Evochora and run your own experiments.<br>
+            Unpack the archive. A single command starts a simulation.</p>
+            <div class="get-started-actions">
+                <a class="btn-primary" id="dl-button" href="https://github.com/evochora/evochora/releases/latest" target="_blank" rel="noopener noreferrer">Download</a>
+                <a class="btn-secondary" href="https://github.com/evochora/evochora#quick-start" target="_blank" rel="noopener noreferrer">Quick Start guide</a>
+            </div>
+            <div class="dl-line"><span id="dl-notice" hidden></span><i class="sep" id="dl-notice-sep" hidden></i><span id="dl-version" hidden></span><span id="dl-doi" hidden></span><i class="sep" id="dl-version-sep" hidden></i><span id="dl-other" style="display: contents;"></span><a href="https://github.com/evochora/evochora/releases" target="_blank" rel="noopener noreferrer">All releases</a><a href="https://github.com/evochora/evochora/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a></div>
+            <div class="dl-help">Need help getting started?<br><a href="#community">We are glad to help.</a></div>
+        </section>
+
+        <hr class="divider">
+
+        <section id="experiments">
+            <h2 class="section-title">Published Experiments</h2>
+            <p class="demo-intro">See what has evolved in Evochora so far. Each of these runs produced a finding and is published on Zenodo as a citable record.<br>A record holds the data of the run, its analysis and the version of Evochora that recorded it.</p>
+            <div class="exp-list" id="exp-list"></div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- What's Next (both modes) -->
+        <section id="directions">
+            <h2 class="section-title">Research Directions</h2>
+            <p class="demo-intro">Questions that can be asked with Evochora. Some can be set up as experiments today, from a configuration and ancestors.<br>Others first need a change to the physics. The <a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#5-research-directions" target="_blank" rel="noopener noreferrer">Scientific Overview</a> describes each of them.</p>
+            <ol class="directions">
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#51-replicator-ecology" target="_blank" rel="noopener noreferrer">Replicator Ecology</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#52-predators-and-prey" target="_blank" rel="noopener noreferrer">Predators and Prey</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#53-hostparasite-coevolution" target="_blank" rel="noopener noreferrer">Host–Parasite Coevolution</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#54-heterogeneous-and-dynamic-environments" target="_blank" rel="noopener noreferrer">Heterogeneous and Dynamic Environments</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#55-the-structure-of-variation" target="_blank" rel="noopener noreferrer">The Structure of Variation</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#56-genotype-and-phenotype" target="_blank" rel="noopener noreferrer">Genotype and Phenotype</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#57-a-digital-eukaryogenesis" target="_blank" rel="noopener noreferrer">A Digital Eukaryogenesis</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#58-toward-multicellularity" target="_blank" rel="noopener noreferrer">Toward Multicellularity</a></li>
+                <li><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md#59-metabolism-and-food-webs" target="_blank" rel="noopener noreferrer">Metabolism and Food Webs</a></li>
+            </ol>
+        </section>
+
+        <hr class="divider">
+
+        <section id="documentation">
+            <h2 class="section-title">Documentation</h2>
+            <div class="doc-groups">
+                <div class="doc-group"><h3>Run experiments</h3><p><a href="https://github.com/evochora/evochora/blob/main/docs/USER_GUIDE.md" target="_blank" rel="noopener noreferrer">User Guide</a><span>How to run an experiment, from the first start to analyzing and sharing its results.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/CLI_USAGE.md" target="_blank" rel="noopener noreferrer">CLI Usage Guide</a><span>Every command of bin/evochora with its options.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/config/evochora.conf" target="_blank" rel="noopener noreferrer">evochora.conf</a><span>The configuration template with the settings changed most often.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/src/main/resources/reference.conf" target="_blank" rel="noopener noreferrer">reference.conf</a><span>Every setting there is, each with its explanation.</span></p></div>
+                <div class="doc-group"><h3>Write organisms</h3><p><a href="https://github.com/evochora/evochora/blob/main/docs/EVOASM_SPEC.md" target="_blank" rel="noopener noreferrer">Assembly Specification</a><span>The EvoASM language, the virtual machine and every instruction.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/EVOASM_GUIDELINES.md" target="_blank" rel="noopener noreferrer">EvoASM Guidelines</a><span>Practices for writing programs that leave room for evolution and act reliably among other organisms.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/assembly/ancestors/README.md" target="_blank" rel="noopener noreferrer">Ancestors</a><span>The ancestors that come with Evochora and how to start them.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/assembly/lib/behavior/README.md" target="_blank" rel="noopener noreferrer">Behavior Library</a><span>The behaviors an ancestor can be assembled from.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/extensions/vscode/README.md" target="_blank" rel="noopener noreferrer">Syntax Highlighting</a><span>The VS Code extension for EvoASM.</span></p></div>
+                <div class="doc-group"><h3>Analyze the data</h3><p><a href="https://github.com/evochora/evochora/blob/main/notebooks/README.md" target="_blank" rel="noopener noreferrer">Analysis Notebook</a><span>How to build an analysis of a run, shown by example.</span></p><p><a href="/api-docs/">HTTP API Reference</a><span>Every endpoint of a node with its parameters and responses.</span></p></div>
+                <div class="doc-group"><h3>Understand the project</h3><p><a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md" target="_blank" rel="noopener noreferrer">Scientific Overview</a><span>The physics of the environment, the first results, the research directions and the limitations.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/PUBLISHED_EXPERIMENTS.md" target="_blank" rel="noopener noreferrer">Published Experiments</a><span>The experiment records on Zenodo, each with its finding.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/ORIGIN_STORY.md" target="_blank" rel="noopener noreferrer">Origin Story</a><span>How the project came about.</span></p></div>
+                <div class="doc-group"><h3>Work on the code</h3><p><a href="https://github.com/evochora/evochora/blob/main/docs/dev/DEVELOPMENT.md" target="_blank" rel="noopener noreferrer">Development Guide</a><span>How to build, run and test Evochora from its sources.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/dev/ARCHITECTURE.md" target="_blank" rel="noopener noreferrer">Architecture</a><span>How Evochora is built, its packages and how they depend on each other.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/dev/ARCHITECTURE_DECISIONS.md" target="_blank" rel="noopener noreferrer">Architecture &amp; Design Decisions</a><span>Why the main parts were built the way they are.</span></p></div>
+            </div>
+        </section>
+
+        <hr class="divider">
+
+        <section id="community">
+            <h2 class="section-title">Community</h2>
+            <div class="community">
+                <div class="doc-group part-a">
+                    <h3>Get help and get involved</h3>
+                    <p class="community-text">We help everyone who wants to try Evochora. We are curious what you would like to study with it, and glad to help you design an experiment. Contributions of any kind are welcome.</p>
+                    <div class="community-links">
+                        <div><p><a href="https://discord.gg/t9yEJc4MKX" target="_blank" rel="noopener noreferrer">Discord</a><span>Chat with us.</span></p><p><a href="https://github.com/evochora/evochora/discussions" target="_blank" rel="noopener noreferrer">Discussions</a><span>Ask a question, share an idea or show what you are working on.</span></p><p><a href="https://github.com/evochora/evochora/issues" target="_blank" rel="noopener noreferrer">Issues</a><span>Report a problem or request a feature.</span></p></div>
+                        <div><p><a href="https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing Guide</a><span>How to contribute, whether you do research with Evochora or work on its code.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/AI_POLICY.md" target="_blank" rel="noopener noreferrer">AI Policy</a><span>The rules for using AI assistants in the project.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noopener noreferrer">Code of Conduct</a><span>What everyone in the project follows.</span></p></div>
+                    </div>
+                </div>
+                <div class="doc-group part-b">
+                    <h3>Cite Evochora</h3>
+                    <p class="community-text">If you use Evochora in your research, please cite the version that produced your runs.</p>
+                    <div class="community-list"><p><a href="https://github.com/evochora/evochora/blob/main/CITATION.cff" target="_blank" rel="noopener noreferrer">CITATION.cff</a><span>The reference. GitHub offers it under &ldquo;Cite this repository&rdquo;.</span></p><p><a href="https://github.com/evochora/evochora/blob/main/docs/USER_GUIDE.md#9-cite-and-share" target="_blank" rel="noopener noreferrer">Cite and Share</a><span>How to find the version of a run and its DOI.</span></p><p id="cite-doi" hidden></p></div>
+                </div>
+            </div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- Footer -->
+        <footer class="foot">
+            <span class="foot-name">Evochora <i>Simulation Platform for Digital Evolution Research</i></span>
+            <span class="foot-links"><a href="https://github.com/evochora/evochora/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a><a href="https://github.com/evochora/evochora" target="_blank" rel="noopener noreferrer">GitHub</a><a href="legal.html">Legal Notice</a><a href="privacy.html">Privacy</a></span>
+        </footer>
+
+    </div>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -35,13 +35,15 @@ import com.typesafe.config.Config;
  *     enabled = false              # Default: false (opt-in)
  *     tcpPort = 9092               # TCP port (default: 9092)
  *     tcpAllowOthers = false       # Allow remote connections (default: false)
+ *     database = ${pipeline.resources.index-database.options}   # Required: its jdbcUrl
  *   }
  * }
  * </pre>
  * <p>
  * <strong>Connecting from external clients:</strong>
  * <ul>
- *   <li>JDBC URL: {@code jdbc:h2:tcp://localhost:9092/./data/database/evochora} (relative to working directory)</li>
+ *   <li>JDBC URL: the TCP form of {@code database.jdbcUrl}, which the process writes into the log
+ *       at startup, such as {@code jdbc:h2:tcp://localhost:9092//path/to/indexdb}</li>
  *   <li>Username: {@code sa}</li>
  *   <li>Password: (empty)</li>
  * </ul>
@@ -52,6 +54,9 @@ import com.typesafe.config.Config;
 public class H2TcpServerProcess extends AbstractProcess {
     private static final Logger log = LoggerFactory.getLogger(H2TcpServerProcess.class);
 
+    private static final String H2_PREFIX = "jdbc:h2:";
+
+    private final String databasePath;
     private Server tcpServer;
 
     /**
@@ -59,10 +64,33 @@ public class H2TcpServerProcess extends AbstractProcess {
      *
      * @param processName The name of this process instance from the configuration.
      * @param dependencies Dependencies injected by the Node (currently none required).
-     * @param options The configuration for this process, including TCP port and security settings.
+     * @param options The configuration for this process, including TCP port and security settings,
+     *                and {@code database.jdbcUrl}, the file URL of the database the server serves.
+     * @throws IllegalArgumentException if the process is enabled and {@code database.jdbcUrl} is
+     *                                  missing or not the URL of an H2 database file.
      */
     public H2TcpServerProcess(final String processName, final Map<String, Object> dependencies, final Config options) {
         super(processName, dependencies, options);
+        final boolean enabled = !options.hasPath("enabled") || options.getBoolean("enabled");
+        this.databasePath = enabled ? databasePath(options) : null;
+    }
+
+    /**
+     * The path of the database file in {@code database.jdbcUrl}: what follows {@code jdbc:h2:},
+     * up to the first parameter.
+     */
+    private static String databasePath(final Config options) {
+        if (!options.hasPath("database.jdbcUrl")) {
+            throw new IllegalArgumentException("The H2 TCP server needs database.jdbcUrl; "
+                + "reference.conf sets it to the index database");
+        }
+        final String jdbcUrl = options.getString("database.jdbcUrl");
+        if (!jdbcUrl.startsWith(H2_PREFIX)) {
+            throw new IllegalArgumentException("database.jdbcUrl of the H2 TCP server is no H2 URL: " + jdbcUrl);
+        }
+        final String path = jdbcUrl.substring(H2_PREFIX.length());
+        final int parameters = path.indexOf(';');
+        return parameters >= 0 ? path.substring(0, parameters) : path;
     }
 
     @Override
@@ -98,12 +126,10 @@ public class H2TcpServerProcess extends AbstractProcess {
             tcpServer = Server.createTcpServer(args.toArray(new String[0]));
             tcpServer.start();
 
-            // Build JDBC URL for connection info
-            String jdbcUrl = buildJdbcUrl(tcpPort);
+            String jdbcUrl = H2_PREFIX + "tcp://localhost:" + tcpPort + "/" + databasePath;
             String accessInfo = tcpAllowOthers ? "remote allowed" : "localhost only";
             
-            log.info("H2 TCP Server started on port {} ({}) - Connect: {}", 
-                tcpPort, accessInfo, jdbcUrl);
+            log.info("H2 TCP server: {} ({})", jdbcUrl, accessInfo);
 
         } catch (final SQLException e) {
             // Check if error is port-related (graceful handling)
@@ -116,35 +142,6 @@ public class H2TcpServerProcess extends AbstractProcess {
             log.error("Failed to start H2 TCP Server: {}", e.getMessage());
             throw new RuntimeException("Failed to start H2 TCP Server", e);
         }
-    }
-
-    /**
-     * Builds the JDBC URL for connecting to the database via TCP.
-     * Uses the database path from the pipeline configuration if available.
-     *
-     * @param tcpPort The TCP port the server is listening on.
-     * @return JDBC URL string for external clients.
-     */
-    private String buildJdbcUrl(final int tcpPort) {
-        // Try to get database path from options
-        if (options.hasPath("database.jdbcUrl")) {
-            String jdbcUrl = options.getString("database.jdbcUrl");
-            
-            // Extract database path from file-based JDBC URL
-            // Example: jdbc:h2:/home/user/evochora/data/evochora;MODE=... -> /home/user/evochora/data/evochora
-            if (jdbcUrl.startsWith("jdbc:h2:")) {
-                String dbPath = jdbcUrl.substring(8); // Remove "jdbc:h2:"
-                int semicolonIndex = dbPath.indexOf(';');
-                if (semicolonIndex > 0) {
-                    dbPath = dbPath.substring(0, semicolonIndex);
-                }
-                // Convert to TCP URL
-                return "jdbc:h2:tcp://localhost:" + tcpPort + "/" + dbPath;
-            }
-        }
-        
-        // Fallback: use default path (relative to working directory)
-        return "jdbc:h2:tcp://localhost:" + tcpPort + "/" + System.getProperty("user.dir") + "/data/database/evochora";
     }
 
     /**
@@ -171,7 +168,7 @@ public class H2TcpServerProcess extends AbstractProcess {
         if (tcpServer != null) {
             tcpServer.stop();
             tcpServer = null;
-            log.info("H2 TCP Server stopped.");
+            log.debug("H2 TCP Server stopped.");
         }
     }
 }

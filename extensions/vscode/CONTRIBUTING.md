@@ -16,14 +16,15 @@ npm install
 npm run build
 ```
 
-The built `.vsix` file will be created in the parent directory as `evochora-syntax.vsix`.
+The build creates the file `evochora-syntax.vsix` in `src/`. Git ignores it there.
 
 ## Updating the Version
 
 1. Update the version in `src/extension/package.json`
 2. Rebuild the extension
-3. Rename the output file to include the version: `evochora-syntax-X.Y.Z.vsix`
-4. Commit the new `.vsix` file
+3. Move the built file to this directory under a name that includes the version: `evochora-syntax-X.Y.Z.vsix`
+4. Delete the `.vsix` file of the previous version
+5. Commit both changes
 
 ## Testing
 

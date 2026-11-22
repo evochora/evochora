@@ -1,8 +1,8 @@
 # EvoASM Guidelines
 
-The [Assembly Specification](ASSEMBLY_SPEC.md) says what the language and every instruction do.
+The [Assembly Specification](EVOASM_SPEC.md) says what the language and every instruction do.
 This document is about writing programs that hold up in the simulation: programs that leave
-room for evolution, that act sensibly in a world other organisms act in too, whose procedures
+room for evolution, that act sensibly in an environment other organisms act in too, whose procedures
 can be relied on, and that can be checked. Each practice comes with its reason, so that a reader
 who knows why it does not apply to their case can leave it out.
 
@@ -59,13 +59,13 @@ instruction pointer that has run off its row:
 All of this is for programs meant to reproduce and evolve. A procedure written as a tool, or a
 driver for an experiment, whose body no mutation operator will ever touch, does not need it.
 
-## Expect the world to change under you
+## Expect the environment to change under you
 
 ### Check that a step or a write happened
 
-A program sees the world as it was when the tick began, and other organisms act in the same
+A program sees the environment as it was when the tick began, and other organisms act in the same
 tick. A write that loses out to another organism's write is retried by the machine on its own;
-what the program has to handle is an instruction that fails for a reason of its own, a write
+what the program has to handle is an instruction that fails for another reason, a write
 into a cell that turned out to be occupied, a step into a cell that is not the organism's to
 enter. You can ask after a step or a write whether it happened, and decide what to do if not:
 
@@ -76,7 +76,7 @@ enter. You can ask after a step or a write whether it happened, and decide what 
   PEEK %TMP %DIR                          # otherwise take what is in the way, and pay for it
 ```
 
-Test as close to the action as you can; the world may change in between. Write with `PPK` what
+Test as close to the action as you can; the environment may change in between. Write with `PPK*` what
 has to stand there whatever was in the way, with `POKE` what must destroy nothing.
 
 ### Decide about what is in the way
@@ -94,8 +94,8 @@ molecule, gets through. The cell tests tell own, foreign, unowned and passable a
   POKE %VALUE %DIR                        # now the cell is free
 ```
 
-One program can decide differently at different steps: the default primordial organism,
-`assembly/primordial/default`, clears its own body of anything that is not its own, but abandons
+One program can decide differently at different steps: the default ancestor,
+`assembly/ancestors/default`, clears its own body of anything that is not its own, but abandons
 a copy at the first foreign cell in the way of the child's shell.
 
 ### The marker register and what a child inherits
@@ -120,7 +120,7 @@ with the same value, so it tells a `STRUCTURE:100` shell cell from a `CODE:100` 
 the numbers alone: `ENERGY:5` is greater than `DATA:3`. A comparison that has to be sure of the
 type therefore says so with a type test (`IFTR`, `INTR`) before it orders; `LETI %TMP ENERGY:0`
 does not check that `%TMP` holds energy. `DATA` and `STATE` count as one type. You meet that when
-a program keeps values in the world: a `DATA` value written with the marker register at 0 is
+a program keeps values in the environment: a `DATA` value written with the marker register at 0 is
 stored as `STATE`, comes back as `STATE` when it is read, and comparing it with `DATA` works as
 expected:
 
@@ -164,14 +164,14 @@ RESTORE:
 ### Positions instead of labels
 
 Give a procedure a position rather than a label when the label may stand more than once in the
-world, as it does once the program has copied a structure with labels in it; a label that
+environment, as it does once the program has copied a structure with labels in it; a label that
 stands twice can resolve to either copy. Take the position into a location register before the
 copy exists.
 
 ### Rows of code
 
 Write a long procedure in rows, each begun by its own `.ORG` and ended by a jump to the next,
-so that no row runs past the width of the world it is meant for; inside an imported module the
+so that no row runs past the width of the environment it is meant for; inside an imported module the
 origin is relative to the place of the import. A row that continues the one before it says how
 far it moves on, so that a section inserted or moved carries the ones after it along:
 
@@ -185,13 +185,13 @@ ORIENT:
   ...
 ```
 
-Where a row belongs at a place of its own rather than after the row before it — the entry of a
-module, a corner of a shell — the absolute form says so and stays.
+Where a row belongs at a fixed place rather than after the row before it (the entry of a
+module, a corner of a shell), the absolute form says so and stays.
 
 ## Check what a program does
 
 The compiler checks syntax, layout and references; it cannot check what a program does. Run it
-in a small world with nothing in it but the program, without energy sources and without
+in a small environment with nothing in it but the program, without energy sources and without
 mutation, so that everything that happens is the program's doing. `assembly/example.conf` is
 such a configuration; it starts the program named by its `example-dir` and pauses after a fixed
 number of ticks:
@@ -200,15 +200,15 @@ number of ticks:
 bin/evochora --config assembly/example.conf node run
 ```
 
-The node serves a web front end at `http://localhost:8081/visualizer/` that steps through the
+The node serves the visualizer at `http://localhost:8081/visualizer/`, which steps through the
 run tick by tick and shows, for every organism, the instruction it executed, its registers and
 stacks, the cells around it, and the source line the instruction came from; what went wrong can
-be followed back to the line that caused it, and the world at the pause shows whether the
+be followed back to the line that caused it, and the environment at the pause shows whether the
 program did what it should.
 
 ## Write it so it can be read
 
-The default primordial organism, `assembly/primordial/default` with the behaviors it takes from
+The default ancestor, `assembly/ancestors/default` with the behaviors it takes from
 `assembly/lib`, is the reference: a header per file and per procedure that says what it does,
 what it assumes and what it leaves behind; register aliases named for their role in each phase;
 sections introduced by a comment that names their purpose; and a comment at the end of every
@@ -235,7 +235,7 @@ from the names. A control block names the structure instead: `.CONTROL NAME` is 
 The block adds no instruction, so the padding and the redundant jumps stay where the program
 puts them; a jump guarded by a conditional stays single, because a second copy behind it would
 run when the first was skipped. If / then / elseif / else: the head tests the first condition,
-every further condition stands in a case of its own before the case it guards, and every part
+every further condition stands in a separate case before the case it guards, and every part
 that is not the last leaves the block:
 
 ```

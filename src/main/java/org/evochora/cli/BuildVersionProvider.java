@@ -5,13 +5,14 @@ import org.evochora.BuildInfo;
 import picocli.CommandLine.IVersionProvider;
 
 /**
- * Answers {@code --version} on every command with what the build recorded about itself: the
- * version it was made as and the git revision of its sources.
+ * Answers {@code --version} on every command with what the build recorded about itself: its
+ * version, if it was made for a release, the git revision of its sources, and the DOI of that
+ * release where it has one.
  */
 final class BuildVersionProvider implements IVersionProvider {
 
     @Override
     public String[] getVersion() {
-        return new String[] {"Evochora " + BuildInfo.version() + " (" + BuildInfo.revision() + ")"};
+        return BuildInfo.versionLines();
     }
 }

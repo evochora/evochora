@@ -52,7 +52,15 @@ tasks.named<JavaCompile>(launcher.compileJavaTaskName) {
 }
 
 group = "org.evochora"
-version = project.findProperty("RELEASE_TAG")?.toString() ?: "latest"
+// The tag a build is made for, which the workflow passes: that of a release, or the name of the
+// rolling pre-release. A build made by hand or for a pull request has none.
+val releaseTag = project.findProperty("RELEASE_TAG")?.toString().orEmpty()
+version = releaseTag
+
+// The name of a published distribution and of the directory it unpacks to: the tag of the build
+// between the project and the platform, and nothing there for a build without a tag
+fun distributionName(classifier: String) =
+    listOf("evochora", releaseTag, classifier).filter { it.isNotEmpty() }.joinToString("-")
 
 // Remove -SNAPSHOT suffix if it exists for local builds
 if (version.toString().endsWith("-SNAPSHOT")) {
@@ -62,15 +70,6 @@ if (version.toString().endsWith("-SNAPSHOT")) {
 // The Java runtime the platform distributions bring, as Adoptium names the Temurin release
 val temurinVersion = "25.0.5+8"
 val temurinFeature = temurinVersion.substringBefore('.')
-
-// The libraries with native code that publish, beside a main jar carrying the native library of
-// every platform they support, a jar per platform carrying that platform's alone. The platform
-// distributions take the latter in place of the main jar.
-data class NativeLibrary(val group: String, val module: String, val version: String) {
-    val mainJar: String = "$module-$version.jar"
-}
-val duckdbJdbc = NativeLibrary("org.duckdb", "duckdb_jdbc", "2.0.0.0")
-val zstdJni = NativeLibrary("com.github.luben", "zstd-jni", "1.5.7-24")
 
 repositories {
     mavenCentral()
@@ -138,13 +137,13 @@ dependencies {
     implementation("org.apache.commons:commons-rng-simple:1.7")
 
     // Zstd compression library with bundled native binaries for cross-platform support
-    implementation("${zstdJni.group}:${zstdJni.module}:${zstdJni.version}")
+    implementation("com.github.luben:zstd-jni:1.5.7-24")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
     implementation("com.github.ben-manes.caffeine:caffeine:3.3.1")
 
     // DuckDB JDBC driver for analytics
-    implementation("${duckdbJdbc.group}:${duckdbJdbc.module}:${duckdbJdbc.version}")
+    implementation("org.duckdb:duckdb_jdbc:2.0.0.0")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
     implementation("org.apache.artemis:artemis-jakarta-server:2.57.0")
@@ -176,9 +175,16 @@ val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
 // option exists from Java 23 on, so the benchmark scripts, which may run an older side, leave it out.
 val allowUnsafeMemoryAccess = "--sun-misc-unsafe-memory-access=allow"
 
+// Rendering a video draws into images in memory, and Evochora opens no window anywhere. Left to
+// itself, Java decides from the environment whether there is a display, and where one is named
+// that it cannot reach, in a terminal that outlived its desktop session or behind a broken display
+// forwarding, the first drawing fails. Told that there is none, it does not look. The start
+// scripts of the distribution and the test tasks carry the flag.
+val headless = "-Djava.awt.headless=true"
+
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
-    applicationDefaultJvmArgs = listOf("-Xmx8g", enableNativeAccess, allowUnsafeMemoryAccess)
+    applicationDefaultJvmArgs = listOf("-Xmx8g", headless, enableNativeAccess, allowUnsafeMemoryAccess)
 }
 
 // The start scripts are made from templates of our own in gradle/start-scripts: copies of Gradle's,
@@ -264,14 +270,16 @@ tasks.named("processResources") {
 // evochora-build.properties and read there by org.evochora.BuildInfo. The engine writes that
 // revision into the metadata of every run, because a run is reproduced exactly only by the build
 // that wrote it; whoever reads a run compares the two and warns when they differ. Beside it the
-// file holds the version of the build - the release tag, or "latest" - which the API documentation
-// names.
+// file holds the version of the build, which only a build made for a release has: the release tag,
+// of the form v<number>. Every other build, a nightly or one made by hand, has a revision and no
+// version, and the key stays empty.
 //
 // The value comes from the first of these that answers:
 //   1. the git checkout — the commit hash, with "-dirty" appended when a tracked file carries
 //      uncommitted changes;
-//   2. a GIT_REVISION file in the project root — an experiment bundle ships one next to its source
-//      archive, so a build made from the archive records the revision the archive came from;
+//   2. a GIT_REVISION file in the project root — an experiment bundle ships one with its sources,
+//      so a build made from them records the revision they came from, with "-rebuilt" appended:
+//      without a checkout nothing shows whether the sources are still those of that revision;
 //   3. "unknown" — no checkout and no such file, and the sources cannot be named.
 //
 // The value is resolved while the build is configured and registered as an input of the task, so
@@ -302,7 +310,7 @@ abstract class BuildRevisionSource : ValueSource<String, BuildRevisionSource.Par
         }
         val shipped = projectDir.resolve("GIT_REVISION")
         val recorded = if (shipped.isFile) shipped.readText().trim() else ""
-        return recorded.ifBlank { "unknown" }
+        return if (recorded.isBlank()) "unknown" else "$recorded-rebuilt"
     }
 
     private fun gitOutput(projectDir: File, vararg arguments: String): String? = try {
@@ -324,6 +332,18 @@ val buildRevision: String = providers.of(BuildRevisionSource::class) {
     parameters.projectDir.set(rootProject.layout.projectDirectory)
 }.get()
 
+// Only a build made for a release has a version: its tag, of the form v<number>. The rolling
+// pre-release and a build made by hand have none.
+val releaseVersion = releaseTag.takeIf { Regex("v\\d.*").matches(it) }.orEmpty()
+
+// The DOI under which the release this build is made for is archived, which the workflow reserves
+// before it builds. It belongs to a release: a build without a version takes none.
+val releaseDoi = project.findProperty("RELEASE_DOI")?.toString().orEmpty()
+if (releaseDoi.isNotEmpty() && releaseVersion.isEmpty()) {
+    throw GradleException("RELEASE_DOI names the DOI of a release, and this build is made for none: " +
+        "RELEASE_TAG is \"$releaseTag\", not a version of the form v<number>.")
+}
+
 // Written as a properties file by Gradle's own task, which escapes every value as the format
 // requires and writes no timestamp: a release tag may hold any character a tag allows, and what
 // is read back is exactly what was written
@@ -332,7 +352,8 @@ val writeBuildInfo = tasks.register<WriteProperties>("writeBuildInfo") {
     description = "Records the revision of the sources and the version of the build on the classpath"
     destinationFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
     property("revision", buildRevision)
-    property("version", project.version.toString())
+    property("version", releaseVersion)
+    property("doi", releaseDoi)
     // The Java the code is compiled for, which JavaVersionGuard requires of the Java it runs on
     property("requiredJava", java.toolchain.languageVersion.get().asInt())
 }
@@ -521,6 +542,8 @@ val webTest = tasks.register<com.github.gradle.node.npm.task.NpmTask>("webTest")
     environment = vendor.map { mapOf("WEB_VENDOR_DIR" to it.absolutePath) }
     inputs.files(webVendor).withPropertyName("vendor")
     inputs.dir("src/main/web").withPropertyName("web")
+    // The homepage of evochora.org is no part of the program, but its modules have their tests here
+    inputs.dir("infrastructure/docker/site").withPropertyName("site")
     inputs.dir("src/test/web").withPropertyName("tests")
     inputs.files("package-lock.json", "vitest.config.mjs").withPropertyName("setup")
     outputs.file(report)
@@ -551,15 +574,15 @@ tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// The platform distribution archives carry the project version, which comes from RELEASE_TAG.
+// The archives of the published distributions carry the project version, which is the tag of the build.
 // The jars inside them do not: an archive names its version once, and the jars are never published
 // on their own, so they keep the fixed names the documentation and the benchmark tooling refer to.
 tasks.withType<Jar> {
     archiveVersion.set("")
 }
 
-// The main distribution, without a Java runtime, is installed for development by installDist and
-// not published, so its archives are not built
+// The main distribution is installed for development by installDist and not published, so its
+// archives are not built
 tasks.named<Zip>("distZip") { enabled = false }
 tasks.named<Tar>("distTar") { enabled = false }
 
@@ -649,18 +672,19 @@ tasks.named("check") {
     dependsOn(tasks.named("checkLicense"), checkLicenseFiles)
 }
 
-// The sources of the commit a platform distribution is built from, which it carries under src/:
-// the installation directory holds the runs made with it, and with the sources beside them runs,
-// application and the code that made them are published as one. GIT_REVISION among them names
-// the revision, so that a build made from them records it, as BuildRevisionSource reads it. They
-// are the sources of the last commit; a build with changes not yet committed leaves those out,
-// and its revision says "-dirty".
+// The files of the commit a published distribution is built from, which it carries at its top as
+// the repository holds them: a link between two documents leads to the same place in an
+// installation as in the repository, and the installation directory holds the runs made with it
+// beside the code that made them. GIT_REVISION among them names the revision, as
+// BuildRevisionSource reads it where a build is made without a checkout. They are the files of the
+// last commit; a build with changes not yet committed leaves those out, and its revision says
+// "-dirty".
 // Archiving needs the project to be a git checkout of its own. In a directory without one, git
 // would take the repository of an enclosing directory, such as an installation directory kept
 // under git, and pack its sources under Evochora's revision; the task stops there instead.
 val sourceArchive = tasks.register<Exec>("sourceArchive") {
     group = "distribution"
-    description = "Packs the sources of the commit HEAD for the src/ directory of the platform distributions"
+    description = "Packs the files of the commit HEAD that the published distributions carry at their top"
     val archive = layout.buildDirectory.file("sources/evochora-sources.tar").get().asFile
     // In a worktree .git is a file, in a clone a directory
     val checkout = rootProject.layout.projectDirectory.file(".git").asFile
@@ -671,7 +695,7 @@ val sourceArchive = tasks.register<Exec>("sourceArchive") {
         "--output=$archive", "HEAD")
     doFirst {
         if (!checkout.exists()) {
-            throw GradleException("Platform distributions carry the sources of the git commit they are built " +
+            throw GradleException("Published distributions carry the files of the git commit they are built " +
                 "from, and ${checkout.parentFile} is no git checkout of its own. Build them from a clone of Evochora.")
         }
         archive.parentFile.mkdirs()
@@ -685,7 +709,17 @@ val unpackSources = tasks.register<Sync>("unpackSources") {
     into(layout.buildDirectory.dir("sources/src"))
 }
 
-// What every distribution carries beside its start scripts and its libraries
+// The licenses of what a distribution ships
+val distributionLicenses = copySpec {
+    into("licenses") {
+        from("src/licenses") { exclude("frontend/**") }
+        from(javaLicenseReport) { include("java-libraries.txt") }
+        from(javaLicenseReport) { include("*.jar/**"); into("java") }
+        from(frontendLicenses)
+    }
+}
+
+// What the main distribution carries beside its start scripts and its libraries
 val distributionContents = copySpec {
     from("assembly") {
         into("assembly")
@@ -698,13 +732,19 @@ val distributionContents = copySpec {
     }
     from("README.md")
     from("LICENSE")
-    into("licenses") {
-        from("src/licenses") { exclude("frontend/**") }
-        from(javaLicenseReport) { include("java-libraries.txt") }
-        from(javaLicenseReport) { include("*.jar/**"); into("java") }
-        from(frontendLicenses)
-    }
+    with(distributionLicenses)
 }
+
+// What a published distribution leaves out of the commit it carries: the files that only building,
+// testing and hosting the project need. Everything else goes in, a file added to the repository
+// later included, so that no document links to a file its distribution lacks.
+val notInPublishedDistribution = listOf(
+    ".github/**", ".gitattributes", ".gitignore", ".coderabbit.yaml",
+    ".claude/**", ".agents/**", "AGENTS.md", "CLAUDE.md",
+    "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradle/**", "gradlew", "gradlew.bat",
+    "package.json", "package-lock.json", "vitest.config.mjs", ".npmrc",
+    "tools/**", "infrastructure/**", "docs/proposals/**",
+)
 
 distributions {
     main {
@@ -715,9 +755,11 @@ distributions {
 }
 
 // The distributions that are published: one per supported platform, each bringing that
-// platform's Java runtime in jre/ and, for each native library, the jar for that platform in place
-// of the main jar. The main distribution, which brings neither, is what installDist builds for
-// development.
+// platform's Java runtime in jre/, and one without a Java runtime, which runs on the Java of the
+// machine. Apart from the runtime they hold the same files: a library with native code comes as
+// the jar that carries the native library of every platform it supports, so that an installation
+// made on one platform runs on the others. The main distribution, with the program alone, is what
+// installDist builds for development.
 data class TargetPlatform(
     /** The platform as the archive's name carries it */
     val classifier: String,
@@ -725,8 +767,6 @@ data class TargetPlatform(
     val temurin: String,
     /** The archive type Temurin publishes for the platform */
     val temurinExtension: String,
-    /** For each native library, the classifier of its jar for the platform */
-    val nativeJars: Map<NativeLibrary, String>,
     /** The JVM's os.name and os.arch on the platform, to find the host's distribution */
     val osName: String,
     val osArch: String,
@@ -737,43 +777,45 @@ data class TargetPlatform(
 }
 
 val targetPlatforms = listOf(
-    TargetPlatform("windows-x64", "x64_windows", "zip",
-        mapOf(duckdbJdbc to "windows_amd64", zstdJni to "win_amd64"), "windows", "amd64"),
-    TargetPlatform("macos-aarch64", "aarch64_mac", "tar.gz",
-        mapOf(duckdbJdbc to "macos_arm64", zstdJni to "darwin_aarch64"), "mac", "aarch64"),
-    TargetPlatform("linux-x64", "x64_linux", "tar.gz",
-        mapOf(duckdbJdbc to "linux_amd64", zstdJni to "linux_amd64"), "linux", "amd64"),
-    TargetPlatform("linux-aarch64", "aarch64_linux", "tar.gz",
-        mapOf(duckdbJdbc to "linux_arm64", zstdJni to "linux_aarch64"), "linux", "aarch64"),
+    TargetPlatform("windows-x64", "x64_windows", "zip", "windows", "amd64"),
+    TargetPlatform("macos-aarch64", "aarch64_mac", "tar.gz", "mac", "aarch64"),
+    TargetPlatform("linux-x64", "x64_linux", "tar.gz", "linux", "amd64"),
+    TargetPlatform("linux-aarch64", "aarch64_linux", "tar.gz", "linux", "aarch64"),
 )
+
+// What every published distribution holds: the files of its commit, the licenses, and the program
+// with its start scripts and libraries as the main distribution has them. A published
+// distribution is built as an archive of its own rather than as a distribution of the plugin,
+// whose archives assemble and with it build would take along: an archive needs a git checkout for
+// the files of its commit, and one with a runtime needs that runtime downloaded, and building the
+// code needs neither.
+val publishedContents = copySpec {
+    from(unpackSources) {
+        exclude(notInPublishedDistribution)
+        // Archives get fixed permissions; a file git keeps executable stays executable in the
+        // archive
+        eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+    }
+    with(distributionLicenses)
+    // What Gradle takes into the main distribution by convention, plugins/ among it
+    from("src/main/dist")
+    into("bin") {
+        from(tasks.named("startScripts"))
+        filePermissions { unix("rwxr-xr-x") }
+    }
+    into("lib") {
+        from(tasks.jar)
+        from(configurations.runtimeClasspath)
+    }
+}
 
 targetPlatforms.forEach { platform ->
     val jreArchive = configurations.create("jre${platform.taskSuffix}") {
         isTransitive = false
         isCanBeConsumed = false
     }
-    val nativeJars = configurations.create("nativeJars${platform.taskSuffix}") {
-        isTransitive = false
-        isCanBeConsumed = false
-    }
     dependencies {
         jreArchive("net.adoptium:${temurinVersion.replace('+', '_')}:$temurinVersion:${platform.temurin}@${platform.temurinExtension}")
-        platform.nativeJars.forEach { (library, classifier) ->
-            nativeJars("${library.group}:${library.module}:${library.version}:$classifier")
-        }
-    }
-
-    // The runtime classpath with each native library's jar for the platform in place of its main
-    // jar. A classpath without a main jar would mean the dependency changed its name, and the
-    // platform's jar would land beside whatever replaced it.
-    val runtimeClasspath = configurations.runtimeClasspath.get()
-    val mainJars = platform.nativeJars.keys.map { it.mainJar }.toSet()
-    val platformLibraries = files(runtimeClasspath.filter { it.name !in mainJars }, nativeJars)
-    val checkMainJars = {
-        val missing = mainJars - runtimeClasspath.map { it.name }.toSet()
-        if (missing.isNotEmpty()) {
-            throw GradleException("The runtime classpath holds no $missing for ${platform.classifier}'s jars to replace")
-        }
     }
 
     // The JRE unpacked without its top directory: what the distribution carries as jre/
@@ -815,38 +857,10 @@ targetPlatforms.forEach { platform ->
         }
     }
 
-    val startScripts = tasks.register<CreateStartScripts>("startScripts${platform.taskSuffix}") {
-        doFirst { checkMainJars() }
-        applicationName = "evochora"
-        mainClass.set(application.mainClass)
-        defaultJvmOpts = application.applicationDefaultJvmArgs
-        classpath = files(tasks.jar) + platformLibraries
-        // Apart from build/scripts, which the main distribution takes into its bin/ as a whole
-        outputDir = layout.buildDirectory.dir("platform-scripts/${platform.classifier}").get().asFile
-    }
-
-    // What the platform's distribution holds. It is built as an archive of its own rather than as
-    // a distribution of the plugin, whose archives assemble and with it build would take along: an
-    // archive needs the runtime of its platform downloaded and a git checkout for its sources, and
-    // building the code needs neither.
+    // What the platform's distribution holds: what every published distribution holds, and the
+    // Java runtime of the platform
     val contents = copySpec {
-        with(distributionContents)
-        into("src") {
-            from(unpackSources)
-            // Archives get fixed permissions; a file git keeps executable, gradlew among them,
-            // stays executable in the archive
-            eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
-        }
-        // What Gradle takes into the main distribution by convention, plugins/ among it
-        from("src/main/dist")
-        into("bin") {
-            from(startScripts)
-            filePermissions { unix("rwxr-xr-x") }
-        }
-        into("lib") {
-            from(tasks.jar)
-            from(platformLibraries)
-        }
+        with(publishedContents)
         into("jre") {
             from(unpackJre)
             // Archives get fixed permissions, which would leave the JRE's programs unable to
@@ -861,7 +875,7 @@ targetPlatforms.forEach { platform ->
         archiveBaseName = "evochora"
         archiveClassifier = platform.classifier
         destinationDirectory = layout.buildDirectory.dir("distributions")
-        into("evochora-${project.version}-${platform.classifier}") { with(contents) }
+        into(distributionName(platform.classifier)) { with(contents) }
     }
     if (platform.zip) {
         tasks.register<Zip>("${platform.distributionName}DistZip", configureArchive)
@@ -876,14 +890,34 @@ targetPlatforms.forEach { platform ->
     }
 }
 
-// Builds the archive of every platform distribution, the ones the CI starts, the image is built
+// The distribution without a Java runtime, as an archive and installed. Its name says what whoever
+// takes it has to bring, beside the distributions named after a platform, which need nothing: a
+// name that says what the archive lacks reads as the one for a machine without Java.
+val requiresJava = "requires-java"
+tasks.register<Zip>("requiresJavaDistZip") {
+    group = "distribution"
+    description = "Builds the distribution without a Java runtime under build/distributions"
+    archiveBaseName = "evochora"
+    archiveClassifier = requiresJava
+    destinationDirectory = layout.buildDirectory.dir("distributions")
+    into(distributionName(requiresJava)) { with(publishedContents) }
+}
+tasks.register<Sync>("installRequiresJavaDist") {
+    group = "distribution"
+    description = "Installs the distribution without a Java runtime under build/install"
+    with(publishedContents)
+    into(layout.buildDirectory.dir("install/evochora-$requiresJava"))
+}
+
+// Builds the archive of every published distribution: the ones the CI starts, the image is built
 // from and a release publishes
 tasks.register("platformDistributions") {
     group = "distribution"
-    description = "Builds the archive of every platform distribution under build/distributions"
+    description = "Builds the archive of every published distribution under build/distributions"
     targetPlatforms.forEach { platform ->
         dependsOn(if (platform.zip) "${platform.distributionName}DistZip" else "${platform.distributionName}DistTar")
     }
+    dependsOn("requiresJavaDistZip")
 }
 
 // Builds the platform distribution of the machine this build runs on and unpacks it under
@@ -923,7 +957,7 @@ tasks.test {
     maxParallelForks = testForks
     // The assembly programs are compiled by a test, so a change to one has to invalidate the
     // task. Gradle decides that per task, not per test class: touching a program reruns the
-    // suite, which is the price for the examples and the primordial staying compilable.
+    // suite, which is the price for the examples and the ancestor staying compilable.
     inputs.dir("assembly").withPropertyName("assemblyPrograms")
     // The editor extension's grammar is checked against the instruction set by a test. It lives
     // outside the source sets, so without this the suite stays up to date when the grammar
@@ -934,7 +968,7 @@ tasks.test {
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    jvmArgs(headless, enableNativeAccess, allowUnsafeMemoryAccess)
     finalizedBy(tasks.jacocoTestReport)
     testLogging {
         events("passed", "skipped", "failed")
@@ -960,7 +994,7 @@ tasks.register<Test>("unit") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    jvmArgs(headless, enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         showStandardStreams = false
@@ -997,7 +1031,7 @@ tasks.register<Test>("integration") {
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
     maxParallelForks = testForks
     jvmArgs("-Xshare:off")
-    jvmArgs(enableNativeAccess, allowUnsafeMemoryAccess)
+    jvmArgs(headless, enableNativeAccess, allowUnsafeMemoryAccess)
     testLogging {
         events("passed", "skipped", "failed")
         // Only show output for failed tests (silent on success)
@@ -1124,7 +1158,8 @@ val registerNotebookFilter = tasks.register("registerNotebookFilter") {
             // A filter whose command cannot run makes every `git add` of a notebook fail, which is
             // worse than having no filter at all.
             logger.warn("Notebook filter not registered: '$interpreter' is not available. " +
-                    "Notebooks would be committed with their outputs — see notebooks/README.md.")
+                    "Notebooks would be committed with their outputs. Install it and build again, " +
+                    "or run: git config $configKey \"$interpreter tools/nbstrip.py\"")
             return@doLast
         }
 

@@ -61,7 +61,7 @@ import com.typesafe.config.ConfigFactory;
 @Tag("integration")
 @ExtendWith(MockitoExtension.class)
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.WARN, loggerPattern = ".*DummyIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*DummyIndexer.*", messagePattern = "Run .* was written by .* and is read by .*")
 class DummyIndexerIntegrationTest {
     
     @Mock

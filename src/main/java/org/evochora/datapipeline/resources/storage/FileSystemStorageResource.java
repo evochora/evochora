@@ -51,17 +51,14 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     private final File rootDirectory;
 
     /**
-     * Opens the storage under the configured root directory, creating the directory if it is
-     * missing.
-     * <p>
-     * The root is validated eagerly, so an unmounted or read-only location fails the resource
-     * instead of the first write.
+     * Opens the storage under the configured root directory. The directory is neither created
+     * nor required to exist: a storage that is only read leaves the filesystem as it found it,
+     * and {@link #prepareForWriting()} sets the directory up for a storage that is written.
      *
      * @param name    resource name from the configuration
      * @param options resource configuration; requires {@code rootDirectory} as an absolute path,
      *                on top of the options read by the base class
-     * @throws IllegalArgumentException if {@code rootDirectory} is missing, is not absolute, cannot
-     *                                  be created, or is not writable
+     * @throws IllegalArgumentException if {@code rootDirectory} is missing or is not absolute
      */
     public FileSystemStorageResource(String name, Config options) {
         super(name, options);
@@ -73,14 +70,22 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         if (!this.rootDirectory.isAbsolute()) {
             throw new IllegalArgumentException("rootDirectory must be an absolute path: " + rootPath);
         }
-        
-        // Ensure root directory exists (create full path if necessary)
-        if (!this.rootDirectory.exists() && !this.rootDirectory.mkdirs()) {
-            throw new IllegalArgumentException("Cannot create rootDirectory: " + rootPath);
+    }
+
+    /**
+     * Creates the root directory if it is missing and makes sure it can be written, so that an
+     * unmounted or read-only location fails the service that asks for a writer instead of its
+     * first write.
+     *
+     * @throws IllegalArgumentException if the root directory cannot be created or is not writable
+     */
+    @Override
+    protected void prepareForWriting() {
+        if (!rootDirectory.exists() && !rootDirectory.mkdirs()) {
+            throw new IllegalArgumentException("Cannot create rootDirectory: " + rootDirectory);
         }
-        
-        if (!this.rootDirectory.canWrite()) {
-            throw new IllegalArgumentException("rootDirectory is not writable: " + rootPath);
+        if (!rootDirectory.canWrite()) {
+            throw new IllegalArgumentException("rootDirectory is not writable: " + rootDirectory);
         }
     }
 

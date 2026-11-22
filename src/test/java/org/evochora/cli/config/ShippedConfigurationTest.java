@@ -11,7 +11,9 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.evochora.runtime.worldgen.GeneInsertionPlugin;
 import org.evochora.runtime.worldgen.GeneSubstitutionPlugin;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +37,19 @@ class ShippedConfigurationTest {
     static void initInstructions() {
         // The policy manager sizes its lookup by the registered opcodes.
         Instruction.init();
+    }
+
+    /** The loader keeps the project directory in a system property; no test leaves it behind for the next. */
+    @BeforeEach
+    void setProjectDirectory() {
+        System.setProperty(ConfigLoader.HOME_KEY, System.getProperty("java.io.tmpdir"));
+        ConfigFactory.invalidateCaches();
+    }
+
+    @AfterEach
+    void clearProjectDirectory() {
+        System.clearProperty(ConfigLoader.HOME_KEY);
+        ConfigFactory.invalidateCaches();
     }
 
     /**

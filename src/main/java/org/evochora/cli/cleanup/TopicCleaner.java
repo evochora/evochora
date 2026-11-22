@@ -1,5 +1,7 @@
 package org.evochora.cli.cleanup;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -63,6 +65,11 @@ public class TopicCleaner {
     public List<String> listRunIds() {
         Set<String> runIds = new HashSet<>();
 
+        if (!brokerDataExists()) {
+            log.warn("Topic directory does not exist: {}", dataDirectory);
+            return new ArrayList<>();
+        }
+
         EmbeddedActiveMQ broker = null;
         try {
             broker = startBrokerForManagement();
@@ -100,6 +107,11 @@ public class TopicCleaner {
 
         int keepCount = 0;
         int deleteCount = 0;
+
+        if (!brokerDataExists()) {
+            out.println();
+            return new CleanupService.AreaStats(0, 0);
+        }
 
         EmbeddedActiveMQ broker = null;
         try {
@@ -152,6 +164,14 @@ public class TopicCleaner {
 
         out.println();
         return new CleanupService.AreaStats(keepCount, deleteCount);
+    }
+
+    /**
+     * Reports whether the broker's data directory exists. A broker started on a missing
+     * directory would create it with an empty journal, so the cleanup starts none then.
+     */
+    private boolean brokerDataExists() {
+        return Files.isDirectory(Path.of(dataDirectory));
     }
 
     /**

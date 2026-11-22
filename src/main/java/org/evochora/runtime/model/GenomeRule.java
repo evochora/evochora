@@ -13,7 +13,7 @@ import java.util.List;
  * cell an organism owns belongs to it. A {@code STATE} cell holds what the organism wrote for
  * itself while running — a counter, a threshold, a slot it reads back later — and its content
  * differs between copies of one genome, so including it would make every birth look like a
- * mutation. The primordial program likewise encloses itself in a {@code STRUCTURE:100} shell: a
+ * mutation. The ancestor likewise encloses itself in a {@code STRUCTURE:100} shell: a
  * wall it builds, not code it inherits.
  * <p>
  * Which molecules are left out is a parameter of the run, configured under the key
@@ -35,7 +35,7 @@ public final class GenomeRule {
 
     /**
      * The entries applied when the configuration does not carry {@link #CONFIG_KEY}: an organism's
-     * own working memory and the structural shell the primordial program builds around itself.
+     * own working memory and the structural shell the ancestor builds around itself.
      */
     public static final List<String> DEFAULT_ENTRIES = List.of("STATE", "STRUCTURE:100");
 

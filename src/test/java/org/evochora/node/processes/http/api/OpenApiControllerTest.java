@@ -40,7 +40,8 @@ class OpenApiControllerTest {
             final JsonObject info = JsonParser.parseString(response.body().string()).getAsJsonObject()
                 .getAsJsonObject("info");
             assertThat(info.get("title").getAsString()).isEqualTo("Evochora API");
-            assertThat(info.get("version").getAsString()).isEqualTo(BuildInfo.version()).isNotBlank();
+            assertThat(info.get("version").getAsString())
+                .isEqualTo(BuildInfo.version().orElse("revision " + BuildInfo.revision())).isNotBlank();
             assertThat(info.get("description").getAsString()).contains(BuildInfo.revision());
         });
     }

@@ -66,14 +66,14 @@ public final class Node {
 
         shutdownHook = new Thread(this::stop, "shutdown");
         Runtime.getRuntime().addShutdownHook(shutdownHook);
-        LOGGER.info("Node started successfully. Running until interrupted.");
+        LOGGER.info("Node started. Press Ctrl+C to stop.");
     }
 
     /**
      * Stops all managed processes gracefully. This method is typically called via the shutdown hook.
      */
     public void stop() {
-        LOGGER.info("Shutdown sequence initiated...");
+        LOGGER.info("Shutting down...");
 
         // Check if we're in actual JVM shutdown (called from shutdown hook thread)
         final boolean isJvmShutdown = shutdownHook != null && Thread.currentThread() == shutdownHook;
@@ -89,7 +89,7 @@ public final class Node {
         }
 
         // Stop processes in reverse order (LIFO - last created, first stopped)
-        LOGGER.info("\u001B[34m========== Management Interface Shutdown ==========\u001B[0m");
+        LOGGER.debug("\u001B[34m========== Management Interface Shutdown ==========\u001B[0m");
         final List<String> processNames = new ArrayList<>(managedProcesses.keySet());
         Collections.reverse(processNames);
 
@@ -102,7 +102,7 @@ public final class Node {
                 LOGGER.error("Error while stopping process '{}': {}", name, e.getMessage());
             }
         }
-        LOGGER.info("All processes stopped. Goodbye.");
+        LOGGER.info("Node stopped.");
         
         // Ensure all logs are flushed before JVM exits (only during actual JVM shutdown)
         if (isJvmShutdown) {
@@ -142,7 +142,7 @@ public final class Node {
         }
 
         final ConfigObject processesConfig = config.getObject(NODE_CONFIG_PATH + "." + PROCESSES_CONFIG_PATH);
-        LOGGER.info("Initializing processes...");
+        LOGGER.debug("Initializing processes...");
         LOGGER.debug("Found {} configured process(es): {}", processesConfig.keySet().size(), processesConfig.keySet());
 
         // Step 1: Parse all process definitions

@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The image tag to deploy (e.g., "latest" or "v1.0.1")'
+        description: 'The image tag to deploy (e.g., "nightly" or "v1.0.1")'
         required: true
         type: string
-        default: 'latest'
+        default: 'nightly'
 
 jobs:
   deploy:
@@ -93,6 +93,24 @@ jobs:
           scp -o StrictHostKeyChecking=no infrastructure/docker/Caddyfile "$SSH_TARGET:~/app/Caddyfile"
           ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/config"
           scp -o StrictHostKeyChecking=no config/evochora.conf "$SSH_TARGET:~/app/config/evochora.conf"
+
+      # The homepage is no part of the image and always comes from main, whatever image is deployed:
+      # an image built before a correction of the homepage must not bring the old homepage back.
+      # The files are copied into the directory Caddy has mounted, so they are served at once.
+      - name: Checkout the homepage from main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: homepage
+          sparse-checkout: infrastructure/docker/site
+
+      - name: Copy the homepage to server
+        env:
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/site"
+          scp -o StrictHostKeyChecking=no -r homepage/infrastructure/docker/site/. "$SSH_TARGET:~/app/site/"
 
       # The .env is written here and copied over, and the commands sent to the server contain no
       # interpolated value at all. Anything written into that command text would be executed by a

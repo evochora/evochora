@@ -233,7 +233,7 @@ public class HttpServerProcess extends AbstractProcess {
             app.stop();
             app = null;
             closeControllers();
-            LOGGER.info("HTTP server stopped.");
+            LOGGER.debug("HTTP server stopped.");
         }
     }
 

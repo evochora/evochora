@@ -36,7 +36,7 @@ exactly what assembler cannot provide (a changed jump reroutes control flow enti
 
 1. **Universality requires unbounded precision.** In finite floating-point arithmetic a CTRNN is
    not Turing-complete; a discrete VM with growable storage is. A real, non-negotiable trade-off.
-2. **Programmability is gone.** A primordial would be a weight vector — no `main.evo`, no
+2. **Programmability is gone.** An ancestor would be a weight vector — no `main.evo`, no
    compiler, no source-level debugging; the entire compiler/visualizer toolchain becomes moot.
 3. **Runtime cost.** The Evochora runtime is consistently integer-hotpath (flat arrays, permille
    integer arithmetic; no float/double anywhere in the ISA). Real-valued fields would be orders

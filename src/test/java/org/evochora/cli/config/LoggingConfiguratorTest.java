@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -116,6 +117,30 @@ class LoggingConfiguratorTest {
         final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         final String formatProperty = context.getProperty("evochora.logging.format");
         assertEquals("CONSOLE", formatProperty, "JSON format should set CONSOLE property");
+    }
+
+    @Test
+    void configure_withDetailedFormat_shouldSetDetailedFormat() {
+        final Config config = ConfigFactory.parseString("""
+            logging {
+              format = "detailed"
+            }
+            """);
+
+        LoggingConfigurator.configure(config);
+
+        final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        assertEquals("CONSOLE_DETAILED", context.getProperty("evochora.logging.format"),
+            "DETAILED format, in any case, should set the CONSOLE_DETAILED property");
+    }
+
+    @Test
+    void appenderFor_unknownFormat_namesTheAcceptedValues() {
+        final IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+            () -> LoggingConfigurator.appenderFor("DETAILD"));
+
+        assertTrue(thrown.getMessage().contains("DETAILD"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("PLAIN, DETAILED, JSON"), thrown.getMessage());
     }
 
     @Test

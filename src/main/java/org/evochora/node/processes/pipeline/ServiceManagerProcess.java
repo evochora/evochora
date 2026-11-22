@@ -64,9 +64,9 @@ public class ServiceManagerProcess extends AbstractProcess implements IServicePr
 
     @Override
     public void stop() {
-        LOGGER.info("Stopping ServiceManagerProcess '{}'...", processName);
+        LOGGER.debug("Stopping ServiceManagerProcess '{}'...", processName);
         serviceManager.shutdown(); // Complete shutdown: stops services + closes resources
-        LOGGER.info("ServiceManagerProcess '{}' stopped.", processName);
+        LOGGER.debug("ServiceManagerProcess '{}' stopped.", processName);
     }
 
     @Override

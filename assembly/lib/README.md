@@ -1,6 +1,6 @@
 # Library
 
-Code that organisms share, so that a primordial is written as one main file that picks what it
+Code that organisms share, so that an ancestor is written as one main file that picks what it
 needs instead of carrying all of its logic itself. The library is a source root of its own with
 the prefix `LIB`; every path into it, from a main file and from the library itself, is written
 with that prefix:
@@ -11,7 +11,7 @@ with that prefix:
 
 ```hocon
 compiler.source-roots = [
-  { path = "assembly/primordial" }
+  { path = "assembly/ancestors" }
   { path = "assembly/lib", prefix = "LIB" }
 ]
 ```

@@ -1,0 +1,937 @@
+:root {
+    --bg-deep: #08080f;
+    --bg-mid: #0e0e18;
+    --bg-surface: rgba(255, 255, 255, 0.03);
+    --bg-surface-hover: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.15);
+    --text-primary: #d8d8de;
+    --text-secondary: rgba(216, 216, 222, 0.7);
+    --text-tertiary: rgba(216, 216, 222, 0.5);
+    --accent: #4a9eff;
+    --accent-dim: rgba(74, 158, 255, 0.15);
+    --accent-glow: rgba(74, 158, 255, 0.08);
+    --serif: 'Source Serif 4 Variable', Georgia, serif;
+    --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --doto: 'Doto', monospace;
+}
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+html {
+    scroll-behavior: smooth;
+}
+body {
+    font-family: var(--sans);
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+.page {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 3rem 2rem 4rem;
+    display: flex;
+    flex-direction: column;
+}
+@media (max-width: 680px) {
+    .page {
+        padding: 2rem 1.25rem 3rem;
+    }
+}
+
+/* ── The header, which stays at the top of the window ── */
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(8, 8, 15, 0.9);
+    backdrop-filter: blur(8px);
+}
+.site-header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 6px 2rem;
+    position: relative;
+}
+.site-header-inner::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 2rem;
+    right: 2rem;
+    height: 1px;
+    background: var(--border);
+}
+.site-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+#app-switcher-container {
+    position: relative;
+}
+.site-header-logo {
+    font-family: var(--doto);
+    font-weight: 900;
+    font-size: 16px;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    opacity: 0.85;
+    text-decoration: none;
+}
+.site-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.site-header-icon {
+    width: 18px;
+    height: 18px;
+    fill: var(--text-tertiary);
+    transition: fill 0.15s ease;
+    display: block;
+}
+.site-header-icon:hover {
+    fill: var(--text-secondary);
+}
+
+/* The jump bar in the header. The section in view is marked. */
+.site-nav {
+    display: flex;
+    gap: 1.75rem;
+    margin-left: auto;
+    margin-right: 2rem;
+    font-family: var(--sans);
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+.site-nav a {
+    color: var(--text-tertiary);
+    text-decoration: none;
+    padding: 0.2rem 0;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+}
+.site-nav a:hover {
+    color: var(--text-primary);
+}
+.site-nav a.here {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
+}
+@media (max-width: 1000px) {
+    .site-nav {
+        display: none;
+    }
+}
+
+/* ── Buttons ── */
+.btn-primary {
+    display: inline-block;
+    padding: 0.6rem 1.4rem;
+    background: var(--accent);
+    color: var(--bg-deep);
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+}
+.btn-primary:hover {
+    background: #66b3ff;
+}
+.btn-secondary {
+    display: inline-block;
+    padding: 0.6rem 1.4rem;
+    color: var(--text-secondary);
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+.btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ── The start of a section: space, a line with a mark, a large heading ── */
+.divider {
+    border: none;
+    height: 0;
+    margin: 4.5rem 0 0;
+}
+.section-title {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text-primary);
+    margin: 0 0 1.5rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--border);
+    position: relative;
+}
+.section-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -1px;
+    width: 3.5rem;
+    height: 3px;
+    background: var(--accent);
+}
+/* The paragraph under the heading of a section */
+.demo-intro {
+    font-family: var(--serif);
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin: -0.5rem 0 1.25rem;
+}
+.demo-intro a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.demo-intro a:hover {
+    text-decoration: underline;
+}
+/* A jump to a section stops below the header */
+#demo, #why, #install, #experiments, #directions, #documentation, #community {
+    scroll-margin-top: 4.5rem;
+}
+
+/* ── The opening: logo, then the text beside the video ── */
+.logo {
+    text-align: center;
+    padding: 1rem 0 2.5rem;
+}
+.logo-text {
+    font-family: var(--doto);
+    font-weight: 900;
+    font-size: 56px;
+    color: var(--text-primary);
+    letter-spacing: 6px;
+    line-height: 1;
+    opacity: 0.85;
+}
+.logo-sub {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    font-weight: 300;
+    color: var(--text-tertiary);
+    margin-top: 0.5rem;
+    letter-spacing: 0.5px;
+}
+.hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 3rem;
+    align-items: start;
+}
+.hero-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.hero-headline {
+    font-family: var(--serif);
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text-primary);
+    margin: -0.35em 0 1rem;
+    white-space: nowrap;
+}
+.hero-body {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    font-weight: 400;
+    line-height: 1.75;
+    color: var(--text-secondary);
+}
+.hero-body + .hero-body {
+    margin-top: 0.7rem;
+}
+.hero-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.75rem;
+    flex-wrap: wrap;
+}
+.hero-video {
+    min-width: 0;
+}
+.demo-video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1280 / 853;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
+/* Two columns only where the text beside the video ends above the video's lower edge */
+@media (min-width: 1340px) {
+    .hero {
+        gap: 2.25rem;
+    }
+    .hero-headline {
+        font-size: 1.6rem;
+    }
+    .hero-body {
+        font-size: 0.98rem;
+        line-height: 1.62;
+    }
+}
+@media (max-width: 1339px) {
+    .hero {
+        grid-template-columns: 1fr;
+    }
+    .hero-headline {
+        white-space: normal;
+    }
+}
+@media (max-width: 680px) {
+    .logo-text {
+        font-size: 40px;
+        letter-spacing: 4px;
+    }
+    .hero-headline {
+        font-size: 1.4rem;
+    }
+}
+
+/* ── The three cards: Visualizer, Analyzer, Jupyter Notebook ── */
+.actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+}
+.action-card {
+    display: flex;
+    flex-direction: column;
+}
+.action-card-img-link {
+    display: block;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.action-card-img-link:hover {
+    border-color: var(--border-hover);
+    transform: scale(1.02);
+}
+.action-card-img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+}
+.action-card-body {
+    padding: 1rem 0.25rem 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.action-card-title {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.3rem;
+}
+.action-card-desc {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    flex: 1;
+}
+.action-card-cta {
+    display: inline-block;
+    margin-top: 0.75rem;
+    padding: 0.45rem 1rem;
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    align-self: flex-start;
+}
+.action-card-cta:hover {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+}
+.action-card-links {
+    margin-top: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.action-card-links a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.action-card-links a:hover {
+    text-decoration: underline;
+}
+.colab-badge {
+    height: 20px;
+    display: block;
+}
+@media (max-width: 900px) {
+    .actions {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+@media (max-width: 680px) {
+    .actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Live Demo: one entry per run ── */
+.demo-runs {
+    display: grid;
+    gap: 0.75rem;
+}
+.demo-run {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 2rem;
+    align-items: center;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-surface);
+}
+.demo-name {
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.demo-desc {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+    max-width: 56rem;
+}
+.demo-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.5rem;
+    margin-top: 0.6rem;
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+.demo-facts b {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+.demo-open {
+    display: flex;
+    gap: 0.75rem;
+}
+.demo-open a {
+    white-space: nowrap;
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-glow);
+    font-weight: 600;
+}
+.demo-open a:hover {
+    background: var(--accent);
+    color: var(--bg-deep);
+    border-color: var(--accent);
+}
+.demo-none {
+    font-family: var(--serif);
+    color: var(--text-tertiary);
+}
+/* A notice may name where to look instead: its links are those of the running text */
+.demo-none a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.demo-none a:hover {
+    text-decoration: underline;
+}
+@media (max-width: 900px) {
+    .demo-run {
+        grid-template-columns: 1fr;
+    }
+}
+@media (max-width: 700px) {
+    .demo-open {
+        flex-wrap: wrap;
+    }
+}
+
+/* ── Why Evochora: the reasons as a list that opens. A row shows the claim and its links, and
+   opened the text. ── */
+.why-list {
+    display: grid;
+    gap: 0.5rem;
+}
+.why-row {
+    border-left: 2px solid var(--border);
+    background: rgba(74, 158, 255, 0.02);
+    border-radius: 0 4px 4px 0;
+}
+.why-row[open] {
+    border-left-color: var(--accent);
+    background: rgba(74, 158, 255, 0.035);
+}
+.why-row summary {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.8rem 1.25rem 0.8rem 1rem;
+    cursor: pointer;
+    list-style: none;
+    transition: background 0.15s;
+}
+.why-row summary::-webkit-details-marker {
+    display: none;
+}
+.why-row summary::before {
+    content: "+";
+    flex: none;
+    width: 0.9rem;
+    text-align: center;
+    font-family: var(--sans);
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--text-tertiary);
+}
+.why-row[open] summary::before {
+    content: "\2212";
+}
+.why-row summary:hover {
+    background: rgba(74, 158, 255, 0.05);
+}
+.why-row summary:hover::before {
+    color: var(--text-primary);
+}
+.why-label {
+    flex: none;
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.why-links {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem 1.25rem;
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.why-links a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.why-links a:hover {
+    text-decoration: underline;
+}
+/* The text starts below the claim, to the right of the plus */
+.why-body {
+    padding: 0 1.25rem 1.1rem calc(1rem + 0.9rem + 0.75rem);
+    max-width: 64rem;
+}
+.why-desc {
+    font-family: var(--serif);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
+}
+.why-desc + .why-desc {
+    margin-top: 0.55rem;
+}
+/* The links move below the claim */
+@media (max-width: 1100px) {
+    .why-row summary {
+        flex-wrap: wrap;
+    }
+    .why-links {
+        order: 3;
+        flex-basis: 100%;
+        justify-content: flex-start;
+        margin-top: 0.35rem;
+    }
+}
+@media (min-width: 900px) {
+    .keep {
+        white-space: nowrap;
+    }
+}
+/* A long claim breaks instead of reaching beyond the right edge */
+@media (max-width: 700px) {
+    .why-label {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+/* ── Download: a framed panel ── */
+.get-started {
+    background: var(--bg-surface);
+    border: 1px solid rgba(74, 158, 255, 0.45);
+    border-radius: 6px;
+    padding: 2.25rem 2.5rem 2rem;
+}
+.get-started > .section-title {
+    margin-bottom: 0.9rem;
+    padding-top: 0;
+    border-top: 0;
+}
+.get-started > .section-title::before {
+    display: none;
+}
+.dl-text {
+    font-family: var(--serif);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}
+.get-started-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+}
+.dl-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.3rem 1.1rem;
+    margin-top: 1.1rem;
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+.dl-line a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.dl-line a:hover {
+    text-decoration: underline;
+}
+.dl-line .sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+}
+.dl-help {
+    margin-top: 1.6rem;
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+.dl-help a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.dl-help a:hover {
+    text-decoration: underline;
+}
+@media (max-width: 700px) {
+    .get-started {
+        padding: 1.5rem 1.25rem;
+    }
+}
+
+/* ── Published Experiments, loaded from the Zenodo community ── */
+.exp-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+/* The sentence that stands in place of the cards runs across both columns */
+.exp-list .demo-none {
+    grid-column: 1 / -1;
+}
+.exp {
+    display: grid;
+    gap: 0.9rem;
+    align-content: start;
+    padding-bottom: 1rem;
+}
+.exp video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1920 / 1240;
+    background: #000;
+    border-radius: 3px;
+}
+.exp-title {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--text-primary);
+    max-width: 52rem;
+}
+.exp-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.5rem;
+    margin-top: 0.7rem;
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+.exp-meta a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.exp-meta a:hover {
+    text-decoration: underline;
+}
+@media (max-width: 900px) {
+    .exp-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Research Directions, in the order of the Scientific Overview ── */
+.directions {
+    columns: 3;
+    column-gap: 3.5rem;
+    list-style: none;
+    counter-reset: direction;
+}
+.directions li {
+    break-inside: avoid;
+    counter-increment: direction;
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.directions li::before {
+    content: counter(direction);
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    min-width: 0.8rem;
+}
+.directions a {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--accent);
+    text-decoration: none;
+}
+.directions a:hover {
+    text-decoration: underline;
+}
+@media (max-width: 1100px) {
+    .directions {
+        columns: 2;
+    }
+}
+@media (max-width: 700px) {
+    .directions {
+        columns: 1;
+    }
+}
+
+/* ── Documentation: a directory of all documents in groups ── */
+.doc-groups {
+    columns: 3;
+    column-gap: 3.5rem;
+}
+.doc-group {
+    break-inside: avoid;
+    margin-bottom: 2rem;
+}
+.doc-group h3 {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 0.75rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--border);
+}
+.doc-group p {
+    margin: 0 0 0.75rem;
+}
+.doc-group a {
+    display: block;
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--accent);
+    text-decoration: none;
+}
+.doc-group a:hover {
+    text-decoration: underline;
+}
+.doc-group span {
+    display: block;
+    font-family: var(--serif);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin-top: 0.1rem;
+}
+@media (max-width: 1100px) {
+    .doc-groups {
+        columns: 2;
+    }
+}
+@media (max-width: 700px) {
+    .doc-groups {
+        columns: 1;
+    }
+}
+
+/* ── Community: getting involved beside citing. Both parts are groups as in the documentation
+   and share the rows of one grid, so that heading, text and links start at the same height. ── */
+.community {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: 0 3.5rem;
+}
+.community .doc-group {
+    display: contents;
+}
+.community .part-a > * {
+    grid-column: 1;
+}
+.community .part-b > * {
+    grid-column: 2;
+}
+.community .doc-group > h3 {
+    grid-row: 1;
+}
+.community .doc-group > .community-text {
+    grid-row: 2;
+    font-family: var(--serif);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin: 0 0 1.25rem;
+}
+.community .doc-group > .community-links, .community .doc-group > .community-list {
+    grid-row: 3;
+}
+.community-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 3.5rem;
+}
+@media (max-width: 900px) {
+    .community {
+        display: block;
+    }
+    .community .doc-group {
+        display: block;
+        margin-bottom: 2rem;
+    }
+    .community-links {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── The legal notice and the privacy policy: their text in one column ── */
+.legal {
+    max-width: 46rem;
+    padding-top: 1rem;
+}
+.legal h1 {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    line-height: 1.25;
+    font-weight: 600;
+    margin: 0 0 1.5rem;
+}
+.legal h2 {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 2rem 0 0.5rem;
+}
+.legal p, .legal address, .legal li {
+    font-family: var(--serif);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    font-style: normal;
+}
+.legal p + p {
+    margin-top: 0.75rem;
+}
+.legal ul {
+    margin: 0.5rem 0 0 1.25rem;
+}
+.legal a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.legal a:hover {
+    text-decoration: underline;
+}
+
+/* ── The foot of the page ── */
+.foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    margin-top: 4.5rem;
+    padding: 1.25rem 0 0.5rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+.foot-name i {
+    font-style: normal;
+    margin-left: 0.6rem;
+}
+.foot-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1.5rem;
+}
+.foot a {
+    color: var(--text-tertiary);
+    text-decoration: none;
+}
+.foot a:hover {
+    color: var(--text-primary);
+}

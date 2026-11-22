@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-
 import org.evochora.cli.CommandLineInterface;
+import org.evochora.cli.config.ConfigLoader;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,19 @@ import picocli.CommandLine;
  */
 @Tag("unit")
 class NodeForkCommandTest {
+
+    /** reference.conf resolves its paths against the project directory, which the loader sets at startup. */
+    @BeforeEach
+    void setProjectDirectory() {
+        System.setProperty(ConfigLoader.HOME_KEY, System.getProperty("java.io.tmpdir"));
+        ConfigFactory.invalidateCaches();
+    }
+
+    @AfterEach
+    void clearProjectDirectory() {
+        System.clearProperty(ConfigLoader.HOME_KEY);
+        ConfigFactory.invalidateCaches();
+    }
 
     private static final String PARENT_RUN = "20260101-12000000-a-run";
     private static final String ENGINE_OPTIONS = "pipeline.services.simulation-engine.options";
@@ -87,7 +102,7 @@ class NodeForkCommandTest {
     @Test
     void samplingWinsOverTheProfileItSitsOn() {
         NodeForkCommand command = CommandLine.populateCommand(
-            new NodeForkCommand(), "--from", "0", "--to", "10", "--profile", "sparse", "--sampling", "3");
+            new NodeForkCommand(), "--from", "0", "--to", "10", "--profile", "sparse", "--sampling-interval", "3");
 
         Config config = resolve(command.overrides(PARENT_RUN));
 
@@ -100,7 +115,7 @@ class NodeForkCommandTest {
     @Test
     void samplingAloneWinsOverTheConfiguredProfile() {
         NodeForkCommand command = CommandLine.populateCommand(
-            new NodeForkCommand(), "--from", "0", "--to", "10", "--sampling", "4");
+            new NodeForkCommand(), "--from", "0", "--to", "10", "--sampling-interval", "4");
 
         Config config = resolve(command.overrides(PARENT_RUN));
 
@@ -126,9 +141,9 @@ class NodeForkCommandTest {
     @Test
     void aSamplingBelowOneIsRefused() {
         NodeForkCommand command = CommandLine.populateCommand(new NodeForkCommand(),
-            "--from", "10", "--to", "20", "--sampling", "0");
+            "--from", "10", "--to", "20", "--sampling-interval", "0");
 
-        assertThat(command.rangeError()).contains("--sampling").contains("0");
+        assertThat(command.rangeError()).contains("--sampling-interval").contains("0");
     }
 
     @Test

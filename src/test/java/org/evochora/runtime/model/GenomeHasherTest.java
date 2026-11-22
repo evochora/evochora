@@ -449,7 +449,7 @@ class GenomeHasherTest {
 
     @Test
     void structureShellIsDroppedByTheDefaultRuleAndKeptWithoutIt() {
-        // A body enclosed in a STRUCTURE:100 shell, as the primordial program builds it, and the
+        // A body enclosed in a STRUCTURE:100 shell, as the ancestor builds it, and the
         // same body without the shell.
         Molecule shell = new Molecule(Config.TYPE_STRUCTURE, 100, 0);
         for (int x = 5; x <= 8; x++) {

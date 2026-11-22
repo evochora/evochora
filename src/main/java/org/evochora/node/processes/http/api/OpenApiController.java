@@ -218,7 +218,7 @@ public class OpenApiController extends AbstractController {
             ? existing
             : openApiJson.putObject("info");
         info.put("title", API_TITLE);
-        info.put("version", BuildInfo.version());
+        info.put("version", BuildInfo.version().orElse("revision " + BuildInfo.revision()));
         info.put("description", "Build revision " + BuildInfo.revision());
     }
 

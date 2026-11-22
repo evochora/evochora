@@ -11,22 +11,20 @@ assignees: ''
 A clear and concise description of what the bug is.
 
 **To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+- The command you ran, e.g. `bin/evochora -c config/my-experiment.conf node run`
+- Your configuration file, or what it changes in `config/evochora.conf`
+- What you did next, if the problem shows in the visualizer or the analyzer
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Logs or screenshots**
+If applicable, add the error message, the relevant part of the log or screenshots. With `logging.format = "DETAILED"` in the configuration, the log shows which part of Evochora wrote each line.
 
 **Setup (please complete the following information):**
- - OS: [e.g. linux/ubuntu]
- - Java Version [e.g. openjdk 21.0.5]
- - Browser [e.g. chrome Version 142.0.7444.175 (Official Build) (64-bit)]
+ - Evochora version: the output of `bin/evochora --version`
+ - OS: [e.g. Ubuntu 24.04]
+ - Browser, for a problem in the visualizer or the analyzer: [e.g. Chrome 142]
 
 **Additional context**
 Add any other context about the problem here.

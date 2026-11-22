@@ -16,7 +16,8 @@ import java.security.ProtectionDomain;
  * <ol>
  *   <li>Override layer supplied by the caller (see
  *       {@link #resolve(File, Config, ConfigMessageHandler)}); empty unless a caller passes one</li>
- *   <li>Java system properties ({@code -Dkey=value})</li>
+ *   <li>Java system properties ({@code -Dkey=value}), among them {@code evochora.home}, the
+ *       project directory (see {@link #resolve(File, ConfigMessageHandler)})</li>
  *   <li>Environment variables (raw names, available for {@code ${?ENV_VAR}} substitutions)</li>
  *   <li>User configuration file (e.g., {@code config/evochora.conf} or {@code config/local.conf})</li>
  *   <li>Default reference configuration ({@code reference.conf} on the classpath)</li>
@@ -24,19 +25,26 @@ import java.security.ProtectionDomain;
  * <p>
  * The above describes <em>source priority</em> within a resolved config. See
  * {@link #resolve(File, ConfigMessageHandler)} for how the user config file itself is discovered
- * (5-level file discovery cascade).
+ * (4-level file discovery cascade).
  * <p>
  * Uses {@link ConfigFactory#defaultReferenceUnresolved()} to defer substitution resolution
  * until after all layers are composed. This ensures that user overrides of values referenced
  * by substitutions (e.g., {@code pipeline.tuning.samplingInterval}) propagate correctly to
  * all downstream references in {@code reference.conf}.
  *
- * @see #resolve(File, ConfigMessageHandler) for the standard 5-level config file discovery cascade
+ * @see #resolve(File, ConfigMessageHandler) for the standard 4-level config file discovery cascade
  */
 public final class ConfigLoader {
 
     private static final String CONFIG_DIR = "config";
     private static final String CONFIG_FILE_NAME = "evochora.conf";
+    private static final String LIB_DIR = "lib";
+
+    /** The configuration path and system property that hold the project directory. */
+    public static final String HOME_KEY = "evochora.home";
+
+    /** The project directory this loader put into the system properties, so that a later call names its source. */
+    private static ProjectDirectory detected;
 
     private ConfigLoader() {
     }
@@ -45,8 +53,10 @@ public final class ConfigLoader {
      * Message severity levels for configuration resolution feedback.
      */
     public enum MessageLevel {
-        /** Informational progress (e.g., which config file was selected). */
+        /** What the person who started Evochora has to know: the project directory and the configuration file. */
         INFO,
+        /** How the loader came to them. */
+        DEBUG,
         /** Warning about fallback behavior (e.g., no config file found). */
         WARN
     }
@@ -72,15 +82,57 @@ public final class ConfigLoader {
     }
 
     /**
-     * Resolves configuration using the standard 5-level fallback cascade:
+     * The directory an Evochora project lives in, against which the configuration resolves its own
+     * paths, and where it was taken from.
+     *
+     * @param directory the absolute project directory.
+     * @param source    how it was found, for the message at startup.
+     */
+    public record ProjectDirectory(File directory, String source) {
+    }
+
+    /**
+     * Finds the project directory: the value of {@code -Devochora.home} if given, else the directory
+     * of the installation the running JAR belongs to, else the working directory. An installation
+     * is a directory whose {@code lib/} holds the JAR; an unpacked archive is one, and so is the
+     * output of {@code installDist}. Classes run from a build or an IDE belong to none.
+     *
+     * @param homeProperty     the value of the system property {@code evochora.home}, or {@code null}.
+     * @param codeLocation     the JAR or classes directory the loader was loaded from, or {@code null}.
+     * @param workingDirectory the working directory of the process.
+     * @return the project directory with its source.
+     */
+    static ProjectDirectory detectProjectDirectory(final String homeProperty, final File codeLocation,
+                                             final File workingDirectory) {
+        if (homeProperty != null && !homeProperty.isBlank()) {
+            return new ProjectDirectory(new File(homeProperty).getAbsoluteFile(), "-D" + HOME_KEY);
+        }
+        if (codeLocation != null && codeLocation.isFile()) {
+            final File libDir = codeLocation.getAbsoluteFile().getParentFile();
+            if (libDir != null && LIB_DIR.equals(libDir.getName()) && libDir.getParentFile() != null) {
+                return new ProjectDirectory(libDir.getParentFile(), "the installation");
+            }
+        }
+        return new ProjectDirectory(workingDirectory.getAbsoluteFile(), "the working directory");
+    }
+
+    /**
+     * Resolves configuration using the standard 4-level fallback cascade:
      * <ol>
-     *   <li><strong>Explicit file:</strong> config file passed via CLI {@code --config} option</li>
-     *   <li><strong>System property:</strong> {@code -Dconfig.file} JVM argument</li>
-     *   <li><strong>Working directory:</strong> {@code config/evochora.conf} relative to CWD</li>
-     *   <li><strong>Installation directory:</strong> {@code APP_HOME/config/evochora.conf}
-     *       inferred from the running JAR location</li>
+     *   <li><strong>Explicit file:</strong> config file passed via CLI {@code --config} option,
+     *       relative to the working directory</li>
+     *   <li><strong>System property:</strong> {@code -Dconfig.file} JVM argument, relative to the
+     *       working directory</li>
+     *   <li><strong>Project directory:</strong> {@code config/evochora.conf} in the directory
+     *       {@link #detectProjectDirectory} finds</li>
      *   <li><strong>Classpath defaults:</strong> {@code reference.conf} only</li>
      * </ol>
+     * <p>
+     * Whichever file is taken, the project directory is set as the system property
+     * {@code evochora.home} unless it is given already, and a message names it and where it came
+     * from. It is a system property rather than a layer of this loader because the configuration
+     * library requires {@code reference.conf} to resolve on its own, and of the sources outside
+     * that file it consults only the system properties.
      * <p>
      * At each level, system properties and environment variables still take precedence over
      * the discovered config file (see class-level documentation for the full priority hierarchy).
@@ -128,14 +180,18 @@ public final class ConfigLoader {
      */
     public static Config resolve(final File explicitConfigFile, final Config overrides,
                                  final ConfigMessageHandler handler) {
+        final ProjectDirectory projectDirectory = projectDirectory();
+        handler.log(MessageLevel.INFO, "Project: " + projectDirectory.directory());
+        handler.log(MessageLevel.DEBUG, "Project directory taken from " + projectDirectory.source());
+
         // 1) Explicit CLI option --config
         if (explicitConfigFile != null) {
             if (!explicitConfigFile.exists()) {
                 throw new IllegalArgumentException(
                         "Configuration file not found: " + explicitConfigFile.getAbsolutePath());
             }
-            handler.log(MessageLevel.INFO,
-                    "Using configuration file specified via --config: " + explicitConfigFile.getAbsolutePath());
+            handler.log(MessageLevel.INFO, "Configuration: " + explicitConfigFile.getAbsolutePath());
+            handler.log(MessageLevel.DEBUG, "Configuration file specified via --config");
             return loadFromFile(explicitConfigFile, overrides);
         }
 
@@ -151,34 +207,22 @@ public final class ConfigLoader {
                         "Configuration file specified via -Dconfig.file not found: "
                                 + systemConfigFile.getAbsolutePath());
             }
-            handler.log(MessageLevel.INFO,
-                    "Using configuration file specified via -Dconfig.file: "
-                            + systemConfigFile.getAbsolutePath());
+            handler.log(MessageLevel.INFO, "Configuration: " + systemConfigFile.getAbsolutePath());
+            handler.log(MessageLevel.DEBUG, "Configuration file specified via -Dconfig.file");
             return loadFromFile(systemConfigFile, overrides);
         }
 
-        // 3) config/evochora.conf in the current working directory
-        final File cwdConfigFile = new File(CONFIG_DIR, CONFIG_FILE_NAME);
-        if (cwdConfigFile.exists()) {
-            handler.log(MessageLevel.INFO,
-                    "Using configuration file found in current directory: "
-                            + cwdConfigFile.getAbsolutePath());
-            return loadFromFile(cwdConfigFile, overrides);
+        // 3) config/evochora.conf in the project directory
+        final File projectConfigFile = new File(new File(projectDirectory.directory(), CONFIG_DIR), CONFIG_FILE_NAME);
+        if (projectConfigFile.exists()) {
+            handler.log(MessageLevel.INFO, "Configuration: " + projectConfigFile.getAbsolutePath());
+            handler.log(MessageLevel.DEBUG, "Configuration file of the project directory");
+            return loadFromFile(projectConfigFile, overrides);
         }
 
-        // 4) APP_HOME/config/evochora.conf inferred from the running JAR
-        final File installationConfigFile = detectInstallationConfigFile();
-        if (installationConfigFile != null) {
-            handler.log(MessageLevel.INFO,
-                    "Using configuration file from installation directory: "
-                            + installationConfigFile.getAbsolutePath());
-            return loadFromFile(installationConfigFile, overrides);
-        }
-
-        // 5) Fall back to classpath defaults only
+        // 4) Fall back to classpath defaults only
         handler.log(MessageLevel.WARN,
-                "No '" + CONFIG_DIR + "/" + CONFIG_FILE_NAME
-                        + "' found in current directory or installation directory. "
+                "No '" + CONFIG_DIR + "/" + CONFIG_FILE_NAME + "' found in the project directory. "
                         + "Using default configuration from classpath.");
         return loadDefaults(overrides);
     }
@@ -235,57 +279,43 @@ public final class ConfigLoader {
     }
 
     /**
-     * Attempts to detect the Evochora installation directory and its default configuration file.
+     * The project directory of this process, set as the system property {@code evochora.home} if
+     * it is not given. A property this loader set itself keeps the source it was found by.
      * <p>
-     * The installation layout created by Gradle's {@code installDist} / {@code distZip} tasks is:
-     * <pre>
-     *   APP_HOME/
-     *     bin/evochora
-     *     lib/evochora-*.jar
-     *     config/evochora.conf
-     * </pre>
-     * Infers {@code APP_HOME} from the location of the running JAR (or classes directory during
-     * development) and returns {@code APP_HOME/config/evochora.conf} if it exists.
-     *
-     * @return the detected configuration file, or {@code null} if it cannot be determined
-     *         or does not exist.
+     * The property always ends up holding the absolute directory, a given relative one included:
+     * the configuration takes the property as it stands, and everything it derives from the
+     * project directory, the data directory first, has to be an absolute path.
      */
-    private static File detectInstallationConfigFile() {
+    private static synchronized ProjectDirectory projectDirectory() {
+        final String given = System.getProperty(HOME_KEY);
+        if (detected != null && detected.directory().getPath().equals(given)) {
+            return detected;
+        }
+        final ProjectDirectory directory = detectProjectDirectory(given, codeLocation(), new File("").getAbsoluteFile());
+        final String absolute = directory.directory().getPath();
+        if (!absolute.equals(given)) {
+            System.setProperty(HOME_KEY, absolute);
+            ConfigFactory.invalidateCaches();
+        }
+        if (given == null || given.isBlank()) {
+            detected = directory;
+        }
+        return directory;
+    }
+
+    /**
+     * The JAR or classes directory this class was loaded from.
+     *
+     * @return the location, or {@code null} if the runtime does not say.
+     */
+    private static File codeLocation() {
         try {
             final ProtectionDomain protectionDomain = ConfigLoader.class.getProtectionDomain();
-            if (protectionDomain == null) {
-                return null;
-            }
-            final CodeSource codeSource = protectionDomain.getCodeSource();
-            if (codeSource == null) {
-                return null;
-            }
-            final URL location = codeSource.getLocation();
-            final File jarOrClasses = new File(location.toURI());
-
-            final File appHome;
-            if (jarOrClasses.isFile()) {
-                // Running from the application JAR under APP_HOME/lib
-                final File libDir = jarOrClasses.getParentFile();
-                if (libDir == null) {
-                    return null;
-                }
-                appHome = libDir.getParentFile();
-            } else {
-                // Running from classes directory (e.g., build/classes/java/main/).
-                // Unlikely to find config/ here; CWD-based cascade (level 3) handles development.
-                appHome = jarOrClasses;
-            }
-
-            if (appHome == null) {
-                return null;
-            }
-
-            final File configDir = new File(appHome, CONFIG_DIR);
-            final File configFile = new File(configDir, CONFIG_FILE_NAME);
-            return configFile.exists() ? configFile : null;
+            final CodeSource codeSource = protectionDomain == null ? null : protectionDomain.getCodeSource();
+            final URL location = codeSource == null ? null : codeSource.getLocation();
+            return location == null ? null : new File(location.toURI());
         } catch (Exception ignored) {
-            // Best-effort detection; fall back to other mechanisms on any failure.
+            // Without a location the working directory is the project directory.
             return null;
         }
     }

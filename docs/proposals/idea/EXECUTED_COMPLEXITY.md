@@ -68,7 +68,7 @@ lies above what actually runs.
 ## Open questions
 
 - **Tolerant jumps.** A jump is resolved when it executes, by fuzzy label matching
-  ([Assembly Spec](../../ASSEMBLY_SPEC.md#fuzzy-label-matching)): the organism's own labels first,
+  ([Assembly Spec](../../EVOASM_SPEC.md#fuzzy-label-matching)): the organism's own labels first,
   those differing in the fewest bits, one of several equal ones chosen at random; a foreign label
   only when none of its own matches. A static graph can follow the own labels and must give a jump
   with tied targets an edge to each; a jump that matches no own label depends on the neighbourhood,

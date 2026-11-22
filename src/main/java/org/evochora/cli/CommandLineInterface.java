@@ -1,6 +1,9 @@
 package org.evochora.cli;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 import org.evochora.cli.commands.CleanupCommand;
@@ -58,7 +61,7 @@ public class CommandLineInterface implements Callable<Integer> {
 
     @Option(
         names = {"-c", "--config"},
-        description = "Path to custom configuration file (default: config/evochora.conf in the working or the installation directory)"
+        description = "Path to custom configuration file, relative to the working directory (default: config/evochora.conf of the project directory)"
     )
     private File configFile;
 
@@ -106,26 +109,44 @@ public class CommandLineInterface implements Callable<Integer> {
         command.getSubcommands().values().forEach(subcommand -> answerVersion(subcommand, provider));
     }
 
+    /**
+     * Loads the configuration and then reports how it was found: the project directory and the
+     * file. The loader's messages are held until the logging settings of the configuration
+     * apply, because before that only the levels of {@code logback.xml} hold, which drop INFO;
+     * they are reported on the first load only, since a reload with overrides finds the same
+     * directory and file. A configuration that fails to load ends the process, and the error names
+     * what the loader had found up to then.
+     */
     private void initialize(final Config overrides) {
-        // Initialize logger early for config loading feedback
         final Logger logger = LoggerFactory.getLogger(CommandLineInterface.class);
+        final List<Map.Entry<ConfigLoader.MessageLevel, String>> messages = new ArrayList<>();
 
         try {
-            this.config = ConfigLoader.resolve(this.configFile, overrides, (level, message) -> {
-                switch (level) {
-                    case INFO -> logger.info(message);
-                    case WARN -> logger.warn(message);
-                }
-            });
+            this.config = ConfigLoader.resolve(this.configFile, overrides,
+                    (level, message) -> messages.add(Map.entry(level, message)));
         } catch (IllegalArgumentException e) {
-            logger.error(e.getMessage());
+            logger.error("{} [{}]", e.getMessage(), texts(messages));
             System.exit(1);
         } catch (com.typesafe.config.ConfigException e) {
-            logger.error("Failed to load or parse configuration: {}", e.getMessage());
+            logger.error("Failed to load or parse configuration: {} [{}]", e.getMessage(), texts(messages));
             System.exit(1);
         }
 
+        final boolean firstLoad = !loggingConfigured;
         configureLogging();
+        if (firstLoad) {
+            for (final Map.Entry<ConfigLoader.MessageLevel, String> message : messages) {
+                switch (message.getKey()) {
+                    case INFO -> logger.info(message.getValue());
+                    case DEBUG -> logger.debug(message.getValue());
+                    case WARN -> logger.warn(message.getValue());
+                }
+            }
+        }
+    }
+
+    private static String texts(final List<Map.Entry<ConfigLoader.MessageLevel, String>> messages) {
+        return String.join("; ", messages.stream().map(Map.Entry::getValue).toList());
     }
 
     /**
@@ -142,8 +163,13 @@ public class CommandLineInterface implements Callable<Integer> {
             return;
         }
         if (config.hasPath("logging.format")) {
-            final String format = config.getString("logging.format");
-            System.setProperty("evochora.logging.format", "PLAIN".equalsIgnoreCase(format) ? "CONSOLE_PLAIN" : "CONSOLE");
+            try {
+                System.setProperty("evochora.logging.format",
+                        LoggingConfigurator.appenderFor(config.getString("logging.format")));
+            } catch (IllegalArgumentException e) {
+                LoggerFactory.getLogger(CommandLineInterface.class).error(e.getMessage());
+                System.exit(1);
+            }
             reconfigureLogback();
         }
         LoggingConfigurator.configure(config);
@@ -169,7 +195,7 @@ public class CommandLineInterface implements Callable<Integer> {
     /**
      * Prints the ASCII art banner to standard output. The banner appears only when
      * {@code node.show-welcome-message} is present in the configuration and set to {@code true},
-     * and only when {@code logging.format} is {@code PLAIN} or absent; in every other case the
+     * and only when {@code logging.format} is not {@code JSON}; in every other case the
      * method does nothing.
      * <p>
      * Reads the already loaded configuration and therefore requires a preceding
@@ -178,8 +204,7 @@ public class CommandLineInterface implements Callable<Integer> {
     public void showWelcomeMessage() {
         // Check config again just to be safe, though caller usually checks too
         if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
-            String logFormat = config.hasPath("logging.format") ? config.getString("logging.format") : "PLAIN";
-            if (!"PLAIN".equalsIgnoreCase(logFormat)) {
+            if (config.hasPath("logging.format") && "JSON".equalsIgnoreCase(config.getString("logging.format"))) {
                 return;
             }
             

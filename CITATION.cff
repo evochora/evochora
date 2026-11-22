@@ -3,7 +3,9 @@ message: "If you use Evochora in your research, please cite it as below."
 type: software
 title: "Evochora: Simulation Platform for Digital Evolution Research"
 authors:
-  - name: "Evochora Project"
+  - given-names: "Rainer"
+    family-names: "Collet"
+    orcid: "https://orcid.org/0009-0001-2478-5477"
 repository-code: "https://github.com/evochora/evochora"
 url: "https://evochora.org"
 license: MIT

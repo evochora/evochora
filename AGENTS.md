@@ -19,7 +19,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - `src/test/resources/` – Test resources and configurations
 - `src/test/web/` – Web frontend tests (vitest), laid out like `src/main/web/`
 - `src/testFixtures/` – JUnit extensions and test utilities
-- `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, proposals)
+- `docs/` – Documentation (EVOASM_SPEC.md, CLI_USAGE.md, proposals)
 - `assembly/` – Assembly code examples and test files
 - `config/` – User-facing configuration (evochora.conf, local.conf)
 - `build.gradle.kts` – Gradle build configuration
@@ -42,8 +42,8 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew installDist        # Distribution for development under build/install/evochora, run on JAVA_HOME
 ./gradlew installLocalPlatformDist  # This machine's platform distribution, with its Java runtime, under build/install
-./gradlew platformDistributions     # Every published platform archive, under build/distributions
-./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
+./gradlew platformDistributions     # Every published archive, one per platform and one without Java, under build/distributions
+./gradlew jmhJar             # Build the JMH benchmark jar (see docs/dev/BENCHMARKING.md)
 ./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```
 
@@ -103,42 +103,24 @@ The compiler produces a JSON `ProgramArtifact` with machine code layout, labels,
 
 ## Configuration
 
-### File Layout
-
-- `config/evochora.conf` — User-facing experiment template (overrides selected defaults)
-- `src/main/resources/reference.conf` — All defaults with documentation (embedded in JAR, loaded automatically)
-- `config/local.conf` — Local development overrides (not checked in)
-
-### Config Resolution Cascade (in `ConfigLoader.resolve()`)
-
-1. `--config` CLI option
-2. `-Dconfig.file` system property
-3. `config/evochora.conf` in CWD
-4. `APP_HOME/config/evochora.conf` (detected from JAR location)
-5. Classpath `reference.conf` only (fallback)
-
-### Tuning Profiles
-
-Services share pipeline tuning parameters via HOCON substitutions:
-- `pipeline.tuning = ${profiles.detailed}` (or `sampled`, `sparse`)
-- Services consume via `${pipeline.tuning.samplingInterval}`, `${pipeline.tuning.insertBatchSize}`, etc.
-- Override in experiment config or `local.conf`: `pipeline.tuning = ${profiles.sampled}`
-
-### Config Priority (within a single file)
-
-System properties > Environment variables > User config file > reference.conf defaults
+Every setting has its default and its explanation in `src/main/resources/reference.conf`.
+`config/evochora.conf` is the template for an experiment and sets only what it changes. Where
+Evochora looks for its configuration, how the project directory is found and how a configuration
+file is built is described in [`docs/CLI_USAGE.md`](docs/CLI_USAGE.md#3-configuration). The full
+order of the sources, system properties and environment variables among them, stands in the JavaDoc
+of `ConfigLoader`.
 
 ## Agent Guidelines
 
 The project's [AI Policy](AI_POLICY.md) binds the people who work with agents; the following rules make an agent's work comply with it:
 
 - **Act only on instruction.** An agent does what a person has asked for in this session and nothing beyond it; it opens no issue or pull request, posts no comment and makes no change that was not asked for. A decision about a contribution or a review is made by a person; the agent prepares it and does not take it.
-- **Disclose the work.** Everything an agent writes within the development process, a commit, a pull request, an issue, a comment, ends with a trailer line that names the assistant, `Co-Authored-By: <assistant>` or `Assisted-by: <assistant>`. Every document the project publishes that an agent writes or revises carries the policy's note, in its exact wording: "Written with AI assistance under the project's AI Policy. The author reviewed it and is responsible for its content."
+- **Disclose the work.** Everything an agent writes as a contribution, a commit, a pull request, an issue, a comment, ends with the trailer line `Assisted-by: <agent>:<model>`, for example `Assisted-by: Claude:claude-opus-5-5`. An agent never names itself in a `Co-Authored-By` line: an author is a person. A research output an agent helps to produce carries the disclosure the policy requires of it.
 - **Leave the work explainable.** An agent writes so that the person who contributes the work can read, understand and explain it.
 
 There is a central document for AI agent guidelines that defines architectural principles and review standards. All agents, automated workflows, and human developers should adhere to these rules.
 
-- **Single Source of Truth:** [`/.agents/architecture-guidelines.md`](/.agents/architecture-guidelines.md)
+- **Single Source of Truth:** [`.agents/architecture-guidelines.md`](.agents/architecture-guidelines.md)
 
 ### General Principles
 - **Allowed changes**: Refactors, bug fixes, unit tests, documentation improvements, safe dependency updates (patch/minor versions)
@@ -375,47 +357,34 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 **Benchmarks:**
 - JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references
-- Procedure, required environment conditions, and validity criteria: [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
+- Procedure, required environment conditions, and validity criteria: [docs/dev/BENCHMARKING.md](docs/dev/BENCHMARKING.md)
 
 ## Logging Guidelines
 
 **Framework:**
 - Use SLF4J + Logback: `LoggerFactory.getLogger(this.getClass())`
 - Code that runs inside the node (`node`, `datapipeline`, `runtime`, `compiler`) NEVER writes to `System.out` or `System.err`: a running node's console is watched by nobody, and only its log is read. `ConsoleOutputRulesTest` enforces this
-- The console belongs to the command line interface in `cli`, before a node runs or instead of one: the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version) write their results, progress and errors there, and the node commands `node resume` and `node fork` an error in their arguments or checkpoint before the node starts; so do the launcher's Java check, which runs before logging exists, and the welcome banner, shown only with `PLAIN` logging
+- The console belongs to the command line interface in `cli`, before a node runs or instead of one: the commands that run once for a user (`compile`, `inspect`, `video`, `cleanup`, help and version) write their results, progress and errors there, and the node commands `node resume` and `node fork` an error in their arguments or checkpoint before the node starts; so do the launcher's Java check, which runs before logging exists, and the welcome banner, not shown with `JSON` logging
 
-**Log Levels by Component:**
+**Log Levels:**
 
-**ServiceManager & Node (INFO-level orchestration):**
-- `INFO`: Service/resource lifecycle (starting, stopping, closing), batch control operations
-- `WARN`: Operation failures (service didn't stop in time, resource close failed)
-- `DEBUG`: Process initialization details, topology sorting, dependency injection
+`INFO` is for the person who started the node. It says what that person has to know and nothing else:
+- where Evochora works and what it runs: the project directory and the configuration file, the run the simulation engine started, resumed or forked, the memory estimate
+- how to reach the node: the address of the web interface and of the database
+- that the node is up, that it is shutting down and that it has stopped
+- an event that person caused or that concerns the run: services paused, resumed or restarted through the API (one line for the action, not one per service), an automatic pause, a limit that was reached, messages of an earlier run that were discarded, a write to the dead letter queue
 
-**Services (INFO only for user-visible events):**
-- `INFO`:
-  - Service started with configuration (via `logStarted()` override - each service logs its own config)
-  - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
-  - Explicit runId configuration
-- `WARN`: Transient errors (always with `recordError()` call) - duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings
-- `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
-- `DEBUG`: All operational details (batch processing, retries, interrupts, shutdown sequences, drain operations)
+`DEBUG` is the bookkeeping of the parts: every service, resource and process that is instantiated, started, paused, resumed, stopped or closed, the configuration a service started with, and all operational detail (batch processing, retries, interrupts, shutdown and drain steps, connection pools, schema setup, message claim and ack). Whoever needs it sets the level of that one class in `logging.levels`.
 
-**AbstractService (automatic lifecycle logs):**
-- `INFO`: `paused`, `resumed` (automatic via base class)
-- `DEBUG`: `stopped`, `Service thread interrupted`, `Service thread terminated` (automatic via base class)
-- Note: `started` log is replaced by service's `logStarted()` override
-
-**Resources (DEBUG-only operations, WARN/ERROR for problems):**
-- `INFO`: NEVER log at INFO level (all orchestration goes through ServiceManager)
-- `WARN`: Transient operational errors (query failed, parse error, rollback failed, claim conflict reassignment, sampler errors) - always with `recordError()`
-- `ERROR`: Fatal errors (connection pool failed, delegate creation failed, schema setup failed, connection acquisition failed) - always with `recordError()`
-- `DEBUG`: All operations (connection pool started/closed, schema setup, delegate creation, message claim/ack, wrapper close, compression setup, sampling)
+`WARN` and `ERROR` by component:
+- **ServiceManager & Node**: `WARN`: an operation that failed (a service that did not stop in time, a resource that could not be closed)
+- **Services**: `WARN`: transient errors, always with a `recordError()` call (duplicate detection, retries exhausted, resource unavailable, DLQ full, configuration warnings). `ERROR`: none of its own: a fatal error is thrown, and `AbstractService` logs it once
+- **Resources**: `WARN`: transient operational errors (query failed, parse error, rollback failed, claim conflict reassignment, sampler errors), always with `recordError()`. `ERROR`: fatal errors (connection pool failed, delegate creation failed, schema setup failed, connection acquisition failed), always with `recordError()`
 
 **Format:**
 - Single-line logs only (no multi-line output). This is strict for every message without a stack trace; a stack trace is multi-line by nature and is the one exception
 - No phase/version prefixes in log messages
 - Include context: service name, resource name, consumer group, relevant parameters
-- For orchestration logs: use ServiceManager/Node for INFO, keep service/resource details at DEBUG
 
 **Stack Traces:**
 A stack trace exists to find out what went wrong. When the system already knows, it is noise: it hides
@@ -434,14 +403,14 @@ unstable. So the one question is whether the cause is known.
 
 **Examples:**
 ```java
-// Good - ServiceManager orchestration (INFO)
-log.info("Starting service '{}'...", serviceName);
-log.info("Closed resource: {}", resourceName);
+// Good - what the person who started the node has to know (INFO)
+log.info("Pausing {} running service(s)...", running.size());
+log.info("Simulation started: run={}, environment=[{}, {}], seed={}, sampling={}", runId, shape, topology, seed, samplingInterval);
 
-// Good - Service startup (INFO, via logStarted())
-log.info("PersistenceService started: batch=[size={}, timeout={}s], retry=[max={}, backoff={}ms], dlq={}, idempotency={}",
-    maxBatchSize, batchTimeoutSeconds, maxRetries, retryBackoffMs, dlq != null ? "configured" : "none",
-    idempotencyTracker != null ? "enabled" : "disabled");
+// Good - lifecycle of one part (DEBUG)
+log.debug("Closed resource: {}", resourceName);
+log.debug("PersistenceService started: batch=[size={}, timeout={}s], idempotency={}",
+    maxBatchSize, batchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
 
 // Good - Service operation (DEBUG)
 log.debug("Successfully wrote batch {} with {} ticks", storageKey, batch.size());
@@ -498,12 +467,6 @@ throw new InterruptedException();
 **Flagship documents:**
 - `README.md` and `docs/SCIENTIFIC_OVERVIEW.md` are the project's public face. Edits derive from the document's structure and purpose, never from "a place where it fits"; exact wording is proposed before editing and approved hunk by hunk; links point to durable targets only; index entries are timeless; claims stay scientifically restrained
 
-**User documentation (`docs/*.md` beyond the flagship documents, comments in `config/*.conf`):**
-- Before changing a document, read it whole. A change stands at one place in the document, and at that place the reader knows only what the document has said before it: a sentence relies on no fact the document states later. The change takes the form, the depth and the wording of the document around it, so that nobody can tell it was written separately. Check by reading the changed passage as a reader who has read the document up to there and nothing else
-- A new section takes the form and the depth of the sections around it: the same heading level, the same parts (examples, parameter list, a few sentences), and no more detail than the neighbours give. What a reader needs beyond that lives in the command's help text, in error messages and in the configuration comments, not in the guide
-- A document uses only terms it has introduced before that place or that a reader knows without the code. A term that would be new is explained in one clause or left out; internal names such as chunk, checkpoint, indexer, service or metadata stay out of a user-facing document that has not explained them
-- Describe what the software does for the reader, not how it does it
-
 **Template Methods:**
 - Document subclass responsibilities clearly
 - Specify contract (what must be implemented/extended)
@@ -529,7 +492,7 @@ void send(T message) throws InterruptedException;
 
 ## CI & PR Expectations
 
-- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: the standard configuration, with a plugin added that the start test builds against the archive's `lib/` and puts into its `plugins/`, must run until every indexer has processed ticks and the plugin has run, and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
+- CI: GitHub Actions that run `./gradlew check` on Ubuntu, Windows and macOS (includes the PMD gate), and start each platform distribution on its platform with `tools/ci/start_test.py`: every relative link in the archive's documents must lead to a file the archive holds and, where it names a place in a document, to a heading or an anchor there, and the standard configuration, with a plugin added that the start test builds against the archive's `lib/` and puts into its `plugins/`, must run until every indexer has processed ticks and the plugin has run, and shut down, with no WARN or ERROR logged and no JVM warning. Archives and image are published only when all of that passes.
 - PR must include: a summary of what changed and why, the verification that was performed, green CI.
 - Branch naming: short and purpose-describing, e.g. `feature/<topic>`.
 
@@ -558,5 +521,3 @@ approval for the next; each one is asked for separately.
    decision instead.
 7. Whether a change goes through a PR or is pushed directly is the maintainer's call.
 8. Merging happens only after the maintainer's approval.
-
-Written with AI assistance under the project's [AI Policy](AI_POLICY.md). The author reviewed it and is responsible for its content.

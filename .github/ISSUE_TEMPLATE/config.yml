@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Discussions
+    url: https://github.com/evochora/evochora/discussions
+    about: Ask a question, share an idea or show what you are working on.
+  - name: Discord
+    url: https://discord.gg/t9yEJc4MKX
+    about: Chat with us.

@@ -98,8 +98,10 @@ def check(paths):
     if offenders:
         print()
         print(f"{offenders} of {len(targets)} notebook(s) carry execution state.")
-        print("Notebooks are committed without outputs; see notebooks/README.md for the")
-        print("one-time filter setup, then re-commit the affected notebooks.")
+        print("Notebooks are committed without outputs. A git filter strips them, and the build")
+        print("registers it. To register it by hand, run")
+        print('    git config filter.nbstrip.clean "python3 tools/nbstrip.py"')
+        print("and commit the affected notebooks again.")
         return 1
 
     print(f"{len(targets)} notebook(s) checked, no execution state present.")

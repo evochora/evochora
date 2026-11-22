@@ -134,7 +134,7 @@ public class MetadataPersistenceService extends AbstractService {
 
     @Override
     protected void logStarted() {
-        log.info("MetadataPersistenceService started: retry=[max={}, backoff={}ms], dlq={}",
+        log.debug("MetadataPersistenceService started: retry=[max={}, backoff={}ms], dlq={}",
             maxRetries, retryBackoffMs, dlq != null ? "configured" : "none");
     }
 

@@ -60,7 +60,7 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
 
     @Override
     protected void logStarted() {
-        log.info("DummyIndexer started: metadata=[pollInterval={}ms, maxPollDuration={}ms]",
+        log.debug("DummyIndexer started: metadata=[pollInterval={}ms, maxPollDuration={}ms]",
             options.hasPath("metadataPollIntervalMs") ? options.getInt("metadataPollIntervalMs") : "default",
             options.hasPath("metadataMaxPollDurationMs") ? options.getInt("metadataMaxPollDurationMs") : "default");
     }

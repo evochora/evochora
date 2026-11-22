@@ -1,5 +1,6 @@
 package org.evochora.compiler.api;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -22,25 +23,43 @@ import java.util.Map;
  *                    program names is not used. The compact constructor upper-cases the names and
  *                    keeps an unmodifiable copy, as it does for the flags. The text is not checked
  *                    here; the compiler reports a text that is not one operand.
+ * @param baseDirectory The directory a relative source root is resolved against. The compact
+ *                      constructor makes it absolute. A source root that is absolute or a URL
+ *                      does not depend on it.
  */
 public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, FlagSetting> defines,
-                              Map<String, String> values) {
+                              Map<String, String> values, Path baseDirectory) {
 
     /**
-     * Normalises the flags and the values: upper-cases every name and copies the maps.
+     * Normalises the flags and the values, upper-casing every name and copying the maps, and
+     * makes the base directory absolute.
      *
      * @throws IllegalArgumentException if two names of the flags, or two names of the values, are
      *                                  the same name after upper-casing; the message names both.
-     * @throws NullPointerException     if {@code defines} or {@code values}, one of their names or
-     *                                  one of their values is null.
+     * @throws NullPointerException     if {@code defines}, {@code values} or
+     *                                  {@code baseDirectory}, a name or a value of the maps is null.
      */
     public CompilerOptions {
         defines = upperCased(defines, "Defines", "flag");
         values = upperCased(values, "Values", "value");
+        baseDirectory = baseDirectory.toAbsolutePath().normalize();
     }
 
     /**
-     * Creates options with the given source roots, no preprocessor flags and no values.
+     * Creates options whose relative source roots are resolved against the working directory.
+     *
+     * @param sourceRoots Ordered list of source root directories for path resolution.
+     * @param defines     Preprocessor flags of the compilation.
+     * @param values      Values of the compilation.
+     */
+    public CompilerOptions(List<SourceRoot> sourceRoots, Map<String, FlagSetting> defines,
+                           Map<String, String> values) {
+        this(sourceRoots, defines, values, Path.of(""));
+    }
+
+    /**
+     * Creates options with the given source roots, no preprocessor flags and no values, whose
+     * relative source roots are resolved against the working directory.
      *
      * @param sourceRoots Ordered list of source root directories for path resolution.
      */

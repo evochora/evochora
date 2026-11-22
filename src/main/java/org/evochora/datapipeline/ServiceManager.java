@@ -153,16 +153,16 @@ public class ServiceManager implements IMonitorable {
                 : true; // default to true for production readiness
 
         if (autoStart && !this.startupSequence.isEmpty()) {
-            log.info("\u001B[34m========== Service Startup ==========\u001B[0m");
+            log.debug("\u001B[34m========== Service Startup ==========\u001B[0m");
             startAllInternal();
             
             // Perform memory estimation AFTER services are instantiated
             // This allows iterating over actual service instances
             performMemoryEstimation();
         } else if (!autoStart) {
-            log.info("Auto-start is disabled. Services must be started manually via API.");
+            log.debug("Auto-start is disabled. Services must be started manually via API.");
         } else {
-            log.info("No startup sequence defined. Services must be started manually via API.");
+            log.debug("No startup sequence defined. Services must be started manually via API.");
         }
     }
 
@@ -257,7 +257,7 @@ public class ServiceManager implements IMonitorable {
         }
         
         if (!executedInitializers.isEmpty()) {
-            log.info("Resource initializers executed: {}", String.join(", ", executedInitializers));
+            log.debug("Resource initializers executed: {}", String.join(", ", executedInitializers));
         }
     }
 
@@ -266,7 +266,7 @@ public class ServiceManager implements IMonitorable {
             log.debug("No resources configured.");
             return;
         }
-        log.info("\u001B[34m========== Resource Initialization ==========\u001B[0m");
+        log.debug("\u001B[34m========== Resource Initialization ==========\u001B[0m");
         Config resourcesConfig = config.getConfig("resources");
         for (String resourceName : resourcesConfig.root().keySet()) {
             if (isSetToNull(resourcesConfig, resourceName)) {
@@ -284,7 +284,7 @@ public class ServiceManager implements IMonitorable {
                         .getConstructor(String.class, Config.class)
                         .newInstance(resourceName, options);
                 resources.put(resourceName, resource);
-                log.info("Instantiated resource '{}' of type {}", resourceName, className);
+                log.debug("Instantiated resource '{}' of type {}", resourceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
                 Throwable cause = CauseChain.root(e);
@@ -299,7 +299,7 @@ public class ServiceManager implements IMonitorable {
             log.debug("No services configured.");
             return;
         }
-        log.info("\u001B[34m========== Service Initialization ==========\u001B[0m");
+        log.debug("\u001B[34m========== Service Initialization ==========\u001B[0m");
         Config servicesConfig = config.getConfig("services");
         for (String serviceName : servicesConfig.root().keySet()) {
             if (isSetToNull(servicesConfig, serviceName)) {
@@ -349,7 +349,7 @@ public class ServiceManager implements IMonitorable {
                     }
                 };
                 serviceFactories.put(serviceName, factory);
-                log.info("Built factory for service '{}' of type {}", serviceName, className);
+                log.debug("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
                 Throwable cause = CauseChain.root(e);
@@ -426,7 +426,7 @@ public class ServiceManager implements IMonitorable {
      * the same.
      */
     public synchronized void startAll() {
-        log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
+        log.debug("\u001B[34m========== Starting Services ==========\u001B[0m");
         startAllInternal();
     }
     
@@ -451,7 +451,7 @@ public class ServiceManager implements IMonitorable {
      * started again. Resources are left open; closing them is {@link #shutdown()}'s job.
      */
     public synchronized void stopAll() {
-        log.info("\u001B[34m========== Stopping Services ==========\u001B[0m");
+        log.debug("\u001B[34m========== Stopping Services ==========\u001B[0m");
         // Reversed only to decide which stop is triggered first. The stops themselves run at the
         // same time (see below), so this order does not sequence them: a service later in the list
         // may well finish stopping before one earlier in it.
@@ -527,7 +527,7 @@ public class ServiceManager implements IMonitorable {
      * Other resources (e.g., in-memory queues) do not require explicit shutdown.
      */
     private void closeAllResources() {
-        log.info("\u001B[34m========== Closing Resource ==========\u001B[0m");
+        log.debug("\u001B[34m========== Closing Resource ==========\u001B[0m");
         
         for (Map.Entry<String, IResource> entry : resources.entrySet()) {
             String resourceName = entry.getKey();
@@ -536,7 +536,7 @@ public class ServiceManager implements IMonitorable {
             if (resource instanceof AutoCloseable) {
                 try {
                     ((AutoCloseable) resource).close();
-                    log.info("Closed resource: {}", resourceName);
+                    log.debug("Closed resource: {}", resourceName);
                 } catch (Exception e) {
                     log.error("Failed to close resource '{}': {}", resourceName, e.getMessage());
                 }
@@ -624,7 +624,7 @@ public class ServiceManager implements IMonitorable {
 
         stopAll();
 
-        log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
+        log.debug("\u001B[34m========== Starting Services ==========\u001B[0m");
         applyToAllServices(this::startService, toRestart);
     }
 
@@ -648,7 +648,7 @@ public class ServiceManager implements IMonitorable {
                 ". The service must be defined in the pipeline configuration.");
         }
         serviceFactories.put(serviceName, factory);
-        log.info("Registered custom factory for service '{}'", serviceName);
+        log.debug("Registered custom factory for service '{}'", serviceName);
     }
 
     /**
@@ -884,7 +884,7 @@ public class ServiceManager implements IMonitorable {
             return;
         }
         
-        log.info("Stopping service '{}'...", name);
+        log.debug("Stopping service '{}'...", name);
         service.stop();  // Already blocks until thread terminates (max 5 sec)
         
         // Check final state and log
@@ -1246,7 +1246,7 @@ public class ServiceManager implements IMonitorable {
         log.debug("  Node processes: {}", SimulationParameters.formatBytes(nodeProcessOverhead));
 
         // Always log expected peak at INFO level
-        log.info("Memory estimate: {} expected peak ({}% occupancy), {} worst-case ceiling (100%), heap: {} (-Xmx)",
+        log.info("Memory peak estimate: {} ({}% occupancy), {} worst-case, heap: {} (-Xmx)",
             SimulationParameters.formatBytes(expectedTotal),
             (int) (SimulationParameters.DEFAULT_EXPECTED_CELL_OCCUPANCY * 100),
             SimulationParameters.formatBytes(worstCaseTotal),

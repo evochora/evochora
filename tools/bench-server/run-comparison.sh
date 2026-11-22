@@ -17,7 +17,7 @@
 #
 # Usage: run-comparison.sh <variant>...
 # Every variant waits for a quiet host (1-min load <= BENCH_MAX_LOAD) and is skipped,
-# not measured, when the host is busy. Wall seconds run from "SimulationEngine started"
+# not measured, when the host is busy. Wall seconds run from "Simulation started"
 # to "auto-paused at tick"; identical TICKHASH lines prove identical behaviour.
 set -u
 CMP="${CMP:-$HOME/bench/cmp}"
@@ -44,7 +44,7 @@ for v in "$@"; do
         grep -q "auto-paused at tick" "$log" && break
         docker ps --format '{{.Names}}' | grep -q benchcmp || break
     done
-    start_ts=$(grep -m1 "SimulationEngine started" "$log" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $1" "$2}')
+    start_ts=$(grep -m1 "Simulation started" "$log" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $1" "$2}')
     end_ts=$(grep -m1 "auto-paused at tick" "$log" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $1" "$2}')
     hashline=$(grep "TICKHASH" "$log" | tail -1 | sed 's/\x1b\[[0-9;]*m//g' | grep -o "TICKHASH.*")
     docker stop -t 5 benchcmp > /dev/null 2>&1

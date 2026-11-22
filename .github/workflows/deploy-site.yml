@@ -1,0 +1,40 @@
+# Actions are pinned to a commit, with the release tag beside it, for the reason given in
+# build.yml: a version tag is a pointer its owner can move, a commit is not.
+
+name: Manual Deploy of the Homepage
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-site:
+    name: Copy the homepage to the Oracle VM
+    runs-on: ubuntu-latest
+    # Checkout reads a public repository and the rest happens over ssh, so the token needs
+    # nothing beyond reading the contents it checks out.
+    permissions:
+      contents: read
+
+    steps:
+      # The homepage always comes from main, here as in the deployment of the node. Neither the
+      # image nor a container is touched: Caddy serves the copied files at once.
+      - name: Checkout the homepage from main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          sparse-checkout: infrastructure/docker/site
+
+      - name: Install SSH key and add known_hosts
+        uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # The action will automatically run ssh-keyscan for this host
+          known_hosts: ${{ secrets.SSH_HOST }}
+
+      - name: Copy the homepage to server
+        env:
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/site"
+          scp -o StrictHostKeyChecking=no -r infrastructure/docker/site/. "$SSH_TARGET:~/app/site/"

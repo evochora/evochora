@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Starts a platform distribution of Evochora the way a user does and checks that it works.
 
-Unpacks the archive into a temporary directory and, from its top directory, checks four things:
+Unpacks the archive into a temporary directory and, from its top directory, checks these things:
 
-1. ``src/`` holds the sources the archive was built from and the GIT_REVISION that names them.
-2. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
-3. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
-4. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
+1. The top directory holds the files of the commit the archive was built from, as the repository
+   holds them, and the GIT_REVISION that names the commit, and none of the files that only
+   building the project needs.
+2. Every relative link in a document of the archive leads to a file the archive holds, and a
+   link that names a place in a Markdown document leads to a heading or an anchor it has.
+3. On macOS, the system takes the Java the archive brings as notarized by Apple, so that an
+   archive a browser downloaded starts without a warning.
+4. ``bin/evochora --help`` succeeds on the Java the archive brings, whatever JAVA_HOME says.
+5. With EVOCHORA_JAVA_HOME naming an older Java, the start is refused with the guard's message.
+6. ``bin/evochora node run`` on the standard configuration with one plugin added runs until
    every service that counts processed ticks has processed some, so that data has passed through
    the whole pipeline; the HTTP API reports no service in ERROR; nothing is logged at WARN or
    ERROR, and the JVM prints no warning of its own, up to and including the node's shutdown; and
@@ -30,14 +36,24 @@ import tarfile
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 
 WINDOWS = os.name == "nt"
+MACOS = sys.platform == "darwin"
 STATUS_URL = "http://localhost:8081/pipeline/api/status"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LOG_PROBLEM = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (WARN|ERROR)\b")
+# A link as Markdown writes it, and the scheme that marks one that leaves the archive
+MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
+URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+# What a fragment can name in a Markdown document: a heading, an anchor the text sets itself, and
+# the fence that opens and closes a code block, inside which a line beginning with # is no heading
+HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*#*\s*$")
+ANCHOR = re.compile(r'<a\s[^>]*\b(?:id|name)="([^"]+)"')
+FENCE = re.compile(r"^\s*(```|~~~)")
 # The JVM's own warnings, in the three forms it writes them: the JDK's at run time, the virtual
 # machine's ("OpenJDK 64-Bit Server VM warning: ..."), and those of its unified logging, which
 # begin with the uptime ("[0.012s][warning][gc] ..."); a line of the node's own log, which begins
@@ -70,8 +86,96 @@ def environment(**overrides) -> dict:
 
 
 def check_sources(root: Path) -> list:
-    missing = [name for name in ("build.gradle.kts", "GIT_REVISION") if not (root / "src" / name).is_file()]
-    return [f"src/ lacks {', '.join(missing)}"] if missing else []
+    problems = [f"the archive lacks {name}" for name in ("GIT_REVISION", "README.md", "docs", "src/main")
+                if not (root / name).exists()]
+    problems += [f"the archive holds {name}, which only building the project needs"
+                 for name in ("build.gradle.kts", "gradlew") if (root / name).exists()]
+    return problems
+
+
+def anchors(document: Path) -> set:
+    """Returns the fragments a link can name in a Markdown document.
+
+    A heading gets the fragment GitHub forms from it: the text as it is rendered, in lower case,
+    without anything but letters, digits, hyphens, underscores and spaces, and with a hyphen for
+    every space. A heading whose fragment is taken gets a number appended, counted from 1. An
+    anchor the text sets with ``<a id="...">`` is named as it is written.
+    """
+    found = set()
+    taken = {}
+    in_code = False
+    for line in document.read_text(encoding="utf-8").splitlines():
+        if FENCE.match(line):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        found.update(ANCHOR.findall(line))
+        heading = HEADING.match(line)
+        if heading:
+            # What is rendered of a link is its text, and of inline HTML nothing
+            text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading.group(1))
+            text = re.sub(r"<[^>]+>", "", text)
+            fragment = re.sub(r"[^\w\- ]", "", text.strip().lower()).replace(" ", "-")
+            count = taken.get(fragment, 0)
+            taken[fragment] = count + 1
+            found.add(fragment if count == 0 else f"{fragment}-{count}")
+    return found
+
+
+def check_links(root: Path) -> list:
+    """Follows every relative link of every Markdown document outside the Java runtime and the licenses.
+
+    A link leads to a file the archive holds, and its fragment, where it has one and the file is a
+    Markdown document, to a heading or an anchor of that document. A link that is a fragment alone
+    leads into the document it stands in.
+    """
+    problems = []
+    known = {}
+    for document in sorted(root.rglob("*.md")):
+        if document.relative_to(root).parts[0] in ("jre", "lib", "licenses"):
+            continue
+        for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), 1):
+            for target in MARKDOWN_LINK.findall(line):
+                # A scheme marks a link that leaves the archive
+                if URL_SCHEME.match(target):
+                    continue
+                link, _, fragment = target.partition("#")
+                path = urllib.parse.unquote(link.split("?")[0])
+                where = f"{document.relative_to(root).as_posix()}:{number}"
+                if path.startswith("/"):
+                    problems.append(f"{where} links to {target}, a path from the root of a web site")
+                    continue
+                destination = document.parent / path if path else document
+                if not destination.exists():
+                    problems.append(f"{where} links to {target}, which the archive does not hold")
+                    continue
+                if fragment and destination.is_file() and destination.suffix == ".md":
+                    if destination not in known:
+                        known[destination] = anchors(destination)
+                    if urllib.parse.unquote(fragment) not in known[destination]:
+                        problems.append(f"{where} links to {target}, but "
+                                        f"{destination.relative_to(root).as_posix()} has no such heading or anchor")
+    return problems
+
+
+def check_notarization(root: Path) -> list:
+    """Asks macOS whether Apple has notarized the Java the archive brings.
+
+    A browser marks what it downloads as quarantined, and the Finder passes the mark on to what it
+    unpacks. macOS starts a quarantined program without a warning only when its developer signed it
+    and Apple notarized it. The Java runtime is what the start script executes, so it is the
+    program this is asked for; the question goes to Apple over the network.
+    """
+    java = root / "jre" / "Contents" / "Home" / "bin" / "java"
+    if not java.is_file():
+        return [f"the archive holds no {java.relative_to(root).as_posix()}"]
+    result = subprocess.run(["codesign", "--verify", "--check-notarization", "--test-requirement", "=notarized",
+                             "--verbose=2", str(java)], capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        return [f"macOS does not take {java.relative_to(root).as_posix()} as notarized by Apple, so a downloaded "
+                f"archive would not start without a warning: {result.stdout}{result.stderr}"]
+    return []
 
 
 def check_help(root: Path) -> list:
@@ -301,11 +405,15 @@ def main() -> int:
     problems = []
     try:
         root = unpack(args.archive.resolve(), work)
-        for name, check in [("sources", lambda: check_sources(root)),
-                            ("help", lambda: check_help(root)),
-                            ("refusal", lambda: check_refusal(root, args.old_java)),
-                            ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),
-                            ("node run", lambda: check_node_run(root, args.timeout))]:
+        checks = [("sources", lambda: check_sources(root)),
+                  ("links", lambda: check_links(root))]
+        if MACOS:
+            checks.append(("notarization", lambda: check_notarization(root)))
+        checks += [("help", lambda: check_help(root)),
+                   ("refusal", lambda: check_refusal(root, args.old_java)),
+                   ("plugin", lambda: install_plugin(root, args.jdk, work / "plugin-classes")),
+                   ("node run", lambda: check_node_run(root, args.timeout))]
+        for name, check in checks:
             found = check()
             print(f"{name}: {'ok' if not found else 'FAILED'}", flush=True)
             problems += [f"[{name}] {p}" for p in found]

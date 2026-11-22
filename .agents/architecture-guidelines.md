@@ -67,7 +67,10 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Ask** of every hunk in the core (everything under `compiler/` but `features/`) which feature would have to be missing for the code never to run; any answer but "none" is a finding, whatever the code is named
 - **Ask** whether the code could live in a feature through `IFeatureRegistrationContext`; the author justifies core code, not the reviewer
 - **Flag** a new field on a phase context, the symbol table or the artifact, a new branch over a node or item kind, and a new string literal or `instanceof` in the core
-- **Hold** a hunk that touches a coupling listed in `docs/COMPILER_CORE_BOUNDARY.md` to shrinking it; a coupling not listed there is new, and a change to that list is a design decision
+- **Reject** a hunk that widens a coupling listed in `.agents/compiler-core-boundary.md`; shrinking one is welcome
+- **Reject** a coupling that is not listed there: it is a violation, and it enters the list only with the maintainer's explicit confirmation
+- **Verify** that a change to anything `.agents/compiler-core-boundary.md` describes — a coupling that shrinks or goes, a lexer symbol a feature registers, a feature renamed or merged, the phases of the core — updates that document in the same pull request
+- **Verify** that a change to the IR — a type or field under `compiler/model/ir`, an IR item kind a feature adds, a directive a feature or the core emits and its arguments, a rewrite rule — updates `docs/dev/COMPILER_IR_SPEC.md` in the same pull request, so that the document stays correct and complete
 
 ### 9. Self-Contained Machine Code
 - **Check** that no runtime path reads the program artifact: what an instruction does must follow from the cells it occupies and the organism's own state

@@ -136,7 +136,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
 
     @Override
     protected void logStarted() {
-        log.info("PersistenceService started: batch=[size={}, timeout={}s], idempotency={}",
+        log.debug("PersistenceService started: batch=[size={}, timeout={}s], idempotency={}",
             maxBatchSize, batchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
     }
 

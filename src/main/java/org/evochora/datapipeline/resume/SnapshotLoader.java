@@ -84,7 +84,7 @@ public class SnapshotLoader {
         }
         TickData snapshot = last[0];
 
-        log.info("Resume checkpoint: tick {} (from snapshot)", snapshot.getTickNumber());
+        log.debug("Resume checkpoint: tick {} (from snapshot)", snapshot.getTickNumber());
 
         return new ResumeCheckpoint(metadata, snapshot);
     }
@@ -132,7 +132,7 @@ public class SnapshotLoader {
             throw new ResumeException(describeMissingTick(runId, tick));
         }
 
-        log.info("Checkpoint for tick {}: snapshot at tick {}", tick, snapshot.getTickNumber());
+        log.debug("Checkpoint for tick {}: snapshot at tick {}", tick, snapshot.getTickNumber());
 
         return new ResumeCheckpoint(metadata, snapshot);
     }

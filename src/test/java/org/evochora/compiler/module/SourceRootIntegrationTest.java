@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,6 +32,23 @@ public class SourceRootIntegrationTest {
     @BeforeEach
     void setUp() {
         Instruction.init();
+    }
+
+    @Test
+    @Tag("integration")
+    void relativeRoot_isResolvedAgainstTheBaseDirectoryOfTheOptions_absoluteRootIsNot() throws Exception {
+        Path project = tempDir.resolve("project");
+        Files.writeString(Files.createDirectories(project.resolve("ancestors")).resolve("main.evo"), "NOP\n");
+        Path elsewhere = Files.createDirectories(tempDir.resolve("elsewhere"));
+        Files.writeString(elsewhere.resolve("other.evo"), "NOP\n");
+
+        CompilerOptions relative = new CompilerOptions(List.of(new SourceRoot("ancestors", null)),
+                Map.of(), Map.of(), project);
+        CompilerOptions absolute = new CompilerOptions(List.of(new SourceRoot(elsewhere.toString(), null)),
+                Map.of(), Map.of(), project);
+
+        assertThat(new Compiler().compile("main.evo", ENV, relative).programId()).isNotEmpty();
+        assertThat(new Compiler().compile("other.evo", ENV, absolute).programId()).isNotEmpty();
     }
 
     @Test

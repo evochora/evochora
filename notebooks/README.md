@@ -1,39 +1,28 @@
 # Notebooks
 
-Analysis notebooks for simulation data.
+Jupyter notebooks that analyze the data of a run.
 
-- `data_analysis_guide.ipynb` — guide to accessing simulation data from a notebook
+- [`data_analysis_guide.ipynb`](data_analysis_guide.ipynb): how to build an analysis of a run, shown by example from population dynamics to phylogenetic trees, with a reference of the data a notebook can fetch.
 
-## One-time setup
+A notebook reads its data from a node over HTTP. Its first code cell sets `BASE_URL`, the address of the node, and optionally `RUN_ID`, the run to analyze. Without `RUN_ID`, the notebook takes the longest run the node holds.
 
-Notebooks are committed **without execution state** — no cell outputs, no execution counts. Outputs are
-generated results, and embedded plots are base64 PNGs that add megabytes to the repository with every
-commit. Your working copy keeps its outputs; only what Git records is stripped.
+## Run a Notebook in Colab
 
-This is enforced by a clean filter that each clone has to register once, because Git does not allow a
-repository to define filter commands for security reasons:
+[Open the notebook in Colab](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true) and run its cells. Colab runs in the cloud and cannot reach a node on your computer, so use it with a node that is reachable from the internet. `BASE_URL` is preset to the public demo at `https://evochora.org`.
 
-```bash
-git config filter.nbstrip.clean "python3 tools/nbstrip.py"
-```
+Colab comes with its own versions of the packages the notebook uses, and the notebook uses them. Only when `requests` or `pyarrow` is missing does its setup cell install the packages at the versions of `requirements.txt`. The cell that uses DuckDB installs it at its pinned version if it is missing.
 
-Without this, `.gitattributes` names a filter that does not exist locally and notebooks are committed
-unchanged — Git reports no error, so verify with `git diff` that a re-executed notebook shows no
-output changes.
+## Run a Notebook Locally
 
-The filter script is `tools/nbstrip.py` (standard library only, no installation needed).
-
-## Environment
+To analyze the runs of your own node, run the notebook on your computer. In this directory:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt notebook
+jupyter notebook data_analysis_guide.ipynb
 ```
 
-`requirements.txt` names exact versions of the packages the notebooks use, so that an analysis runs
-with the same versions wherever it is repeated; what these packages bring along, pip resolves when
-it installs them. Colab comes with its own versions of these packages, and a notebook uses them. Only when
-`requests` or `pyarrow` is missing does its setup cell install all of requests, pandas, numpy,
-matplotlib, networkx and pyarrow at the versions of `requirements.txt`; the cell that uses DuckDB
-installs it at its pinned version only if it is missing.
+`requirements.txt` names exact versions of the packages the notebooks use, so that an analysis runs with the same versions wherever it is repeated. `notebook` is Jupyter itself. Any other Jupyter frontend works as well, such as JupyterLab or VS Code.
+
+Then set `BASE_URL` to your node. The first code cell holds the line for a local node, commented out.

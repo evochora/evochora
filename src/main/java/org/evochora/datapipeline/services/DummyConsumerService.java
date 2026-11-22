@@ -96,11 +96,11 @@ public class DummyConsumerService<T> extends AbstractService {
         @SuppressWarnings("unchecked")
         IIdempotencyTracker<Integer> tracker = (IIdempotencyTracker<Integer>) getOptionalResource("idempotencyTracker", IIdempotencyTracker.class)
                 .map(t -> {
-                    logger.info("Idempotency tracker configured for service '{}'", name);
+                    logger.debug("Idempotency tracker configured for service '{}'", name);
                     return t;
                 })
                 .orElseGet(() -> {
-                    logger.info("No idempotency tracker configured for service '{}' - duplicate detection disabled", name);
+                    logger.debug("No idempotency tracker configured for service '{}' - duplicate detection disabled", name);
                     return null;
                 });
         this.idempotencyTracker = tracker;
@@ -109,7 +109,7 @@ public class DummyConsumerService<T> extends AbstractService {
         IDeadLetterQueueResource<T> dlq = (IDeadLetterQueueResource<T>) getOptionalResource("dlq", IDeadLetterQueueResource.class)
                 .map(d -> {
                     String dlqName = d.getResourceName();
-                    logger.info("Dead Letter Queue configured for service '{}': {}", name, dlqName);
+                    logger.debug("Dead Letter Queue configured for service '{}': {}", name, dlqName);
                     return d;
                 })
                 .orElseGet(() -> {

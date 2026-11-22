@@ -9,9 +9,10 @@ ARG UBUNTU_SNAPSHOT=20261024T000000Z
 # image carries exactly those. entrypoint.sh comes from a second, named context, "entrypoint", the
 # directory of this file.
 #
-# EVOCHORA_VERSION is the version the archives name, the RELEASE_TAG they were built with; without
-# one the build names them "latest". Archives of another version beside them are not taken.
-ARG EVOCHORA_VERSION=latest
+# EVOCHORA_VERSION is the tag the archives name, the RELEASE_TAG they were built with; archives
+# built without one name none, and it stays empty. Archives of another tag beside them are not
+# taken.
+ARG EVOCHORA_VERSION=
 
 # ====================================================================================
 # STAGE 1: Unpack the distribution of the target architecture
@@ -20,7 +21,7 @@ ARG EVOCHORA_VERSION=latest
 FROM --platform=$BUILDPLATFORM ${UBUNTU_IMAGE} AS unpack
 ARG TARGETARCH
 ARG EVOCHORA_VERSION
-COPY evochora-${EVOCHORA_VERSION}-linux-*.tar.gz /dist/
+COPY evochora-${EVOCHORA_VERSION:+${EVOCHORA_VERSION}-}linux-*.tar.gz /dist/
 # Docker names the architecture it builds for amd64 or arm64, the distributions name their
 # platform. The Java runtime is set apart from the rest, so that the image carries it in a layer of
 # its own.
@@ -29,7 +30,7 @@ RUN case "$TARGETARCH" in \
       arm64) platform=linux-aarch64 ;; \
       *) echo "No Linux distribution for the architecture $TARGETARCH" >&2; exit 1 ;; \
     esac && \
-    mkdir /unpack && tar -xzf /dist/evochora-"$EVOCHORA_VERSION"-"$platform".tar.gz -C /unpack && \
+    mkdir /unpack && tar -xzf /dist/evochora-"${EVOCHORA_VERSION:+$EVOCHORA_VERSION-}$platform".tar.gz -C /unpack && \
     mv /unpack/evochora-*/jre /jre && mv /unpack/evochora-* /app
 
 # ====================================================================================

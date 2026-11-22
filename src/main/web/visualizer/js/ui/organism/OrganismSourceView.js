@@ -233,10 +233,9 @@ export class OrganismSourceView {
             let filteredInstructions = [];
             const machineInstructions = this.instructionsFor(selectedItem, lineNumber);
             if (machineInstructions.length > 0) {
-                // Filter out NOP and WAIT instructions (padding for mutation robustness)
-                filteredInstructions = machineInstructions.filter(
-                    i => i.opcode !== 'NOP' && i.opcode !== 'WAIT'
-                );
+                // Filter out NOP instructions (padding for mutation robustness). WAIT stays: it is
+                // executed and takes its tick.
+                filteredInstructions = machineInstructions.filter(i => i.opcode !== 'NOP');
                 const hasMultiple = filteredInstructions.length > 1;
                 const hasSynthetic = filteredInstructions.some(i => i.synthetic);
                 showCollapsible = hasMultiple || hasSynthetic;

@@ -17,6 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import org.h2.api.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +58,26 @@ public class DatabaseCleaner {
     }
 
     /**
+     * Opens a connection to the database without creating it: a cleanup that finds no database
+     * has nothing to clean and must not leave an empty one behind. H2 creates a missing database
+     * on connect unless the URL says {@code IFEXISTS=TRUE}.
+     *
+     * @return the connection
+     * @throws SQLException if the database does not exist, see {@link #isMissingDatabase}, or
+     *                      cannot be opened
+     */
+    private Connection connect() throws SQLException {
+        String url = jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.toUpperCase(Locale.ROOT).contains("IFEXISTS=")
+                ? jdbcUrl + ";IFEXISTS=TRUE"
+                : jdbcUrl;
+        return DriverManager.getConnection(url, username, password);
+    }
+
+    private static boolean isMissingDatabase(SQLException e) {
+        return e.getErrorCode() == ErrorCode.DATABASE_NOT_FOUND_WITH_IF_EXISTS_1;
+    }
+
+    /**
      * Lists all simulation run IDs in the database.
      * Converts schema names to normalized run ID format.
      *
@@ -65,7 +86,7 @@ public class DatabaseCleaner {
     public List<String> listRunIds() {
         List<String> runIds = new ArrayList<>();
 
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = connect();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(
                  "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME LIKE 'SIM_%'")) {
@@ -78,7 +99,11 @@ public class DatabaseCleaner {
                 }
             }
         } catch (SQLException e) {
-            log.error("Failed to list database schemas: {}", e.getMessage());
+            if (isMissingDatabase(e)) {
+                log.warn("Database does not exist: {}", jdbcUrl);
+            } else {
+                log.error("Failed to list database schemas: {}", e.getMessage());
+            }
         }
 
         return runIds;
@@ -98,7 +123,7 @@ public class DatabaseCleaner {
 
         // Build mapping from runId to schemaName
         Map<String, String> runIdToSchema = new HashMap<>();
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = connect();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(
                  "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME LIKE 'SIM_%'")) {
@@ -111,6 +136,10 @@ public class DatabaseCleaner {
                 }
             }
         } catch (SQLException e) {
+            if (isMissingDatabase(e)) {
+                out.println();
+                return new CleanupService.AreaStats(0, 0);
+            }
             log.error("Failed to list database schemas: {}", e.getMessage());
             out.printf("  ERROR: %s%n%n", e.getMessage());
             return new CleanupService.AreaStats(0, 0);
@@ -129,7 +158,7 @@ public class DatabaseCleaner {
         }
 
         // Show/delete what will be removed
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = connect();
              Statement stmt = conn.createStatement()) {
 
             for (String runId : toDelete) {
@@ -230,7 +259,7 @@ public class DatabaseCleaner {
      * @return result indicating success or failure with explanation
      */
     public CompactionResult compact() {
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = connect();
              Statement stmt = conn.createStatement()) {
 
             // Check for other active sessions (excluding our own)
@@ -253,6 +282,9 @@ public class DatabaseCleaner {
             return new CompactionResult(true, "Database compacted successfully.");
 
         } catch (SQLException e) {
+            if (isMissingDatabase(e)) {
+                return new CompactionResult(false, "The database does not exist.");
+            }
             log.error("Database compaction failed: {}", e.getMessage());
             return new CompactionResult(false, "Compaction failed: " + e.getMessage());
         }

@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -658,6 +659,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param organismConfigs The organism entries of the configuration, each with a
      *                        {@code program} and optionally {@code defines} and {@code values}.
      * @param sourceRoots     The source roots every program is compiled with.
+     * @param baseDirectory   The directory the compiler resolves a relative source root against.
      * @param envProps        The world the programs are laid out for.
      * @return One artifact per organism entry, in the order of the entries; entries of one
      *         variant share the same artifact instance.
@@ -669,6 +671,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      */
     static List<ProgramArtifact> compileOrganismPrograms(List<? extends Config> organismConfigs,
                                                          List<SourceRoot> sourceRoots,
+                                                         Path baseDirectory,
                                                          EnvironmentProperties envProps) {
         Compiler compiler = new Compiler();
         Map<ProgramVariant, ProgramArtifact> artifactsByVariant = new HashMap<>();
@@ -680,7 +683,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Map<String, String> values = readValues(orgConfig, index);
             CompilerOptions compilerOptions;
             try {
-                compilerOptions = new CompilerOptions(sourceRoots, defines, values);
+                compilerOptions = new CompilerOptions(sourceRoots, defines, values, baseDirectory);
             } catch (IllegalArgumentException e) {
                 // The options say themselves whether the defines or the values are wrong
                 throw new IllegalArgumentException("organisms[" + index + "]: " + e.getMessage(), e);
@@ -801,6 +804,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         } else {
             sourceRoots = CompilerOptions.defaults().sourceRoots();
         }
+        // The compiler resolves a relative root against this directory, so that the roots of the
+        // configuration do not depend on the directory the node was started from
+        Path baseDirectory = Path.of(options.hasPath("compiler.base-directory")
+                ? options.getString("compiler.base-directory") : "");
 
         String topology = options.getString("environment.topology");
         boolean isToroidal;
@@ -826,7 +833,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             throw new IllegalArgumentException("environment.shape: " + e.getMessage(), e);
         }
 
-        List<ProgramArtifact> organismArtifacts = compileOrganismPrograms(organismConfigs, sourceRoots, envProps);
+        List<ProgramArtifact> organismArtifacts = compileOrganismPrograms(organismConfigs, sourceRoots, baseDirectory, envProps);
         Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
         organismArtifacts.forEach(artifact -> compiledPrograms.putIfAbsent(artifact.programId(), artifact));
 
@@ -949,16 +956,18 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int parallelism = simulation.getEffectiveParallelism();
         String parallelismStr = parallelism > 1 ? parallelism + " workers" : "sequential";
         if (mode == Mode.FORK) {
-            log.info("SimulationEngine FORKED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, parent={}, checkpointTick={}, window=[{}, {}]",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId,
+            log.info("Simulation forked: run={}, environment=[{}, {}], seed={}, sampling={}, parent={}, checkpointTick={}, window=[{}, {}]",
+                    runId, worldDims, topology, seed, samplingInterval,
                     forkOrigin.getParentRunId(), forkCheckpointTick, forkOrigin.getFirstTick(), forkOrigin.getLastTick());
         } else if (mode == Mode.RESUME) {
-            log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, resumeFromTick={}",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId, currentTick.get() + 1);
+            log.info("Simulation resumed: run={}, environment=[{}, {}], seed={}, sampling={}, resumeFromTick={}",
+                    runId, worldDims, topology, seed, samplingInterval, currentTick.get() + 1);
         } else {
-            log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId);
+            log.info("Simulation started: run={}, environment=[{}, {}], seed={}, sampling={}",
+                    runId, worldDims, topology, seed, samplingInterval);
         }
+        log.debug("Simulation configuration: organisms={}, tickPlugins={} ({}), ticksPerChunk={}, parallelism={}",
+                simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, ticksPerChunk, parallelismStr);
     }
 
     @Override
@@ -1012,7 +1021,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 }
 
                 if (shouldAutoPause(tick)) {
-                    log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
+                    boolean endOfFork = forkOrigin != null && tick == forkOrigin.getLastTick();
+                    log.info("Simulation auto-paused at tick {} {}", tick,
+                            endOfFork ? "at the end of the forked stretch" : "due to pauseTicks configuration");
                     pause();
                     continue;
                 }
@@ -1024,7 +1035,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Note: No flushPartialChunk() - partial chunks cause duplicate/shifted boundaries on resume.
         // Only complete chunks are persisted; partial data is discarded and regenerated on resume.
 
-        log.info("Simulation loop finished.");
+        log.debug("Simulation loop finished.");
     }
 
     /**
@@ -1213,6 +1224,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *   <li>seed - the actual seed used (important when auto-generated)</li>
      *   <li>programs - compiled artifacts with machine code</li>
      *   <li>buildRevision - the sources this build was made from</li>
+     *   <li>buildVersion - the release this build was made for, empty for any other build</li>
      *   <li>fork - the parent and window, when this run is a fork</li>
      *   <li>resolvedConfigJson - all other configuration</li>
      * </ul>
@@ -1223,6 +1235,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
         builder.setBuildRevision(BuildInfo.revision());
+        builder.setBuildVersion(BuildInfo.version().orElse(""));
         if (this.forkOrigin != null) {
             builder.setFork(this.forkOrigin);
         }

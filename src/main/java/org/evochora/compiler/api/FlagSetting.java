@@ -8,7 +8,7 @@ import java.util.OptionalLong;
  * set, with an integer value or without one. Two records, so that whoever reads a setting
  * switches over them exhaustively. A flag the configuration does not name has no setting. What
  * each state means for the directives of a program is the directives' rule, described in
- * {@code docs/ASSEMBLY_SPEC.md} under Conditional Compilation.
+ * {@code docs/EVOASM_SPEC.md} under Conditional Compilation.
  */
 public sealed interface FlagSetting permits FlagSetting.Off, FlagSetting.Set {
 

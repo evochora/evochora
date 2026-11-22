@@ -70,7 +70,7 @@ says what a change does.
 - **Replication detector**: `GenomeHasher` already computes a genome hash that ignores STATE
   molecules — an organism's own runtime memory — and is invariant under the namespace flip a
   newborn's labels may undergo — a child with the parent's hash is a faithful replication.
-- **Problem size**: the primordial owns roughly 2,500–3,000 cells (comment in
+- **Problem size**: the ancestor owns roughly 2,500–3,000 cells (comment in
   `GeneDuplicationPlugin`), so exhaustive single-mutant enumeration is on the order of a few thousand
   short simulation runs — parallelizable, since runs are independent.
 
@@ -98,7 +98,7 @@ says what a change does.
      intelligence of the operators. This is the relevant metric for "dumb variation" decisions.
    Both modes seem worth having; the operator spectrum as default.
 3. **Assay world calibration**: world size, energy placement, and K must be chosen so that the
-   *unmutated* primordial replicates reliably — otherwise the assay measures the world, not the
+   *unmutated* ancestor replicates reliably — otherwise the assay measures the world, not the
    mutation. This calibration should be part of the assay (a baseline run that must pass before
    variants are evaluated).
 4. **Exhaustive vs. sampled**: full enumeration of all single-mutation variants, or random sampling

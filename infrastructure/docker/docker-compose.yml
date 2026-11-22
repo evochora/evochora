@@ -2,9 +2,9 @@ services:
   evochora:
     # EVOCHORA_IMAGE takes a whole reference, so it can name a tag or an exact digest
     # (…@sha256:…). A digest is the only way to redeploy precisely what once ran: a tag such as
-    # latest is overwritten by the next build. IMAGE_TAG remains the fallback so an existing
+    # nightly is overwritten by the next build. IMAGE_TAG remains the fallback so an existing
     # .env keeps working.
-    image: ${EVOCHORA_IMAGE:-ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}}
+    image: ${EVOCHORA_IMAGE:-ghcr.io/evochora/evochora:${IMAGE_TAG:-nightly}}
     # The user is now managed by the entrypoint.sh script to ensure correct permissions at runtime.
     # user: "${UID:-1000}:${GID:-1000}"
     # Ports are no longer published directly to the host.
@@ -41,13 +41,14 @@ services:
     volumes:
       # Mount the Caddy configuration file (read-only)
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The homepage of evochora.org, which Caddy delivers itself (read-only)
+      - ./site:/srv/site:ro
       # Persist Caddy's state, including acquired SSL certificates
       - caddy_data:/data
     environment:
       # The domain name for automatic HTTPS.
       # This will be read from the .env file on the server.
       - DOMAIN_NAME=${DOMAIN_NAME}
-      - LOG_LEVEL=INFO
 
 # Docker volume for persisting Caddy's data (e.g., SSL certs)
 volumes:

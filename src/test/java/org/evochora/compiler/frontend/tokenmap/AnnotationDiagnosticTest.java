@@ -16,13 +16,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * End-to-end smoke test that compiles the primordial assembly and verifies
+ * End-to-end smoke test that compiles the ancestor assembly and verifies
  * the structural completeness of the resulting ProgramArtifact.
  */
 @Tag("unit")
 class AnnotationDiagnosticTest {
 
-    /** A world the primordial fits in, so that it does not overlap itself across the wrap. */
+    /** A world the ancestor fits in, so that it does not overlap itself across the wrap. */
     private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{1024, 1024}, true);
 
     @BeforeAll
@@ -32,7 +32,7 @@ class AnnotationDiagnosticTest {
 
     @Test
     void diagnoseRealCompilation() throws Exception {
-        String assemblyRoot = Path.of("").toAbsolutePath().resolve("assembly/primordial").toString();
+        String assemblyRoot = Path.of("").toAbsolutePath().resolve("assembly/ancestors").toString();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(assemblyRoot, null)));
 
         Compiler compiler = new Compiler();

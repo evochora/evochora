@@ -47,8 +47,9 @@ message SimulationMetadata {
   string resolved_config_json = 5;
 
   // Revision of the build that wrote this run, as the build recorded it: the git commit,
-  // suffixed with "-dirty" when the working tree had uncommitted changes, or "unknown" when
-  // the build ran outside a git checkout. A run is only reproduced exactly by the build that
+  // suffixed with "-dirty" when the working tree had uncommitted changes; outside a git checkout
+  // the commit a GIT_REVISION file beside the sources names, suffixed with "-rebuilt", or
+  // "unknown" without such a file. A run is only reproduced exactly by the build that
   // wrote it; a reader that runs another build says so.
   string build_revision = 6;
 
@@ -56,6 +57,11 @@ message SimulationMetadata {
   // parent at a chunk boundary and records a window of the parent's trajectory again,
   // usually at a denser sampling. Absent for a run that started from its configuration.
   ForkOrigin fork = 7;
+
+  // Version of the build that wrote this run, which only a build made for a release has: the
+  // release tag. Empty for a run written by any other build; such a run names its build by
+  // build_revision alone.
+  string build_version = 8;
 }
 
 // Where a forked run comes from: the parent run and the window it was asked to record.

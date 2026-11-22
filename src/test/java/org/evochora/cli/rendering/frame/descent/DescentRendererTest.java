@@ -274,7 +274,7 @@ class DescentRendererTest {
 
     @Test
     void theLargestLineKeepsTheFieldAndTheOthersTakeTheShiftedPalette() throws Exception {
-        final DescentRenderer renderer = prepared("--shift-palette", "--keep-field-colour", "--unfold-frames", "1");
+        final DescentRenderer renderer = prepared("--shift-palette", "--keep-field-color", "--unfold-frames", "1");
 
         // The field of root 1 is green: line 1 of root all, which takes pair 0 unshifted. Green is
         // not the first colour of pair 1, so line 4 takes that first colour, cyan.

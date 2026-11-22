@@ -156,7 +156,7 @@ public class ThermodynamicPolicyManager {
             throw new IllegalStateException("Missing 'default' policy configuration in runtime.thermodynamics");
         }
         IThermodynamicPolicy loadedDefault = createPolicy(config.getConfig("default"));
-        LOG.info("Loaded default thermodynamic policy: {}", loadedDefault.getClass().getSimpleName());
+        LOG.debug("Loaded default thermodynamic policy: {}", loadedDefault.getClass().getSimpleName());
 
         if (config.hasPath("overrides")) {
             com.typesafe.config.Config overrides = config.getConfig("overrides");
