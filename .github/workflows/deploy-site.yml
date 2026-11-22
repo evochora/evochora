@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
-          sparse-checkout: infrastructure/docker/site
+          sparse-checkout: infrastructure/demo/site
 
       - name: Install SSH key and add known_hosts
         uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
@@ -37,4 +37,4 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/site"
-          scp -o StrictHostKeyChecking=no -r infrastructure/docker/site/. "$SSH_TARGET:~/app/site/"
+          scp -o StrictHostKeyChecking=no -r infrastructure/demo/site/. "$SSH_TARGET:~/app/site/"

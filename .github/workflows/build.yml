@@ -590,8 +590,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: distributions
-          file: ./infrastructure/docker/evochora-node/Dockerfile
-          build-contexts: entrypoint=infrastructure/docker/evochora-node
+          file: ./infrastructure/image/Dockerfile
+          build-contexts: entrypoint=infrastructure/image
           build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64
           labels: |
@@ -623,8 +623,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: distributions
-          file: ./infrastructure/docker/evochora-node/Dockerfile
-          build-contexts: entrypoint=infrastructure/docker/evochora-node
+          file: ./infrastructure/image/Dockerfile
+          build-contexts: entrypoint=infrastructure/image
           build-args: EVOCHORA_VERSION=${{ needs.package.outputs.tag }}
           platforms: linux/amd64,linux/arm64
           labels: |

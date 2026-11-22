@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { clipUrl, describeExperiments } from '../../../../../../infrastructure/docker/site/js/model/Experiments.js';
+import { clipUrl, describeExperiments } from '../../../../../../infrastructure/demo/site/js/model/Experiments.js';
 
 /** A record of the community as Zenodo answers it. */
 const record = (id, files) => ({

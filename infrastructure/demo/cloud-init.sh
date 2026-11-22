@@ -9,8 +9,8 @@
 # This script is idempotent and can safely be re-run.
 #
 # Usage:
-#   As cloud-init: oci compute instance launch --user-data-file cloud-init-docker.sh ...
-#   Manual:        ssh ubuntu@<ip> 'sudo bash -s' < cloud-init-docker.sh
+#   As cloud-init: oci compute instance launch --user-data-file cloud-init.sh ...
+#   Manual:        ssh ubuntu@<ip> 'sudo bash -s' < cloud-init.sh
 
 set -euo pipefail
 

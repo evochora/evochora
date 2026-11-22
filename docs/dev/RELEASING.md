@@ -100,7 +100,7 @@ without a release:
 
 - as the `doi` field of `CITATION.cff`,
 - as the badge in `README.md`, which waits there in a comment,
-- as `ZENODO_CONCEPT_RECORD` in `infrastructure/docker/site/js/model/Download.js`, by its number
+- as `ZENODO_CONCEPT_RECORD` in `infrastructure/demo/site/js/model/Download.js`, by its number
   alone, so that the homepage shows it.
 
 From then on the workflow makes every release a new version of that record. It finds the record by

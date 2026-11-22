@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { conceptDoi, describeDownload, systemOf, versionDoi } from '../../../../../../infrastructure/docker/site/js/model/Download.js';
+import { conceptDoi, describeDownload, systemOf, versionDoi } from '../../../../../../infrastructure/demo/site/js/model/Download.js';
 
 const PAGE = 'https://github.com/evochora/evochora/releases/tag/v1.0.0';
 const archive = name => ({ name, size: 162762011, browser_download_url: 'https://github.com/evochora/evochora/releases/download/v1.0.0/' + name });

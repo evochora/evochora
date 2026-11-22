@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { sectionInView } from '../../../../../../infrastructure/docker/site/js/model/JumpBar.js';
+import { sectionInView } from '../../../../../../infrastructure/demo/site/js/model/JumpBar.js';
 
 const view = (scrollY = 0) => ({ viewHeight: 1000, scrollY, pageHeight: 10000 });
 

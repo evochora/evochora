@@ -14,10 +14,10 @@ These files are **not** automatically deployed by the GitHub Actions workflow to
 
 1. Copy the files to the server (e.g., via `scp`):
    ```bash
-   scp infrastructure/docker/evochora-node/local.conf user@server:~/app/config/local.conf
-   scp infrastructure/docker/evochora-node/docker-compose.override.yml user@server:~/app/docker-compose.override.yml
+   scp infrastructure/demo/local.conf user@server:~/app/config/local.conf
+   scp infrastructure/demo/docker-compose.override.yml user@server:~/app/docker-compose.override.yml
    # Copy env.template to .env (or merge with existing .env)
-   scp infrastructure/docker/evochora-node/env.template user@server:~/app/.env
+   scp infrastructure/demo/env.template user@server:~/app/.env
    ```
    *Note: If you have existing secrets in `.env` on the server (like DOMAIN_NAME), make sure to merge them manually instead of overwriting! The demo system needs `JAVA_MAX_MEM=16g` in this file.*
 

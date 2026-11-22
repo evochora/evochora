@@ -20,8 +20,12 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - `src/test/web/` – Web frontend tests (vitest), laid out like `src/main/web/`
 - `src/testFixtures/` – JUnit extensions and test utilities
 - `docs/` – Documentation (EVOASM_SPEC.md, CLI_USAGE.md, proposals)
-- `assembly/` – Assembly code examples and test files
-- `config/` – User-facing configuration (evochora.conf, local.conf)
+- `assembly/` – EvoASM programs: the ancestors (`ancestors/`), the library of behaviors they are built from (`lib/`), examples and test programs
+- `config/` – User-facing configuration (evochora.conf)
+- `notebooks/` – The analysis notebook and its requirements
+- `extensions/` – The VS Code extension for EvoASM
+- `tools/` – Tools for development: the trace recorder (`trace/`), scripts of the CI (`ci/`), the benchmarks that run on the benchmark host (`bench-server/`)
+- `infrastructure/` – The image of the node (`image/`), the demo system at evochora.org (`demo/`) and load tests for it (`load-tests/`)
 - `build.gradle.kts` – Gradle build configuration
 - `package.json`, `package-lock.json` – The web frontend's npm packages; Gradle installs them
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/` – Gradle wrapper

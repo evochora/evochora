@@ -543,7 +543,7 @@ val webTest = tasks.register<com.github.gradle.node.npm.task.NpmTask>("webTest")
     inputs.files(webVendor).withPropertyName("vendor")
     inputs.dir("src/main/web").withPropertyName("web")
     // The homepage of evochora.org is no part of the program, but its modules have their tests here
-    inputs.dir("infrastructure/docker/site").withPropertyName("site")
+    inputs.dir("infrastructure/demo/site").withPropertyName("site")
     inputs.dir("src/test/web").withPropertyName("tests")
     inputs.files("package-lock.json", "vitest.config.mjs").withPropertyName("setup")
     outputs.file(report)

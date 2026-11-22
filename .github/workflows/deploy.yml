@@ -89,8 +89,8 @@ jobs:
         run: |
           set -euo pipefail
           # The main configuration files, the Caddyfile among them.
-          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml "$SSH_TARGET:~/app/docker-compose.yml"
-          scp -o StrictHostKeyChecking=no infrastructure/docker/Caddyfile "$SSH_TARGET:~/app/Caddyfile"
+          scp -o StrictHostKeyChecking=no infrastructure/demo/docker-compose.yml "$SSH_TARGET:~/app/docker-compose.yml"
+          scp -o StrictHostKeyChecking=no infrastructure/demo/Caddyfile "$SSH_TARGET:~/app/Caddyfile"
           ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/config"
           scp -o StrictHostKeyChecking=no config/evochora.conf "$SSH_TARGET:~/app/config/evochora.conf"
 
@@ -102,7 +102,7 @@ jobs:
         with:
           ref: main
           path: homepage
-          sparse-checkout: infrastructure/docker/site
+          sparse-checkout: infrastructure/demo/site
 
       - name: Copy the homepage to server
         env:
@@ -110,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/site"
-          scp -o StrictHostKeyChecking=no -r homepage/infrastructure/docker/site/. "$SSH_TARGET:~/app/site/"
+          scp -o StrictHostKeyChecking=no -r homepage/infrastructure/demo/site/. "$SSH_TARGET:~/app/site/"
 
       # The .env is written here and copied over, and the commands sent to the server contain no
       # interpolated value at all. Anything written into that command text would be executed by a

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { describeEntry, hasTicks, namingOf, orderRunIds, samplingText, startedOn } from '../../../../../../infrastructure/docker/site/js/model/Demo.js';
+import { describeEntry, hasTicks, namingOf, orderRunIds, samplingText, startedOn } from '../../../../../../infrastructure/demo/site/js/model/Demo.js';
 
 const RUN = '20261120-20342916-f039496a-f0ca-48c9-a876-627026137174';
 
