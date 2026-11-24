@@ -14,8 +14,8 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.CONST REPRODUCTION_CONTINUE_THRESHOLD DATA:50000         # reproduce for certain from here on, below with probability ER / 50000
-.CONST ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:25000 # reproduce for certain from here on, below with probability SR / 25000
+.CONST REPRODUCTION_CONTINUE_THRESHOLD DATA:75000         # reproduce for certain from here on, below with probability ER / this value
+.CONST ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:75000 # reproduce for certain from here on, below with probability SR / this value
 
 # ----------------------------
 # STRUCTURE shell, with a label on the body cell diagonally inside each corner

@@ -14,8 +14,8 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.CONST PAUSE_THRESHOLD DATA:50000        # Below this the attempt rests until harvesting refilled it
-.CONST CHILD_INITIAL_ENERGY DATA:25000   # What the child is given at birth
+.CONST PAUSE_THRESHOLD DATA:75000        # Below this the attempt rests until harvesting refilled it
+.CONST CHILD_INITIAL_ENERGY DATA:50000   # What the child is given at birth
 
 .CONST PHASE_SHELL DATA:1                # The child's shell is being built
 .CONST PHASE_BODY  DATA:2                # The body is being copied into it

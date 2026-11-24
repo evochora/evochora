@@ -46,7 +46,7 @@
 EXPORT .CONST ROWS 51                    # Rows of the extent, as the header declares; the main file closes the body with them
 
 .CONST UNIT_ENERGY  DATA:20000           # At least this much before an edge or a row, and besides CHILD_ENERGY before the birth
-.CONST ENTROPY_ROOM DATA:45000           # Above this a foreign cell is not taken: taking it costs entropy
+.CONST ENTROPY_ROOM DATA:95000           # Above this a foreign cell is not taken: taking it costs entropy
 
 .CONST PHASE_SHELL DATA:1                # The child's shell is being built
 .CONST PHASE_BODY  DATA:2                # The body is being copied into it
