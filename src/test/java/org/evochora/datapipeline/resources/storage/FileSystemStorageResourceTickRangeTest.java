@@ -180,6 +180,24 @@ class FileSystemStorageResourceTickRangeTest {
     }
 
     @Test
+    void getTickRange_overAMetricEndsWhereItsFurthestLevelEnds() throws IOException {
+        // A coarse level gains its next row only when its interval is complete, so it ends earlier
+        // than the finer ones; the range of the metric is the range of all of them
+        createAnalyticsFiles("run1", "metric/lod0/",
+                "batch_00000000000000000000_00000000000000000299.parquet",
+                "batch_00000000000000000300_00000000000000000599.parquet");
+        createAnalyticsFiles("run1", "metric/lod1/",
+                "batch_00000000000000000000_00000000000000000299.parquet");
+        createAnalyticsFiles("run1", "metric/", "metadata.json");
+
+        long[] range = storage.getAnalyticsTickRange("run1", "metric/");
+
+        assertThat(range).isNotNull();
+        assertThat(range[0]).isEqualTo(0L);
+        assertThat(range[1]).isEqualTo(599L);
+    }
+
+    @Test
     void getTickRange_returnsNullIfNoBatchFiles() throws IOException {
         createAnalyticsFiles("run1", "metric/lod0/", "metadata.json");
 

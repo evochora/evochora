@@ -50,27 +50,17 @@ class AnalyticsControllerTickRangeTest {
     }
 
     @Test
-    void tickRange_autoSelectsLod() throws Exception {
+    void tickRange_withoutLodSpansEveryLevel() throws Exception {
         IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
 
         // resolveStorageMetric: no metadata.json → falls back to metric ID
         when(storage.openAnalyticsInputStream(eq("run1"), eq("metric/metadata.json")))
                 .thenThrow(new IOException("not found"));
 
-        // autoSelectLod: lists all files to find LODs
-        when(storage.listAnalyticsFiles(eq("run1"), eq("metric/")))
-                .thenReturn(List.of(
-                        "metric/lod0/batch_a.parquet", "metric/lod0/batch_b.parquet",
-                        "metric/lod0/batch_c.parquet", "metric/lod0/batch_d.parquet",
-                        "metric/lod1/batch_a.parquet"));
-
-        // After auto-select picks lod0 (4 files <= 50 threshold)
-        when(storage.getAnalyticsTickRange(eq("run1"), eq("metric/lod0/")))
-                .thenReturn(new long[]{0L, 500L});
-        when(storage.listAnalyticsFiles(eq("run1"), eq("metric/lod0/")))
-                .thenReturn(List.of(
-                        "metric/lod0/batch_a.parquet", "metric/lod0/batch_b.parquet",
-                        "metric/lod0/batch_c.parquet", "metric/lod0/batch_d.parquet"));
+        // A coarse level gains its next row only when its interval is complete and ends earlier
+        // than the finer ones: without a level the range is read over the whole metric
+        when(storage.getAnalyticsTickRange(eq("run1"), eq("metric/")))
+                .thenReturn(new long[]{0L, 395950000L});
 
         Javalin app = createApp(storage);
         JavalinTest.test(app, (server, client) -> {
@@ -78,8 +68,10 @@ class AnalyticsControllerTickRangeTest {
             assertThat(response.code()).isEqualTo(200);
 
             Map<?, ?> body = gson.fromJson(response.body().string(), Map.class);
-            assertThat(body.get("lod")).isEqualTo("lod0");
-            assertThat(((Number) body.get("fileCount")).intValue()).isEqualTo(4);
+            assertThat(((Number) body.get("tickMin")).longValue()).isZero();
+            assertThat(((Number) body.get("tickMax")).longValue()).isEqualTo(395950000L);
+            assertThat(body.containsKey("lod")).isFalse();
+            assertThat(body.containsKey("fileCount")).isFalse();
         });
     }
 
@@ -102,9 +94,9 @@ class AnalyticsControllerTickRangeTest {
         when(storage.openAnalyticsInputStream(eq("run1"), anyString()))
                 .thenThrow(new IOException("not found"));
 
-        // autoSelectLod: no files at all
-        when(storage.listAnalyticsFiles(eq("run1"), eq("empty/")))
-                .thenReturn(List.of());
+        // No batch file under the metric at all
+        when(storage.getAnalyticsTickRange(eq("run1"), eq("empty/")))
+                .thenReturn(null);
 
         Javalin app = createApp(storage);
         JavalinTest.test(app, (server, client) -> {

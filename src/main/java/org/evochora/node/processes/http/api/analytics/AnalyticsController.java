@@ -315,9 +315,14 @@ public class AnalyticsController implements IController {
     }
 
     /**
-     * Returns tick range and file count for a metric without reading file contents.
+     * Returns the tick range of a metric without reading file contents.
      * <p>
      * Route: GET /tick-range?runId=...&amp;metric=...&amp;lod=...
+     * <p>
+     * With a level, the range and the file count are those of that level. Without one, the range
+     * spans every level of the metric: a coarse level gains its next row only when its interval is
+     * complete, so it ends earlier than the finer ones, and a range taken from it alone would end
+     * where that level ends rather than where the metric does.
      * <p>
      * This lightweight endpoint only scans filenames to determine the tick range and
      * file count. No Parquet files are opened or merged, making it near-instant (~1ms).
@@ -330,18 +335,19 @@ public class AnalyticsController implements IController {
         path = "tick-range",
         methods = {HttpMethod.GET},
         summary = "Get tick range metadata",
-        description = "Returns the tick range and file count for a metric/LOD combination. "
+        description = "Returns the tick range of a metric: with a LOD, the range and file count of that LOD; "
+            + "without one, the range over all LODs of the metric. "
             + "Only scans filenames - no file I/O. Near-instant response (~1ms).",
         tags = {"analyzer / analytics"},
         queryParams = {
             @OpenApiParam(name = "metric", description = "Metric identifier", required = true),
             @OpenApiParam(name = "runId", description = "Run ID (optional, defaults to latest)", required = false),
-            @OpenApiParam(name = "lod", description = "LOD level (optional, auto-selects if omitted)", required = false)
+            @OpenApiParam(name = "lod", description = "LOD level (optional; if omitted, the range spans all LODs)", required = false)
         },
         responses = {
             @OpenApiResponse(
                 status = "200",
-                description = "Tick range and file count",
+                description = "Tick range; with a LOD also its file count and the LOD",
                 content = @OpenApiContent(
                     mimeType = "application/json",
                     example = """
@@ -373,11 +379,21 @@ public class AnalyticsController implements IController {
         String storageMetric = resolveStorageMetric(runId, metric);
 
         if (lod == null || lod.isBlank()) {
-            lod = autoSelectLod(runId, storageMetric);
-            if (lod == null) {
-                ctx.status(404).result("No data found for metric: " + metric);
-                return;
+            try {
+                long[] tickRange = storage.getAnalyticsTickRange(runId, storageMetric + "/");
+                if (tickRange == null) {
+                    ctx.status(404).result("No data found for metric: " + metric);
+                    return;
+                }
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("tickMin", tickRange[0]);
+                result.put("tickMax", tickRange[1]);
+                ctx.json(result);
+            } catch (Exception e) {
+                log.error("Failed to get tick range for {}", metric, e);
+                ctx.status(500).result("Failed to get tick range: " + e.getMessage());
             }
+            return;
         }
 
         try {
