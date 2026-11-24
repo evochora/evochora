@@ -832,29 +832,19 @@ public class H2Database extends AbstractDatabaseResource
     }
 
     /**
-     * Shuts the database down with SHUTDOWN IMMEDIATELY, then closes the wrappers and the pool.
+     * Shuts the database down with SHUTDOWN, then closes the wrappers and the pool.
      * <p>
-     * SHUTDOWN IMMEDIATELY closes the database and every connection to it without rolling back
-     * open transactions. This is critical for large databases (1+ TB), where the rollback that
-     * closing the wrappers' connections would otherwise start can take hours. The wrappers and
-     * the pool are closed afterwards, by {@link AbstractDatabaseResource#close()}; their
-     * connections are already dead then, which they report only at DEBUG level.
+     * SHUTDOWN stops H2's background writer and waits for it, writes every committed change H2
+     * still holds in memory to its file, rolls back what is still open and closes the file.
+     * Nothing committed may be lost here: an indexer acknowledges a batch only after committing
+     * it, and nothing redelivers an acknowledged batch. What is rolled back is at most the open
+     * transaction of a service that did not stop in time; its batch was not acknowledged and is
+     * redelivered on the next startup, and all pipeline writes are idempotent MERGE statements.
+     * The compaction H2 does while closing is bounded in time by its setting MAX_COMPACT_TIME, so
+     * the size of the database does not lengthen the shutdown.
      * <p>
-     * <strong>Data Safety:</strong> {@code SHUTDOWN IMMEDIATELY} discards whatever H2 has not yet
-     * written to its file, committed transactions included: H2 writes committed changes in the
-     * background, after a delay. A {@code CHECKPOINT} before it writes those changes first. It
-     * writes only what is pending, without rolling anything back or compacting the file, so the
-     * shutdown stays immediate. What is discarded then is only uncommitted work, which is safe
-     * because:
-     * <ul>
-     *   <li>All pipeline writes use idempotent MERGE statements</li>
-     *   <li>A batch whose writes were not committed is not acknowledged and is redelivered on the
-     *       next startup</li>
-     * </ul>
-     * A {@code CHECKPOINT} that fails is reported and the shutdown goes ahead.
-     * <p>
-     * <strong>Recovery:</strong> H2 MVStore performs automatic recovery on next startup,
-     * rolling back any partially written transactions.
+     * The wrappers and the pool are closed afterwards, by {@link AbstractDatabaseResource#close()};
+     * their connections are already dead then, which they report only at DEBUG level.
      */
     @Override
     public void close() {
@@ -862,9 +852,8 @@ public class H2Database extends AbstractDatabaseResource
             makeRoomForTheShutdownConnection();
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
-                checkpoint(stmt);
-                stmt.execute("SHUTDOWN IMMEDIATELY");
-                log.debug("H2 database '{}' shutdown immediately executed", getResourceName());
+                stmt.execute("SHUTDOWN");
+                log.debug("H2 database '{}' shutdown executed", getResourceName());
             } catch (SQLException e) {
                 // Handing the connection back after a successful shutdown reports the database
                 // as shut down, so this is the normal end as well as that of a database already
@@ -877,9 +866,9 @@ public class H2Database extends AbstractDatabaseResource
                     recordError("DATABASE_CLOSED_BY_FAILURE", "Database closed by a failure of its store",
                         "Database: " + getResourceName() + ", Error: " + e.getMessage());
                 } else {
-                    log.warn("H2 database '{}' SHUTDOWN IMMEDIATELY failed: {}",
+                    log.warn("H2 database '{}' SHUTDOWN failed: {}",
                         getResourceName(), e.getMessage());
-                    recordError("SHUTDOWN_FAILED", "SHUTDOWN IMMEDIATELY failed",
+                    recordError("SHUTDOWN_FAILED", "SHUTDOWN failed",
                         "Database: " + getResourceName() + ", Error: " + e.getMessage());
                 }
             }
@@ -893,7 +882,7 @@ public class H2Database extends AbstractDatabaseResource
      * <p>
      * The wrappers hold their connections until the pool closes, after the shutdown. With all of
      * them taken, the shutdown would wait for HikariCP's connection timeout and then fail, and
-     * the committed changes {@code CHECKPOINT} is there to write would be lost. HikariCP takes a
+     * the committed changes the shutdown is there to write would be lost. HikariCP takes a
      * new maximum pool size at runtime and opens the extra connection on demand. With a free
      * connection, the pool stays as configured.
      */
@@ -905,42 +894,6 @@ public class H2Database extends AbstractDatabaseResource
             log.debug("H2 database '{}': every pooled connection is in use, pool grown by one for the shutdown",
                 getResourceName());
         }
-    }
-
-    /**
-     * Writes the committed changes H2 still holds in memory to its file.
-     * <p>
-     * A database that is already shut down or closed by a failure is passed on to
-     * {@link #close()}, which reports the latter; any other failure is reported here, and the
-     * shutdown goes ahead without the changes that were still pending.
-     *
-     * @param stmt a statement on a connection of this database
-     * @throws SQLException if the database is already closed or dead
-     */
-    private void checkpoint(Statement stmt) throws SQLException {
-        try {
-            stmt.execute("CHECKPOINT");
-        } catch (SQLException e) {
-            if (isClosed(e)) {
-                throw e;
-            }
-            log.warn("H2 database '{}' CHECKPOINT failed, changes not yet written are lost: {}",
-                getResourceName(), e.getMessage());
-            recordError("CHECKPOINT_FAILED", "CHECKPOINT before shutdown failed",
-                "Database: " + getResourceName() + ", Error: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Whether a failure says that the database is no longer open: shut down, or killed by an
-     * I/O error of its store.
-     *
-     * @param e the failure H2 reported
-     * @return {@code true} if no further statement can reach the database
-     */
-    private static boolean isClosed(SQLException e) {
-        return e.getErrorCode() == ErrorCode.DATABASE_CALLED_AT_SHUTDOWN
-            || e.getErrorCode() == ErrorCode.DATABASE_IS_CLOSED;
     }
 
     /**
