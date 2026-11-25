@@ -17,11 +17,11 @@
 # ----------------------------
 # Values, set from the configuration with values { ... } in the organism's entry
 # ----------------------------
-.REQUIRE VALUE REPRODUCE_ENERGY_GATE  DATA:75000   # Reproduce for certain from here on, below with probability ER / gate
-.REQUIRE VALUE REPRODUCE_ENTROPY_GATE DATA:75000   # Reproduce for certain from here on, below with probability SR / gate
+.REQUIRE VALUE REPRODUCE_ENERGY_GATE  DATA:50000   # Reproduce above this energy, never at or below it
+.REQUIRE VALUE REPRODUCE_ENTROPY_GATE DATA:25000   # Reproduce above this entropy, never at or below it
 .REQUIRE VALUE REPRODUCE_CHILD_ENERGY DATA:50000   # What a child is given; a birth needs it and the
-                                                   # reproduction's UNIT_ENERGY, so the energy gate has to
-                                                   # lie well above their sum
+                                                   # reproduction's UNIT_ENERGY, and the reproduction
+                                                   # pauses until the organism holds their sum
 .IFDEF HOARDING
 .REQUIRE VALUE HOARD_CRITICAL DATA:5000            # Draw a ration from the store below this; above what a round
                                                    # costs, and with the reserve below the reproduction's UNIT_ENERGY
@@ -88,8 +88,8 @@ MAIN_LOOP: NOP^2
 
 .ORG 0|@+2
 .CONTROL REPRODUCING
-  QGTI %ER REPRODUCE_ENERGY_GATE OPEN; NOP^2   # Energy gate open...
-  QGTI %SR REPRODUCE_ENTROPY_GATE OPEN; NOP^2  # ...or entropy gate open
+  JGTI %ER REPRODUCE_ENERGY_GATE OPEN; NOP^2   # Energy gate open...
+  JGTI %SR REPRODUCE_ENTROPY_GATE OPEN; NOP^2  # ...or entropy gate open
   JMPI END; NOP^4; JMPI END; NOP^4
 .CASE OPEN
   SETI %RESULT CODE:0; NOP^2              # Silence counts as "not acted"

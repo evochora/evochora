@@ -21,7 +21,7 @@
 # in the body reaches the child empty and every child holds the same molecule there.
 #
 # Value CHILD_ENERGY, without default: the energy the child is given. A birth needs CHILD_ENERGY
-# and UNIT_ENERGY, so a gate that sends the main loop here has to lie above their sum.
+# and UNIT_ENERGY; with less, the birth returns PAUSED_LOW_ENERGY and the next call tries again.
 #
 # Values BODY_NW and BODY_SE, without default: the positions of the north-west and the south-east
 # cell of the whole body, in the main file written as POSITION(...).
@@ -46,7 +46,7 @@
 EXPORT .CONST ROWS 51                    # Rows of the extent, as the header declares; the main file closes the body with them
 
 .CONST UNIT_ENERGY  DATA:20000           # At least this much before an edge or a row, and besides CHILD_ENERGY before the birth
-.CONST ENTROPY_ROOM DATA:95000           # Above this a foreign cell is not taken: taking it costs entropy
+.CONST ENTROPY_ROOM DATA:45000           # Above this a foreign cell is not taken: taking it costs entropy
 
 .CONST PHASE_SHELL DATA:1                # The child's shell is being built
 .CONST PHASE_BODY  DATA:2                # The body is being copied into it
@@ -95,10 +95,10 @@ EXPORT .CONST PAUSED_FORK_FAILED DATA:5
 .CONST OUT_NW (BODY_NW - (1|1))          # The shell's north-west cell
 .CONST OUT_SE (BODY_SE + (1|1))          # The shell's south-east cell
 
-.PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # North edge, corners included
-.PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # South edge, corners included
-.PLACE STRUCTURE:100 OUT_NW[0]|(OUT_NW[1] + 1)..(OUT_SE[1] - 1)      # West edge
-.PLACE STRUCTURE:100 OUT_SE[0]|(OUT_NW[1] + 1)..(OUT_SE[1] - 1)      # East edge
+.PLACE STRUCTURE:10 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # North edge, corners included
+.PLACE STRUCTURE:10 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # South edge, corners included
+.PLACE STRUCTURE:10 OUT_NW[0]|(OUT_NW[1] + 1)..(OUT_SE[1] - 1)      # West edge
+.PLACE STRUCTURE:10 OUT_SE[0]|(OUT_NW[1] + 1)..(OUT_SE[1] - 1)      # East edge
 
 .ORG POSITION(BODY_SE[0]|BODY_NW[1])
 NE_CORNER:

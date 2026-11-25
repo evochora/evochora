@@ -1043,10 +1043,10 @@ Every file has an origin: in the main file it is `0|0`, in a file brought in wit
     .REQUIRE VALUE SE
     .CONST OUT_NW (NW - (1|1))
     .CONST OUT_SE (SE + (1|1))
-    .PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                  # north edge
-    .PLACE STRUCTURE:100 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                  # south edge
-    .PLACE STRUCTURE:100 OUT_NW[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # west edge
-    .PLACE STRUCTURE:100 OUT_SE[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)          # east edge
+    .PLACE STRUCTURE:10 OUT_NW[0]..OUT_SE[0]|OUT_NW[1]                   # north edge
+    .PLACE STRUCTURE:10 OUT_NW[0]..OUT_SE[0]|OUT_SE[1]                   # south edge
+    .PLACE STRUCTURE:10 OUT_NW[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)           # west edge
+    .PLACE STRUCTURE:10 OUT_SE[0]|(OUT_NW[1]+1)..(OUT_SE[1]-1)           # east edge
     ```
 
 ### Computing with Flags

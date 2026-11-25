@@ -115,7 +115,7 @@ evolution can turn.
 ## Know what a comparison compares
 
 Equality compares the molecule, order compares the number. `IFR` is met only by the same type
-with the same value, so it tells a `STRUCTURE:100` shell cell from a `CODE:100` instruction, and
+with the same value, so it tells a `STRUCTURE:10` shell cell from a `CODE:10` instruction, and
 `INR` is met by everything else, a different type included. `GTR`, `LTR` and their kin look at
 the numbers alone: `ENERGY:5` is greater than `DATA:3`. A comparison that has to be sure of the
 type therefore says so with a type test (`IFTR`, `INTR`) before it orders; `LETI %TMP ENERGY:0`

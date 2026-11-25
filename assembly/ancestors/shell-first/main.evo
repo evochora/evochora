@@ -15,7 +15,7 @@
 # Constants
 # ----------------------------
 .CONST REPRODUCTION_CONTINUE_THRESHOLD DATA:75000         # reproduce for certain from here on, below with probability ER / this value
-.CONST ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:75000 # reproduce for certain from here on, below with probability SR / this value
+.CONST ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:25000 # reproduce for certain from here on, below with probability SR / this value
 
 # ----------------------------
 # STRUCTURE shell, with a label on the body cell diagonally inside each corner
@@ -30,10 +30,10 @@
 # on its early characters, so the four differ in the prefix, far enough apart that no jump to
 # one of them can resolve to another.
 # ----------------------------
-.PLACE STRUCTURE:100 -1..110|-1      # North edge, corners included
-.PLACE STRUCTURE:100 -1..110|93      # South edge, corners included
-.PLACE STRUCTURE:100 -1|0..92        # West edge
-.PLACE STRUCTURE:100 110|0..92       # East edge
+.PLACE STRUCTURE:10 -1..110|-1      # North edge, corners included
+.PLACE STRUCTURE:10 -1..110|93      # South edge, corners included
+.PLACE STRUCTURE:10 -1|0..92        # West edge
+.PLACE STRUCTURE:10 110|0..92       # East edge
 
 .ORG 109|0
 NE_CORNER:

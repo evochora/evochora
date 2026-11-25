@@ -434,7 +434,7 @@ class GenomeHasherTest {
         // One cell set, three rules that disagree on which of its cells belong to the genome.
         env.setMolecule(new Molecule(Config.TYPE_CODE, 10, 0), ORGANISM_ID, new int[]{5, 5});
         env.setMolecule(new Molecule(Config.TYPE_STATE, 42, 0), ORGANISM_ID, new int[]{5, 6});
-        env.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100, 0), ORGANISM_ID, new int[]{5, 7});
+        env.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 10, 0), ORGANISM_ID, new int[]{5, 7});
 
         long underDefault = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION, DEFAULT_RULE);
         long underStateOnly = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION,
@@ -449,9 +449,9 @@ class GenomeHasherTest {
 
     @Test
     void structureShellIsDroppedByTheDefaultRuleAndKeptWithoutIt() {
-        // A body enclosed in a STRUCTURE:100 shell, as the ancestor builds it, and the
+        // A body enclosed in a STRUCTURE:10 shell, as the ancestor builds it, and the
         // same body without the shell.
-        Molecule shell = new Molecule(Config.TYPE_STRUCTURE, 100, 0);
+        Molecule shell = new Molecule(Config.TYPE_STRUCTURE, 10, 0);
         for (int x = 5; x <= 8; x++) {
             env.setMolecule(new Molecule(Config.TYPE_CODE, x, 0), ORGANISM_ID, new int[]{x, 5});
         }

@@ -74,7 +74,7 @@ class GenomeRuleTest {
         GenomeRule rule = new GenomeRule(GenomeRule.DEFAULT_ENTRIES);
 
         assertThat(rule.excludes(new Molecule(Config.TYPE_STATE, 5).toInt())).isTrue();
-        assertThat(rule.excludes(new Molecule(Config.TYPE_STRUCTURE, 100).toInt())).isTrue();
+        assertThat(rule.excludes(new Molecule(Config.TYPE_STRUCTURE, 10).toInt())).isTrue();
         assertThat(rule.excludes(new Molecule(Config.TYPE_STRUCTURE, 5).toInt())).isFalse();
         assertThat(rule.excludes(new Molecule(Config.TYPE_CODE, 0).toInt())).isFalse();
     }
