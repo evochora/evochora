@@ -296,7 +296,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 ## Key Libraries
 
-- **Typesafe Config**: Application configuration with environment variable support (`Config` objects)
+- **Typesafe Config**: Application configuration (`Config` objects); system properties override a setting, environment variables are available to substitutions
 - **SLF4J + Logback**: Structured logging (`LoggerFactory.getLogger()` instead of `System.out.println`)
 - **PicoCLI**: CLI framework with annotations (`@Command`, `@Option`, `@Parameters`)
 - **Javalin**: HTTP server for REST APIs; the node creates every instance through `JavalinFactory`

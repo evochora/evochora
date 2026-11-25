@@ -52,7 +52,7 @@ With fork options the recorder does not start a new run but continues a recorded
 `node fork`, and records a window of it tick by tick:
 
 ```bash
-tools/trace/run-trace.sh --config config/local.conf --fork-run <runId> --fork-from 96429820 \
+tools/trace/run-trace.sh --config config/my-experiment.conf --fork-run <runId> --fork-from 96429820 \
   /tmp/trace 500 'pipeline.services.trace-consumer.options.organisms = [185299, 187433]'
 ```
 

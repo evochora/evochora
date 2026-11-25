@@ -18,8 +18,11 @@ import java.security.ProtectionDomain;
  *       {@link #resolve(File, Config, ConfigMessageHandler)}); empty unless a caller passes one</li>
  *   <li>Java system properties ({@code -Dkey=value}), among them {@code evochora.home}, the
  *       project directory (see {@link #resolve(File, ConfigMessageHandler)})</li>
- *   <li>Environment variables (raw names, available for {@code ${?ENV_VAR}} substitutions)</li>
- *   <li>User configuration file (e.g., {@code config/evochora.conf} or {@code config/local.conf})</li>
+ *   <li>Environment variables, each under its own name: a configuration file takes one in with
+ *       a substitution such as {@code ${?ENV_VAR}}, and none of them sets a configuration path
+ *       by itself</li>
+ *   <li>User configuration file ({@code config/evochora.conf}, or the file of an experiment
+ *       given with {@code --config})</li>
  *   <li>Default reference configuration ({@code reference.conf} on the classpath)</li>
  * </ol>
  * <p>
@@ -134,8 +137,9 @@ public final class ConfigLoader {
      * library requires {@code reference.conf} to resolve on its own, and of the sources outside
      * that file it consults only the system properties.
      * <p>
-     * At each level, system properties and environment variables still take precedence over
-     * the discovered config file (see class-level documentation for the full priority hierarchy).
+     * At each level, system properties still take precedence over the discovered config file, and
+     * the environment variables stay available to its substitutions (see class-level
+     * documentation for the full priority hierarchy).
      *
      * <strong>Thread Safety:</strong> This method is not thread-safe. It is intended to be called
      * once during application startup from the main thread.

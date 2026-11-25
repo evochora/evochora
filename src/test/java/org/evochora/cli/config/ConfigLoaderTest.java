@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for {@link ConfigLoader} to verify the configuration priority hierarchy:
  * <ol>
- *   <li>System Properties (highest priority)</li>
- *   <li>Environment Variables</li>
+ *   <li>Override layer of the caller (highest priority)</li>
+ *   <li>System Properties</li>
  *   <li>Configuration File</li>
  *   <li>Default reference configuration (lowest priority)</li>
  * </ol>
