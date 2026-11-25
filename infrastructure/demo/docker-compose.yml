@@ -5,8 +5,8 @@ services:
     # nightly is overwritten by the next build. IMAGE_TAG remains the fallback so an existing
     # .env keeps working.
     image: ${EVOCHORA_IMAGE:-ghcr.io/evochora/evochora:${IMAGE_TAG:-nightly}}
-    # The user is now managed by the entrypoint.sh script to ensure correct permissions at runtime.
-    # user: "${UID:-1000}:${GID:-1000}"
+    # The image starts as root and its entrypoint hands over to the user the application runs as,
+    # so no user is named here.
     # Ports are no longer published directly to the host.
     # The Caddy reverse proxy will handle all incoming traffic.
     # ports:

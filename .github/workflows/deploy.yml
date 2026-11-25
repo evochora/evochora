@@ -139,7 +139,6 @@ jobs:
           INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
-          # UID and GID belong to the account on the server, so they are filled in there.
           {
             printf 'DOMAIN_NAME=%s\n' "$DOMAIN_NAME"
             printf 'IMAGE_TAG=%s\n' "$INPUT_TAG"
@@ -152,8 +151,6 @@ jobs:
             cd ~/app
 
             mv .env.incoming .env
-            echo "UID=$(id -u)" >> .env
-            echo "GID=$(id -g)" >> .env
 
             # Pull the new image version from the registry
             docker compose pull
