@@ -836,6 +836,15 @@ export class MinimapView {
     }
 
     /**
+     * Draws the minimap anew from the data it last received. A restart of the browser's graphics
+     * process erases every canvas: the minimap's own, and those its pictures are cached in.
+     */
+    redraw() {
+        this.organismOverlay.dropSprites();
+        this._renderFullMinimap();
+    }
+
+    /**
      * Clears the minimap state (e.g., when changing runs).
      */
     clear() {

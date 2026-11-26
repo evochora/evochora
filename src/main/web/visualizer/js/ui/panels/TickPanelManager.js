@@ -208,7 +208,6 @@ export class TickPanelManager {
         const rect = trackContainer.getBoundingClientRect();
         trackCanvas.width = Math.round(rect.width * dpr);
         trackCanvas.height = Math.round(rect.height * dpr);
-        this._ctx?.scale(dpr, dpr);
         this._canvasWidth = rect.width;
         this._canvasHeight = rect.height;
     }
@@ -226,6 +225,11 @@ export class TickPanelManager {
         const w = this._canvasWidth || 0;
         const h = this._canvasHeight || 0;
         if (w === 0 || h === 0) return;
+
+        // The scale is set at every render: resizing the canvas resets it, and so does the
+        // browser when the canvas loses its content with a restart of its graphics process
+        const scale = this.elements.trackCanvas.width / w;
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
         const state = this.getState();
         const ranges = state.ranges || [];

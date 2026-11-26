@@ -37,6 +37,14 @@ export class MinimapOrganismOverlay {
     }
 
     /**
+     * Drops the cached sprites, so that the next render draws them anew. A restart of the
+     * browser's graphics process erases what was drawn on a canvas, the sprites' among them.
+     */
+    dropSprites() {
+        this.spriteCache.clear();
+    }
+
+    /**
      * Returns the factor the configured sizes are scaled by on a canvas of the given size.
      * @param {{width: number, height: number}} canvasSize - Minimap canvas dimensions in pixels.
      * @returns {number} The factor, 1 on a canvas whose longer edge is {@link REFERENCE_EDGE} pixels

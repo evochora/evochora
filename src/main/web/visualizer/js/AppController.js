@@ -375,6 +375,32 @@ export class AppController {
     }
 
     /**
+     * Draws the view anew after the browser restored the lost graphics context of the environment
+     * grid. The grid has dropped what it drew, and the canvases of the minimap lost their content
+     * with the context.
+     * @returns {Promise<void>} A promise that resolves when the tick is drawn again.
+     */
+    async redrawAfterGraphicsRestore() {
+        if (!this.state.runId) return;
+        this.minimapView?.redraw();
+        await this.navigateToTick(this.state.currentTick, true);
+    }
+
+    /**
+     * Tells the user that the environment grid lost its graphics context for good: the browser
+     * turns graphics acceleration off after its graphics process has failed repeatedly. A reload
+     * draws the page without acceleration; a browser that refuses graphics altogether needs a
+     * restart.
+     */
+    showGraphicsLostNotice() {
+        showErrorNotice({
+            title: 'The graphics stopped working',
+            text: 'The browser has turned off the graphics acceleration this page uses. Reload the page to continue. If the view stays empty after reloading, restart the browser.',
+            actions: [{ label: 'Reload', primary: true, onClick: () => window.location.reload() }]
+        });
+    }
+
+    /**
      * Initializes the tick and organism panel managers.
      * @private
      */

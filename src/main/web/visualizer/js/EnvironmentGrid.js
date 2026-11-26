@@ -179,6 +179,11 @@ export class EnvironmentGrid {
 
         this.container.innerHTML = '';
         this.container.appendChild(canvas);
+        // PixiJS keeps a lost graphics context for restoring and builds its own objects anew;
+        // what the visualizer drew is drawn again. A browser that has turned graphics acceleration
+        // off restores nothing, and the user is told after a while.
+        canvas.addEventListener('webglcontextlost', () => this._onGraphicsLost());
+        canvas.addEventListener('webglcontextrestored', () => this._onGraphicsRestored());
 
         this.app.stage.addChild(this.gridBackground, this.cellContainer, this.textContainer, this.seamLines, this.organismContainer);
         this.organismContainer.addChild(this._selectionRing);
@@ -857,6 +862,34 @@ export class EnvironmentGrid {
                 this._prefetchAbortController = null;
             }
         }, { timeout: 500 }); // Longer timeout for ring prefetch - less urgent
+    }
+
+    /** Milliseconds a lost graphics context is waited for before the user is told it is gone. */
+    static GRAPHICS_RESTORE_WAIT_MS = 10_000;
+
+    /**
+     * Waits for the lost graphics context to come back, and tells the controller if it does not.
+     * @private
+     */
+    _onGraphicsLost() {
+        clearTimeout(this._graphicsRestoreTimer);
+        this._graphicsRestoreTimer = setTimeout(
+            () => this.controller?.showGraphicsLostNotice(),
+            EnvironmentGrid.GRAPHICS_RESTORE_WAIT_MS);
+    }
+
+    /**
+     * Rebuilds what the visualizer drew after the browser restored the lost graphics context. A
+     * restart of the browser's graphics process erases canvases too, among them those the bitmap
+     * fonts are drawn in: the drawn cells and markers are dropped, the fonts installed anew, and
+     * the controller draws the view again.
+     * @private
+     */
+    _onGraphicsRestored() {
+        clearTimeout(this._graphicsRestoreTimer);
+        this.clear();
+        this.detailedRenderer.init();
+        this.controller?.redrawAfterGraphicsRestore();
     }
 
     /**
@@ -1833,6 +1866,17 @@ export class EnvironmentGrid {
  * Abstract base class for a rendering strategy.
  * Provides shared viewport caching logic via a loaded mask.
  */
+/**
+ * Takes a display object out of its container and frees what it holds. Taking it out alone keeps
+ * its geometry and textures alive.
+ * @param {PIXI.Container|null|undefined} object - The object to drop, or nothing.
+ */
+function dropDisplayObject(object) {
+    if (!object) return;
+    object.parent?.removeChild(object);
+    object.destroy();
+}
+
 class BaseRendererStrategy {
     constructor(grid) {
         this.grid = grid;
@@ -1939,34 +1983,58 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
         // What a cell holds that the loaded region does not name: nothing at all
         this.emptyCell = { type: 'CODE', value: 0, ownerId: 0, opcodeName: null, marker: 0 };
-        // The font size follows the cell size the text is drawn at
-        this.cellFont = {
-            fontFamily: 'Monospaced, "Courier New"',
-            fill: 0xffffff,
-            align: 'center',
-        };
-
         // LRU tracking for eviction
         this._cellAccessTime = new Map(); // key -> timestamp
+
+        // Counts the ticks the cells were drawn for. A cell remembers the count it was drawn at, and
+        // once the cells of a new tick are drawn, the cells of an earlier one are dropped.
+        this._generation = 0;
+        this._dropOlderGenerations = false;
+    }
+
+    /** Name of the bitmap font of the cell texts. */
+    static CELL_FONT = 'evochora-cell';
+
+    /** Name of the bitmap font of the data pointer indices. */
+    static DP_FONT = 'evochora-dp';
+
+    /**
+     * Installs the bitmap fonts the texts are drawn with, replacing fonts installed before. Each
+     * font is drawn once in white into a glyph texture that all its texts share; a text takes its
+     * colour from its tint and its size from scaling the glyphs. A font given only by its style
+     * instead would be drawn anew for every text whose style carries a drop shadow.
+     */
+    init() {
+        for (const name of [DetailedRendererStrategy.CELL_FONT, DetailedRendererStrategy.DP_FONT]) {
+            if (PIXI.Cache.has(`${name}-bitmap`)) PIXI.BitmapFont.uninstall(name);
+        }
+        const style = { fontFamily: 'Monospaced, "Courier New"', fontSize: 32, fill: 0xffffff };
+        const resolution = (window.devicePixelRatio || 1) * 2;
+        const chars = [[' ', '~']];
+        PIXI.BitmapFont.install({ name: DetailedRendererStrategy.CELL_FONT, style, chars, resolution });
+        PIXI.BitmapFont.install({
+            name: DetailedRendererStrategy.DP_FONT,
+            style: { ...style, fontWeight: '900', dropShadow: { color: 0x000000, alpha: 0.8, blur: 1, angle: Math.PI / 4, distance: 2 } },
+            chars,
+            resolution,
+        });
     }
 
     clear() {
         for (const { background, text } of this.cellObjects.values()) {
-            if (background) this.grid.cellContainer.removeChild(background);
-            if (text) this.grid.textContainer.removeChild(text);
+            dropDisplayObject(background);
+            dropDisplayObject(text);
         }
         this.cellObjects.clear();
         this._cellAccessTime.clear();
         this.clearCache(); // From base class (clears _loadedMask)
 
-        for (const g of this.ipGraphics.values()) {
-            this.grid.organismContainer.removeChild(g);
-        }
+        for (const g of this.ipGraphics.values()) dropDisplayObject(g);
         this.ipGraphics.clear();
 
         for (const { graphics, text } of this.dpGraphics.values()) {
-            if (graphics) this.grid.organismContainer.removeChild(graphics);
-            if (text) this.grid.organismContainer.removeChild(text);
+            dropDisplayObject(graphics);
+            dropDisplayObject(text);
         }
         this.dpGraphics.clear();
     }
@@ -1991,7 +2059,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 opcodeName: cell.opcodeName || null,
                 marker: cell.marker || 0
             };
-            this.drawCell(cellData, coords);
+            this.drawCell(cellData, coords, this._generation);
 
             // LRU: Update access time
             this._cellAccessTime.set(key, now);
@@ -2009,15 +2077,15 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 // A cell the response does not name is empty, and an empty cell a deletion of the
                 // lineage cleared keeps its mark on the empty background.
                 if (this.grid.markAt(cx, cy, null, 0, true)) {
-                    this.drawCell(this.emptyCell, [cx, cy]);
+                    this.drawCell(this.emptyCell, [cx, cy], this._generation);
                     this._cellAccessTime.set(key, now);
                     continue;
                 }
 
                 const entry = this.cellObjects.get(key);
                 if (entry) {
-                    if (entry.background) this.grid.cellContainer.removeChild(entry.background);
-                    if (entry.text) this.grid.textContainer.removeChild(entry.text);
+                    dropDisplayObject(entry.background);
+                    dropDisplayObject(entry.text);
                     this.cellObjects.delete(key);
                     this._cellAccessTime.delete(key);
                 }
@@ -2027,16 +2095,36 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         // Mark region as loaded (base class method)
         this._markRegionLoaded(region);
 
+        // The first cells of a new tick are drawn: what an earlier tick left would show its content
+        if (this._dropOlderGenerations) {
+            this._dropOlderGenerations = false;
+            for (const [key, entry] of this.cellObjects) {
+                if (entry.generation === this._generation) continue;
+                dropDisplayObject(entry.background);
+                dropDisplayObject(entry.text);
+                this.cellObjects.delete(key);
+                this._cellAccessTime.delete(key);
+            }
+        }
+
         // LRU Eviction: Remove oldest cells if over budget
         if (this.cellObjects.size > DetailedRendererStrategy.MAX_CELLS) {
             const excess = this.cellObjects.size - DetailedRendererStrategy.MAX_CELLS;
             this._evictOldestCells(excess);
         }
     }
-    
-    drawCell(cell, pos) {
+
+    /**
+     * Draws a cell, reusing the graphics it was drawn with before.
+     * @param {object} cell - The molecule the cell holds.
+     * @param {number[]} pos - The cell's coordinates.
+     * @param {number} [generation] - The tick count the cell is drawn for; without it, a cell keeps
+     *        the count it was drawn at before, and a new one takes the current count.
+     */
+    drawCell(cell, pos, generation) {
         const key = `${pos[0]},${pos[1]}`;
-        let { background, text } = this.cellObjects.get(key) || {};
+        const existing = this.cellObjects.get(key);
+        let { background, text } = existing || {};
 
         const cellSize = this.grid.getCurrentCellSize();
         const x = pos[0] * cellSize;
@@ -2072,16 +2160,16 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             }
 
             if (!text) {
-                text = new PIXI.Text({ text: label, style: { ...this.cellFont, fontSize: cellSize * 0.4, fill: this.getTextColorForType(cell.type) }});
+                text = new PIXI.BitmapText({ text: label, style: { fontFamily: DetailedRendererStrategy.CELL_FONT, fontSize: cellSize * 0.4, align: 'center' }});
                 text.anchor.set(0.5);
                 text.position.set(x + cellSize / 2, y + cellSize / 2);
                 this.grid.textContainer.addChild(text);
             } else {
                 text.text = label;
-                text.style.fill = this.getTextColorForType(cell.type);
             }
+            text.tint = this.getTextColorForType(cell.type);
         } else if (text) {
-            this.grid.textContainer.removeChild(text);
+            dropDisplayObject(text);
             text = null;
         }
 
@@ -2096,7 +2184,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
         // The cell's molecule stays with its graphics so that a changed selection can draw the
         // cell again without fetching the region a second time.
-        this.cellObjects.set(key, { background, text, cell });
+        this.cellObjects.set(key, { background, text, cell, generation: generation ?? existing?.generation ?? this._generation });
     }
 
     /**
@@ -2138,6 +2226,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
     clearCache() {
         super.clearCache();
         this._cellAccessTime.clear();
+        this._generation++;
+        this._dropOlderGenerations = true;
     }
 
     /**
@@ -2159,8 +2249,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         for (const [key] of sorted) {
             const entry = this.cellObjects.get(key);
             if (entry) {
-                if (entry.background) this.grid.cellContainer.removeChild(entry.background);
-                if (entry.text) this.grid.textContainer.removeChild(entry.text);
+                dropDisplayObject(entry.background);
+                dropDisplayObject(entry.text);
                 this.cellObjects.delete(key);
             }
             this._cellAccessTime.delete(key);
@@ -2188,7 +2278,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         // Remove old IP graphics
         for (const [orgId, g] of this.ipGraphics.entries()) {
             if (!newOrganismIds.has(orgId)) {
-                this.grid.organismContainer.removeChild(g);
+                dropDisplayObject(g);
                 this.ipGraphics.delete(orgId);
             }
         }
@@ -2290,7 +2380,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             let dpEntry = this.dpGraphics.get(cellKey);
             if (!dpEntry) {
                 const graphics = new PIXI.Graphics();
-                const text = new PIXI.Text({ text: "", style: { ...this.cellFont, fontSize: this.grid.getCurrentCellSize() * 0.45, fontWeight: "900", fill: entry.color, dropShadow: true, dropShadowColor: "rgba(0,0,0,0.8)", dropShadowBlur: 1, dropShadowAngle: Math.PI / 4, dropShadowDistance: 1 }});
+                const text = new PIXI.BitmapText({ text: "", style: { fontFamily: DetailedRendererStrategy.DP_FONT, fontSize: this.grid.getCurrentCellSize() * 0.45 }});
                 text.anchor.set(0.5);
                 dpEntry = { graphics, text };
                 this.dpGraphics.set(cellKey, dpEntry);
@@ -2323,7 +2413,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             g.endFill();
             if (label) {
                 label.text = entry.indices.join(",");
-                label.style.fill = entry.color;
+                label.tint = entry.color;
                 // Center text in the larger DP marker
                 label.position.set(x + dpSize / 2, y + dpSize / 2);
             }
@@ -2333,8 +2423,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         // Cleanup unused DP graphics
         for (const [cellKey, dpEntry] of this.dpGraphics.entries()) {
             if (!seenDpKeys.has(cellKey)) {
-                if (dpEntry.graphics) this.grid.organismContainer.removeChild(dpEntry.graphics);
-                if (dpEntry.text) this.grid.organismContainer.removeChild(dpEntry.text);
+                dropDisplayObject(dpEntry.graphics);
+                dropDisplayObject(dpEntry.text);
                 this.dpGraphics.delete(cellKey);
             }
         }
@@ -2450,9 +2540,9 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         this.offscreenCanvas = null;
         this.clearCache();
 
-        for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);
+        for (const g of this.ipGraphics.values()) dropDisplayObject(g);
         this.ipGraphics.clear();
-        for (const { graphics } of this.dpGraphics.values()) this.grid.organismContainer.removeChild(graphics);
+        for (const { graphics } of this.dpGraphics.values()) dropDisplayObject(graphics);
         this.dpGraphics.clear();
     }
     
@@ -2705,9 +2795,9 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         const MARKER_SIZE = Math.max(6, scale + 3);
 
         // Clear previous organism markers from their containers
-        for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);
+        for (const g of this.ipGraphics.values()) dropDisplayObject(g);
         this.ipGraphics.clear();
-        for (const { graphics } of this.dpGraphics.values()) this.grid.organismContainer.removeChild(graphics);
+        for (const { graphics } of this.dpGraphics.values()) dropDisplayObject(graphics);
         this.dpGraphics.clear();
 
         // --- IPs ---
