@@ -87,13 +87,18 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         FAMILY_NAMES = familyClassToSimpleName.values().stream().sorted().collect(Collectors.toList());
         
         // Build schema dynamically from the discovered family names
-        ParquetSchema.Builder builder = ParquetSchema.builder();
-        builder.column("tick", ColumnType.BIGINT);
+        ParquetSchema.Builder builder = ParquetSchema.builder(
+            "Which instructions the living organisms execute, by instruction family. One row per "
+            + "recorded tick. A recorded tick holds the one instruction each living organism "
+            + "executed at it, so the rows are a sample of what runs.");
+        builder.column("tick", ColumnType.BIGINT, "The recorded tick the row describes.");
         for (String familyName : FAMILY_NAMES) {
-            builder.column(familyName, ColumnType.INTEGER);
+            builder.column(familyName, ColumnType.INTEGER,
+                "Living organisms whose instruction at the tick belongs to the family " + familyName + ".");
         }
         // Track failed instruction count for failure rate calculation
-        builder.column("failure_count", ColumnType.INTEGER);
+        builder.column("failure_count", ColumnType.INTEGER,
+            "Living organisms whose instruction at the tick failed, whatever its family.");
         SCHEMA = builder.build();
     }
 

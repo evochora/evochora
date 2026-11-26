@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
@@ -22,17 +23,6 @@ import com.typesafe.config.Config;
 /**
  * Holds how many organisms are alive at a recording and how their energy and entropy are spread
  * among them.
- * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code alive_count} - Number of living organisms</li>
- *   <li>{@code bodied_count} - Number of living organisms carrying a genome (genome hash != 0)</li>
- *   <li>{@code energy_p10} … {@code energy_p90} - Energy of the living organisms at the 10th, 25th,
- *       50th, 75th and 90th percentile, as % of maxEnergy (0-100)</li>
- *   <li>{@code entropy_p10} … {@code entropy_p90} - Entropy of the living organisms at the same
- *       percentiles, as % of maxEntropy (0-100)</li>
- * </ul>
  * <p>
  * The spread is reported rather than an average because an average hides the shape of the
  * population: the same mean stands for a population where every organism sits at that value and
@@ -74,17 +64,40 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
     private static final ParquetSchema SCHEMA = buildSchema();
 
     private static ParquetSchema buildSchema() {
-        ParquetSchema.Builder builder = ParquetSchema.builder()
-            .column("tick", ColumnType.BIGINT)
-            .column("alive_count", ColumnType.INTEGER)
-            .column("bodied_count", ColumnType.INTEGER);
-        for (String column : ENERGY_COLUMNS) {
-            builder.column(column, ColumnType.DOUBLE);
+        ParquetSchema.Builder builder = ParquetSchema.builder(
+                "The living organisms at a recorded tick: how many there are, and how their energy "
+                + "and their entropy are spread among them. One row per recorded tick.")
+            .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+            .column("alive_count", ColumnType.INTEGER, "Organisms alive at the tick.")
+            .column("bodied_count", ColumnType.INTEGER,
+                "Living organisms whose body holds a genome. alive_count minus this value is the "
+                + "number of living organisms without one.");
+        for (int i = 0; i < PERCENTILES.length; i++) {
+            builder.column(ENERGY_COLUMNS.get(i), ColumnType.DOUBLE,
+                percentileOf("energy", PERCENTILES[i])
+                + ", in percent of the maximum energy of an organism. Empty when no organism is alive.");
         }
-        for (String column : ENTROPY_COLUMNS) {
-            builder.column(column, ColumnType.DOUBLE);
+        for (int i = 0; i < PERCENTILES.length; i++) {
+            builder.column(ENTROPY_COLUMNS.get(i), ColumnType.DOUBLE,
+                percentileOf("entropy", PERCENTILES[i])
+                + ", in percent of the limit above which an organism dies. Empty when no organism is alive.");
         }
         return builder.build();
+    }
+
+    /**
+     * Says which value of the living organisms a percentile column holds.
+     *
+     * @param quantity   what is measured, "energy" or "entropy"
+     * @param percentile the percentile
+     * @return the opening of the column's description, which names the median as such
+     */
+    private static String percentileOf(String quantity, int percentile) {
+        if (percentile == 50) {
+            return "Median " + quantity + " of the living organisms";
+        }
+        return quantity.substring(0, 1).toUpperCase(Locale.ROOT) + quantity.substring(1)
+            + " of the living organisms at the " + percentile + "th percentile";
     }
 
     /** Maximum energy per organism, used for percentage normalization. */

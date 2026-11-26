@@ -19,21 +19,6 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 /**
  * Records what the mutation plugins did to each newborn, one row per changed molecule.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording the event was reported in</li>
- *   <li>{@code birth_tick}, {@code organism_id}, {@code parent_id} - the newborn and its parent</li>
- *   <li>{@code genome_hash}, {@code parent_genome_hash} - its genome and the parent's at the
- *       birth, so a row joins against the lineage and population tables</li>
- *   <li>{@code event_index} - ordinal of the event within this birth, in the order the plugins
- *       reported it</li>
- *   <li>{@code plugin_class}, {@code kind} - which plugin did it and what it calls the operation</li>
- *   <li>{@code position} - where the molecule sits relative to the organism's own origin, as a
- *       JSON list such as {@code [13,4]}; DuckDB reads it as a typed list with
- *       {@code position::INTEGER[]}</li>
- *   <li>{@code old_value}, {@code new_value} - the packed molecule before and after the write</li>
- * </ul>
- * <p>
  * <strong>What it is for.</strong> Without it, what a mutation did has to be reconstructed by
  * diffing a child's body against its parent's, which needs both bodies recorded and produces
  * heuristics rather than facts. With the writes themselves in a table, a mutation class against
@@ -53,19 +38,30 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  */
 public class MutationEventsPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("birth_tick", ColumnType.BIGINT)
-        .column("organism_id", ColumnType.INTEGER)
-        .column("parent_id", ColumnType.INTEGER)
-        .column("genome_hash", ColumnType.BIGINT)
-        .column("parent_genome_hash", ColumnType.BIGINT)
-        .column("event_index", ColumnType.INTEGER)
-        .column("plugin_class", ColumnType.VARCHAR)
-        .column("kind", ColumnType.VARCHAR)
-        .column("position", ColumnType.VARCHAR)
-        .column("old_value", ColumnType.INTEGER)
-        .column("new_value", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "What the mutation plugins wrote into each newborn, molecule by molecule. One row per "
+            + "molecule a mutation changed; a mutation that changed no molecule has no row. The "
+            + "table has one level of detail.")
+        .column("tick", ColumnType.BIGINT,
+            "The recorded tick that reported the mutation, the first one after the birth.")
+        .column("birth_tick", ColumnType.BIGINT, "Tick at which the newborn was born.")
+        .column("organism_id", ColumnType.INTEGER, "Id of the newborn that received the mutation.")
+        .column("parent_id", ColumnType.INTEGER, "Id of the organism the newborn was replicated from.")
+        .column("genome_hash", ColumnType.BIGINT,
+            "Hash of the newborn's genome at its birth, after the mutation, a signed 64-bit number.")
+        .column("parent_genome_hash", ColumnType.BIGINT, "Hash of the parent's genome at this birth.")
+        .column("event_index", ColumnType.INTEGER,
+            "Number of the mutation among the mutations of this birth, counted from 0 in the order "
+            + "the plugins reported them. Rows with the same organism_id and event_index are the "
+            + "molecules of one mutation.")
+        .column("plugin_class", ColumnType.VARCHAR, "Class name of the mutation plugin that wrote the molecule.")
+        .column("kind", ColumnType.VARCHAR, "What that plugin calls the mutation, such as duplication.")
+        .column("position", ColumnType.VARCHAR,
+            "Where the molecule sits, as its offset from the origin of the newborn, written as a "
+            + "JSON list such as [13,4].")
+        .column("old_value", ColumnType.INTEGER,
+            "The molecule before the write, as the one number that holds its type and its value.")
+        .column("new_value", ColumnType.INTEGER, "The molecule after the write, in the same form.")
         .build();
 
     /**

@@ -24,22 +24,6 @@ import com.typesafe.config.Config;
 /**
  * Counts a recording's births by what made each newborn's genome what it is, one row per recording.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording</li>
- *   <li>{@code unchanged} - genome equal to the parent's, copied without a difference</li>
- *   <li>{@code bodiless} - newborn without a genome at all</li>
- *   <li>{@code no_event} - genome differs and no plugin claims it: a defective copy, or cells
- *       another organism overwrote</li>
- *   <li>{@code duplication}, {@code deletion}, {@code instruction_insertion},
- *       {@code label_insertion}, {@code substitution} - the birth carries events of exactly this
- *       one kind</li>
- *   <li>{@code multiple} - the birth carries events of two or more kinds, so two or more plugins
- *       changed this genome</li>
- *   <li>{@code other} - the birth carries events of exactly one kind, and that kind is none of the
- *       five above: a mutation plugin from outside this project</li>
- * </ul>
- * <p>
  * <strong>How a birth is sorted.</strong> {@link BirthVariation} decides, and the columns follow
  * its classes in its order. Every birth counts in exactly one column, so the counts of a row add
  * up to the births of that recording.
@@ -147,11 +131,17 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
     }
 
     private static ParquetSchema buildSchema() {
-        ParquetSchema.Builder builder = ParquetSchema.builder().column("tick", ColumnType.BIGINT);
+        ParquetSchema.Builder builder = ParquetSchema.builder(
+                "Births by how the newborn's genome came about. One row per recorded tick that "
+                + "reports births; every birth counts in exactly one column. A row of a coarser "
+                + "level adds up the births of its window, so every level holds all births of the "
+                + "run and the births of a range are the sum of its rows.")
+            .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.");
         for (String column : COUNT_COLUMNS) {
             // Births are events between two recordings, not a state at one of them: a coarser
             // level has to add the recordings of its window, or it would show a tenth of them
-            builder.column(column, ColumnType.INTEGER, Aggregation.SUM);
+            builder.column(column, ColumnType.INTEGER, Aggregation.SUM,
+                "Births since the previous row where " + BirthVariation.meaningOf(column) + ".");
         }
         return builder.build();
     }

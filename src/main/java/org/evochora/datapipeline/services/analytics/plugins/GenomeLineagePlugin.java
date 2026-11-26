@@ -17,15 +17,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
  * Records which genome descends from which, so that the lineage of a run can be reconstructed
  * without asking a running node about individual organisms.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording the genome first appeared in</li>
- *   <li>{@code genome_hash} - the genome</li>
- *   <li>{@code parent_genome_hash} - the genome it arose from, {@code NULL} for a founding
- *       organism and {@code 0} when the parent carried no genome at all</li>
- *   <li>{@code first_birth_tick} - the earliest birth among its carriers in that recording</li>
- * </ul>
- * <p>
  * <strong>What it is for.</strong> A selective sweep is one genome's descendants displacing
  * everything else. Seeing it requires knowing who descends from whom - which no aggregate curve
  * shows, and which no population count carries: with no edge written down, the only way back to
@@ -57,11 +48,19 @@ import org.evochora.datapipeline.api.contracts.TickData;
  */
 public class GenomeLineagePlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("genome_hash", ColumnType.BIGINT)
-        .column("parent_genome_hash", ColumnType.BIGINT)
-        .column("first_birth_tick", ColumnType.BIGINT)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "Which genome arose from which. One row per recorded tick, genome and parent genome, "
+            + "wherever organisms born since the previous recorded tick carry a genome their parent "
+            + "did not. A genome that arises again later has a row each time, so it can have more "
+            + "than one. The table has one level of detail.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick that reported the newborns.")
+        .column("genome_hash", ColumnType.BIGINT,
+            "Hash of the genome that arose, a signed 64-bit number. Equal hashes are equal genomes.")
+        .column("parent_genome_hash", ColumnType.BIGINT,
+            "Hash of the genome it arose from. Empty for the genome of an ancestor, an organism the "
+            + "run started with, and 0 when the parent had no genome.")
+        .column("first_birth_tick", ColumnType.BIGINT,
+            "The earliest birth among the newborns of this row, as a tick.")
         .build();
 
     /** One genome and the genome it arose from; {@code parentGenome} is null for a founder. */

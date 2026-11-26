@@ -20,15 +20,6 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 /**
  * Measures how varied the living population is, in four numbers per recording.
  * <p>
- * <strong>Schema:</strong>
- * <ul>
- *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code shannon_index} - Shannon diversity index (H = -&Sigma;(p&iota; &times; ln(p&iota;)))</li>
- *   <li>{@code total_genomes} - Cumulative count of unique genomes ever observed (from pipeline)</li>
- *   <li>{@code active_genomes} - Count of genomes with at least one living organism</li>
- *   <li>{@code dominant_share} - Population share of the most common genome (0.0-1.0)</li>
- * </ul>
- * <p>
  * <strong>What these numbers can and cannot show.</strong> They describe the spread of the
  * population at one moment, and they do it without knowing which genome descends from which.
  * That makes them blind to displacement: where mutation creates new genomes faster than selection
@@ -42,12 +33,20 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
  */
 public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("shannon_index", ColumnType.DOUBLE)
-        .column("total_genomes", ColumnType.INTEGER)
-        .column("active_genomes", ColumnType.INTEGER)
-        .column("dominant_share", ColumnType.DOUBLE)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "How varied the genomes of the living organisms are. One row per recorded tick. Living "
+            + "organisms without a genome are left out of every value.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("shannon_index", ColumnType.DOUBLE,
+            "Shannon index of the living genomes: minus the sum over the genomes of p times ln(p), "
+            + "where p is the share of a genome among the living organisms that carry one. 0 when "
+            + "all carry the same genome.")
+        .column("total_genomes", ColumnType.INTEGER,
+            "Distinct genomes the run has produced so far.")
+        .column("active_genomes", ColumnType.INTEGER,
+            "Distinct genomes with at least one living carrier.")
+        .column("dominant_share", ColumnType.DOUBLE,
+            "Share of the most common genome among the living organisms that carry one, from 0 to 1.")
         .build();
 
     /** Bytes per entry of the counting map: key, value and open-addressing overhead. */

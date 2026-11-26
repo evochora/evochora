@@ -18,17 +18,6 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 /**
  * Reports how long the organisms that died recently had lived.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code death_count} - Organisms in this recording that had died; the sample the
- *       percentiles rest on</li>
- *   <li>{@code deaths_total} - Deaths since the run began, a running total the chart differences
- *       so the number of deaths stays right on a coarse level of detail</li>
- *   <li>{@code death_lifetime_p10}, {@code p25}, {@code p50}, {@code p75}, {@code p90} -
- *       percentiles of their lifetimes, in ticks</li>
- * </ul>
- * <p>
  * A lifetime is {@code death_tick - birth_tick}. Both are written by the simulation at the moment
  * they happen, so the lifetime is exact no matter how coarsely the run records - unlike the moment
  * of observation, which is a recording and therefore later than the death.
@@ -51,15 +40,25 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  */
 public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("death_count", ColumnType.INTEGER)
-        .column("deaths_total", ColumnType.BIGINT)
-        .column("death_lifetime_p10", ColumnType.BIGINT)
-        .column("death_lifetime_p25", ColumnType.BIGINT)
-        .column("death_lifetime_p50", ColumnType.BIGINT)
-        .column("death_lifetime_p75", ColumnType.BIGINT)
-        .column("death_lifetime_p90", ColumnType.BIGINT)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "How long the organisms that died had lived. One row per recorded tick that reports "
+            + "deaths; a recorded tick without deaths has no row.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("death_count", ColumnType.INTEGER,
+            "Organisms this recorded tick reports as dead. The percentiles of the row rest on them.")
+        .column("deaths_total", ColumnType.BIGINT,
+            "Deaths since the run began. The deaths between two rows are the change of this value, "
+            + "exact on every level of detail.")
+        .column("death_lifetime_p10", ColumnType.BIGINT,
+            "Lifetime of those organisms at the 10th percentile, from birth to death, in ticks.")
+        .column("death_lifetime_p25", ColumnType.BIGINT,
+            "Lifetime of those organisms at the 25th percentile, from birth to death, in ticks.")
+        .column("death_lifetime_p50", ColumnType.BIGINT,
+            "Median lifetime of those organisms, from birth to death, in ticks.")
+        .column("death_lifetime_p75", ColumnType.BIGINT,
+            "Lifetime of those organisms at the 75th percentile, from birth to death, in ticks.")
+        .column("death_lifetime_p90", ColumnType.BIGINT,
+            "Lifetime of those organisms at the 90th percentile, from birth to death, in ticks.")
         .build();
 
     /** Reused across ticks to keep the sampling path free of per-tick allocation. */

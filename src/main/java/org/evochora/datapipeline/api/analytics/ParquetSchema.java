@@ -12,13 +12,18 @@ import java.util.List;
  * <p>
  * <strong>Example:</strong>
  * <pre>{@code
- * ParquetSchema schema = ParquetSchema.builder()
- *     .column("tick", ColumnType.BIGINT)
- *     .column("alive_count", ColumnType.INTEGER)
- *     .column("avg_energy", ColumnType.DOUBLE)
- *     .column("births", ColumnType.INTEGER, Aggregation.SUM)
+ * ParquetSchema schema = ParquetSchema.builder("The living organisms and the births among them.")
+ *     .column("tick", ColumnType.BIGINT, "Tick of the recording.")
+ *     .column("alive_count", ColumnType.INTEGER, "Organisms alive at the tick.")
+ *     .column("avg_energy", ColumnType.DOUBLE, "Mean energy of the living organisms.")
+ *     .column("births", ColumnType.INTEGER, Aggregation.SUM, "Organisms born since the previous row.")
  *     .build();
  * }</pre>
+ * <p>
+ * <strong>Descriptions.</strong> The table and every column say in a sentence what they hold. The
+ * descriptions travel with the data: the indexer writes them next to the files of a run, and
+ * whoever reads a table reads them there instead of in this code. They are therefore written for
+ * a reader who has the table and nothing else.
  * <p>
  * <strong>Aggregation.</strong> Every column says how it survives a coarser level of detail: a
  * {@link Aggregation#SAMPLE} column, the default, keeps the value of the recording the level's row
@@ -30,10 +35,21 @@ import java.util.List;
  */
 public final class ParquetSchema {
     
+    private final String description;
     private final List<Column> columns;
     
-    private ParquetSchema(List<Column> columns) {
+    private ParquetSchema(String description, List<Column> columns) {
+        this.description = description;
         this.columns = Collections.unmodifiableList(new ArrayList<>(columns));
+    }
+
+    /**
+     * Says what the table holds and what one row of it is.
+     *
+     * @return Description of the table
+     */
+    public String getDescription() {
+        return description;
     }
     
     /**
@@ -136,10 +152,12 @@ public final class ParquetSchema {
     /**
      * Creates a new schema builder.
      *
+     * @param description What the table holds and what one row of it is
      * @return New builder instance
+     * @throws IllegalArgumentException if the description is null or empty
      */
-    public static Builder builder() {
-        return new Builder();
+    public static Builder builder(String description) {
+        return new Builder(description);
     }
     
     /**
@@ -148,16 +166,18 @@ public final class ParquetSchema {
      * @param name Column name (must be valid SQL identifier)
      * @param type Column data type
      * @param aggregation How the column carries into a coarser level of detail
+     * @param description What a value of the column says, with its unit where it has one
      */
-    public record Column(String name, ColumnType type, Aggregation aggregation) {
+    public record Column(String name, ColumnType type, Aggregation aggregation, String description) {
         /**
          * Creates a new column definition.
          *
          * @param name Column name (must not be null or empty)
          * @param type Column type (must not be null)
          * @param aggregation Aggregation (must not be null)
-         * @throws IllegalArgumentException if name is null/empty, type or aggregation is null, or
-         *         a summed column has a type whose values cannot be added
+         * @param description Description (must not be null or empty)
+         * @throws IllegalArgumentException if name or description is null/empty, type or
+         *         aggregation is null, or a summed column has a type whose values cannot be added
          */
         public Column {
             if (name == null || name.isBlank()) {
@@ -168,6 +188,9 @@ public final class ParquetSchema {
             }
             if (aggregation == null) {
                 throw new IllegalArgumentException("Column aggregation must not be null");
+            }
+            if (description == null || description.isBlank()) {
+                throw new IllegalArgumentException("Column '" + name + "' has no description");
             }
             // Summing a rate or an average produces a number nothing measures, and summing text
             // or a flag produces nothing at all, so only whole numbers may be declared summed
@@ -183,9 +206,15 @@ public final class ParquetSchema {
      * Builder for constructing ParquetSchema instances.
      */
     public static final class Builder {
+        private final String description;
         private final List<Column> columns = new ArrayList<>();
         
-        private Builder() {}
+        private Builder(String description) {
+            if (description == null || description.isBlank()) {
+                throw new IllegalArgumentException("Table description must not be null or empty");
+            }
+            this.description = description;
+        }
         
         /**
          * Adds a sampled column to the schema, which keeps the value of the recording a coarser
@@ -193,10 +222,12 @@ public final class ParquetSchema {
          *
          * @param name Column name
          * @param type Column type
+         * @param description What a value of the column says, with its unit where it has one
          * @return This builder for chaining
+         * @throws IllegalArgumentException if the description is null or empty
          */
-        public Builder column(String name, ColumnType type) {
-            return column(name, type, Aggregation.SAMPLE);
+        public Builder column(String name, ColumnType type, String description) {
+            return column(name, type, Aggregation.SAMPLE, description);
         }
 
         /**
@@ -206,12 +237,13 @@ public final class ParquetSchema {
          * @param type Column type
          * @param aggregation {@link Aggregation#SAMPLE} for a state or a rate,
          *        {@link Aggregation#SUM} for a count of events
+         * @param description What a value of the column says, with its unit where it has one
          * @return This builder for chaining
-         * @throws IllegalArgumentException if a summed column has a type whose values cannot be
-         *         added
+         * @throws IllegalArgumentException if the description is null or empty, or a summed
+         *         column has a type whose values cannot be added
          */
-        public Builder column(String name, ColumnType type, Aggregation aggregation) {
-            columns.add(new Column(name, type, aggregation));
+        public Builder column(String name, ColumnType type, Aggregation aggregation, String description) {
+            columns.add(new Column(name, type, aggregation, description));
             return this;
         }
         
@@ -225,7 +257,7 @@ public final class ParquetSchema {
             if (columns.isEmpty()) {
                 throw new IllegalStateException("Schema must have at least one column");
             }
-            return new ParquetSchema(columns);
+            return new ParquetSchema(description, columns);
         }
     }
 }

@@ -21,14 +21,8 @@ import com.typesafe.config.Config;
  * Tracks births and deaths over time, the deaths split by what killed the organism.
  * <p>
  * <strong>Architecture:</strong> This plugin is completely <strong>stateless</strong>.
- * It stores only raw "facts" that can be extracted from a single tick:
- * <ul>
- *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code total_born} - Monotonic counter of all organisms ever created</li>
- *   <li>{@code alive_count} - Current number of living organisms</li>
- *   <li>{@code deaths_energy}, {@code deaths_entropy}, {@code deaths_other} - The organisms this
- *       recording reports as dead, by cause</li>
- * </ul>
+ * It stores only raw "facts" that can be extracted from a single tick: the organisms created so
+ * far, the organisms alive, and the organisms the recording reports as dead, by cause.
  * <p>
  * <strong>Causes.</strong> The runtime kills an organism when its energy has dropped to zero or
  * below, or when its entropy exceeds the configured maximum, and it checks in that order. Killing
@@ -55,13 +49,25 @@ import com.typesafe.config.Config;
 public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
 
     /** Schema stores only raw facts - no derived values */
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("total_born", ColumnType.BIGINT)
-        .column("alive_count", ColumnType.INTEGER)
-        .column("deaths_energy", ColumnType.INTEGER)
-        .column("deaths_entropy", ColumnType.INTEGER)
-        .column("deaths_other", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "Births and deaths, as running totals. One row per recorded tick. The births between two "
+            + "rows are the change of total_born, the deaths the change of total_born minus "
+            + "alive_count; both are exact on every level of detail.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("total_born", ColumnType.BIGINT,
+            "Organisms created since the run began, the ancestors included.")
+        .column("alive_count", ColumnType.INTEGER, "Organisms alive at the tick.")
+        .column("deaths_energy", ColumnType.INTEGER,
+            "Organisms this recorded tick reports as dead because their energy was used up. A dead "
+            + "organism is reported by one recorded tick only. A row of a coarser level holds the "
+            + "count of the one recorded tick it stands on, so there the three deaths columns give "
+            + "the proportions of the causes and not the number of deaths.")
+        .column("deaths_entropy", ColumnType.INTEGER,
+            "Organisms this recorded tick reports as dead because their entropy exceeded the "
+            + "maximum. Read like deaths_energy.")
+        .column("deaths_other", ColumnType.INTEGER,
+            "Organisms this recorded tick reports as dead for any other reason. Read like "
+            + "deaths_energy.")
         .build();
 
     /**

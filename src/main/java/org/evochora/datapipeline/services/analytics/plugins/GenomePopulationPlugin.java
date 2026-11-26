@@ -24,13 +24,6 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 /**
  * Records how the living population is distributed over the genomes carrying it.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording</li>
- *   <li>{@code genome_hash} - a genome with at least one living carrier</li>
- *   <li>{@code count} - how many living organisms carry it</li>
- * </ul>
- * <p>
  * <strong>Why every genome and not a ranking.</strong> Which genomes matter is a question of the
  * moment one looks at: a genome sweeping through the population between two zoom levels is
  * irrelevant over the whole run and dominant in its own window. A ranking decided while writing
@@ -46,10 +39,13 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
  */
 public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("genome_hash", ColumnType.BIGINT)
-        .column("count", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "The living organisms by genome. One row per recorded tick and genome that has at least "
+            + "one living carrier. Living organisms without a genome are left out.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("genome_hash", ColumnType.BIGINT,
+            "Hash of the genome, a signed 64-bit number. Equal hashes are equal genomes.")
+        .column("count", ColumnType.INTEGER, "Living organisms that carry this genome at the tick.")
         .build();
 
     /** Bytes per entry of the counting map: key, value and open-addressing overhead. */

@@ -24,6 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import org.evochora.datapipeline.api.analytics.TableDescription;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -272,6 +273,38 @@ class AnalyticsIndexerEndToEndTest {
         String manifestContent = Files.readString(manifestPath);
         assertTrue(manifestContent.contains("\"id\""), "Manifest should contain id field");
         assertTrue(manifestContent.contains("population"), "Manifest should reference population metric");
+    }
+
+    @Test
+    void theDescriptionOfATableIsWrittenNextToItsFiles() throws Exception {
+        String runId = "20251201-140000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 10));
+        List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 5);
+        StoragePath key = writeChunkBatch(runId, batch);
+
+        indexer = createAnalyticsIndexer("test-indexer", runId, 5);
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        sendBatchInfoToTopic(runId, key.asString(), 0, 4);
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> findParquetFiles(runId, "population").size() >= 1);
+
+        Path descriptionPath = tempStorageDir.resolve(runId)
+            .resolve("analytics")
+            .resolve("population")
+            .resolve(TableDescription.FILE_NAME);
+        assertTrue(Files.exists(descriptionPath), "Table description should exist at: " + descriptionPath);
+
+        TableDescription table = new com.google.gson.Gson()
+            .fromJson(Files.readString(descriptionPath), TableDescription.class);
+        assertEquals("population", table.id());
+        assertFalse(table.description().isBlank());
+        assertTrue(table.tickIntervals().containsKey("lod0"));
+        assertEquals("tick", table.columns().get(0).name());
+        assertEquals("BIGINT", table.columns().get(0).type());
+        assertTrue(table.columns().stream().noneMatch(column -> column.description().isBlank()),
+            "Every column says what it holds");
     }
 
     @Test

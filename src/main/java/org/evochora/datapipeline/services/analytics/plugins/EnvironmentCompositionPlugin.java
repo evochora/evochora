@@ -93,11 +93,19 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
      * @return The schema of this metric's rows.
      */
     private static ParquetSchema buildSchema() {
-        ParquetSchema.Builder builder = ParquetSchema.builder().column("tick", ColumnType.BIGINT);
-        for (String column : COUNT_COLUMNS) {
-            builder.column(column, ColumnType.BIGINT);
+        ParquetSchema.Builder builder = ParquetSchema.builder(
+                "What the cells of the environment hold, by molecule type. One row per recorded "
+                + "tick; the counts of a row add up to the number of cells of the environment.")
+            .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.");
+        List<Integer> types = MoleculeTypeRegistry.orderedTypes();
+        for (int i = 0; i < types.size(); i++) {
+            builder.column(COUNT_COLUMNS.get(i), ColumnType.BIGINT,
+                "Cells that hold a molecule of the type " + MoleculeTypeRegistry.typeToName(types.get(i)) + ".");
         }
-        return builder.column("empty_cells", ColumnType.BIGINT).build();
+        builder.column(COUNT_COLUMNS.get(UNKNOWN_SLOT), ColumnType.BIGINT,
+            "Cells that hold a molecule of a type Evochora does not know.");
+        return builder.column("empty_cells", ColumnType.BIGINT,
+            "Cells that hold no molecule: all cells that the other columns do not count.").build();
     }
 
     /**

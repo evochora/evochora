@@ -33,10 +33,10 @@ import com.typesafe.config.Config;
  */
 public class SummedCountsTestPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("events", ColumnType.INTEGER, Aggregation.SUM)
-        .column("alive", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder("Events and living organisms of a test.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("events", ColumnType.INTEGER, Aggregation.SUM, "Events since the previous row.")
+        .column("alive", ColumnType.INTEGER, "Organisms alive at the tick.")
         .build();
 
     private int skipMultiplesOf;

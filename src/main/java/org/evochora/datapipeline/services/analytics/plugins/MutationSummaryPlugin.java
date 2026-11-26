@@ -19,23 +19,6 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 /**
  * Records what the mutation plugins did to each newborn, one row per event.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording the event was reported in</li>
- *   <li>{@code birth_tick}, {@code organism_id} - the newborn that received it</li>
- *   <li>{@code genome_hash}, {@code parent_genome_hash} - its genome and the parent's at the
- *       birth, so a row joins against the lineage and population tables</li>
- *   <li>{@code event_index} - ordinal of the event within this birth, in the order the plugins
- *       reported it</li>
- *   <li>{@code plugin_class}, {@code kind} - which plugin did it and what it calls the operation</li>
- *   <li>{@code cell_count} - how many molecules it wrote, {@code 0} for an event that wrote
- *       none</li>
- *   <li>{@code position} - the smallest of the offsets of its cells from the organism's own
- *       origin, as a JSON list such as {@code [13,4]}, empty for an event without cells</li>
- *   <li>{@code dv} - the newborn's direction vector when the plugin ran, as a JSON list</li>
- *   <li>{@code params} - the numbers the plugin documents for its kind, as a JSON list</li>
- * </ul>
- * <p>
  * <strong>Why beside the per-molecule table.</strong> Asking what founded a genome is asking about
  * events, not about molecules, and the answer has to be found in the browser, where a hash
  * aggregation over an unsorted column fails beyond a few thousand rows. Condensing the writes of a
@@ -58,19 +41,30 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  */
 public class MutationSummaryPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("birth_tick", ColumnType.BIGINT)
-        .column("organism_id", ColumnType.INTEGER)
-        .column("genome_hash", ColumnType.BIGINT)
-        .column("parent_genome_hash", ColumnType.BIGINT)
-        .column("event_index", ColumnType.INTEGER)
-        .column("plugin_class", ColumnType.VARCHAR)
-        .column("kind", ColumnType.VARCHAR)
-        .column("cell_count", ColumnType.INTEGER)
-        .column("position", ColumnType.VARCHAR)
-        .column("dv", ColumnType.VARCHAR)
-        .column("params", ColumnType.VARCHAR)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "What the mutation plugins did to each newborn. One row per mutation, also for one that "
+            + "changed no molecule. The table has one level of detail.")
+        .column("tick", ColumnType.BIGINT,
+            "The recorded tick that reported the mutation, the first one after the birth.")
+        .column("birth_tick", ColumnType.BIGINT, "Tick at which the newborn was born.")
+        .column("organism_id", ColumnType.INTEGER, "Id of the newborn that received the mutation.")
+        .column("genome_hash", ColumnType.BIGINT,
+            "Hash of the newborn's genome at its birth, after the mutation, a signed 64-bit number.")
+        .column("parent_genome_hash", ColumnType.BIGINT, "Hash of the parent's genome at this birth.")
+        .column("event_index", ColumnType.INTEGER,
+            "Number of the mutation among the mutations of this birth, counted from 0 in the order "
+            + "the plugins reported them.")
+        .column("plugin_class", ColumnType.VARCHAR, "Class name of the mutation plugin that made the mutation.")
+        .column("kind", ColumnType.VARCHAR, "What that plugin calls the mutation, such as duplication.")
+        .column("cell_count", ColumnType.INTEGER, "Molecules the mutation wrote, 0 for one that wrote none.")
+        .column("position", ColumnType.VARCHAR,
+            "Where the mutation wrote: the smallest offset of its molecules from the origin of the "
+            + "newborn, written as a JSON list such as [13,4], and [] for a mutation that wrote none.")
+        .column("dv", ColumnType.VARCHAR,
+            "The direction vector of the newborn when the mutation was made, written as a JSON list.")
+        .column("params", ColumnType.VARCHAR,
+            "The numbers the plugin gives for a mutation of this kind, written as a JSON list. "
+            + "What they mean is documented with the plugin.")
         .build();
 
     /**

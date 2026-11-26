@@ -18,18 +18,6 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 /**
  * Tracks the age distribution of the population using percentiles.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code p0} - Minimum age</li>
- *   <li>{@code p10} - 10th percentile age</li>
- *   <li>{@code p25} - 25th percentile age (1st quartile)</li>
- *   <li>{@code p50} - Median age</li>
- *   <li>{@code p75} - 75th percentile age (3rd quartile)</li>
- *   <li>{@code p90} - 90th percentile age</li>
- *   <li>{@code p100} - Maximum age</li>
- * </ul>
- * <p>
  * This provides a robust visualization of age structure that scales automatically
  * with the lifespan of organisms (whether 100 or 1,000,000 ticks).
  * <p>
@@ -38,15 +26,17 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  */
 public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("p0", ColumnType.INTEGER)
-        .column("p10", ColumnType.INTEGER)
-        .column("p25", ColumnType.INTEGER)
-        .column("p50", ColumnType.INTEGER)
-        .column("p75", ColumnType.INTEGER)
-        .column("p90", ColumnType.INTEGER)
-        .column("p100", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "How old the living organisms are, as percentiles of their age. One row per recorded "
+            + "tick. All ages are 0 when no organism is alive.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("p0", ColumnType.INTEGER, "Age of the youngest living organism, in ticks.")
+        .column("p10", ColumnType.INTEGER, "Age of the living organisms at the 10th percentile, in ticks.")
+        .column("p25", ColumnType.INTEGER, "Age of the living organisms at the 25th percentile, in ticks.")
+        .column("p50", ColumnType.INTEGER, "Median age of the living organisms, in ticks.")
+        .column("p75", ColumnType.INTEGER, "Age of the living organisms at the 75th percentile, in ticks.")
+        .column("p90", ColumnType.INTEGER, "Age of the living organisms at the 90th percentile, in ticks.")
+        .column("p100", ColumnType.INTEGER, "Age of the oldest living organism, in ticks.")
         .build();
 
     @Override

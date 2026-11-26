@@ -18,14 +18,6 @@ import org.evochora.runtime.isa.Instruction.InstructionInfo;
 /**
  * Counts failed instructions by instruction and by the reason the runtime gave.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording</li>
- *   <li>{@code instruction} - name of the instruction that failed</li>
- *   <li>{@code reason} - the failure text exactly as the runtime wrote it</li>
- *   <li>{@code count} - living organisms whose instruction failed that way in this recording</li>
- * </ul>
- * <p>
  * A recording holds the last instruction of each organism, so the counts are a sample of what
  * fails, in the same way the instruction usage chart samples what runs. An organism reports the
  * first failure of its tick.
@@ -39,11 +31,17 @@ import org.evochora.runtime.isa.Instruction.InstructionInfo;
  */
 public class InstructionFailuresPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("instruction", ColumnType.VARCHAR)
-        .column("reason", ColumnType.VARCHAR)
-        .column("count", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "Failed instructions by instruction and reason. One row per recorded tick, instruction "
+            + "and failure text. A recorded tick holds the one instruction each living organism "
+            + "executed at it, so the rows are a sample of what fails.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("instruction", ColumnType.VARCHAR, "Name of the instruction that failed.")
+        .column("reason", ColumnType.VARCHAR,
+            "The failure text as the simulation wrote it. It can contain values, such as a register, "
+            + "so one instruction can fail with many texts.")
+        .column("count", ColumnType.INTEGER,
+            "Living organisms whose instruction failed this way at the tick.")
         .build();
 
     /** Instruction name per opcode. */

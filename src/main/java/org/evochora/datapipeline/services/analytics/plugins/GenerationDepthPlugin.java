@@ -17,13 +17,6 @@ import com.typesafe.config.Config;
 /**
  * Tracks the generation depth of organisms.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code max_depth} - Maximum lineage depth currently alive</li>
- *   <li>{@code avg_depth} - Average lineage depth currently alive</li>
- * </ul>
- * <p>
  * The depth is read from each organism, which carries it since birth. It is deliberately not
  * derived from parent chains: a parent is removed from the simulation when it dies, so a consumer
  * walking the chain would find its ancestors missing and count from wherever the chain breaks -
@@ -41,10 +34,15 @@ import com.typesafe.config.Config;
  */
 public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("max_depth", ColumnType.INTEGER)
-        .column("avg_depth", ColumnType.DOUBLE)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "How many replications separate the living organisms from the ancestors, the organisms "
+            + "a run starts with. One row per recorded tick. Both values are 0 when no organism is "
+            + "alive.")
+        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+        .column("max_depth", ColumnType.INTEGER,
+            "The largest number of replications behind a living organism.")
+        .column("avg_depth", ColumnType.DOUBLE,
+            "The mean number of replications behind the living organisms.")
         .build();
 
     /** Metric holding the living genomes and their carriers per recording. */

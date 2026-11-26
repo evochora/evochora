@@ -55,6 +55,25 @@ final class BirthVariation {
         "multiple",
         "other");
 
+    /**
+     * What each class says about a birth, as a clause that completes "a birth where ...". The
+     * tables that count the classes or name the class of a single birth describe themselves with
+     * these, so that a class reads the same in every table.
+     */
+    private static final Map<String, String> MEANINGS = Map.of(
+        "unchanged", "the genome equals the parent's",
+        "bodiless", "the newborn has no genome",
+        "no_event", "the genome differs from the parent's and no mutation plugin reported a change: "
+            + "a defective copy, or cells another organism overwrote",
+        "duplication", "the genome was changed by duplication only",
+        "deletion", "the genome was changed by deletion only",
+        "instruction_insertion", "the genome was changed by instruction insertion only",
+        "label_insertion", "the genome was changed by label insertion only",
+        "substitution", "the genome was changed by substitution only",
+        "multiple", "the genome was changed by mutations of two or more kinds",
+        "other", "the genome was changed by one kind of mutation that has no class of its own, "
+            + "which a mutation plugin from outside Evochora reports");
+
     private static final int UNCHANGED = CLASSES.indexOf("unchanged");
     private static final int BODILESS = CLASSES.indexOf("bodiless");
     private static final int NO_EVENT = CLASSES.indexOf("no_event");
@@ -74,6 +93,38 @@ final class BirthVariation {
         "substitution", CLASSES.indexOf("substitution"));
 
     private BirthVariation() {
+    }
+
+    /**
+     * Says what a class means.
+     *
+     * @param birthClass one of {@link #CLASSES}
+     * @return a clause that completes "a birth where ..."
+     * @throws IllegalArgumentException if the class is none of {@link #CLASSES}
+     */
+    static String meaningOf(String birthClass) {
+        String meaning = MEANINGS.get(birthClass);
+        if (meaning == null) {
+            throw new IllegalArgumentException("No such class of birth: " + birthClass);
+        }
+        return meaning;
+    }
+
+    /**
+     * Lists the classes with the number each is written as and with what it means.
+     *
+     * @return one sentence per class, such as "0: the genome equals the parent's."
+     */
+    static String numberedClasses() {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < CLASSES.size(); i++) {
+            if (i > 0) {
+                text.append(' ');
+            }
+            text.append(i).append(" (").append(CLASSES.get(i)).append("): ")
+                .append(meaningOf(CLASSES.get(i))).append('.');
+        }
+        return text.toString();
     }
 
     /**

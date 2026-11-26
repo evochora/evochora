@@ -24,6 +24,7 @@ import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.IAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.evochora.datapipeline.api.analytics.TableDescription;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -888,7 +889,30 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         }
     }
     
+    /**
+     * Writes what a plugin says about itself next to its data: the description of its table, and
+     * the manifest entry of every chart it has.
+     * <p>
+     * Both are written at every start of the indexer and not only at the first one of a run: what
+     * stands there then belongs to the build that goes on writing, also after a run was resumed
+     * with a newer one.
+     *
+     * @param runId  The run the plugin writes for
+     * @param plugin An initialized plugin
+     */
     private void writePluginMetadata(String runId, IAnalyticsPlugin plugin) {
+        try {
+            String json = gson.toJson(TableDescription.of(plugin));
+            analyticsOutput.writeAnalyticsBlob(
+                runId,
+                plugin.getMetricId(),
+                null,
+                TableDescription.FILE_NAME,
+                json.getBytes(StandardCharsets.UTF_8)
+            );
+        } catch (Exception e) {
+            log.warn("Failed to write the table description for plugin {}: {}", plugin.getMetricId(), e.getMessage());
+        }
         for (ManifestEntry entry : plugin.getManifestEntries()) {
             try {
                 String json = gson.toJson(entry);

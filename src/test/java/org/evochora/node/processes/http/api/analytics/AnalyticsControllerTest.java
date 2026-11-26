@@ -13,8 +13,16 @@ import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -227,5 +235,116 @@ class AnalyticsControllerTest {
             assertThat(client.get("/api/manifest?runId=run1").body().string()).contains("\"id\":\"pop\"");
         });
     }
-}
 
+    private static final String TABLE_JSON = """
+        {"id":"pop","description":"The living organisms; it's one row per recorded tick.",
+         "tickIntervals":{"lod0":10},
+         "columns":[{"name":"tick","type":"BIGINT","summed":false,"description":"The recorded tick the row describes."},
+                    {"name":"alive","type":"INTEGER","summed":false,"description":"Organisms alive at the tick."}]}
+        """;
+
+    @Test
+    void theManifestListsTheTablesOfARunWithWhatTheyHold() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(eq("run1"), eq("")))
+            .thenReturn(List.of("pop/table.json", "pop/metadata.json", "pop/lod0/000/a.parquet", "lineage/table.json"));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("pop/metadata.json")))
+            .thenAnswer(call -> new ByteArrayInputStream("{\"id\":\"pop\",\"name\":\"Population\"}".getBytes()));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("pop/table.json")))
+            .thenAnswer(call -> new ByteArrayInputStream(TABLE_JSON.getBytes()));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("lineage/table.json")))
+            .thenAnswer(call -> new ByteArrayInputStream(
+                "{\"id\":\"lineage\",\"description\":\"Which genome arose from which.\",\"columns\":[]}".getBytes()));
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.empty());
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
+
+        JavalinTest.test(app, (server, client) -> {
+            var response = client.get("/api/manifest?runId=run1");
+            assertThat(response.code()).isEqualTo(200);
+
+            JsonObject manifest = JsonParser.parseString(response.body().string()).getAsJsonObject();
+            assertThat(manifest.getAsJsonArray("metrics")).hasSize(1);
+            JsonArray tables = manifest.getAsJsonArray("tables");
+            // A table needs no chart to be listed, and a chart is no table
+            assertThat(tables).hasSize(2);
+            assertThat(tables.get(0).getAsJsonObject().get("id").getAsString()).isEqualTo("lineage");
+            JsonObject pop = tables.get(1).getAsJsonObject();
+            assertThat(pop.get("description").getAsString()).startsWith("The living organisms");
+            assertThat(pop.getAsJsonObject("tickIntervals").get("lod0").getAsInt()).isEqualTo(10);
+            assertThat(pop.getAsJsonArray("columns").get(1).getAsJsonObject().get("description").getAsString())
+                .isEqualTo("Organisms alive at the tick.");
+        });
+    }
+
+    @Test
+    void aParquetFileThatLeavesTheNodeCarriesTheDescriptionOfItsTable(@TempDir Path dir) throws Exception {
+        assertThat(servedKeyValueMetadata(dir, TABLE_JSON)).containsExactly(
+            Map.entry("description", "The living organisms; it's one row per recorded tick."),
+            Map.entry("description.tick", "The recorded tick the row describes."),
+            Map.entry("description.alive", "Organisms alive at the tick."));
+    }
+
+    /**
+     * Serves a table of two rows through the parquet endpoint and reads the key-value metadata of
+     * the file that arrives.
+     *
+     * @param dir       a directory for the files of the test
+     * @param tableJson the description the run holds for the table
+     * @return the keys and values of the served file, in file order
+     */
+    private Map<String, String> servedKeyValueMetadata(Path dir, String tableJson) throws Exception {
+        Path source = dir.resolve("source.parquet");
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE t (tick BIGINT, alive INTEGER)");
+            stmt.execute("INSERT INTO t VALUES (0, 5), (10, 7)");
+            stmt.execute("COPY t TO '" + source.toString().replace("\\", "/") + "' (FORMAT PARQUET)");
+        }
+        byte[] parquet = Files.readAllBytes(source);
+
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(eq("run1"), eq("pop/lod0/"), any(), any()))
+            .thenReturn(List.of("pop/lod0/000/a.parquet"));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("pop/lod0/000/a.parquet")))
+            .thenAnswer(call -> new ByteArrayInputStream(parquet));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("pop/table.json")))
+            .thenAnswer(call -> new ByteArrayInputStream(tableJson.getBytes()));
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.empty());
+        Javalin app = JavalinFactory.create(config -> controller.registerRoutes(config.routes, "/api"));
+
+        Path served = dir.resolve("served.parquet");
+        JavalinTest.test(app, (server, client) -> {
+            // The test client reads a body as text only, which a Parquet file is not
+            var response = java.net.http.HttpClient.newHttpClient().send(
+                java.net.http.HttpRequest.newBuilder(java.net.URI.create(
+                    "http://localhost:" + server.port() + "/api/parquet?runId=run1&metric=pop&lod=lod0")).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(response.statusCode()).isEqualTo(200);
+            Files.write(served, response.body());
+        });
+
+        Map<String, String> metadata = new LinkedHashMap<>();
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
+             Statement stmt = conn.createStatement();
+             ResultSet rows = stmt.executeQuery("SELECT decode(key), decode(value) FROM parquet_kv_metadata('"
+                 + served.toString().replace("\\", "/") + "')")) {
+            while (rows.next()) {
+                metadata.put(rows.getString(1), rows.getString(2));
+            }
+        }
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
+             Statement stmt = conn.createStatement();
+             ResultSet rows = stmt.executeQuery("SELECT count(*) FROM read_parquet('"
+                 + served.toString().replace("\\", "/") + "')")) {
+            rows.next();
+            assertThat(rows.getLong(1)).isEqualTo(2);
+        }
+        return metadata;
+    }
+}

@@ -223,7 +223,8 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
     private static class TestPlugin extends AbstractAnalyticsPlugin {
         @Override
         public ParquetSchema getSchema() {
-            return ParquetSchema.builder().column("tick", ColumnType.BIGINT).build();
+            return ParquetSchema.builder("A table of a test.")
+                .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.").build();
         }
 
         @Override

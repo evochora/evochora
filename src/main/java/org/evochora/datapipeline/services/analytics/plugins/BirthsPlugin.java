@@ -22,22 +22,6 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  * The life table of a run: who was born when, to whom, with which genome and with which variation,
  * one row per birth.
  * <p>
- * <strong>Metrics:</strong>
- * <ul>
- *   <li>{@code tick} - the recording the birth was reported in</li>
- *   <li>{@code birth_tick} - the tick the newborn was born at</li>
- *   <li>{@code organism_id}, {@code parent_id} - the newborn and the organism it was replicated
- *       from</li>
- *   <li>{@code parent_birth_tick} - when that parent was itself born, so the distance between two
- *       generations is one subtraction and needs no second table</li>
- *   <li>{@code generation} - replications between the founders and this newborn, as the newborn
- *       carries it since its birth</li>
- *   <li>{@code genome_hash}, {@code parent_genome_hash} - its genome and the parent's at the birth,
- *       so a row joins against the lineage and population tables</li>
- *   <li>{@code variation} - the class {@link BirthVariation} sorts the birth into, as the index of
- *       that class</li>
- * </ul>
- * <p>
  * <strong>What it is for.</strong> Every other table counts births; this one keeps them. A question
  * about a line rather than about a population - how long a generation takes, which births carried a
  * genome on and which ended with their carrier, what a founder's descendants did - is a question
@@ -67,16 +51,28 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  */
 public class BirthsPlugin extends AbstractAnalyticsPlugin {
 
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder()
-        .column("tick", ColumnType.BIGINT)
-        .column("birth_tick", ColumnType.BIGINT)
-        .column("organism_id", ColumnType.INTEGER)
-        .column("parent_id", ColumnType.INTEGER)
-        .column("parent_birth_tick", ColumnType.BIGINT)
-        .column("generation", ColumnType.INTEGER)
-        .column("genome_hash", ColumnType.BIGINT)
-        .column("parent_genome_hash", ColumnType.BIGINT)
-        .column("variation", ColumnType.INTEGER)
+    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
+            "Every birth of the run: the newborn, its parent, their genomes and how the newborn's "
+            + "genome came about. One row per birth; the ancestors, the organisms a run starts with, "
+            + "have no row. The table has one level of detail.")
+        .column("tick", ColumnType.BIGINT,
+            "The recorded tick that reported the birth, the first one after it.")
+        .column("birth_tick", ColumnType.BIGINT, "Tick at which the newborn was born.")
+        .column("organism_id", ColumnType.INTEGER, "Id of the newborn.")
+        .column("parent_id", ColumnType.INTEGER, "Id of the organism the newborn was replicated from.")
+        .column("parent_birth_tick", ColumnType.BIGINT,
+            "Tick at which that parent was born. birth_tick minus this value is the age of the "
+            + "parent at this birth.")
+        .column("generation", ColumnType.INTEGER,
+            "Replications between an ancestor and the newborn: 1 for a child of an ancestor.")
+        .column("genome_hash", ColumnType.BIGINT,
+            "Hash of the newborn's genome at its birth, a signed 64-bit number, 0 for a newborn "
+            + "without a genome. Equal hashes are equal genomes; the column joins to genome_hash in "
+            + "the tables of the genomes.")
+        .column("parent_genome_hash", ColumnType.BIGINT,
+            "Hash of the parent's genome at this birth, 0 for a parent without a genome.")
+        .column("variation", ColumnType.INTEGER,
+            "How the newborn's genome came about, as a number. " + BirthVariation.numberedClasses())
         .build();
 
     /**

@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.evochora.datapipeline.api.analytics.TableDescription;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.spi.IController;
@@ -803,6 +804,17 @@ public class AnalyticsController implements IController {
             }
 
             // 2. Copy files from storage to temp directory
+            // Read before any file is copied: a table without its description is not handed out
+            TableDescription description;
+            try {
+                description = readTableDescription(runId, storageMetric);
+            } catch (IOException e) {
+                log.error("Run {} holds no readable description of the table '{}': {}", runId, storageMetric, e.getMessage());
+                ctx.status(500).result("Run " + runId + " holds no readable description of the table '"
+                    + storageMetric + "' (" + storageMetric + "/" + TableDescription.FILE_NAME + ")");
+                return;
+            }
+
             Path tempDir = Files.createTempDirectory("analytics-parquet-");
             List<Path> tempFiles = new ArrayList<>();
             Path mergedFile = null;
@@ -834,7 +846,7 @@ public class AnalyticsController implements IController {
                 // a damaged one: the request fails with it rather than answering with a chart that
                 // silently misses whatever that file held.
                 mergedFile = tempDir.resolve("merged.parquet");
-                mergeParquetFiles(tempFiles, mergedFile, tickFrom, tickTo);
+                mergeParquetFiles(tempFiles, mergedFile, tickFrom, tickTo, description);
                 
                 // 3a. Validate merged file is readable (catches race conditions with incomplete writes)
                 long rowCount = validateParquetFile(mergedFile);
@@ -890,12 +902,21 @@ public class AnalyticsController implements IController {
     
     /**
      * Merges multiple Parquet files into one using DuckDB.
+     * <p>
+     * The merged file is the one that leaves the node, so it carries the description of its table
+     * and columns as key-value metadata: whoever is handed the file alone still reads what it
+     * holds. The files of a run do not carry it one by one, since a level of detail is thousands
+     * of small files and the texts would outweigh their rows.
      *
      * @param inputFiles List of input Parquet files
      * @param outputFile Output merged Parquet file
+     * @param tickFrom Lower tick bound (inclusive), or null for none
+     * @param tickTo Upper tick bound (inclusive), or null for none
+     * @param description The description of the table the files belong to
      * @throws Exception if merge fails
      */
-    private void mergeParquetFiles(List<Path> inputFiles, Path outputFile, Long tickFrom, Long tickTo) throws Exception {
+    private void mergeParquetFiles(List<Path> inputFiles, Path outputFile, Long tickFrom, Long tickTo,
+                                   TableDescription description) throws Exception {
         if (!duckDbDriverLoaded) {
             throw new IllegalStateException("DuckDB driver not available");
         }
@@ -913,8 +934,8 @@ public class AnalyticsController implements IController {
         // union_by_name=true allows merging Parquet files with different schemas
         // (e.g., files a build wrote before a plugin gained a column, next to files with it)
         String sql = String.format(
-            "COPY (SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
-            fileList, whereClause, outputPath
+            "COPY (SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD'%s)",
+            fileList, whereClause, outputPath, keyValueMetadataOption(description)
         );
 
         try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
@@ -923,6 +944,58 @@ public class AnalyticsController implements IController {
         }
     }
     
+    /**
+     * Builds the COPY option that writes a table's description into a Parquet file.
+     *
+     * @param description The description
+     * @return The option with its leading comma
+     */
+    private static String keyValueMetadataOption(TableDescription description) {
+        StringBuilder option = new StringBuilder(", KV_METADATA {");
+        boolean first = true;
+        for (Map.Entry<String, String> entry : description.asKeyValueMetadata().entrySet()) {
+            if (!first) {
+                option.append(", ");
+            }
+            first = false;
+            option.append(sqlText(entry.getKey())).append(": ").append(sqlText(entry.getValue()));
+        }
+        return option.append('}').toString();
+    }
+
+    /**
+     * Writes a text as an SQL string literal.
+     *
+     * @param text The text
+     * @return The text in single quotes, with the single quotes inside it doubled
+     */
+    private static String sqlText(String text) {
+        return "'" + text.replace("'", "''") + "'";
+    }
+
+    /**
+     * Reads the description of a table from the run that holds it.
+     *
+     * @param runId         The run identifier
+     * @param storageMetric The storage metric identifier of the table
+     * @return The description
+     * @throws IOException if the run holds no readable description for this table, which the
+     *         indexer writes before the first of the table's files
+     */
+    private TableDescription readTableDescription(String runId, String storageMetric) throws IOException {
+        String path = storageMetric + "/" + TableDescription.FILE_NAME;
+        try (InputStream in = storage.openAnalyticsInputStream(runId, path)) {
+            TableDescription description = gson.fromJson(
+                new String(in.readAllBytes(), StandardCharsets.UTF_8), TableDescription.class);
+            if (description == null) {
+                throw new IOException("the table description " + path + " of run " + runId + " is empty");
+            }
+            return description;
+        } catch (RuntimeException e) {
+            throw new IOException("the table description " + path + " of run " + runId + " cannot be read", e);
+        }
+    }
+
     /**
      * Validates that a Parquet file is readable and returns its row count.
      * This catches race conditions where files are still being written.
@@ -994,9 +1067,12 @@ public class AnalyticsController implements IController {
         path = "manifest",
         methods = {HttpMethod.GET},
         summary = "Get analytics manifest",
-        description = "Returns an aggregated manifest describing all available analytics metrics "
-            + "for a simulation run. The manifest includes metadata from each plugin (name, "
-            + "description, data sources, visualization hints). Response is cached.",
+        description = "Returns the manifest of a simulation run: under 'metrics' the charts the "
+            + "analyzer draws (name, description, data sources, visualization hints), under "
+            + "'tables' every table the analytics plugins write, each with a description of what "
+            + "it holds, its levels of detail and its columns. Pass a table's id as the metric of "
+            + "the parquet endpoint to load it; the Parquet file carries the same descriptions as "
+            + "key-value metadata. Response is cached.",
         tags = {"analyzer / analytics"},
         queryParams = {
             @OpenApiParam(
@@ -1032,6 +1108,17 @@ public class AnalyticsController implements IController {
                                   "y2": ["alive_count", "bodied_count"]
                                 }
                               }
+                            }
+                          ],
+                          "tables": [
+                            {
+                              "id": "population",
+                              "description": "The living organisms at a recorded tick. One row per recorded tick.",
+                              "tickIntervals": {"lod0": 1000, "lod1": 10000},
+                              "columns": [
+                                {"name": "tick", "type": "BIGINT", "summed": false, "description": "The recorded tick the row describes."},
+                                {"name": "alive_count", "type": "INTEGER", "summed": false, "description": "Organisms alive at the tick."}
+                              ]
                             }
                           ]
                         }
@@ -1071,9 +1158,17 @@ public class AnalyticsController implements IController {
         try {
             List<String> files = storage.listAnalyticsFiles(runId, "");
             List<ManifestEntry> entries = new ArrayList<>();
+            List<TableDescription> tables = new ArrayList<>();
 
             for (String file : files) {
-                if (file.endsWith("metadata.json")) {
+                if (file.endsWith("/" + TableDescription.FILE_NAME)) {
+                    try (InputStream in = storage.openAnalyticsInputStream(runId, file)) {
+                        tables.add(gson.fromJson(new String(in.readAllBytes(), StandardCharsets.UTF_8),
+                            TableDescription.class));
+                    } catch (Exception e) {
+                        log.warn("Failed to read/parse table description: {}", file, e);
+                    }
+                } else if (file.endsWith("metadata.json")) {
                     try (InputStream in = storage.openAnalyticsInputStream(runId, file)) {
                         String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                         ManifestEntry manifestEntry = gson.fromJson(json, ManifestEntry.class);
@@ -1086,7 +1181,13 @@ public class AnalyticsController implements IController {
 
             warnAboutMissingCompanions(runId, entries, files);
 
-            Map<String, Object> response = Map.of("metrics", placements.apply(entries));
+            // A chart is not a table: several charts read one table, and a table needs no chart.
+            // The manifest lists both, the charts for the analyzer and the tables for whoever
+            // reads the data itself
+            tables.sort(java.util.Comparator.comparing(TableDescription::id));
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("metrics", placements.apply(entries));
+            response.put("tables", tables);
             String responseJson = gson.toJson(response);
             
             // An empty manifest belongs to a run whose indexer has not written it yet; caching it
