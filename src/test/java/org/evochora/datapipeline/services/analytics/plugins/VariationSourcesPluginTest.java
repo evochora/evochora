@@ -448,7 +448,9 @@ class VariationSourcesPluginTest {
                 .contains("parent_birth_tick")
                 .contains("variation")
                 .doesNotContain("genome_hash")
-                .doesNotContain("ORDER BY");
+                .doesNotContain("ORDER BY")
+                // A founder's row has no parent, which the browser would read as organism 0
+                .contains("WHERE parent_id IS NOT NULL");
         });
     }
 

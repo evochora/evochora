@@ -51,6 +51,25 @@ import {
     /** Rows last loaded per metric ID, so a view change redraws without fetching again. */
     const loadedData = {};
 
+    /**
+     * The whole tables read for the run shown, each as the pending or finished read of one table
+     * at one level of detail, keyed by both.
+     *
+     * A card that draws from a whole table - the births, the lineage - names it as a companion,
+     * and several cards name the same one. A table is therefore read once and queried by every
+     * card that needs it, each with its own columns: the first card to ask starts the read, and
+     * every other one waits for that same read. The value resolves to the name the table is
+     * registered under in DuckDB, or to null where the run holds nothing for it at that level.
+     * @type {Map<string, Promise<?string>>}
+     */
+    const wholeTables = new Map();
+
+    /** Counts the times the whole tables were dropped, so that a later read never reuses a name. */
+    let wholeTablesRound = 0;
+
+    /** Aborts the reads of whole tables that are still under way when the tables are dropped. */
+    let wholeTablesAbort = new AbortController();
+
     /** Hard cap on data points loaded per chart */
     const HARD_CAP = 5000;
 
@@ -290,6 +309,9 @@ export async function loadDashboard(runId) {
         clearDataRetries();
         const generation = ++loadGeneration;
         isLoading = true;
+        // Nothing read for the run shown before describes this one
+        dropWholeTables();
+        Object.keys(loadedData).forEach(metricId => delete loadedData[metricId]);
         
         try {
             dismissClosableNotice();
@@ -829,15 +851,18 @@ export async function loadDashboard(runId) {
      * A companion is read at its finest level of detail: it carries structure, and a thinned-out
      * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
      * descendants into roots. A companion that carries values over time instead says so
-     * ({@code followsLevel}) and is read at the level the chart shows, as its own data is. They are read again whenever the metric is loaded, because a running
-     * simulation keeps adding to them, and a tree that stops growing loses every genome born after
-     * it was read.
+     * ({@code followsLevel}) and is read at the level the chart shows, as its own data is.
      *
-     * A change of the tick window is not such a moment. It moves the window inside the tick range
-     * that was known when the metric was loaded, and the copy read then already covers that whole
-     * range, so the load carries it along instead of asking for it again - unless the companion
-     * follows the level and the level changed with the window. Opening a clade likewise redraws
-     * from what is already loaded and costs no request.
+     * The table itself is read once for the run and shared by every card that names it (see
+     * {@link wholeTable}); what a card gets here is the answer to its own query over it. A running
+     * simulation keeps adding to these tables, and a tree that stops growing loses every genome
+     * born after it was read, so they are dropped and read again when the page asks for a stretch
+     * reaching past the one the cards were read over.
+     *
+     * A change of the tick window inside that stretch is not such a moment. The copy read already
+     * covers it, so the load carries the card's rows along instead of asking for them again -
+     * unless the companion follows the level and the level changed with the window. Opening a
+     * clade likewise redraws from what is already loaded and costs no request.
      *
      * A companion the manifest marks as columnar arrives as one array of values per selected column
      * instead of one object per row, because a table of hundreds of thousands of rows costs more in
@@ -847,7 +872,8 @@ export async function loadDashboard(runId) {
      *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {string|null} lod - Level of detail the chart shows, for companions following it
-     * @param {AbortSignal} signal - Signal aborting the fetch
+     * @param {AbortSignal} signal - Signal of this card's load; the shared read of a table goes on
+     *        for the other cards waiting for it, and only this card stops taking part
      * @returns {Promise<{rows: Object<string, Array<Object>|Object<string, ArrayLike<*>>>,
      *          missing: Array<string>}|null>} Per companion metric id its rows, or its columns
      *          where the companion is columnar, and the metric ids of the tables that hold nothing
@@ -861,30 +887,90 @@ export async function loadDashboard(runId) {
         const rowsByMetric = {};
         const missing = [];
         for (const companion of metric.companions) {
-            const blobKey = `companion_${metric.id}_${companion.metricId}`;
             const level = companion.followsLevel && lod ? lod : 'lod0';
-            let blob;
-            try {
-                ({ blob } = await AnalyticsApi.fetchParquetBlob(
-                    companion.metricId, currentRunId, level, signal
-                ));
-            } catch (error) {
-                // A table that holds nothing at this level is not an error of the card: a table
-                // written only now and then has no coarse level yet while one written every
-                // recording does. The card draws what it has, and says which table it misses only
-                // where that leaves it with nothing to draw
-                if (error.code !== 'NO_DATA') {
-                    throw error;
-                }
+            const blobKey = await wholeTable(companion.metricId, level);
+            if (signal.aborted) {
+                throw new DOMException('Another load of the card took over', 'AbortError');
+            }
+            // A table that holds nothing at this level is not an error of the card: a table
+            // written only now and then has no coarse level yet while one written every
+            // recording does. The card draws what it has, and says which table it misses only
+            // where that leaves it with nothing to draw
+            if (blobKey === null) {
                 missing.push(companion.metricId);
                 continue;
             }
-            await DuckDBClient.registerParquetBlob(blobKey, blob);
             rowsByMetric[companion.metricId] = companion.columnar
                 ? await DuckDBClient.queryRegisteredBlobColumns(blobKey, companion.query)
                 : await DuckDBClient.queryRegisteredBlob(blobKey, companion.query);
         }
         return { rows: rowsByMetric, missing };
+    }
+
+    /**
+     * Reads one whole table of the run shown, or joins the read of it that is already under way.
+     *
+     * A read that failed, and one that found nothing, is not kept: a run that is being written
+     * gets the table later, and the next card to ask reads again.
+     *
+     * @param {string} metricId - Metric id of the table
+     * @param {string} level - Level of detail to read it at
+     * @returns {Promise<?string>} The name the table is registered under in DuckDB, or null where
+     *          the run holds nothing for it at that level
+     */
+    function wholeTable(metricId, level) {
+        const key = `${metricId}_${level}`;
+        const pending = wholeTables.get(key);
+        if (pending) {
+            return pending;
+        }
+        const blobKey = `table_${wholeTablesRound}_${key}`;
+        const signal = wholeTablesAbort.signal;
+        const read = (async () => {
+            let blob;
+            try {
+                ({ blob } = await AnalyticsApi.fetchParquetBlob(metricId, currentRunId, level, signal));
+            } catch (error) {
+                if (error.code !== 'NO_DATA') {
+                    throw error;
+                }
+                return null;
+            }
+            await DuckDBClient.registerParquetBlob(blobKey, blob);
+            return blobKey;
+        })();
+        const forget = () => {
+            if (wholeTables.get(key) === read) {
+                wholeTables.delete(key);
+            }
+        };
+        read.then(registered => {
+            if (registered === null) {
+                forget();
+            }
+        }, forget);
+        wholeTables.set(key, read);
+        return read;
+    }
+
+    /**
+     * Drops every whole table read so far, so that the next card to ask reads it again: another
+     * run is shown, or the run shown has grown past what was read.
+     *
+     * Reads still under way are aborted, and the cards waiting for them end with that abort.
+     */
+    function dropWholeTables() {
+        wholeTablesAbort.abort();
+        wholeTablesAbort = new AbortController();
+        wholeTablesRound++;
+        for (const read of wholeTables.values()) {
+            read.then(registered => {
+                if (registered !== null) {
+                    DuckDBClient.dropRegisteredBlob(registered);
+                }
+            }, () => { /* nothing was registered */ });
+        }
+        wholeTables.clear();
     }
 
     /**
@@ -959,6 +1045,7 @@ export async function loadDashboard(runId) {
         if (loadedBefore && toLoad
                 && (toLoad.to > loadedBefore.to || toLoad.from < loadedBefore.from)) {
             Object.keys(tickRanges).forEach(metricId => delete tickRanges[metricId]);
+            dropWholeTables();
             Object.values(loadedData).forEach(loaded => {
                 loaded.companion = null;
             });

@@ -5,18 +5,18 @@ Items needed to move from API-hack-based analysis to clean, scalable data access
 
 ## Database Schema
 
-- [ ] Add `death_tick` column to `organisms` table (currently only available in tick snapshots)
+- [x] Add `death_tick` column to `organisms` table
 
 ## Analytics Plugins (Parquet via Analyzer API)
 
-- [ ] **Per-organism lifecycle plugin**: One row per organism at death, containing:
-  - organismId, parentId, genomeHash, birthTick, deathTick, lifespan
-  - avgEnergy, avgEntropy over lifetime
-  - offspringCount
-  - deathCause (energy depletion vs entropy overflow)
-  - Instruction statistics (% PEEK, POKE, failed, etc.)
-- [ ] **Muller plot data plugin**: Per-tick genome population counts, structured for direct Muller plot rendering without API sampling hacks
-- [ ] **Lineage tree plugin**: Parent-child genome relationships as Parquet, replacing the current per-tick API approach
+- [x] **Per-organism life table**: the tables `births` and `deaths`, one row per organism in each,
+  joined by the organism: parent, genome, birth tick, death tick and cause of death (energy used up
+  or entropy above the limit). The lifespan and the number of offspring follow from the two tables.
+- [ ] **Per-organism statistics over a lifetime**: average energy and entropy, instruction
+  statistics (% PEEK, POKE, failed, etc.)
+- [x] **Muller plot data**: the table `genome_population`, the count of every genome at every
+  recorded tick
+- [x] **Lineage tree**: the table `genome_lineage`, every genome with its parent genome
 
 ## Infrastructure
 
@@ -25,4 +25,4 @@ Items needed to move from API-hack-based analysis to clean, scalable data access
 
 ## Current Workarounds
 
-A notebook that needs per-organism data, such as life histories, has to fetch every sampled tick snapshot through the Visualizer API, one HTTP call per tick. For the regime diagnostic analysis these were ~5,300 snapshots: it worked, but was slow (~4 min) and fragile. The improvements above would make this unnecessary.
+A notebook that needs what an organism did during its life, beyond its birth and its death, has to fetch every sampled tick snapshot through the Visualizer API, one HTTP call per tick. For the regime diagnostic analysis these were ~5,300 snapshots: it worked, but was slow (~4 min) and fragile. The open items above would make this unnecessary.

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
+import org.evochora.datapipeline.api.analytics.Aggregation;
 import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
@@ -13,9 +14,6 @@ import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizationHint;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.utils.MetadataConfigHelper;
-
-import com.typesafe.config.Config;
 
 /**
  * Tracks births and deaths over time, the deaths split by what killed the organism.
@@ -24,58 +22,51 @@ import com.typesafe.config.Config;
  * It stores only raw "facts" that can be extracted from a single tick: the organisms created so
  * far, the organisms alive, and the organisms the recording reports as dead, by cause.
  * <p>
- * <strong>Causes.</strong> The runtime kills an organism when its energy has dropped to zero or
- * below, or when its entropy exceeds the configured maximum, and it checks in that order. Killing
- * changes neither value, so the cause is read back from the dead organism's state in the same
- * order: energy first, then entropy, and anything else is "other".
+ * <strong>Causes.</strong> {@link DeathCause} reads the cause of each death from the dead
+ * organism's state, by the rule the runtime kills with.
  * <p>
  * <strong>Why this plugin must see every recording.</strong> A dead organism appears in exactly one
  * recording and is removed afterwards, so the per-cause counts are complete only if no recording
- * is skipped. The number of deaths itself needs no such care: {@code total_born - alive_count} is a
- * running total kept by the simulation, which survives a resume and whose difference is exact on
- * every level of detail.
+ * is skipped. The number of births needs no such care: {@code total_born} is a running total kept
+ * by the simulation, which survives a resume and whose difference is exact on every level of
+ * detail.
+ * <p>
+ * <strong>Levels of detail.</strong> The two running totals are states and are sampled. The deaths
+ * by cause are events of one recording and are declared {@link Aggregation#SUM}, so a coarser
+ * level adds the recordings of its window instead of keeping one of them: every level holds all
+ * the deaths of the run with their causes.
  * <p>
  * <strong>Query-Time Computation:</strong>
  * <pre>
  * 1. Take the width of one window from the card, which asks for as many as it can show
- * 2. For each row: births = delta(total_born), deaths = delta(total_born - alive_count)
- * 3. Aggregate by bucket and split the deaths by the causes counted in it
+ * 2. For each row: births = delta(total_born)
+ * 3. Aggregate by bucket: the births and the deaths of each cause added up
  * </pre>
- * On the finest level every recording is a row, so the counted causes add up to the deaths. A
- * coarser level reads only some recordings: the deaths stay exact, and their split is estimated
- * from the causes counted in the rows read. Deaths of a bucket without any counted cause are
- * shown as unclassified rather than guessed.
  */
 public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
 
     /** Schema stores only raw facts - no derived values */
     private static final ParquetSchema SCHEMA = ParquetSchema.builder(
-            "Births and deaths, as running totals. One row per recorded tick. The births between two "
-            + "rows are the change of total_born, the deaths the change of total_born minus "
-            + "alive_count; both are exact on every level of detail.")
+            "Births and deaths. One row per recorded tick. The births between two rows are the "
+            + "change of total_born, which is exact on every level of detail. The deaths are "
+            + "counted by cause, and a row of a coarser level holds the deaths of all the recorded "
+            + "ticks it stands for.")
         .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
         .column("total_born", ColumnType.BIGINT,
             "Organisms created since the run began, the ancestors included.")
         .column("alive_count", ColumnType.INTEGER, "Organisms alive at the tick.")
-        .column("deaths_energy", ColumnType.INTEGER,
-            "Organisms this recorded tick reports as dead because their energy was used up. A dead "
-            + "organism is reported by one recorded tick only. A row of a coarser level holds the "
-            + "count of the one recorded tick it stands on, so there the three deaths columns give "
-            + "the proportions of the causes and not the number of deaths.")
-        .column("deaths_entropy", ColumnType.INTEGER,
-            "Organisms this recorded tick reports as dead because their entropy exceeded the "
-            + "maximum. Read like deaths_energy.")
-        .column("deaths_other", ColumnType.INTEGER,
-            "Organisms this recorded tick reports as dead for any other reason. Read like "
-            + "deaths_energy.")
+        .column("deaths_energy", ColumnType.INTEGER, Aggregation.SUM,
+            "Organisms reported as dead since the previous row because "
+            + DeathCause.meaningOf("energy") + ". A dead organism is reported by one recorded "
+            + "tick only.")
+        .column("deaths_entropy", ColumnType.INTEGER, Aggregation.SUM,
+            "Organisms reported as dead since the previous row because "
+            + DeathCause.meaningOf("entropy") + ". A dead organism is reported by one recorded "
+            + "tick only.")
         .build();
 
-    /**
-     * Entropy above which the runtime kills an organism. Without a run configuration - a caller
-     * that does not place rows on a run, such as a unit test of the energy rule - no entropy limit
-     * is known and such deaths count as other.
-     */
-    private int maxEntropy = Integer.MAX_VALUE;
+    /** Reads the cause of a death; knows no entropy limit until a run has been supplied. */
+    private DeathCause deathCause = DeathCause.forRun(null);
 
     @Override
     protected Fixed fixedSamplingInterval() {
@@ -86,11 +77,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
     @Override
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);
-        if (context != null && context.getMetadata() != null
-                && !context.getMetadata().getResolvedConfigJson().isEmpty()) {
-            Config resolvedConfig = MetadataConfigHelper.getResolvedConfig(context.getMetadata());
-            this.maxEntropy = resolvedConfig.getInt("runtime.organism.max-entropy");
-        }
+        this.deathCause = DeathCause.forRun(context);
     }
 
     @Override
@@ -105,33 +92,26 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
      * available in the TickData, with no reference to previous ticks.
      *
      * @param tick The tick data to process
-     * @return Single row with [tick, total_born, alive_count, deaths_energy, deaths_entropy,
-     *         deaths_other]
+     * @return Single row with [tick, total_born, alive_count, deaths_energy, deaths_entropy]
+     * @throws IllegalStateException if a dead organism's state fits no cause of death
      */
     @Override
     public List<Object[]> extractRows(TickData tick) {
         int aliveCount = 0;
-        int energyDeaths = 0;
-        int entropyDeaths = 0;
-        int otherDeaths = 0;
+        int[] deaths = new int[DeathCause.CAUSES.size()];
         for (OrganismState org : tick.getOrganismsList()) {
             if (!org.getIsDead()) {
                 aliveCount++;
-            } else if (org.getEnergy() <= 0) {
-                energyDeaths++;
-            } else if (org.getEntropyRegister() > maxEntropy) {
-                entropyDeaths++;
             } else {
-                otherDeaths++;
+                deaths[deathCause.of(org)]++;
             }
         }
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),
             tick.getTotalOrganismsCreated(),
             aliveCount,
-            energyDeaths,
-            entropyDeaths,
-            otherDeaths
+            deaths[DeathCause.ENERGY],
+            deaths[DeathCause.ENTROPY]
         });
     }
 
@@ -143,7 +123,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
      * very long simulations.
      * <p>
      * Deaths are returned as negative values, one column per cause, for mirrored stacked bars.
-     * The first row of the data has no predecessor; its deaths are the ones counted in it.
+     * The first row of the data has no predecessor and therefore no births.
      *
      * @return SQL query string with {table} placeholder
      */
@@ -151,63 +131,25 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
         return """
             WITH
             %s,
-            raw AS (
-                -- Rows written before the causes were recorded have no cause columns; they read as
-                -- none counted, so their deaths show as unclassified
-                SELECT
-                    tick,
-                    window_tick,
-                    total_born,
-                    alive_count,
-                    COALESCE(deaths_energy, 0) AS deaths_energy,
-                    COALESCE(deaths_entropy, 0) AS deaths_entropy,
-                    COALESCE(deaths_other, 0) AS deaths_other
-                FROM window_rows
-            ),
             computed AS (
                 SELECT
                     tick,
                     window_tick,
                     COALESCE(total_born - LAG(total_born) OVER (ORDER BY tick), 0) AS births,
-                    COALESCE((total_born - alive_count)
-                        - LAG(total_born - alive_count) OVER (ORDER BY tick),
-                        deaths_energy + deaths_entropy + deaths_other) AS deaths,
                     deaths_energy,
-                    deaths_entropy,
-                    deaths_other
-                FROM raw
-            ),
-            buckets AS (
-                -- A window the level holds no recording in carries nothing rather than zeros: the
-                -- level knows nothing there, which is not the same as nobody having been born
-                SELECT
-                    windows.window_tick AS tick,
-                    CASE WHEN COUNT(computed.tick) = 0 THEN NULL
-                         ELSE SUM(births) END::BIGINT AS births,
-                    CASE WHEN COUNT(computed.tick) = 0 THEN NULL
-                         ELSE GREATEST(0, SUM(deaths)) END::DOUBLE AS deaths,
-                    SUM(deaths_energy)::DOUBLE AS energy,
-                    SUM(deaths_entropy)::DOUBLE AS entropy,
-                    SUM(deaths_other)::DOUBLE AS other
-                FROM windows LEFT JOIN computed
-                    ON computed.window_tick = windows.window_tick
-                GROUP BY windows.window_tick
+                    deaths_entropy
+                FROM window_rows
             )
+            -- A window the level holds no recording in carries nothing rather than zeros: the
+            -- level knows nothing there, which is not the same as nobody having been born
             SELECT
-                tick,
-                births,
-                CASE WHEN deaths IS NULL THEN NULL
-                     WHEN energy + entropy + other = 0 THEN 0
-                     ELSE -deaths * energy / (energy + entropy + other) END AS deaths_energy,
-                CASE WHEN deaths IS NULL THEN NULL
-                     WHEN energy + entropy + other = 0 THEN 0
-                     ELSE -deaths * entropy / (energy + entropy + other) END AS deaths_entropy,
-                CASE WHEN deaths IS NULL THEN NULL
-                     WHEN energy + entropy + other = 0 THEN 0
-                     ELSE -deaths * other / (energy + entropy + other) END AS deaths_other,
-                CASE WHEN deaths IS NULL THEN NULL
-                     WHEN energy + entropy + other = 0 THEN -deaths ELSE 0 END AS deaths_unclassified
-            FROM buckets
+                windows.window_tick AS tick,
+                SUM(births)::BIGINT AS births,
+                (-SUM(deaths_energy))::BIGINT AS deaths_energy,
+                (-SUM(deaths_entropy))::BIGINT AS deaths_entropy
+            FROM windows LEFT JOIN computed
+                ON computed.window_tick = windows.window_tick
+            GROUP BY windows.window_tick
             ORDER BY tick
             """.formatted(windowSource());
     }
@@ -217,8 +159,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Birth & Death Rates";
-        entry.description = "Births (up) and deaths by cause (down) over time. "
-            + "On coarser levels the split by cause is estimated.";
+        entry.description = "Births (up) and deaths by cause (down) over time.";
 
         // Generate dataSources for all configured LOD levels
         entry.dataSources = new HashMap<>();
@@ -229,28 +170,22 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
 
         // Use custom aggregated query instead of QuerySpec
         entry.generatedQuery = generateAggregatedQuery();
-        entry.outputColumns = List.of("tick", "births",
-            "deaths_energy", "deaths_entropy", "deaths_other", "deaths_unclassified");
+        entry.outputColumns = List.of("tick", "births", "deaths_energy", "deaths_entropy");
 
         // Visualization: a cause that did not occur in the window is left out of the legend
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
-            .with("y", List.of("births",
-                "deaths_energy", "deaths_entropy", "deaths_other", "deaths_unclassified"))
+            .with("y", List.of("births", "deaths_energy", "deaths_entropy"))
             .with("yFormat", "integer")
             .with("yLabel", "Organisms")
             .with("hideEmpty", true)
             .with("labels", Map.of(
                 "births", "Births",
                 "deaths_energy", "Deaths: energy",
-                "deaths_entropy", "Deaths: entropy",
-                "deaths_other", "Deaths: other",
-                "deaths_unclassified", "Deaths: unclassified"))
+                "deaths_entropy", "Deaths: entropy"))
             .with("colors", Map.of(
                 "births", "#4ade80",
                 "deaths_energy", "#f87171",
-                "deaths_entropy", "#c084fc",
-                "deaths_other", "#fbbf24",
-                "deaths_unclassified", "#9ca3af"));
+                "deaths_entropy", "#c084fc"));
 
         return entry;
     }

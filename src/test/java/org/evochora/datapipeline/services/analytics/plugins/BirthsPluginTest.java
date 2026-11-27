@@ -136,13 +136,58 @@ class BirthsPluginTest {
     }
 
     @Test
-    void aFounderIsNoBirth() {
+    void aFounderGetsARowWithoutAParent() {
+        // The first recording of a run: the founder was placed at the tick the run started at
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(0)
+            .addOrganisms(OrganismState.newBuilder()
+                .setOrganismId(PARENT_ID)
+                .setBirthTick(0)
+                .setGenomeHash(PARENT_GENOME))
+            .build();
+
+        List<Object[]> rows = plugin.extractRows(tick);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0)).containsExactly(
+            0L, 0L, PARENT_ID, null, null, 0, PARENT_GENOME, null, null);
+    }
+
+    @Test
+    void aFounderOfAnEarlierRecordingGetsNoSecondRow() {
         TickData tick = TickData.newBuilder()
             .setTickNumber(RECORDING)
             .addOrganisms(parent())
             .build();
 
         assertThat(plugin.extractRows(tick)).isEmpty();
+    }
+
+    @Test
+    void aFounderAndItsChildOfTheSameRecordingBothGetARow() {
+        // A child born before the first recording after the run's start
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(0)
+            .addOrganisms(OrganismState.newBuilder()
+                .setOrganismId(PARENT_ID)
+                .setBirthTick(0)
+                .setGenomeHash(PARENT_GENOME))
+            .addOrganisms(OrganismState.newBuilder()
+                .setOrganismId(7)
+                .setBirthTick(0)
+                .setParentId(PARENT_ID)
+                .setParentGenomeHash(PARENT_GENOME)
+                .setGenomeHash(PARENT_GENOME)
+                .setGeneration(1))
+            .build();
+
+        List<Object[]> rows = plugin.extractRows(tick);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0)[3]).as("the founder's parent").isNull();
+        assertThat(rows.get(1)).containsExactly(
+            0L, 0L, 7, PARENT_ID, 0L, 1, PARENT_GENOME, PARENT_GENOME,
+            VARIATION_CLASSES.indexOf("unchanged"));
     }
 
     @Test
@@ -211,7 +256,9 @@ class BirthsPluginTest {
                 .contains("parent_birth_tick")
                 .contains("variation")
                 .doesNotContain("genome_hash")
-                .doesNotContain("ORDER BY");
+                .doesNotContain("ORDER BY")
+                // A founder's row has no parent, which the browser would read as organism 0
+                .contains("WHERE parent_id IS NOT NULL");
         });
     }
 

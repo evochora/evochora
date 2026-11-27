@@ -2,7 +2,6 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.within;
 
 import java.io.IOException;
 import java.sql.Connection;
@@ -31,8 +30,8 @@ import com.typesafe.config.ConfigFactory;
 /**
  * Unit tests for VitalStatsPlugin.
  * <p>
- * The plugin is stateless - it only extracts raw facts from each tick. Births, deaths and the
- * split of the deaths by cause are computed at query time, which is run here in DuckDB.
+ * The plugin is stateless - it only extracts raw facts from each tick. The births and the deaths
+ * of a window are computed at query time, which is run here in DuckDB.
  * <p>
  * Test metadata uses max-entropy=8191 from TestMetadataHelper.
  */
@@ -65,39 +64,39 @@ class VitalStatsPluginTest {
         List<Object[]> rows = plugin.extractRows(tick);
 
         assertThat(rows).hasSize(1);
-        assertThat(rows.get(0)).containsExactly(100L, 15L, 2, 1, 0, 0);
+        assertThat(rows.get(0)).containsExactly(100L, 15L, 2, 1, 0);
     }
 
     @Test
-    void readsTheCauseOfDeathInTheOrderTheRuntimeChecksIt() {
+    void countsTheDeathsOfARecordingByCause() {
         TickData tick = TickData.newBuilder()
             .setTickNumber(1)
-            .addOrganisms(dead(0, 10))                   // energy
-            .addOrganisms(dead(-5, MAX_ENTROPY + 1))     // both limits broken: energy is checked first
-            .addOrganisms(dead(50, MAX_ENTROPY + 1))     // entropy
-            .addOrganisms(dead(50, MAX_ENTROPY))         // reaching the limit is not fatal
+            .addOrganisms(dead(0, 10))
+            .addOrganisms(dead(-5, MAX_ENTROPY + 1))
+            .addOrganisms(dead(50, MAX_ENTROPY + 1))
             .build();
 
         Object[] row = plugin.extractRows(tick).get(0);
 
         assertThat(row[3]).as("energy").isEqualTo(2);
         assertThat(row[4]).as("entropy").isEqualTo(1);
-        assertThat(row[5]).as("other").isEqualTo(1);
     }
 
     @Test
-    void anEntropyDeathCountsAsOtherWithoutRunConfiguration() {
-        VitalStatsPlugin withoutRun = new VitalStatsPlugin();
-        withoutRun.configure(ConfigFactory.parseMap(Map.of("metricId", "vital_stats")));
-        withoutRun.initialize(null);
-
-        Object[] row = withoutRun.extractRows(TickData.newBuilder()
+    void aDeathThatFitsNoCauseIsRefused() {
+        TickData tick = TickData.newBuilder()
             .setTickNumber(1)
-            .addOrganisms(dead(50, MAX_ENTROPY + 1))
-            .build()).get(0);
+            .addOrganisms(dead(50, MAX_ENTROPY))
+            .build();
 
-        assertThat(row[4]).isEqualTo(0);
-        assertThat(row[5]).isEqualTo(1);
+        assertThatThrownBy(() -> plugin.extractRows(tick))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("neither");
+    }
+
+    @Test
+    void theCauseColumnsAreSummedOverALevelsWindow() {
+        assertThat(plugin.getSchema().summedColumnIndexes()).containsExactly(3, 4);
     }
 
     @Test
@@ -117,125 +116,120 @@ class VitalStatsPluginTest {
         assertThat(entry.id).isEqualTo("vital_stats");
         assertThat(entry.name).isEqualTo("Birth & Death Rates");
         assertThat(entry.outputColumns).containsExactly("tick", "births",
-            "deaths_energy", "deaths_entropy", "deaths_other", "deaths_unclassified");
+            "deaths_energy", "deaths_entropy");
         assertThat(entry.visualization.type).isEqualTo("stacked-bar-chart");
         assertThat(entry.visualization.config)
-            .containsEntry("y", List.of("births",
-                "deaths_energy", "deaths_entropy", "deaths_other", "deaths_unclassified"))
+            .containsEntry("y", List.of("births", "deaths_energy", "deaths_entropy"))
             .containsEntry("hideEmpty", true)
             .containsKeys("labels", "colors");
     }
 
     @Test
-    void onTheFinestLevelEveryDeathKeepsItsCause() throws SQLException {
-        // Every recording is a row: two energy deaths and one entropy death in the second, one
-        // other death in the third
+    void everyDeathKeepsItsCause() throws SQLException {
+        // Two energy deaths and one entropy death in the second row, one entropy death in the third
         List<Map<String, Number>> result = runQuery(List.of(
-            row(0, 10, 10, 0, 0, 0),
-            row(1, 12, 9, 2, 1, 0),
-            row(2, 12, 8, 0, 0, 1)));
+            row(0, 10, 10, 0, 0),
+            row(1, 12, 9, 2, 1),
+            row(2, 12, 8, 0, 1)));
 
         Map<String, Number> total = sum(result);
         assertThat(total.get("births").longValue()).isEqualTo(2);
-        assertThat(total.get("deaths_energy").doubleValue()).isCloseTo(-2, within(1e-9));
-        assertThat(total.get("deaths_entropy").doubleValue()).isCloseTo(-1, within(1e-9));
-        assertThat(total.get("deaths_other").doubleValue()).isCloseTo(-1, within(1e-9));
-        assertThat(total.get("deaths_unclassified").doubleValue()).isZero();
+        assertThat(total.get("deaths_energy").longValue()).isEqualTo(-2);
+        assertThat(total.get("deaths_entropy").longValue()).isEqualTo(-2);
     }
 
     @Test
-    void onACoarseLevelTheExactDeathsAreSplitByTheCountedCauses() throws SQLException {
-        // Only every other recording was read: the running total says six died, the rows read
-        // counted one energy and one entropy death
+    void theRowsOfOneWindowAreAddedUp() throws SQLException {
+        // A coarser level writes a row per window and another wherever a batch ended inside one,
+        // each holding the deaths since the row before it: one window of the card over three rows
         List<Map<String, Number>> result = runQuery(List.of(
-            row(0, 10, 10, 0, 0, 0),
-            row(1000, 10, 4, 1, 1, 0)));
+            row(0, 10, 10, 0, 0),
+            row(400, 13, 9, 3, 1),
+            row(1000, 15, 6, 4, 1)), 1);
 
-        Map<String, Number> total = sum(result);
-        assertThat(total.get("deaths_energy").doubleValue()).isCloseTo(-3, within(1e-9));
-        assertThat(total.get("deaths_entropy").doubleValue()).isCloseTo(-3, within(1e-9));
-        assertThat(total.get("deaths_unclassified").doubleValue()).isZero();
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).get("births").longValue()).isEqualTo(5);
+        assertThat(result.get(0).get("deaths_energy").longValue()).isEqualTo(-7);
+        assertThat(result.get(0).get("deaths_entropy").longValue()).isEqualTo(-2);
     }
 
     @Test
-    void deathsWithoutACountedCauseStayUnclassified() throws SQLException {
-        List<Map<String, Number>> result = runQuery(List.of(
-            row(0, 10, 10, 0, 0, 0),
-            row(1000, 10, 7, 0, 0, 0)));
-
-        Map<String, Number> total = sum(result);
-        assertThat(total.get("deaths_unclassified").doubleValue()).isCloseTo(-3, within(1e-9));
-        assertThat(total.get("deaths_energy").doubleValue()).isZero();
-    }
-
-    @Test
-    void rowsWithoutCauseColumnsShowTheirDeathsAsUnclassified() throws SQLException {
-        // Files written before the causes were recorded lack the columns; merged with newer ones
-        // they arrive as NULL
-        List<Map<String, Number>> result = runQuery(List.of(
-            row(0, 10, 10, null, null, null),
-            row(1000, 10, 7, null, null, null),
-            row(2000, 12, 8, 1, 0, 0)));
-
-        assertThat(result.get(1).get("deaths_unclassified").doubleValue()).isCloseTo(-3, within(1e-9));
-        assertThat(result.get(2).get("deaths_energy").doubleValue()).isCloseTo(-1, within(1e-9));
-        assertThat(result.get(2).get("births").longValue()).isEqualTo(2);
+    void aWindowWithoutARowCarriesNothing() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+             Statement statement = connection.createStatement()) {
+            createFacts(statement, List.of(row(0, 10, 10, 0, 0), row(3000, 12, 9, 2, 1)));
+            try (ResultSet rs = statement.executeQuery(queryOver(3))) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.next()).isTrue();
+                rs.getLong("births");
+                assertThat(rs.wasNull()).as("births of the empty window").isTrue();
+                rs.getLong("deaths_energy");
+                assertThat(rs.wasNull()).as("deaths of the empty window").isTrue();
+            }
+        }
     }
 
     /**
      * Runs the manifest's query in DuckDB against the given rows, standing in for the Parquet
-     * files the browser reads.
+     * files the browser reads, with one window per row.
      */
     private List<Map<String, Number>> runQuery(List<Object[]> rows) throws SQLException {
+        return runQuery(rows, rows.size());
+    }
+
+    /**
+     * Runs the manifest's query in DuckDB against the given rows, cut into the given number of
+     * windows.
+     */
+    private List<Map<String, Number>> runQuery(List<Object[]> rows, int windows) throws SQLException {
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
              Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE facts (tick BIGINT, total_born BIGINT, alive_count INTEGER, "
-                + "deaths_energy INTEGER, deaths_entropy INTEGER, deaths_other INTEGER)");
-            for (Object[] r : rows) {
-                statement.execute("INSERT INTO facts VALUES (%s, %s, %s, %s, %s, %s)"
-                    .formatted(r[0], r[1], r[2], r[3], r[4], r[5]));
-            }
-            // The card fills in the stretch it draws and how many windows it cuts it into. One
-            // window per recording written, so that the rows the query returns are those rows
-            String query = plugin.getManifestEntry().generatedQuery
-                .replace("{table}", "facts")
-                .replace("{buckets}", String.valueOf(rows.size()))
-                .replace("{from}", "SELECT MIN(tick) FROM facts")
-                .replace("{to}", "SELECT MAX(tick) FROM facts");
+            createFacts(statement, rows);
             List<Map<String, Number>> result = new ArrayList<>();
-            try (ResultSet rs = statement.executeQuery(query)) {
+            try (ResultSet rs = statement.executeQuery(queryOver(windows))) {
                 while (rs.next()) {
                     result.add(Map.of(
                         "births", rs.getLong("births"),
-                        "deaths_energy", rs.getDouble("deaths_energy"),
-                        "deaths_entropy", rs.getDouble("deaths_entropy"),
-                        "deaths_other", rs.getDouble("deaths_other"),
-                        "deaths_unclassified", rs.getDouble("deaths_unclassified")));
+                        "deaths_energy", rs.getLong("deaths_energy"),
+                        "deaths_entropy", rs.getLong("deaths_entropy")));
                 }
             }
             return result;
         }
     }
 
-    private static Map<String, Number> sum(List<Map<String, Number>> rows) {
-        long births = 0;
-        double energy = 0;
-        double entropy = 0;
-        double other = 0;
-        double unclassified = 0;
-        for (Map<String, Number> r : rows) {
-            births += r.get("births").longValue();
-            energy += r.get("deaths_energy").doubleValue();
-            entropy += r.get("deaths_entropy").doubleValue();
-            other += r.get("deaths_other").doubleValue();
-            unclassified += r.get("deaths_unclassified").doubleValue();
+    private static void createFacts(Statement statement, List<Object[]> rows) throws SQLException {
+        statement.execute("CREATE TABLE facts (tick BIGINT, total_born BIGINT, alive_count INTEGER, "
+            + "deaths_energy INTEGER, deaths_entropy INTEGER)");
+        for (Object[] r : rows) {
+            statement.execute("INSERT INTO facts VALUES (%s, %s, %s, %s, %s)"
+                .formatted(r[0], r[1], r[2], r[3], r[4]));
         }
-        return Map.of("births", births, "deaths_energy", energy, "deaths_entropy", entropy,
-            "deaths_other", other, "deaths_unclassified", unclassified);
     }
 
-    private static Object[] row(long tick, long totalBorn, int alive, Integer energy, Integer entropy, Integer other) {
-        return new Object[] {tick, totalBorn, alive, energy, entropy, other};
+    /** The manifest's query as the card fills it in: the stretch it draws and its windows. */
+    private String queryOver(int windows) {
+        return plugin.getManifestEntry().generatedQuery
+            .replace("{table}", "facts")
+            .replace("{buckets}", String.valueOf(windows))
+            .replace("{from}", "SELECT MIN(tick) FROM facts")
+            .replace("{to}", "SELECT MAX(tick) FROM facts");
+    }
+
+    private static Map<String, Number> sum(List<Map<String, Number>> rows) {
+        long births = 0;
+        long energy = 0;
+        long entropy = 0;
+        for (Map<String, Number> r : rows) {
+            births += r.get("births").longValue();
+            energy += r.get("deaths_energy").longValue();
+            entropy += r.get("deaths_entropy").longValue();
+        }
+        return Map.of("births", births, "deaths_energy", energy, "deaths_entropy", entropy);
+    }
+
+    private static Object[] row(long tick, long totalBorn, int alive, int energy, int entropy) {
+        return new Object[] {tick, totalBorn, alive, energy, entropy};
     }
 
     private static OrganismState alive() {

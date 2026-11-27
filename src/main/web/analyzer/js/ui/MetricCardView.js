@@ -1,5 +1,6 @@
 
 import * as ChartRegistry from '../charts/ChartRegistry.js';
+import * as DeathLifetimeSeries from '../charts/DeathLifetimeSeries.js';
 import * as GenerationTimeSeries from '../charts/GenerationTimeSeries.js';
 import * as MutationSuccessSeries from '../charts/MutationSuccessSeries.js';
 
@@ -16,13 +17,13 @@ import * as MutationSuccessSeries from '../charts/MutationSuccessSeries.js';
  * The derivations a card can name under {@code derived} in its visualization config, by that name.
  * A derivation becomes available to cards by being added here.
  *
- * Such a card draws nothing from its own rows. Its manifest entry names a companion table, and the
- * derivation computes every row the chart draws from that table alone; the chart sees ordinary rows
+ * Such a card draws nothing from its own rows. Its manifest entry names its companion tables, and
+ * the derivation computes every row the chart draws from those tables alone; the chart sees ordinary rows
  * and knows nothing of where they came from. The registry lives here, where the rows are handed to
  * the chart, because charts of different kinds draw derived rows and each of them would otherwise
  * carry the same map.
  *
- * A module registered here exports {@code derive(companion, config)}:
+ * A module registered here exports {@code derive(companion, config, window, points)}:
  * <ul>
  *   <li>{@code companion} - what the card loaded for its companions: per companion metric id its
  *       rows, or, where the manifest marks the companion as columnar, one array of values per
@@ -42,6 +43,7 @@ import * as MutationSuccessSeries from '../charts/MutationSuccessSeries.js';
  * card then says it has no data, as a card whose own table is empty does.
  */
 const DERIVATIONS = {
+    'death-lifetimes': DeathLifetimeSeries,
     'generation-time': GenerationTimeSeries,
     'mutation-success': MutationSuccessSeries
 };
