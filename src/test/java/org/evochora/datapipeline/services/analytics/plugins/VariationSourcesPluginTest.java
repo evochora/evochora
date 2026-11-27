@@ -328,7 +328,7 @@ class VariationSourcesPluginTest {
             assertThat(entry.generatedQuery).contains("SUM(rows." + column + ")");
         }
         assertThat(entry.generatedQuery)
-            .contains("{buckets}").contains("{from}").contains("{to}")
+            .contains("{buckets}").contains("{interval}").contains("{from}").contains("{to}")
             .contains("GROUP BY windows.window_tick");
     }
 
@@ -338,7 +338,7 @@ class VariationSourcesPluginTest {
         // it: the windows have to start where the stretch starts and end with it, however the width
         // of one divides the ticks between
         String query = plugin.getManifestEntry().generatedQuery.replace("{table}", "sources")
-            .replace("{from}", "260000").replace("{to}", "27790000");
+            .replace("{from}", "260000").replace("{to}", "27790000").replace("{interval}", "1");
         try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
              java.sql.Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE sources (tick BIGINT, " + COUNT_COLUMNS.stream()
@@ -368,7 +368,8 @@ class VariationSourcesPluginTest {
         // the card beside it; and a file is fetched whole where it reaches into the stretch, so a
         // row outside it must not be counted into the window at the edge
         String query = plugin.getManifestEntry().generatedQuery.replace("{table}", "sources")
-            .replace("{from}", "1000").replace("{to}", "11000").replace("{buckets}", "10");
+            .replace("{from}", "1000").replace("{to}", "11000").replace("{buckets}", "10")
+            .replace("{interval}", "1");
         try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
              java.sql.Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE sources (tick BIGINT, " + COUNT_COLUMNS.stream()

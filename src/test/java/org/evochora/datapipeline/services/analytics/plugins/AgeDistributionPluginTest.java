@@ -62,6 +62,7 @@ class AgeDistributionPluginTest {
         String query = plugin.getManifestEntry().generatedQuery
             .replace("{table}", "ages")
             .replace("{buckets}", "1")
+            .replace("{interval}", "1")
             .replace("{from}", "0")
             .replace("{to}", "900");
         try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");

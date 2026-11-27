@@ -165,6 +165,30 @@ class VitalStatsPluginTest {
     }
 
     @Test
+    void everyWholeWindowHoldsTheSameNumberOfRowsOfItsLevel() throws SQLException {
+        // A level with a row every 10 ticks, one death in each, over a stretch of 1000 ticks that
+        // the card cuts into 7 windows. A seventh of the stretch is 14.3 rows wide: windows of
+        // that width would hold 14 and 15 rows in turn, and the card would draw bars rising and
+        // falling. Rounded up to 15 rows, every whole window holds 15
+        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+             Statement statement = connection.createStatement()) {
+            List<Object[]> rows = new ArrayList<>();
+            for (int tick = 0; tick <= 1000; tick += 10) {
+                rows.add(row(tick, tick, 0, 1, 0));
+            }
+            createFacts(statement, rows);
+            List<Long> deaths = new ArrayList<>();
+            try (ResultSet rs = statement.executeQuery(queryOver(7, 10))) {
+                while (rs.next()) {
+                    deaths.add(-rs.getLong("deaths_energy"));
+                }
+            }
+            // 101 rows: six whole windows of 15, and the 11 that are left in the last one
+            assertThat(deaths).containsExactly(15L, 15L, 15L, 15L, 15L, 15L, 11L);
+        }
+    }
+
+    @Test
     void aWindowWithoutARowCarriesNothing() throws SQLException {
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
              Statement statement = connection.createStatement()) {
@@ -218,11 +242,23 @@ class VitalStatsPluginTest {
         }
     }
 
-    /** The manifest's query as the card fills it in: the stretch it draws and its windows. */
+    /**
+     * The manifest's query as the card fills it in: the stretch it draws and its windows, over a
+     * level whose ticks lie one apart, which leaves the width of a window as the stretch gives it.
+     */
     private String queryOver(int windows) {
+        return queryOver(windows, 1);
+    }
+
+    /**
+     * The manifest's query as the card fills it in: the stretch it draws, its windows, and how
+     * far apart the ticks of the loaded level lie.
+     */
+    private String queryOver(int windows, int interval) {
         return plugin.getManifestEntry().generatedQuery
             .replace("{table}", "facts")
             .replace("{buckets}", String.valueOf(windows))
+            .replace("{interval}", String.valueOf(interval))
             .replace("{from}", "SELECT MIN(tick) FROM facts")
             .replace("{to}", "SELECT MAX(tick) FROM facts");
     }

@@ -417,17 +417,24 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      * The common table expressions a windowed query reads its rows through.
      * <p>
      * A card says which stretch of the run it draws, as {@code {from}} and {@code {to}}, and into
-     * how many windows it cuts it, as {@code {buckets}}. All three come from the page and not from
-     * the rows: every card of the analyzer shows the same stretch, and which of the stored levels
-     * is read to fill it is a choice about how dense the points are. Read from the rows instead,
-     * the stretch would be a property of that level - a coarse level writes its newest row further
-     * back, and the card would quietly end earlier than the card beside it.
+     * how many windows at most it cuts it, as {@code {buckets}}. All three come from the page and
+     * not from the rows: every card of the analyzer shows the same stretch, and which of the stored
+     * levels is read to fill it is a choice about how dense the points are. Read from the rows
+     * instead, the stretch would be a property of that level - a coarse level writes its newest row
+     * further back, and the card would quietly end earlier than the card beside it.
+     * <p>
+     * The card also says how far apart the ticks of the level it loaded lie, as
+     * {@code {interval}}, and a window is a whole number of those intervals wide. A window of any
+     * other width holds one row more or less than its neighbour, and a query that adds up counts
+     * would draw that as bars rising and falling in turn. The width is rounded up, so the stretch
+     * is cut into no more windows than the card asked for, and what does not fill a whole window
+     * is left to the last one.
      * <p>
      * {@code window_rows} therefore holds the rows of that stretch and nothing else, each carrying
      * the window it falls into: a file is fetched whole where it reaches into the stretch, and a
      * row of it that lies outside would otherwise be counted into the window at the edge. The last
-     * window holds what would fall past it, since a stretch that divides evenly puts its very last
-     * tick on the edge of one more.
+     * window holds what would fall past it, since a stretch that divides evenly into as many
+     * windows as the card asked for puts its very last tick on the edge of one more.
      * <p>
      * {@code windows} holds every window of the stretch, so that a query joins its rows into them
      * and answers for all of them. A window the loaded level holds nothing in belongs in the answer
@@ -441,19 +448,27 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     protected static String windowSource() {
         return """
             params AS (
-                SELECT ({from})::BIGINT AS first_tick,
-                       GREATEST(1, CEIL((({to})::BIGINT - ({from})::BIGINT) / {buckets}))::BIGINT
-                           AS bucket_size
+                SELECT first_tick, bucket_size,
+                       LEAST({buckets}, FLOOR((last_tick - first_tick) / bucket_size) + 1)::BIGINT
+                           AS window_count
+                FROM (
+                    SELECT ({from})::BIGINT AS first_tick,
+                           ({to})::BIGINT AS last_tick,
+                           (GREATEST(1, CEIL((({to})::BIGINT - ({from})::BIGINT)
+                               / {buckets} / {interval})) * {interval})::BIGINT AS bucket_size
+                )
             ),
             windows AS (
                 SELECT (first_tick + step * bucket_size)::BIGINT AS window_tick
                 FROM params, range(0, {buckets}) AS steps(step)
+                WHERE step < window_count
             ),
             window_rows AS (
                 SELECT *,
                     ((SELECT first_tick FROM params)
-                        + LEAST({buckets} - 1, FLOOR((tick - (SELECT first_tick FROM params))
-                            / (SELECT bucket_size FROM params)))
+                        + LEAST((SELECT window_count FROM params) - 1,
+                                FLOOR((tick - (SELECT first_tick FROM params))
+                                    / (SELECT bucket_size FROM params)))
                           * (SELECT bucket_size FROM params))::BIGINT AS window_tick
                 FROM {table}
                 WHERE tick >= ({from})::BIGINT AND tick <= ({to})::BIGINT

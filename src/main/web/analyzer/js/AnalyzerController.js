@@ -80,6 +80,9 @@ import {
     /** What a card is taken to be wide while the browser has not laid it out yet. */
     const DEFAULT_CHART_WIDTH = 800;
 
+    /** How many moments of its level a metric that counts events reads for every point it draws. */
+    const INTERVALS_PER_WINDOW = 10;
+
     /** How many resolutions a card offers, each half as fine as the one before it. */
     const RESOLUTIONS = 5;
 
@@ -543,8 +546,9 @@ export async function loadDashboard(runId) {
      * Picks the stored level a card reads to fill the points it draws.
      *
      * The finest level that still holds at least as many moments as the card draws: a coarser one
-     * could not fill them, a finer one would only cost transfer. Where the metric says nothing
-     * about its levels, the server decides.
+     * could not fill them, a finer one would only cost transfer. A metric that counts events is
+     * read finer, with several moments to every point. Where the metric says nothing about its
+     * levels, the server decides.
      *
      * @param {Object} metric - Manifest entry, carrying the tick interval of every level
      * @param {number} points - How many points the card draws
@@ -558,7 +562,11 @@ export async function loadDashboard(runId) {
             return null;
         }
         const holds = lod => (to - from) / (metric.tickIntervals?.[lod] || Infinity) + 1;
-        const coarse = [...levels].reverse().find(lod => holds(lod) >= points);
+        // A metric that counts events draws windows that are whole multiples of its level's
+        // interval. With several intervals to a window, rounding the width to such a multiple
+        // changes the number of windows only a little
+        const wanted = metric.summedColumns?.length > 0 ? points * INTERVALS_PER_WINDOW : points;
+        const coarse = [...levels].reverse().find(lod => holds(lod) >= wanted);
         return coarse || levels[0];
     }
 
@@ -579,8 +587,8 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Fills the stretch a card draws, and how many windows it cuts it into, into a query that asks
-     * for them.
+     * Fills the stretch a card draws, how many windows it cuts it into at most, and how far apart
+     * the ticks of the level it loaded lie, into a query that asks for them.
      *
      * A metric whose rows are counts writes one row per window of its level, and another whenever a
      * batch ends inside one, so its rows lie closer together than its window is wide. Such a query
@@ -593,15 +601,22 @@ export async function loadDashboard(runId) {
      * become the first and last tick of the rows themselves - which is what the query would have
      * asked of them in any case.
      *
+     * The interval of the loaded level stands where the query says {@code {interval}}: only the
+     * page knows which level it loaded, and the query makes its windows whole multiples of it.
+     * Where the manifest states no interval for the level, the query gets 1, which leaves the
+     * width of a window to the stretch and the number of windows alone.
+     *
      * @param {string} query - The metric's query
      * @param {number} points - How many points the card draws
      * @param {?number} from - First tick drawn
      * @param {?number} to - Last tick drawn
+     * @param {?number} interval - Ticks between two moments of the level the card loaded
      * @returns {string} The query with the numbers filled in
      */
-    function fillWindow(query, points, from, to) {
+    function fillWindow(query, points, from, to, interval) {
         return query
             .replaceAll('{buckets}', String(Math.max(1, points)))
+            .replaceAll('{interval}', String(interval > 0 ? interval : 1))
             .replaceAll('{from}', from != null ? String(from) : 'SELECT MIN(tick) FROM {table}')
             .replaceAll('{to}', to != null ? String(to) : 'SELECT MAX(tick) FROM {table}');
     }
@@ -792,7 +807,8 @@ export async function loadDashboard(runId) {
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
                 // A metric whose rows carry a second dimension is read column by column: the same
                 // values, without an object per row (see ManifestEntry.columnar)
-                const query = fillWindow(metric.generatedQuery, points, from, to);
+                const query = fillWindow(metric.generatedQuery, points, from, to,
+                    metric.tickIntervals?.[storageLevel]);
                 data = metric.columnar
                     ? await DuckDBClient.queryRegisteredBlobColumns(blobKey, query)
                     : await DuckDBClient.queryRegisteredBlob(blobKey, query);
