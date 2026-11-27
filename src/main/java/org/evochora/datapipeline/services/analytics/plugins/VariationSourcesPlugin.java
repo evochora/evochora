@@ -295,8 +295,8 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * that sorts a result carrying one fails in the browser's DuckDB. A derivation that needs a
      * hash asks for it as text, the way the lineage table hands its hashes over. The rows arrive
      * in no particular order, since the derivation reads them as a set and not as a sequence.
-     * The founders' rows are left out: the card is about replications, and a row without a parent
-     * would reach the browser with its empty parent turned into organism 0.
+     * The founders' rows are left out: the card is about replications, and a founder was not
+     * replicated.
      * {@code birthsMetric} names that table for the derivation, and {@code variationClasses} lets
      * the browser resolve a class name to the index the table's {@code variation} column holds, so
      * that the order of the classes is stated once.

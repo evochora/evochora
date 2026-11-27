@@ -55,8 +55,11 @@ public class DeathsPlugin extends AbstractAnalyticsPlugin {
             "What the organism died of, as a number. " + DeathCause.numberedCauses())
         .build();
 
-    /** Reads the cause of a death; knows no entropy limit until a run has been supplied. */
-    private DeathCause deathCause = DeathCause.forRun(null);
+    /** Bytes one row takes while it is held: its object array with a boxed number per column. */
+    private static final int BYTES_PER_ROW = 120;
+
+    /** Reads the cause of a death; {@code null} until a run has been supplied. */
+    private DeathCause deathCause;
 
     /** Metric holding the births the card reads every lifetime's beginning from. */
     private String birthsMetricId = "births";
@@ -95,7 +98,9 @@ public class DeathsPlugin extends AbstractAnalyticsPlugin {
     @Override
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);
-        this.deathCause = DeathCause.forRun(context);
+        if (context != null) {
+            this.deathCause = DeathCause.forRun(metricId, context);
+        }
     }
 
     @Override
@@ -108,11 +113,17 @@ public class DeathsPlugin extends AbstractAnalyticsPlugin {
      * <p>
      * Writes one row per organism this recording reports as dead. Returns no row when nobody died.
      *
-     * @throws IllegalStateException if an organism is reported dead without a time of death, since
-     *         leaving it out would make it read as alive, or if its state fits no cause of death
+     * @throws IllegalStateException if the plugin was initialized without an analytics context,
+     *         since the limit a death by entropy is recognized by would then be unknown, if an
+     *         organism is reported dead without a time of death, since leaving it out would make
+     *         it read as alive, or if its state fits no cause of death
      */
     @Override
     public List<Object[]> extractRows(TickData tick) {
+        if (deathCause == null) {
+            throw new IllegalStateException("Metric '" + metricId + "': the cause of a death cannot "
+                + "be read because the plugin was initialized without an analytics context.");
+        }
         List<Object[]> rows = null;
         for (OrganismState org : tick.getOrganismsList()) {
             if (!org.getIsDead()) {
@@ -184,13 +195,12 @@ public class DeathsPlugin extends AbstractAnalyticsPlugin {
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         // The rows of one recording, held until the indexer has written them. Every organism the
-        // recording could report is counted as dead, 120 bytes for one row's object array with its
-        // four boxed numbers.
-        long rowBytes = params.maxOrganisms() * 120L;
+        // recording could report is counted as dead.
+        long rowBytes = params.maxOrganisms() * (long) BYTES_PER_ROW;
         return Collections.singletonList(new MemoryEstimate(
             "Plugin: " + metricId,
             rowBytes,
-            String.format("%d max organisms × ~120 bytes/row", params.maxOrganisms()),
+            String.format("%d max organisms × ~%d bytes/row", params.maxOrganisms(), BYTES_PER_ROW),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
     }

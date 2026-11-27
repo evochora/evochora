@@ -257,7 +257,7 @@ class BirthsPluginTest {
                 .contains("variation")
                 .doesNotContain("genome_hash")
                 .doesNotContain("ORDER BY")
-                // A founder's row has no parent, which the browser would read as organism 0
+                // The card is about replications, and a founder was not replicated
                 .contains("WHERE parent_id IS NOT NULL");
         });
     }

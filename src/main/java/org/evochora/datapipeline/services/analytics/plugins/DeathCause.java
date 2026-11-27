@@ -50,30 +50,26 @@ final class DeathCause {
         "energy", "the organism's energy was used up",
         "entropy", "the organism's entropy exceeded the maximum");
 
-    /**
-     * Entropy above which the runtime kills an organism, or {@code null} where no run
-     * configuration says so.
-     */
-    private final Integer maxEntropy;
+    /** Entropy above which the runtime kills an organism. */
+    private final int maxEntropy;
 
-    private DeathCause(Integer maxEntropy) {
+    private DeathCause(int maxEntropy) {
         this.maxEntropy = maxEntropy;
     }
 
     /**
      * Creates the rule for the run a plugin was initialized with.
-     * <p>
-     * A context without a run configuration - a caller that does not place rows on a run, such as
-     * a unit test - yields a rule that knows no entropy limit: it still names a death by energy,
-     * and refuses every other one.
      *
-     * @param context the context the plugin was initialized with, or {@code null}
-     * @return the rule, with the run's entropy limit where the context carries one
+     * @param metricId the metric of the plugin asking, for the message
+     * @param context  the context the plugin was initialized with
+     * @return the rule, with the run's entropy limit
+     * @throws IllegalStateException if the context carries no run configuration, since the limit a
+     *         death by entropy is recognized by would then be unknown
      */
-    static DeathCause forRun(IAnalyticsContext context) {
-        if (context == null || context.getMetadata() == null
-                || context.getMetadata().getResolvedConfigJson().isEmpty()) {
-            return new DeathCause(null);
+    static DeathCause forRun(String metricId, IAnalyticsContext context) {
+        if (context.getMetadata() == null || context.getMetadata().getResolvedConfigJson().isEmpty()) {
+            throw new IllegalStateException("Metric '" + metricId + "': the entropy limit is "
+                + "unavailable because the plugin was initialized without a run configuration.");
         }
         return new DeathCause(MetadataConfigHelper.getResolvedConfig(context.getMetadata())
             .getInt("runtime.organism.max-entropy"));
@@ -116,17 +112,11 @@ final class DeathCause {
      *
      * @param org the dead organism, with the energy and the entropy it died with
      * @return the index of the cause within {@link #CAUSES}
-     * @throws IllegalStateException if the organism's state fits neither cause, or fits no death
-     *         by energy while no run configuration states the entropy limit
+     * @throws IllegalStateException if the organism's state fits neither cause
      */
     int of(OrganismState org) {
         if (org.getEnergy() <= 0) {
             return ENERGY;
-        }
-        if (maxEntropy == null) {
-            throw new IllegalStateException("Organism " + org.getOrganismId() + " died with energy "
-                + org.getEnergy() + ", and no run configuration states the entropy limit its death "
-                + "would have to be read against.");
         }
         if (org.getEntropyRegister() > maxEntropy) {
             return ENTROPY;

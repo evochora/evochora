@@ -1,7 +1,9 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,28 +47,54 @@ import org.evochora.datapipeline.api.contracts.TickData;
  */
 public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
 
-    /** Schema stores only raw facts - no derived values */
-    private static final ParquetSchema SCHEMA = ParquetSchema.builder(
-            "Births and deaths. One row per recorded tick. The births between two rows are the "
-            + "change of total_born, which is exact on every level of detail. The deaths are "
-            + "counted by cause, and a row of a coarser level holds the deaths of all the recorded "
-            + "ticks it stands for.")
-        .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
-        .column("total_born", ColumnType.BIGINT,
-            "Organisms created since the run began, the ancestors included.")
-        .column("alive_count", ColumnType.INTEGER, "Organisms alive at the tick.")
-        .column("deaths_energy", ColumnType.INTEGER, Aggregation.SUM,
-            "Organisms reported as dead since the previous row because "
-            + DeathCause.meaningOf("energy") + ". A dead organism is reported by one recorded "
-            + "tick only.")
-        .column("deaths_entropy", ColumnType.INTEGER, Aggregation.SUM,
-            "Organisms reported as dead since the previous row because "
-            + DeathCause.meaningOf("entropy") + ". A dead organism is reported by one recorded "
-            + "tick only.")
-        .build();
+    /** How many columns stand before the deaths by cause: tick, total_born and alive_count. */
+    private static final int COLUMNS_BEFORE_CAUSES = 3;
 
-    /** Reads the cause of a death; knows no entropy limit until a run has been supplied. */
-    private DeathCause deathCause = DeathCause.forRun(null);
+    /** The colour each cause of death is drawn in on the card. */
+    private static final Map<String, String> CAUSE_COLORS = Map.of(
+        "energy", "#f87171",
+        "entropy", "#c084fc");
+
+    /** Schema stores only raw facts - no derived values */
+    private static final ParquetSchema SCHEMA = schema();
+
+    /**
+     * Builds the schema: the two running totals, and one column of deaths per cause
+     * {@link DeathCause} knows, in its order.
+     *
+     * @return the schema
+     */
+    private static ParquetSchema schema() {
+        ParquetSchema.Builder builder = ParquetSchema.builder(
+                "Births and deaths. One row per recorded tick. The births between two rows are the "
+                + "change of total_born, which is exact on every level of detail. The deaths are "
+                + "counted by cause, and a row of a coarser level holds the deaths of all the "
+                + "recorded ticks it stands for.")
+            .column("tick", ColumnType.BIGINT, "The recorded tick the row describes.")
+            .column("total_born", ColumnType.BIGINT,
+                "Organisms created since the run began, the ancestors included.")
+            .column("alive_count", ColumnType.INTEGER, "Organisms alive at the tick.");
+        for (String cause : DeathCause.CAUSES) {
+            builder.column(columnOf(cause), ColumnType.INTEGER, Aggregation.SUM,
+                "Organisms reported as dead since the previous row because "
+                + DeathCause.meaningOf(cause) + ". A dead organism is reported by one recorded "
+                + "tick only.");
+        }
+        return builder.build();
+    }
+
+    /**
+     * Names the column that counts the deaths of one cause.
+     *
+     * @param cause one of {@link DeathCause#CAUSES}
+     * @return the column's name
+     */
+    private static String columnOf(String cause) {
+        return "deaths_" + cause;
+    }
+
+    /** Reads the cause of a death; {@code null} until a run has been supplied. */
+    private DeathCause deathCause;
 
     @Override
     protected Fixed fixedSamplingInterval() {
@@ -77,7 +105,9 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
     @Override
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);
-        this.deathCause = DeathCause.forRun(context);
+        if (context != null) {
+            this.deathCause = DeathCause.forRun(metricId, context);
+        }
     }
 
     @Override
@@ -92,11 +122,17 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
      * available in the TickData, with no reference to previous ticks.
      *
      * @param tick The tick data to process
-     * @return Single row with [tick, total_born, alive_count, deaths_energy, deaths_entropy]
-     * @throws IllegalStateException if a dead organism's state fits no cause of death
+     * @return Single row with tick, total_born, alive_count and the deaths of each cause
+     * @throws IllegalStateException if the plugin was initialized without an analytics context,
+     *         since the limit a death by entropy is recognized by would then be unknown, or if a
+     *         dead organism's state fits no cause of death
      */
     @Override
     public List<Object[]> extractRows(TickData tick) {
+        if (deathCause == null) {
+            throw new IllegalStateException("Metric '" + metricId + "': the cause of a death cannot "
+                + "be read because the plugin was initialized without an analytics context.");
+        }
         int aliveCount = 0;
         int[] deaths = new int[DeathCause.CAUSES.size()];
         for (OrganismState org : tick.getOrganismsList()) {
@@ -106,13 +142,14 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
                 deaths[deathCause.of(org)]++;
             }
         }
-        return Collections.singletonList(new Object[] {
-            tick.getTickNumber(),
-            tick.getTotalOrganismsCreated(),
-            aliveCount,
-            deaths[DeathCause.ENERGY],
-            deaths[DeathCause.ENTROPY]
-        });
+        Object[] row = new Object[COLUMNS_BEFORE_CAUSES + deaths.length];
+        row[0] = tick.getTickNumber();
+        row[1] = tick.getTotalOrganismsCreated();
+        row[2] = aliveCount;
+        for (int cause = 0; cause < deaths.length; cause++) {
+            row[COLUMNS_BEFORE_CAUSES + cause] = deaths[cause];
+        }
+        return Collections.singletonList(row);
     }
 
     /**
@@ -128,6 +165,13 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
      * @return SQL query string with {table} placeholder
      */
     private String generateAggregatedQuery() {
+        StringBuilder carried = new StringBuilder();
+        StringBuilder summed = new StringBuilder();
+        for (String cause : DeathCause.CAUSES) {
+            String column = columnOf(cause);
+            carried.append(",\n        ").append(column);
+            summed.append(",\n    (-SUM(").append(column).append("))::BIGINT AS ").append(column);
+        }
         return """
             WITH
             %s,
@@ -135,23 +179,19 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
                 SELECT
                     tick,
                     window_tick,
-                    COALESCE(total_born - LAG(total_born) OVER (ORDER BY tick), 0) AS births,
-                    deaths_energy,
-                    deaths_entropy
+                    COALESCE(total_born - LAG(total_born) OVER (ORDER BY tick), 0) AS births%s
                 FROM window_rows
             )
             -- A window the level holds no recording in carries nothing rather than zeros: the
             -- level knows nothing there, which is not the same as nobody having been born
             SELECT
                 windows.window_tick AS tick,
-                SUM(births)::BIGINT AS births,
-                (-SUM(deaths_energy))::BIGINT AS deaths_energy,
-                (-SUM(deaths_entropy))::BIGINT AS deaths_entropy
+                SUM(births)::BIGINT AS births%s
             FROM windows LEFT JOIN computed
                 ON computed.window_tick = windows.window_tick
             GROUP BY windows.window_tick
             ORDER BY tick
-            """.formatted(windowSource());
+            """.formatted(windowSource(), carried, summed);
     }
 
     @Override
@@ -168,25 +208,53 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
+        // The births, and one series per cause of death in the order DeathCause numbers them
+        List<String> series = new ArrayList<>();
+        Map<String, String> labels = new LinkedHashMap<>();
+        Map<String, String> colors = new LinkedHashMap<>();
+        series.add("births");
+        labels.put("births", "Births");
+        colors.put("births", "#4ade80");
+        for (String cause : DeathCause.CAUSES) {
+            String column = columnOf(cause);
+            series.add(column);
+            labels.put(column, "Deaths: " + cause);
+            colors.put(column, colorOf(cause));
+        }
+
         // Use custom aggregated query instead of QuerySpec
         entry.generatedQuery = generateAggregatedQuery();
-        entry.outputColumns = List.of("tick", "births", "deaths_energy", "deaths_entropy");
+        List<String> outputColumns = new ArrayList<>();
+        outputColumns.add("tick");
+        outputColumns.addAll(series);
+        entry.outputColumns = outputColumns;
 
         // Visualization: a cause that did not occur in the window is left out of the legend
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
-            .with("y", List.of("births", "deaths_energy", "deaths_entropy"))
+            .with("y", series)
             .with("yFormat", "integer")
             .with("yLabel", "Organisms")
             .with("hideEmpty", true)
-            .with("labels", Map.of(
-                "births", "Births",
-                "deaths_energy", "Deaths: energy",
-                "deaths_entropy", "Deaths: entropy"))
-            .with("colors", Map.of(
-                "births", "#4ade80",
-                "deaths_energy", "#f87171",
-                "deaths_entropy", "#c084fc"));
+            .with("labels", labels)
+            .with("colors", colors);
 
         return entry;
+    }
+
+    /**
+     * Finds the colour a cause of death is drawn in.
+     *
+     * @param cause one of {@link DeathCause#CAUSES}
+     * @return the colour
+     * @throws IllegalStateException if the card names no colour for the cause, which is a cause
+     *         added to {@link DeathCause} and not to this card
+     */
+    private String colorOf(String cause) {
+        String color = CAUSE_COLORS.get(cause);
+        if (color == null) {
+            throw new IllegalStateException("Metric '" + metricId + "': the card has no colour for "
+                + "the cause of death '" + cause + "'.");
+        }
+        return color;
     }
 }

@@ -112,6 +112,17 @@ class DeathsPluginTest {
     }
 
     @Test
+    void withoutAContextTheCauseOfADeathCannotBeRead() {
+        DeathsPlugin uninitialized = new DeathsPlugin();
+        uninitialized.configure(ConfigFactory.parseMap(Map.of("metricId", "deaths")));
+        uninitialized.initialize(null);
+
+        assertThatThrownBy(() -> uninitialized.extractRows(TickData.newBuilder().build()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("without an analytics context");
+    }
+
+    @Test
     void theSamplingIntervalCannotBeConfigured() {
         DeathsPlugin configured = new DeathsPlugin();
 

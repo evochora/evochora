@@ -303,13 +303,15 @@ export function updateRunRangePoll() {
      * @param {string} runId - Simulation run ID
      */
 export async function loadDashboard(runId) {
-        // A load still waiting for a starting run gives way; any other load in progress wins
-        if (isLoading && !manifestWaiter.isWaiting()) return;
+        // The newest load wins: one still under way, or still waiting for a starting run, finds
+        // itself overtaken at its next step and leaves the page alone
         manifestWaiter.cancel();
         clearDataRetries();
         const generation = ++loadGeneration;
         isLoading = true;
-        // Nothing read for the run shown before describes this one
+        // Nothing read for the run shown before describes this one, and a card still loading for
+        // that run must not hand over what it reads once this has been cleared
+        Object.values(abortControllers).forEach(controller => controller.abort());
         dropWholeTables();
         Object.keys(loadedData).forEach(metricId => delete loadedData[metricId]);
         
@@ -319,10 +321,12 @@ export async function loadDashboard(runId) {
             DashboardView.showMessage('Loading metrics...');
             
             // Fetch manifest; a starting run has none yet and is waited for
-            manifest = await AnalyticsApi.getManifest(runId);
-            if (!manifest.metrics || manifest.metrics.length === 0) {
-                manifest = await waitForManifest(runId);
+            let loaded = await AnalyticsApi.getManifest(runId);
+            if (!loaded.metrics || loaded.metrics.length === 0) {
+                loaded = await waitForManifest(runId);
             }
+            if (generation !== loadGeneration) return;
+            manifest = loaded;
             
             // Create the cards, in the order of the manifest
             DashboardView.createCards(manifest.metrics);
@@ -369,7 +373,11 @@ export async function loadDashboard(runId) {
 
             updateRunRangePoll();
 
-            runExtent = await fetchRunExtent(runId, manifest.metrics);
+            const ranges = await fetchTickRanges(runId, manifest.metrics);
+            if (generation !== loadGeneration) return;
+            Object.keys(tickRanges).forEach(metricId => delete tickRanges[metricId]);
+            Object.assign(tickRanges, ranges);
+            runExtent = extentOf(ranges);
             loadedExtent = runExtent;
             TickWindowView.show(runExtent, tickWindow);
 
@@ -814,6 +822,11 @@ export async function loadDashboard(runId) {
             const companion = companionKept
                 ? { rows: previous.companion, missing: previous.missing }
                 : await loadCompanionData(metric, storageLevel, controller.signal);
+            // A load that was overtaken while it read - by another load of the card, or by another
+            // run - keeps what it read to itself
+            if (controller.signal.aborted) {
+                throw new DOMException('Another load of the card took over', 'AbortError');
+            }
             loadedData[metricId] = {
                 data: fitToCard(data, points, metric),
                 companion: companion ? companion.rows : null,
@@ -1000,22 +1013,36 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Reads the tick range of a run over all its metrics. Every request is the lightweight one.
+     * Reads the tick range of every metric of a run. Every request is the lightweight one.
+     *
+     * The answer is handed back rather than stored, so that a load that was overtaken while it
+     * asked leaves the ranges of the run now shown as they are.
      *
      * @param {string} runId - Simulation run ID
      * @param {Array<Object>} metrics - Metric manifest entries
-     * @returns {Promise<?{min: number, max: number}>} The range, or null if no metric holds a tick
+     * @returns {Promise<Object<string, Object>>} The tick range of each metric that answered, by
+     *          metric id
      */
-    async function fetchRunExtent(runId, metrics) {
-        Object.keys(tickRanges).forEach(metricId => delete tickRanges[metricId]);
+    async function fetchTickRanges(runId, metrics) {
+        const ranges = {};
         await Promise.all(metrics.map(async metric => {
             try {
-                tickRanges[metric.id] = await AnalyticsApi.fetchTickRange(metric.id, runId, null);
+                ranges[metric.id] = await AnalyticsApi.fetchTickRange(metric.id, runId, null);
             } catch (error) {
                 // The card of the metric asks again and shows what went wrong
             }
         }));
-        const held = Object.values(tickRanges)
+        return ranges;
+    }
+
+    /**
+     * The tick range of a run over all its metrics.
+     *
+     * @param {Object<string, Object>} ranges - The tick range of each metric, by metric id
+     * @returns {?{min: number, max: number}} The range, or null if no metric holds a tick
+     */
+    function extentOf(ranges) {
+        const held = Object.values(ranges)
             .filter(range => range.tickMin != null && range.tickMax != null);
         if (held.length === 0) return null;
         return {

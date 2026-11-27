@@ -222,12 +222,17 @@ export async function queryRegisteredBlob(metricKey, sql) {
      * bits and would not survive that. A caller that needs numbers converts the columns it knows to
      * be far below 2^53 - ticks, ids, counts - with {@code Number()} itself.
      *
+     * A column with an empty value is refused. An array of numbers has no place for "empty", and
+     * the value would arrive as 0, which is a tick, a count and an id like any other. A query
+     * whose table holds empty values says what becomes of them, by leaving those rows out or by
+     * putting a value in their place.
+     *
      * @param {string} metricKey - The key used in registerParquetBlob
      * @param {string} sql - SQL with {table} placeholder
      * @returns {Promise<Object<string, ArrayLike<*>>>} One array of values per selected column,
      *          keyed by column name
-     * @throws {Error} If no blob is registered for the key, or if a selected column is absent from
-     *         the result
+     * @throws {Error} If no blob is registered for the key, if a selected column is absent from
+     *         the result, or if a selected column holds an empty value
      */
 export async function queryRegisteredBlobColumns(metricKey, sql) {
         if (!initialized) {
@@ -247,6 +252,10 @@ export async function queryRegisteredBlobColumns(metricKey, sql) {
             const column = result.getChild(field.name);
             if (!column) {
                 throw new Error(`Query result has no column: ${field.name}`);
+            }
+            if (column.nullCount > 0) {
+                throw new Error(`Query result holds ${column.nullCount} empty values in column `
+                    + `${field.name}; the query has to say what becomes of them`);
             }
             columns[field.name] = column.toArray();
         }

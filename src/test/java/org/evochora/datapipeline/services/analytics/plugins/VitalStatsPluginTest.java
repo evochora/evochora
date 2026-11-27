@@ -100,6 +100,17 @@ class VitalStatsPluginTest {
     }
 
     @Test
+    void withoutAContextTheCauseOfADeathCannotBeRead() {
+        VitalStatsPlugin uninitialized = new VitalStatsPlugin();
+        uninitialized.configure(ConfigFactory.parseMap(Map.of("metricId", "vital_stats")));
+        uninitialized.initialize(null);
+
+        assertThatThrownBy(() -> uninitialized.extractRows(TickData.newBuilder().build()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("without an analytics context");
+    }
+
+    @Test
     void theSamplingIntervalCannotBeConfigured() {
         VitalStatsPlugin configured = new VitalStatsPlugin();
 

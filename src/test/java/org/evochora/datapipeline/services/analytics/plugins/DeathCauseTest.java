@@ -24,7 +24,7 @@ class DeathCauseTest {
     /** Max entropy from TestMetadataHelper defaults. */
     private static final int MAX_ENTROPY = 8191;
 
-    private final DeathCause cause = DeathCause.forRun(contextOfARun());
+    private final DeathCause cause = DeathCause.forRun("deaths", contextOfARun());
 
     @Test
     void energyUsedUpIsADeathByEnergy() {
@@ -51,13 +51,13 @@ class DeathCauseTest {
     }
 
     @Test
-    void withoutARunOnlyADeathByEnergyCanBeNamed() {
-        DeathCause withoutRun = DeathCause.forRun(null);
+    void aContextWithoutARunConfigurationIsRefused() {
+        IAnalyticsContext withoutConfiguration = contextWith(SimulationMetadata.getDefaultInstance());
 
-        assertThat(withoutRun.of(dead(0, MAX_ENTROPY + 1))).isEqualTo(DeathCause.ENERGY);
-        assertThatThrownBy(() -> withoutRun.of(dead(50, MAX_ENTROPY + 1)))
+        assertThatThrownBy(() -> DeathCause.forRun("deaths", withoutConfiguration))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("no run configuration");
+            .hasMessageContaining("deaths")
+            .hasMessageContaining("run configuration");
     }
 
     @Test
@@ -82,11 +82,13 @@ class DeathCauseTest {
     }
 
     private static IAnalyticsContext contextOfARun() {
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+        return contextWith(SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
             .setResolvedConfigJson(TestMetadataHelper.builder().build())
-            .build();
+            .build());
+    }
 
+    private static IAnalyticsContext contextWith(SimulationMetadata metadata) {
         return new IAnalyticsContext() {
             @Override
             public SimulationMetadata getMetadata() {
