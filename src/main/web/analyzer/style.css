@@ -923,8 +923,9 @@ main.container {
 }
 
 /* Hover overlays pipeline background */
-.footer-run-item:hover {
-    background: #1a1a2a;
+.footer-run-item:hover,
+.footer-run-item.selected {
+    background: #1a2a3a;
 }
 
 /* Collapsed value: pipeline status tint */
